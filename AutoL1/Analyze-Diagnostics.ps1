@@ -51,6 +51,93 @@ function Convert-SizeToGB {
   }
 }
 
+$script:ResolveDnsAvailable = $null
+function Resolve-Safe {
+  param(
+    [string]$Name,
+    [string]$Type = 'A',
+    [string]$Server = $null
+  )
+
+  if (-not $Name) { return @() }
+
+  if ($null -eq $script:ResolveDnsAvailable) {
+    $script:ResolveDnsAvailable = [bool](Get-Command Resolve-DnsName -ErrorAction SilentlyContinue)
+  }
+
+  if (-not $script:ResolveDnsAvailable) { return $null }
+
+  try {
+    if ($Server) {
+      return Resolve-DnsName -Name $Name -Type $Type -Server $Server -ErrorAction Stop
+    } else {
+      return Resolve-DnsName -Name $Name -Type $Type -ErrorAction Stop
+    }
+  } catch {
+    return @()
+  }
+}
+
+function Test-IsRFC1918 {
+  param([string]$Address)
+
+  if (-not $Address) { return $false }
+
+  $addressTrimmed = $Address.Trim()
+  $parsed = $null
+  if (-not [System.Net.IPAddress]::TryParse($addressTrimmed, [ref]$parsed)) {
+    return $false
+  }
+
+  if ($parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+    $bytes = $parsed.GetAddressBytes()
+    $first = $bytes[0]
+    $second = $bytes[1]
+
+    if ($first -eq 10) { return $true }
+    if ($first -eq 192 -and $second -eq 168) { return $true }
+    if ($first -eq 172 -and $second -ge 16 -and $second -le 31) { return $true }
+    if ($first -eq 127) { return $true }
+    if ($first -eq 100 -and $second -ge 64 -and $second -le 127) { return $true }
+
+    return $false
+  }
+
+  if ($parsed.Equals([System.Net.IPAddress]::IPv6Loopback)) { return $true }
+  if ($parsed.IsIPv6LinkLocal -or $parsed.IsIPv6SiteLocal) { return $true }
+
+  $ipv6Bytes = $parsed.GetAddressBytes()
+  if (($ipv6Bytes[0] -band 0xfe) -eq 0xfc) { return $true }
+
+  return $false
+}
+
+function Test-ServerAuthoritative {
+  param(
+    [string]$Server,
+    [string]$Zone
+  )
+
+  if (-not $Server -or -not $Zone) { return $null }
+
+  $soa = Resolve-Safe -Name $Zone -Type SOA -Server $Server
+  if ($null -eq $soa) { return $null }
+  return ($soa.Count -gt 0)
+}
+
+function Test-ServerKnowsAD {
+  param(
+    [string]$Server,
+    [string]$Forest
+  )
+
+  if (-not $Server -or -not $Forest) { return $null }
+
+  $srv = Resolve-Safe -Name ("_ldap._tcp.dc._msdcs.$Forest") -Type SRV -Server $Server
+  if ($null -eq $srv) { return $null }
+  return ($srv.Count -gt 0)
+}
+
 function Get-FreeSpaceRule {
   param(
     [string]$DriveLetter,
@@ -319,27 +406,193 @@ if ($raw['ipconfig']){
   $gws   = [regex]::Matches($raw['ipconfig'],'Default Gateway[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
   $dns   = [regex]::Matches($raw['ipconfig'],'DNS Servers[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
 
-  $summary.IPv4    = ($ipv4s | Select-Object -Unique) -join ", "
-  $summary.Gateway = ($gws   | Select-Object -Unique) -join ", "
-  $summary.DNS     = ($dns   | Select-Object -Unique) -join ", "
-
-  if (-not $ipv4s){ Add-Issue "critical" "Network" "No IPv4 address detected (driver/DHCP/link)." $raw['ipconfig'] }
-  if ($ipv4s | Where-Object { $_ -like "169.254.*" }){ Add-Issue "critical" "Network" "APIPA address 169.254.x.x → DHCP/link issue." ($ipv4s -join ", ") }
-  if (-not $gws){ Add-Issue "high" "Network" "No default gateway — internet likely broken." "" }
-
-  $public = @("8.8.8.8","8.8.4.4","1.1.1.1","1.0.0.1","9.9.9.9","149.112.112.112")
-  if ($dns | Where-Object { $public -contains $_ }) {
-    Add-Issue "medium" "DNS" "Public DNS in use — fine at home; breaks AD in corp environments." ($dns -join ", ")
+  $uniqueIPv4 = @()
+  foreach ($ip in $ipv4s) {
+    if (-not $ip) { continue }
+    if ($uniqueIPv4 -notcontains $ip) { $uniqueIPv4 += $ip }
+  }
+  $uniqueGws = @()
+  foreach ($gw in $gws) {
+    if (-not $gw) { continue }
+    if ($uniqueGws -notcontains $gw) { $uniqueGws += $gw }
+  }
+  $dnsServers = @()
+  foreach ($server in $dns) {
+    if (-not $server) { continue }
+    if ($dnsServers -notcontains $server) { $dnsServers += $server }
   }
 
-  if ($ipv4s -and -not ($ipv4s | Where-Object { $_ -like "169.254.*" })) {
-    Add-Normal "Network/IP" "IPv4 address acquired" ("IPv4: " + (($ipv4s | Select-Object -Unique) -join ", "))
+  $summary.IPv4    = $uniqueIPv4 -join ", "
+  $summary.Gateway = $uniqueGws  -join ", "
+  $summary.DNS     = $dnsServers -join ", "
+
+  if (-not $uniqueIPv4){ Add-Issue "critical" "Network" "No IPv4 address detected (driver/DHCP/link)." $raw['ipconfig'] }
+  if ($uniqueIPv4 | Where-Object { $_ -like "169.254.*" }){ Add-Issue "critical" "Network" "APIPA address 169.254.x.x → DHCP/link issue." ($uniqueIPv4 -join ", ") }
+  if (-not $uniqueGws){ Add-Issue "high" "Network" "No default gateway — internet likely broken." "" }
+
+  if ($uniqueIPv4 -and -not ($uniqueIPv4 | Where-Object { $_ -like "169.254.*" })) {
+    Add-Normal "Network/IP" "IPv4 address acquired" ("IPv4: " + ($uniqueIPv4 -join ", "))
   }
-  if ($gws) {
-    Add-Normal "Network/Routing" "Default gateway present" ("GW: " + (($gws | Select-Object -Unique) -join ", "))
+  if ($uniqueGws) {
+    Add-Normal "Network/Routing" "Default gateway present" ("GW: " + ($uniqueGws -join ", "))
   }
-  if ($dns) {
-    Add-Normal "Network/DNS" "DNS servers configured" ("DNS: " + (($dns | Select-Object -Unique) -join ", "))
+
+  $dnsContextHandled = $false
+  if ($dnsServers -and $dnsServers.Count -gt 0) {
+    $domainJoined = $null
+    $domainName = $null
+    $forestName = $null
+
+    try {
+      $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+      if ($null -ne $cs.PartOfDomain) { $domainJoined = [bool]$cs.PartOfDomain }
+      if ($cs.Domain) { $domainName = $cs.Domain.Trim() }
+    } catch {}
+
+    if ($env:USERDNSDOMAIN) { $forestName = $env:USERDNSDOMAIN.Trim() }
+
+    if (-not $domainName -and $raw['systeminfo']) {
+      $domainMatch = [regex]::Match($raw['systeminfo'],'(?im)^\s*Domain\s*:\s*(.+)$')
+      if ($domainMatch.Success) { $domainName = $domainMatch.Groups[1].Value.Trim() }
+    }
+
+    if (-not $forestName -and $raw['systeminfo']) {
+      $suffixMatch = [regex]::Match($raw['systeminfo'],'(?im)^\s*Primary Dns Suffix\s*:\s*(.+)$')
+      if ($suffixMatch.Success) { $forestName = $suffixMatch.Groups[1].Value.Trim() }
+    }
+
+    if (-not $forestName -and $domainName) { $forestName = $domainName }
+    if ($domainName) { $summary.Domain = $domainName }
+
+    $domainUpper = if ($domainName) { $domainName.Trim().ToUpperInvariant() } else { $null }
+    if ($domainUpper -eq 'WORKGROUP') { $domainJoined = $false }
+
+    if ($null -eq $domainJoined) {
+      if ($domainUpper -and $domainUpper -ne 'WORKGROUP') {
+        $domainJoined = $true
+      } else {
+        $domainJoined = $false
+      }
+    }
+
+    if ($domainJoined -eq $true) { $summary.DomainJoined = $true }
+    elseif ($domainJoined -eq $false) { $summary.DomainJoined = $false }
+
+    if ($domainJoined -eq $false) {
+      Add-Normal "Network/DNS" "Workgroup/standalone: DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
+      $dnsContextHandled = $true
+    } elseif ($domainJoined -eq $true) {
+      Add-Normal "Network/DNS" "Domain-joined: DNS servers captured" ("DNS: " + ($dnsServers -join ", "))
+      $dnsContextHandled = $true
+
+      $forestForQuery = if ($forestName) { $forestName } else { $domainName }
+      $dcHosts = @()
+      $dcIPs = @()
+      $dnsTestsAvailable = $true
+      $dnsTestsAttempted = $false
+
+      if ($forestForQuery) {
+        $dcSrvName = "_ldap._tcp.dc._msdcs.$forestForQuery"
+        $srvRecords = Resolve-Safe -Name $dcSrvName -Type SRV
+        if ($null -eq $srvRecords) {
+          $dnsTestsAvailable = $false
+          $srvRecords = @()
+        } else {
+          $dnsTestsAttempted = $true
+          if ($srvRecords.Count -gt 0) {
+            $dcHosts = $srvRecords | Select-Object -ExpandProperty NameTarget -Unique
+          }
+        }
+      }
+
+      foreach ($host in $dcHosts) {
+        $aRecords = Resolve-Safe -Name $host -Type A
+        if ($null -eq $aRecords) {
+          $dnsTestsAvailable = $false
+          $aRecords = @()
+        } else {
+          $dnsTestsAttempted = $true
+          if ($aRecords.Count -gt 0) {
+            $dcIPs += ($aRecords | Select-Object -ExpandProperty IPAddress)
+          }
+        }
+      }
+      $dcIPs = $dcIPs | Where-Object { $_ } | Select-Object -Unique
+
+      $dnsEval = @()
+      foreach ($server in $dnsServers) {
+        $auth = $null
+        $srv = $null
+        if ($domainName -and $domainUpper -ne 'WORKGROUP') {
+          $auth = Test-ServerAuthoritative -Server $server -Zone $domainName
+          if ($null -eq $auth) {
+            $dnsTestsAvailable = $false
+          } else {
+            $dnsTestsAttempted = $true
+          }
+        }
+        if ($forestForQuery) {
+          $srv = Test-ServerKnowsAD -Server $server -Forest $forestForQuery
+          if ($null -eq $srv) {
+            $dnsTestsAvailable = $false
+          } else {
+            $dnsTestsAttempted = $true
+          }
+        }
+        $isPrivate = Test-IsRFC1918 $server
+        $dnsEval += [pscustomobject]@{
+          Server          = $server
+          IsRFC1918       = $isPrivate
+          IsPublic        = -not $isPrivate
+          IsDCIP          = $dcIPs -contains $server
+          AuthoritativeAD = $auth
+          ResolvesADSRV   = $srv
+        }
+      }
+
+      $goodServers = $dnsEval | Where-Object { $_.IsDCIP -or $_.AuthoritativeAD -eq $true -or $_.ResolvesADSRV -eq $true }
+      if ($goodServers) {
+        $goodList = $goodServers | Select-Object -ExpandProperty Server -Unique
+        Add-Normal "DNS/Internal" "Domain-joined: AD-capable DNS present" ($goodList -join ", ")
+      }
+
+      $dnsEvalTable = if ($dnsEval -and $dnsEval.Count -gt 0) { $dnsEval | Format-Table -AutoSize | Out-String } else { '' }
+
+      $publicServers = $dnsEval | Where-Object { $_.IsPublic }
+      if ($publicServers) {
+        $pubList = $publicServers | Select-Object -ExpandProperty Server -Unique
+        Add-Issue "medium" "DNS/Internal" "Domain-joined: public DNS servers detected ($($pubList -join ', '))." $dnsEvalTable
+      }
+
+      $primaryServer = $dnsServers | Select-Object -First 1
+      if ($primaryServer) {
+        $primaryEval = $dnsEval | Where-Object { $_.Server -eq $primaryServer }
+        if ($primaryEval -and $primaryEval.IsPublic) {
+          Add-Issue "low" "DNS/Order" "Primary DNS is public; move internal server to the top." ("Primary: $primaryServer`nAll: " + ($dnsServers -join ", "))
+        }
+      }
+
+      $needCritical = $false
+      if ($dnsTestsAvailable -and $dnsTestsAttempted) {
+        if (-not $goodServers -or $goodServers.Count -eq 0) {
+          $needCritical = $true
+        }
+      }
+
+      if ($needCritical) {
+        $secureOK = $null
+        try { $secureOK = Test-ComputerSecureChannel -Verbose:$false -ErrorAction Stop } catch { $secureOK = $null }
+        if ($secureOK -eq $false) {
+          Add-Issue "medium" "DNS/Internal" "Domain-joined but DNS not internal/AD-capable (device likely off-network/VPN down)." $dnsEvalTable
+        } else {
+          Add-Issue "critical" "DNS/Internal" "Domain-joined: DNS servers cannot resolve AD SRV records or are public." $dnsEvalTable
+        }
+      }
+    }
+  }
+
+  if (-not $dnsContextHandled -and $dnsServers -and $dnsServers.Count -gt 0) {
+    Add-Normal "Network/DNS" "DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
   }
 }
 
