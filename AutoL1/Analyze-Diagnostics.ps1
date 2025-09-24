@@ -51,6 +51,49 @@ function Convert-SizeToGB {
   }
 }
 
+function Get-VersionStampDate {
+  param(
+    [string]$Stamp
+  )
+
+  if (-not $Stamp) { return $null }
+
+  if ($Stamp -match '^(\d{2})(\d{3})$') {
+    $year = 2000 + [int]$Matches[1]
+    $dayOfYear = [int]$Matches[2]
+    if ($dayOfYear -ge 1 -and $dayOfYear -le 366) {
+      $jan1 = Get-Date -Year $year -Month 1 -Day 1
+      return $jan1.AddDays($dayOfYear - 1)
+    }
+  } elseif ($Stamp -match '^(\d{2})(\d{2})(\d{2})$') {
+    $year = 2000 + [int]$Matches[1]
+    $month = [int]$Matches[2]
+    $day = [int]$Matches[3]
+    if ($month -ge 1 -and $month -le 12 -and $day -ge 1 -and $day -le 31) {
+      try { return Get-Date -Year $year -Month $month -Day $day } catch { return $null }
+    }
+  } elseif ($Stamp -match '^(\d{2})(\d{2})$') {
+    $year = 2000 + [int]$Matches[1]
+    $month = [int]$Matches[2]
+    if ($month -ge 1 -and $month -le 12) {
+      try { return Get-Date -Year $year -Month $month -Day 1 } catch { return $null }
+    }
+  }
+
+  return $null
+}
+
+function Get-VersionReleaseDate {
+  param(
+    [string]$VersionString
+  )
+
+  if (-not $VersionString) { return $null }
+  $parts = $VersionString.Split('.')
+  if ($parts.Length -lt 3) { return $null }
+  return Get-VersionStampDate $parts[2]
+}
+
 # map logical keys → discovered files
 $files = [ordered]@{
   ipconfig       = Find-ByContent @('ipconfig_all')              @('Windows IP Configuration')
@@ -257,20 +300,96 @@ if ($raw['tracert'] -and ($raw['tracert'] -match "over a maximum of" -and $raw['
 
 # defender
 if ($raw['defender']){
-  $rt = [regex]::Match($raw['defender'],'RealTimeProtectionEnabled\s*:\s*(True|False)','IgnoreCase')
-  $sigAge = [regex]::Match($raw['defender'],'AntispywareSignatureAge\s*:\s*(\d+)','IgnoreCase')
-  if ($rt.Success -and $rt.Groups[1].Value -ieq "False"){ Add-Issue "high" "Security" "Defender real-time protection is OFF." $raw['defender'] }
-  if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -gt 7){ Add-Issue "medium" "Security" "Defender signatures appear old (>7 days)." $sigAge.Value }
+  $defenderText = $raw['defender']
+  $now = Get-Date
 
-  $rtOK = $rt.Success -and $rt.Groups[1].Value -ieq "True"
-  if ($rtOK) {
-    Add-Normal "Security/Defender" "Real-time protection ON" (([regex]::Split($raw['defender'],'\r?\n') | Select-Object -First 12) -join "`n")
+  $rt = [regex]::Match($defenderText,'RealTimeProtectionEnabled\s*:\s*(True|False)','IgnoreCase')
+  if ($rt.Success -and $rt.Groups[1].Value -ieq "False"){
+    Add-Issue "high" "Security/Defender" "Defender real-time protection is OFF." $defenderText
   }
-  if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -le 7) {
-    Add-Normal "Security/Defender" "Signatures are recent (≤7 days)" $sigAge.Value
+
+  $sigAgeProps = @('AntivirusSignatureAge','AntispywareSignatureAge','NISSignatureAge')
+  $sigAges = @{}
+  foreach ($prop in $sigAgeProps) {
+    $match = [regex]::Match($defenderText,"$prop\s*:\s*(\\d+)",'IgnoreCase')
+    if ($match.Success) {
+      $sigAges[$prop] = [int]$match.Groups[1].Value
+    }
+  }
+  if ($sigAges.Count -gt 0) {
+    $maxSigAge = ($sigAges.Values | Measure-Object -Maximum).Maximum
+    $sigEvidence = ($sigAges.GetEnumerator() | Sort-Object Key | ForEach-Object { "{0}={1}" -f $_.Key,$_.Value }) -join '; '
+    if ($maxSigAge -le 3) {
+      Add-Normal "Security/Defender" ("Defender signatures current (GOOD, {0} days)." -f $maxSigAge) $sigEvidence
+    } elseif ($maxSigAge -le 7) {
+      Add-Normal "Security/Defender" ("Defender signatures {0} days old (OK). Ensure updates run daily, even for isolated segments." -f $maxSigAge) $sigEvidence
+    } elseif ($maxSigAge -le 14) {
+      Add-Issue "medium" "Security/Defender" ("Defender signatures are stale (WARNING: {0} days). Network-isolated devices still require manual updates." -f $maxSigAge) $sigEvidence
+    } elseif ($maxSigAge -le 30) {
+      Add-Issue "high" "Security/Defender" ("Defender signatures severely outdated (BAD: {0} days). Update packages immediately." -f $maxSigAge) $sigEvidence
+    } else {
+      Add-Issue "critical" "Security/Defender" ("Defender signatures critically outdated (>30 days: {0}). Real-time protection is ineffective without current definitions." -f $maxSigAge) $sigEvidence
+    }
+  } else {
+    Add-Issue "info" "Security/Defender" "Defender signature age not reported." ([regex]::Match($defenderText,'AntivirusSignatureVersion\s*:\s*[^\r\n]+','IgnoreCase').Value)
+  }
+
+  if ($rt.Success -and $rt.Groups[1].Value -ieq "True") {
+    Add-Normal "Security/Defender" "Real-time protection ON" (([regex]::Split($defenderText,'\r?\n') | Select-Object -First 12) -join "`n")
+  }
+
+  $engineMatch = [regex]::Match($defenderText,'AMEngineVersion\s*:\s*([0-9\.]+)','IgnoreCase')
+  if ($engineMatch.Success) {
+    $engineVersion = $engineMatch.Groups[1].Value.Trim()
+    $engineRelease = Get-VersionReleaseDate $engineVersion
+    if ($engineRelease) {
+      $engineAgeExact = [math]::Max(0,(New-TimeSpan -Start $engineRelease -End $now).TotalDays)
+      $engineAge = [math]::Floor($engineAgeExact)
+      $engineEvidence = $engineMatch.Value
+      $engineReleaseStr = $engineRelease.ToString('yyyy-MM-dd')
+      if ($engineAge -le 60) {
+        Add-Normal "Security/Defender" ("Defender engine build current (version {0}, released {1}, ~{2} days)." -f $engineVersion,$engineReleaseStr,[math]::Round($engineAgeExact,1)) $engineEvidence
+      } elseif ($engineAge -le 120) {
+        Add-Issue "medium" "Security/Defender" ("Defender engine {0} is aging ({1}, ~{2} days). Plan engine/platform updates." -f $engineVersion,$engineReleaseStr,[math]::Round($engineAgeExact,1)) $engineEvidence
+      } elseif ($engineAge -le 180) {
+        Add-Issue "high" "Security/Defender" ("Defender engine {0} outdated ({1}, ~{2} days). Deploy the latest antimalware platform." -f $engineVersion,$engineReleaseStr,[math]::Round($engineAgeExact,1)) $engineEvidence
+      } else {
+        Add-Issue "critical" "Security/Defender" ("Defender engine {0} is extremely old ({1}, ~{2} days). Engine updates are missing." -f $engineVersion,$engineReleaseStr,[math]::Round($engineAgeExact,1)) $engineEvidence
+      }
+    } else {
+      Add-Issue "info" "Security/Defender" ("Unable to determine Defender engine release age from version {0}." -f $engineVersion) $engineMatch.Value
+    }
+  } else {
+    Add-Issue "info" "Security/Defender" "Defender engine version not captured." ""
+  }
+
+  $platformMatch = [regex]::Match($defenderText,'AMProductVersion\s*:\s*([0-9\.]+)','IgnoreCase')
+  if ($platformMatch.Success) {
+    $platformVersion = $platformMatch.Groups[1].Value.Trim()
+    $platformRelease = Get-VersionReleaseDate $platformVersion
+    $platformEvidenceLines = @($platformMatch.Value, ([regex]::Match($defenderText,'AMServiceVersion\s*:\s*[^\r\n]+','IgnoreCase').Value)) | Where-Object { $_ }
+    $platformEvidence = $platformEvidenceLines -join "`n"
+    if ($platformRelease) {
+      $platformAgeExact = [math]::Max(0,(New-TimeSpan -Start $platformRelease -End $now).TotalDays)
+      $platformAge = [math]::Floor($platformAgeExact)
+      $platformReleaseStr = $platformRelease.ToString('yyyy-MM-dd')
+      if ($platformAge -le 60) {
+        Add-Normal "Security/Defender" ("Defender platform up to date (version {0}, released {1}, ~{2} days)." -f $platformVersion,$platformReleaseStr,[math]::Round($platformAgeExact,1)) $platformEvidence
+      } elseif ($platformAge -le 120) {
+        Add-Issue "medium" "Security/Defender" ("Defender platform {0} is aging ({1}, ~{2} days). Schedule platform/engine updates." -f $platformVersion,$platformReleaseStr,[math]::Round($platformAgeExact,1)) $platformEvidence
+      } elseif ($platformAge -le 180) {
+        Add-Issue "high" "Security/Defender" ("Defender platform {0} outdated ({1}, ~{2} days). Latest platform package missing." -f $platformVersion,$platformReleaseStr,[math]::Round($platformAgeExact,1)) $platformEvidence
+      } else {
+        Add-Issue "critical" "Security/Defender" ("Defender platform {0} extremely old ({1}, ~{2} days). Platform updates not installing." -f $platformVersion,$platformReleaseStr,[math]::Round($platformAgeExact,1)) $platformEvidence
+      }
+    } else {
+      Add-Issue "info" "Security/Defender" ("Unable to determine Defender platform release age from version {0}." -f $platformVersion) $platformEvidence
+    }
+  } else {
+    Add-Issue "info" "Security/Defender" "Defender platform version not captured." ([regex]::Match($defenderText,'AMServiceVersion\s*:\s*[^\r\n]+','IgnoreCase').Value)
   }
 } else {
-  Add-Issue "info" "Security" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
+  Add-Issue "info" "Security/Defender" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
 }
 
 # firewall profiles
