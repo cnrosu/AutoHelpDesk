@@ -27,6 +27,65 @@
   background-color: var(--color-surface);
 }
 
+details.report-card {
+  padding: 0;
+}
+
+details.report-card > summary {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  padding-left: calc(var(--space-md) + 1.25rem);
+  cursor: pointer;
+  list-style: none;
+}
+
+details.report-card > summary:focus-visible {
+  outline: 2px solid var(--color-heading);
+  outline-offset: 2px;
+}
+
+details.report-card > summary::marker {
+  content: "";
+}
+
+details.report-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.report-card > summary::before {
+  content: "\25B6";
+  position: absolute;
+  left: var(--space-md);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+details.report-card[open] > summary::before {
+  content: "\25BC";
+}
+
+details.report-card[open] > summary {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.report-card__summary-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md) calc(var(--space-md) + 1.25rem);
+}
+
+.report-card__body > .report-pre {
+  margin-top: 0;
+}
+
 .report-section {
   margin: var(--space-lg) 0;
   border: 1px solid var(--color-border-subtle);

@@ -1532,9 +1532,11 @@ if ($normals.Count -eq 0){
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($g.Area)
     $messageHtml = Encode-Html $($g.Message)
-    $goodCards += "<div class='report-card report-card--{0}'><span class='report-badge report-badge--{0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($g.Evidence){ $goodCards += "<pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre>" }
-    $goodCards += "</div>"
+    $hasMessage = -not [string]::IsNullOrWhiteSpace($g.Message)
+    $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
+    $goodCards += "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+    if ($g.Evidence){ $goodCards += "<div class='report-card__body'><pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre></div>" }
+    $goodCards += "</details>"
   }
   $goodContent = $goodCards
 }
@@ -1551,9 +1553,11 @@ if ($issues.Count -eq 0){
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($i.Area)
     $messageHtml = Encode-Html $($i.Message)
-    $issuesCards += "<div class='report-card report-card--{0}'><div class='report-badge report-badge--{0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($i.Evidence){ $issuesCards += "<pre class='report-pre'>$(Encode-Html $i.Evidence)</pre>" }
-    $issuesCards += "</div>"
+    $hasMessage = -not [string]::IsNullOrWhiteSpace($i.Message)
+    $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
+    $issuesCards += "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+    if ($i.Evidence){ $issuesCards += "<div class='report-card__body'><pre class='report-pre'>$(Encode-Html $i.Evidence)</pre></div>" }
+    $issuesCards += "</details>"
   }
   $issuesContent = $issuesCards
 }
