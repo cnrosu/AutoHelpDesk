@@ -132,23 +132,38 @@ Write-Host "Summary saved to: $summaryFile"
 if (-not $NoHtml) {
   Write-Host "Generating HTML viewer (Report.html)..."
   $htmlFile = Join-Path $reportDir "Report.html"
+
+  $repoRoot = Split-Path $PSScriptRoot -Parent
+  $cssSources = @(
+    Join-Path $repoRoot 'styles/base.css'
+    Join-Path $repoRoot 'styles/layout.css'
+    Join-Path $PSScriptRoot 'styles/system-diagnostics-report.css'
+  )
+
+  foreach ($source in $cssSources) {
+    if (-not (Test-Path $source)) {
+      throw "Required stylesheet not found: $source"
+    }
+  }
+
+  $cssOutputDir = Join-Path $reportDir 'styles'
+  if (-not (Test-Path $cssOutputDir)) {
+    New-Item -ItemType Directory -Path $cssOutputDir | Out-Null
+  }
+
+  $cssOutputPath = Join-Path $cssOutputDir 'system-diagnostics-report.css'
+  $cssContent = $cssSources | ForEach-Object { Get-Content -Raw -Path $_ }
+  Set-Content -Path $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+
   $html = @"
 <!doctype html>
 <html>
-<head><meta charset='utf-8'><title>Diagnostics Report - $timestamp</title>
-<style>
-body{font-family:Segoe UI,Arial;margin:12px}
-h1,h2{color:#0b63a6}
-pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-height:300px}
-.section{margin-bottom:18px}
-.summarytable td{padding:6px 12px;border:1px solid #ddd}
-</style>
-</head>
-<body>
+<head><meta charset='utf-8'><title>Diagnostics Report - $timestamp</title><link rel='stylesheet' href='styles/system-diagnostics-report.css'></head>
+<body class='page diagnostics-page'>
   <h1>Diagnostics Report - $($Summary.Hostname) - $timestamp</h1>
-  <div class="section">
+  <div class='diagnostics-section'>
     <h2>Quick Summary</h2>
-    <table class="summarytable" cellspacing="0" cellpadding="0">
+    <table class='diagnostics-table' cellspacing='0' cellpadding='0'>
       <tr><td>Hostname</td><td>$($Summary.Hostname)</td></tr>
       <tr><td>Local IPv4</td><td>$($Summary.IPv4)</td></tr>
       <tr><td>Default Gateway</td><td>$($Summary.DefaultGateway)</td></tr>
@@ -156,7 +171,7 @@ pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-
       <tr><td>MACs</td><td>$($Summary.MACs)</td></tr>
     </table>
   </div>
-  <div class="section">
+  <div class='diagnostics-section'>
     <h2>Raw outputs</h2>
 "@
 
@@ -164,7 +179,7 @@ pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-
     $name = $f.BaseName
     $content = Get-Content $f.FullName -Raw
     $contentEscaped = [System.Web.HttpUtility]::HtmlEncode($content)
-    $html += "<h3>$name</h3>`n<pre>$contentEscaped</pre>`n"
+    $html += "<h3>$name</h3>`n<pre class='diagnostics-pre'>$contentEscaped</pre>`n"
   }
 
   $html += "</body></html>"

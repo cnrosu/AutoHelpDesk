@@ -936,30 +936,30 @@ function Encode-Html([string]$s){
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
 
-# CSS: literal here-string (no expansion); closing '@ on column 1
-$css = @'
-<style>
-body{font-family:Segoe UI,Arial;margin:16px}
-h1,h2{color:#0b63a6}
-.badge{display:inline-block;padding:2px 8px;border-radius:10px;border:1px solid #ccc;margin-right:6px}
-.good{background:#e8f5e9;border-color:#43a047}
-.ok{background:#e3f2fd;border-color:#1e88e5}
-.warning{background:#fff3e0;border-color:#ef6c00}
-.bad{background:#ffebee;border-color:#d32f2f}
-.critical{background:#000;border-color:#FFD400;color:#FFD400}
-.uptime-good{background:#e8f5e9;border-color:#43a047;color:#1b5e20}
-.uptime-warning{background:#fff8e1;border-color:#fbc02d;color:#8c6d1f}
-.uptime-bad{background:#ffebee;border-color:#ef5350;color:#b71c1c}
-.uptime-critical{background:#ffebee;border-color:#c62828;color:#8e0000}
-.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:12px}
-pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-height:280px}
-table.kv td{padding:6px 10px;border:1px solid #ddd}
-small.note{color:#666}
-table.list td, table.list th{padding:6px 10px;border:1px solid #ddd}
-</style>
-'@
+# CSS assets
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$cssSources = @(
+  Join-Path $repoRoot 'styles/base.css'
+  Join-Path $repoRoot 'styles/layout.css'
+  Join-Path $PSScriptRoot 'styles/device-health-report.css'
+)
 
-$head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title>' + $css + '</head><body>'
+foreach ($source in $cssSources) {
+  if (-not (Test-Path $source)) {
+    throw "Required stylesheet not found: $source"
+  }
+}
+
+$cssOutputDir = Join-Path $InputFolder 'styles'
+if (-not (Test-Path $cssOutputDir)) {
+  New-Item -ItemType Directory -Path $cssOutputDir | Out-Null
+}
+
+$cssOutputPath = Join-Path $cssOutputDir 'device-health-report.css'
+$cssContent = $cssSources | ForEach-Object { Get-Content -Raw -Path $_ }
+Set-Content -Path $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+
+$head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
 
 # Expanding here-string for summary (variables expand); closing "@ at column 1
 $serverDisplayValue = if ($summary.IsServer -eq $true) {
@@ -979,28 +979,28 @@ if ($summary.UptimeStatus) {
   $daysHtml = if ($null -ne $daysRounded) { Encode-Html ("{0:N1}" -f $daysRounded) } else { Encode-Html '0.0' }
   $profileHtml = Encode-Html $summary.UptimeStatus.ProfileName
   $rangeHtml = Encode-Html $summary.UptimeStatus.RangeText
-  $uptimeSummaryHtml = "<span class='badge {0}'>{1}</span> {2} days ({3} thresholds: {4})" -f $badgeClass, $badgeLabelHtml, $daysHtml, $profileHtml, $rangeHtml
+  $uptimeSummaryHtml = "<span class='report-badge report-badge--{0}'>{1}</span> {2} days ({3} thresholds: {4})" -f $badgeClass, $badgeLabelHtml, $daysHtml, $profileHtml, $rangeHtml
   if ($summary.IsServer -eq $null) {
-    $uptimeSummaryHtml += " <small class='note'>{0}</small>" -f (Encode-Html 'Server detection unavailable; workstation thresholds applied.')
+    $uptimeSummaryHtml += " <small class='report-note'>{0}</small>" -f (Encode-Html 'Server detection unavailable; workstation thresholds applied.')
   }
 } elseif ($summary.LastBoot) {
-  $uptimeSummaryHtml = "<small class='note'>{0}</small>" -f (Encode-Html 'Last boot captured; uptime could not be determined.')
+  $uptimeSummaryHtml = "<small class='report-note'>{0}</small>" -f (Encode-Html 'Last boot captured; uptime could not be determined.')
 } else {
-  $uptimeSummaryHtml = "<small class='note'>{0}</small>" -f (Encode-Html 'Uptime data not captured.')
+  $uptimeSummaryHtml = "<small class='report-note'>{0}</small>" -f (Encode-Html 'Uptime data not captured.')
 }
 
 $sumTable = @"
 <h1>Device Health Report</h1>
-<div class='card'>
-  <div>
-    <span class='badge'>Score: <b>$score/100</b></span>
-    <span class='badge critical'>Critical: $(@($issues | Where-Object {$_.Severity -eq 'critical'}).Count)</span>
-    <span class='badge bad'>High: $(@($issues | Where-Object {$_.Severity -eq 'high'}).Count)</span>
-    <span class='badge warning'>Medium: $(@($issues | Where-Object {$_.Severity -eq 'medium'}).Count)</span>
-    <span class='badge ok'>Low: $(@($issues | Where-Object {$_.Severity -eq 'low'}).Count)</span>
-    <span class='badge good'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
+<div class='report-card'>
+  <div class='report-badge-group'>
+    <span class='report-badge'>Score: <b>$score/100</b></span>
+    <span class='report-badge report-badge--critical'>Critical: $(@($issues | Where-Object {$_.Severity -eq 'critical'}).Count)</span>
+    <span class='report-badge report-badge--bad'>High: $(@($issues | Where-Object {$_.Severity -eq 'high'}).Count)</span>
+    <span class='report-badge report-badge--warning'>Medium: $(@($issues | Where-Object {$_.Severity -eq 'medium'}).Count)</span>
+    <span class='report-badge report-badge--ok'>Low: $(@($issues | Where-Object {$_.Severity -eq 'low'}).Count)</span>
+    <span class='report-badge report-badge--good'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
   </div>
-  <table class='kv' cellspacing='0' cellpadding='0' style='margin-top:10px'>
+  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
     <tr><td>Folder</td><td>$(Encode-Html $summary.Folder)</td></tr>
     <tr><td>OS</td><td>$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
@@ -1010,7 +1010,7 @@ $sumTable = @"
     <tr><td>DNS</td><td>$(Encode-Html ($summary.DNS))</td></tr>
     <tr><td>Last Boot</td><td>$(Encode-Html ($summary.LastBoot))</td></tr>
   </table>
-  <small class='note'>Score is heuristic. Triage Critical/High items first.</small>
+  <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>
 </div>
 "@
 
@@ -1018,14 +1018,14 @@ $sumTable = @"
 $foundRows = foreach($k in $files.Keys){
   [pscustomobject]@{ Key=$k; File= if($files[$k]){ (Resolve-Path $files[$k]).Path } else { "(not found)" } }
 }
-$foundHtml = "<h2>Found Files</h2><div class='card'><table class='list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>File</th></tr>"
+$foundHtml = "<h2>Found Files</h2><div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>File</th></tr>"
 foreach($r in $foundRows){ $foundHtml += "<tr><td>$(Encode-Html $($r.Key))</td><td>$(Encode-Html $($r.File))</td></tr>" }
 $foundHtml += "</table></div>"
 
 # Issues
 $goodHtml = "<h2>What Looks Good</h2>"
 if ($normals.Count -eq 0){
-  $goodHtml += '<div class="card"><i>No specific positives recorded.</i></div>'
+  $goodHtml += '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
   foreach($g in $normals){
     $cardClass = if ($g.CssClass) { $g.CssClass } else { 'good' }
@@ -1033,15 +1033,15 @@ if ($normals.Count -eq 0){
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($g.Area)
     $messageHtml = Encode-Html $($g.Message)
-    $goodHtml += "<div class='card {0}'><span class='badge {0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($g.Evidence){ $goodHtml += "<pre>$(Encode-Html $($g.Evidence))</pre>" }
+    $goodHtml += "<div class='report-card report-card--{0}'><span class='report-badge report-badge--{0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
+    if ($g.Evidence){ $goodHtml += "<pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre>" }
     $goodHtml += "</div>"
   }
 }
 
 $issuesHtml = "<h2>Detected Issues</h2>"
 if ($issues.Count -eq 0){
-  $issuesHtml += "<div class='card good'><span class='badge good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
+  $issuesHtml += "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
 } else {
   foreach($i in $issues){
     $cardClass = if ($i.CssClass) { $i.CssClass } else { 'ok' }
@@ -1049,8 +1049,8 @@ if ($issues.Count -eq 0){
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($i.Area)
     $messageHtml = Encode-Html $($i.Message)
-    $issuesHtml += "<div class='card {0}'><div class='badge {0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($i.Evidence){ $issuesHtml += "<pre>$(Encode-Html $i.Evidence)</pre>" }
+    $issuesHtml += "<div class='report-card report-card--{0}'><div class='report-badge report-badge--{0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
+    if ($i.Evidence){ $issuesHtml += "<pre class='report-pre'>$(Encode-Html $i.Evidence)</pre>" }
     $issuesHtml += "</div>"
   }
 }
@@ -1060,7 +1060,7 @@ $rawHtml = "<h2>Raw (key excerpts)</h2>"
 foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender')){
   if ($files[$key]) {
     $content = Read-Text $files[$key]
-    $rawHtml += "<div class='card'><b>$(Encode-Html ([IO.Path]::GetFileName($files[$key])))</b><pre>$(Encode-Html $content)</pre></div>"
+    $rawHtml += "<div class='report-card'><b>$(Encode-Html ([IO.Path]::GetFileName($files[$key])))</b><pre class='report-pre'>$(Encode-Html $content)</pre></div>"
   }
 }
 
@@ -1074,7 +1074,7 @@ $rawDump = ($raw.Keys | Where-Object { $raw[$_] } | ForEach-Object {
   }) -join [Environment]::NewLine
 if (-not $filesDump){ $filesDump = "(no files discovered)" }
 if (-not $rawDump){ $rawDump = "(no raw entries populated)" }
-$debugHtml = "<details><summary>Debug</summary><div class='card'><b>Files map</b><pre>$(Encode-Html $filesDump)</pre></div><div class='card'><b>Raw samples</b><pre>$(Encode-Html $rawDump)</pre></div></details>"
+$debugHtml = "<details><summary>Debug</summary><div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div><div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div></details>"
 
 $tail = "</body></html>"
 
