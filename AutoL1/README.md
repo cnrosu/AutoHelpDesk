@@ -1,20 +1,20 @@
-# AutoL1 Device Diagnostics Toolkit
+# Device Health Diagnostics Toolkit
 
 ## Elevator Pitch
-A three-script PowerShell toolchain where a single orchestrator script collects a full diagnostic snapshot, runs heuristic analysis against the results, and produces a single Auto L1 HTML report that highlights health, red flags, and supporting evidence for rapid L1/field triage.
+A three-script PowerShell toolchain where a single orchestrator script collects a full diagnostic snapshot, runs heuristic analysis against the results, and produces a single Device Health HTML report that highlights health, red flags, and supporting evidence for rapid L1/field triage.
 
 ## Script Overview
 
 ### Device-Report.ps1 (Orchestrator)
-- **Purpose**: One-button experience that collects diagnostics (when needed), analyzes them, and opens the Auto L1 report.
+- **Purpose**: One-button experience that collects diagnostics (when needed), analyzes them, and opens the Device Health report.
 - **Workflow**:
   1. If `-InputFolder` is not provided, runs the collector to create a fresh timestamped folder under the chosen output root.
   2. Passes the newest collection folder to the analyzer.
-  3. Opens the generated Auto L1 HTML report and writes its path to stdout.
+  3. Opens the generated Device Health HTML report and writes its path to stdout.
 - **Inputs**:
   - `-OutRoot` (optional): base folder for new collections (defaults to `Desktop\DiagReports`).
   - `-InputFolder` (optional): analyze an existing collection without re-running the collector.
-- **Outputs**: Launches `AutoL1_Report_<timestamp>.html` in the default browser.
+- **Outputs**: Launches `DeviceHealth_Report_<timestamp>.html` in the default browser.
 
 ### Collect-SystemDiagnostics.ps1 (Collector)
 - **Purpose**: Run safe, read-only commands to snapshot system state into discrete text files.
@@ -31,7 +31,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Why individual files?**: Keeps each data source isolated for resilient parsing and straightforward manual inspection.
 
 ### Analyze-Diagnostics.ps1 (Analyzer)
-- **Purpose**: Parse the collected artifacts, run heuristics, and build the Auto L1 HTML report.
+- **Purpose**: Parse the collected artifacts, run heuristics, and build the Device Health HTML report.
 - **Operation**:
   - Locates required files by filename hints and content signatures using `Find-ByContent`.
   - Parses IPv4/gateway/DNS, OS details, last boot, connectivity checks, security posture, firewall status, event log samples, and service state via regex-driven extractors.
@@ -40,7 +40,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Inputs**:
   - `-InputFolder` (required): exact path to a collector output folder.
 - **Outputs**:
-  - `AutoL1_Report_<YYYYMMDD_HHMMSS>.html` saved in the same folder.
+  - `DeviceHealth_Report_<YYYYMMDD_HHMMSS>.html` saved in the same folder.
 - **Scoring Model**:
   - Severity weights: Critical = 10, High = 6, Medium = 3, Low = 1, Info = 0.
   - Penalties subtract from 100 with caps to avoid bottoming out unnecessarily.
@@ -56,8 +56,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 ./Device-Report.ps1
 ```
 1. Collector creates `Desktop\DiagReports\<timestamp>\` with all raw outputs.
-2. Analyzer writes `AutoL1_Report_<timestamp>.html` into the same folder.
-3. Device-Report opens the Auto L1 report automatically.
+2. Analyzer writes `DeviceHealth_Report_<timestamp>.html` into the same folder.
+3. Device-Report opens the Device Health report automatically.
 
 ## Extensibility
 - **Collector**: Add or remove commands by inserting new `Save-Output "Name" { <command> }` calls.
@@ -74,7 +74,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ## Artifact Map
 - **Collector Outputs**: `ipconfig_all.txt`, `route_print.txt`, `netstat_ano.txt`, `arp_table.txt`, `nslookup_google.txt`, `tracert_google.txt`, `ping_google.txt`, `OS_CIM.txt`, `ComputerInfo.txt`, `Firewall*.txt`, `DefenderStatus.txt`, event log samples, services/processes/drivers snapshots, disk/volume listings, program inventories, `whoami`, `ScheduledTasks.txt`, `TopCPU.txt`, `Memory.txt`, `summary.json`, `Report.html`.
-- **Analyzer Output**: `AutoL1_Report_<timestamp>.html`.
+- **Analyzer Output**: `DeviceHealth_Report_<timestamp>.html`.
 
 ## Safe Modification Points
 - Collector command list.
