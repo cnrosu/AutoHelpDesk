@@ -181,57 +181,12 @@ $capturePlan = @(
   @{ Name = "NetworkAdapterConfigs"; Description = "Network adapter configuration details"; Action = { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * } },
   @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
   @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },
-  @{ Name = "WinHTTP_Proxy"; Description = "WinHTTP proxy configuration"; Action = { netsh winhttp show proxy } },
   @{ Name = "Disk_Drives"; Description = "Physical disk inventory (wmic diskdrive)"; Action = { wmic diskdrive get model,serialNumber,status,size } },
   @{ Name = "Volumes"; Description = "Volume overview (Get-Volume)"; Action = { Get-Volume | Format-Table -AutoSize } },
   @{ Name = "Disks"; Description = "Disk layout (Get-Disk)"; Action = { Get-Disk | Format-List * } },
   @{ Name = "Hotfixes"; Description = "Recent hotfixes"; Action = { Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 50 | Format-List * } },
   @{ Name = "Programs_Reg"; Description = "Installed programs (64-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
   @{ Name = "Programs_Reg_32"; Description = "Installed programs (32-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
-  @{ Name = "Core_Services"; Description = "Core Windows services snapshot"; Action = {
-      $coreServiceNames = 'WSearch','Dnscache','NlaSvc','LanmanWorkstation','RpcSs','RpcEptMapper','WinHttpAutoProxySvc','BITS','ClickToRunSvc'
-      $records = foreach ($svcName in $coreServiceNames) {
-        $svcDetails = $null
-        try {
-          $svcDetails = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $svcName) -ErrorAction Stop
-        } catch {
-          $svcDetails = $null
-        }
-
-        if (-not $svcDetails) {
-          try {
-            $svcDetails = Get-WmiObject -Class Win32_Service -Filter ("Name='{0}'" -f $svcName) -ErrorAction Stop
-          } catch {
-            $svcDetails = $null
-          }
-        }
-
-        if ($svcDetails) {
-          $startMode = $svcDetails.StartMode
-          if ($startMode -eq 'Auto') { $startMode = 'Automatic' }
-          if ($startMode -eq 'Demand') { $startMode = 'Manual' }
-          if ($startMode -eq 'Automatic' -and $svcDetails.DelayedAutoStart -eq $true) {
-            $startMode = 'Automatic (Delayed)'
-          }
-
-          [pscustomobject]@{
-            Name        = $svcDetails.Name
-            DisplayName = $svcDetails.DisplayName
-            Status      = if ($svcDetails.State) { $svcDetails.State } elseif ($svcDetails.Status) { $svcDetails.Status } else { '' }
-            StartType   = $startMode
-          }
-        } else {
-          [pscustomobject]@{
-            Name        = $svcName
-            DisplayName = ''
-            Status      = 'NotFound'
-            StartType   = ''
-          }
-        }
-      }
-
-      $records | ConvertTo-Csv -NoTypeInformation
-    } },
   @{ Name = "Services"; Description = "Service state overview"; Action = { Get-Service | Sort-Object Status,Name | Format-Table -AutoSize } },
   @{ Name = "Processes"; Description = "Running processes (tasklist /v)"; Action = { tasklist /v } },
   @{ Name = "Drivers"; Description = "Driver inventory (driverquery)"; Action = { driverquery /v /fo list } },
