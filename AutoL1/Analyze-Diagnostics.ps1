@@ -2120,6 +2120,31 @@ function Get-NormalCategory {
   }
 }
 
+function New-IssueCardHtml {
+  param(
+    [pscustomobject]$Entry
+  )
+
+  $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'ok' }
+  $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } elseif ($Entry.Severity) { $Entry.Severity.ToUpperInvariant() } else { 'ISSUE' }
+  $badgeHtml = Encode-Html $badgeText
+  $areaHtml = Encode-Html $Entry.Area
+  $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
+  $messageHtml = Encode-Html $messageValue
+  $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
+  $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
+
+  $cardHtml = "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+
+  if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
+    $evidenceHtml = Encode-Html $Entry.Evidence
+    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>{0}</pre></div>" -f $evidenceHtml
+  }
+
+  $cardHtml += "</details>"
+  return $cardHtml
+}
+
 function New-GoodCardHtml {
   param(
     [pscustomobject]$Entry
@@ -2208,20 +2233,77 @@ $issuesTitle = "Detected Issues ({0})" -f $issues.Count
 if ($issues.Count -eq 0){
   $issuesContent = "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
 } else {
-  $issuesCards = ''
-  foreach($i in $issues){
-    $cardClass = if ($i.CssClass) { $i.CssClass } else { 'ok' }
-    $badgeText = if ($i.BadgeText) { $i.BadgeText } elseif ($i.Severity) { $i.Severity.ToUpperInvariant() } else { 'ISSUE' }
-    $badgeHtml = Encode-Html $badgeText
-    $areaHtml = Encode-Html $($i.Area)
-    $messageHtml = Encode-Html $($i.Message)
-    $hasMessage = -not [string]::IsNullOrWhiteSpace($i.Message)
-    $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
-    $issuesCards += "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
-    if ($i.Evidence){ $issuesCards += "<div class='report-card__body'><pre class='report-pre'>$(Encode-Html $i.Evidence)</pre></div>" }
-    $issuesCards += "</details>"
+  $severityDefinitions = @(
+    @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
+    @{ Key = 'high';     Label = 'High';     BadgeClass = 'bad' },
+    @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'warning' },
+    @{ Key = 'low';      Label = 'Low';      BadgeClass = 'ok' },
+    @{ Key = 'info';     Label = 'Info';     BadgeClass = 'good' }
+  )
+
+  $groupedIssues = [ordered]@{}
+  foreach ($definition in $severityDefinitions) {
+    $groupedIssues[$definition.Key] = New-Object System.Collections.Generic.List[string]
   }
-  $issuesContent = $issuesCards
+  $otherIssues = New-Object System.Collections.Generic.List[string]
+
+  foreach ($entry in $issues) {
+    $cardHtml = New-IssueCardHtml -Entry $entry
+    $severityKey = if ($entry.Severity) { $entry.Severity.ToLowerInvariant() } else { '' }
+    if ($severityKey -and $groupedIssues.Contains($severityKey)) {
+      $groupedIssues[$severityKey].Add($cardHtml)
+    } else {
+      $otherIssues.Add($cardHtml)
+    }
+  }
+
+  $activeDefinitions = @()
+  foreach ($definition in $severityDefinitions) {
+    if ($groupedIssues[$definition.Key].Count -gt 0) {
+      $activeDefinitions += ,$definition
+    }
+  }
+  if ($otherIssues.Count -gt 0) {
+    $groupedIssues['other'] = $otherIssues
+    $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'ok' }
+  }
+
+  if ($activeDefinitions.Count -eq 0) {
+    $issuesContent = ($issues | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
+  } else {
+    $tabName = 'issue-tabs'
+    $issuesTabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $firstDefinition = $activeDefinitions[0]
+    $firstKey = if ($firstDefinition.Key) { [string]$firstDefinition.Key } else { '' }
+    $index = 0
+
+    foreach ($definition in $activeDefinitions) {
+      $keyValue = if ($definition.Key) { [string]$definition.Key } else { "severity$index" }
+      if (-not $groupedIssues.Contains($keyValue)) { continue }
+      $cardsList = $groupedIssues[$keyValue]
+      $count = $cardsList.Count
+      $slug = [regex]::Replace($keyValue.ToLowerInvariant(), '[^a-z0-9]+', '-')
+      $slug = [regex]::Replace($slug, '^-+|-+$', '')
+      if (-not $slug) { $slug = "severity$index" }
+
+      $tabId = "{0}-{1}" -f $tabName, $slug
+      $checkedAttr = if ($keyValue.ToLowerInvariant() -eq $firstKey.ToLowerInvariant()) { " checked='checked'" } else { '' }
+
+      $labelText = if ($definition.Label) { [string]$definition.Label } else { $keyValue }
+      $badgeLabel = Encode-Html ($labelText.ToUpperInvariant())
+      $countLabel = Encode-Html ("({0})" -f $count)
+      $labelInner = "<span class='report-badge report-badge--{0} report-tabs__label-badge'>{1}</span><span class='report-tabs__label-count'>{2}</span>" -f $definition.BadgeClass, $badgeLabel, $countLabel
+      $panelContent = if ($count -gt 0) { ($cardsList -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
+
+      $issuesTabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
+      $issuesTabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelInner
+      $issuesTabs += "<div class='report-tabs__panel'>$panelContent</div>"
+      $index++
+    }
+
+    $issuesTabs += "</div></div>"
+    $issuesContent = $issuesTabs
+  }
 }
 $issuesHtml = New-ReportSection -Title $issuesTitle -ContentHtml $issuesContent -Open
 
