@@ -16,6 +16,54 @@ param(
 
 $ErrorActionPreference = 'SilentlyContinue'
 
+# severity ordering helpers
+$script:SeverityOrder = @('low','medium','high','critical')
+
+function Get-SeverityIndex {
+  param([string]$Severity)
+
+  if (-not $Severity) { return -1 }
+
+  try {
+    $normalized = $Severity.ToLowerInvariant()
+  } catch {
+    $normalized = [string]$Severity
+    if ($normalized) {
+      $normalized = $normalized.ToLowerInvariant()
+    }
+  }
+
+  return $script:SeverityOrder.IndexOf($normalized)
+}
+
+function Get-MaxSeverity {
+  param([string]$First,[string]$Second)
+
+  if (-not $First) { return $Second }
+  if (-not $Second) { return $First }
+
+  $firstIndex = Get-SeverityIndex $First
+  $secondIndex = Get-SeverityIndex $Second
+
+  if ($firstIndex -ge $secondIndex) { return $First }
+  return $Second
+}
+
+function Promote-Severity {
+  param(
+    [string]$Severity,
+    [int]$Steps = 1
+  )
+
+  if (-not $Severity) { return $Severity }
+
+  $currentIndex = Get-SeverityIndex $Severity
+  if ($currentIndex -lt 0) { return $Severity }
+
+  $target = [math]::Min($script:SeverityOrder.Count - 1, $currentIndex + [math]::Max(0,$Steps))
+  return $script:SeverityOrder[$target]
+}
+
 # ---------- helpers ----------
 function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
@@ -49,6 +97,127 @@ function Convert-SizeToGB {
     'MB' { return $Value / 1024 }
     default { return $Value }
   }
+}
+
+function ConvertTo-NullableBool {
+  param($Value)
+
+  if ($Value -is [bool]) { return [bool]$Value }
+  if ($null -eq $Value) { return $null }
+
+  $stringValue = [string]$Value
+  if (-not $stringValue) { return $null }
+
+  $trimmed = $stringValue.Trim()
+  if (-not $trimmed) { return $null }
+
+  if ($trimmed -match '^(?i)(true|yes|y|1)$') { return $true }
+  if ($trimmed -match '^(?i)(false|no|n|0)$') { return $false }
+  return $null
+}
+
+function Parse-KeyValueBlock {
+  param([string]$Text)
+
+  $map = @{}
+  if (-not $Text) { return $map }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $currentKey = $null
+  foreach ($line in $lines) {
+    if ($null -eq $line) { continue }
+    $match = [regex]::Match($line,'^\s*([^:]+?)\s*:\s*(.*)$')
+    if ($match.Success) {
+      $key = $match.Groups[1].Value.Trim()
+      $value = $match.Groups[2].Value.Trim()
+      if ($key) {
+        $map[$key] = $value
+        $currentKey = $key
+      }
+      continue
+    }
+
+    if ($currentKey -and $line.Trim()) {
+      $existing = $map[$currentKey]
+      if ($existing) {
+        $map[$currentKey] = $existing + "`n" + $line.Trim()
+      } else {
+        $map[$currentKey] = $line.Trim()
+      }
+    }
+  }
+
+  return $map
+}
+
+function Convert-DiskBlock {
+  param([string]$BlockText)
+
+  if (-not $BlockText) { return $null }
+
+  $props = Parse-KeyValueBlock $BlockText
+  if (-not $props -or $props.Count -eq 0) { return $null }
+
+  $operRaw = if ($props.ContainsKey('OperationalStatus')) { $props['OperationalStatus'] } else { '' }
+  $healthRaw = if ($props.ContainsKey('HealthStatus')) { $props['HealthStatus'] } else { '' }
+
+  $operStatuses = @()
+  if ($operRaw) {
+    $operStatuses = ($operRaw -split '\r?\n|,') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  }
+
+  $healthStatuses = @()
+  if ($healthRaw) {
+    $healthStatuses = ($healthRaw -split '\r?\n|,') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  }
+
+  return [pscustomobject]@{
+    Number            = if ($props.ContainsKey('Number')) { $props['Number'] } else { '' }
+    FriendlyName      = if ($props.ContainsKey('FriendlyName')) { $props['FriendlyName'] } else { '' }
+    OperationalStatus = $operStatuses
+    HealthStatus      = $healthStatuses
+    IsBoot            = if ($props.ContainsKey('IsBoot')) { ConvertTo-NullableBool $props['IsBoot'] } else { $null }
+    IsSystem          = if ($props.ContainsKey('IsSystem')) { ConvertTo-NullableBool $props['IsSystem'] } else { $null }
+    IsOffline         = if ($props.ContainsKey('IsOffline')) { ConvertTo-NullableBool $props['IsOffline'] } else { $null }
+    IsReadOnly        = if ($props.ContainsKey('IsReadOnly')) { ConvertTo-NullableBool $props['IsReadOnly'] } else { $null }
+    Raw               = $BlockText
+  }
+}
+
+function Parse-DiskList {
+  param([string]$Text)
+
+  $results = @()
+  if (-not $Text) { return $results }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $current = @()
+
+  foreach ($line in $lines) {
+    if ([string]::IsNullOrWhiteSpace($line)) {
+      if ($current.Count -gt 0) {
+        $blockText = ($current -join "`n").Trim()
+        $current = @()
+        if ($blockText) {
+          $parsed = Convert-DiskBlock $blockText
+          if ($parsed) { $results += $parsed }
+        }
+      }
+      continue
+    }
+
+    $current += $line
+  }
+
+  if ($current.Count -gt 0) {
+    $blockText = ($current -join "`n").Trim()
+    if ($blockText) {
+      $parsed = Convert-DiskBlock $blockText
+      if ($parsed) { $results += $parsed }
+    }
+  }
+
+  return ,$results
 }
 
 function Normalize-ServiceStatus {
@@ -2020,6 +2189,192 @@ if ($raw['diskdrives']){
   }
   elseif ($smartText -notmatch '(?i)Unknown') {
     Add-Normal "Storage/SMART" "SMART status shows no failure indicators" (([regex]::Split($smartText,'\r?\n') | Select-Object -First 12) -join "`n")
+  }
+}
+
+# disk operational status and health
+if ($raw['disks']) {
+  $diskEntries = Parse-DiskList $raw['disks']
+  $diskProblems = @()
+
+  foreach ($disk in $diskEntries) {
+    if (-not $disk) { continue }
+
+    $reasons = @()
+    $severity = $null
+
+    if ($disk.IsOffline -eq $true) {
+      $reasons += 'Marked Offline'
+      $severity = Get-MaxSeverity $severity 'high'
+    }
+
+    if ($disk.IsReadOnly -eq $true) {
+      $reasons += 'Marked ReadOnly'
+      $severity = Get-MaxSeverity $severity 'medium'
+    }
+
+    if ($disk.OperationalStatus -and $disk.OperationalStatus.Count -gt 0) {
+      $nonOk = $disk.OperationalStatus | Where-Object { $_ -and $_ -notmatch '^(?i)(ok|online)$' }
+      if ($nonOk.Count -gt 0) {
+        $reasons += ("OperationalStatus {0}" -f ($nonOk -join ', '))
+        if ($nonOk | Where-Object { $_ -match '(?i)(failed|offline|not\s+ready|no\s+access|io\s+error|lost|no\s+contact|unavailable)' }) {
+          $severity = Get-MaxSeverity $severity 'high'
+        } elseif ($nonOk | Where-Object { $_ -match '(?i)(degraded|stressed|unknown|no\s+media|not\s+initialized|error)' }) {
+          $severity = Get-MaxSeverity $severity 'medium'
+        } else {
+          $severity = Get-MaxSeverity $severity 'medium'
+        }
+      }
+    }
+
+    if ($disk.HealthStatus -and $disk.HealthStatus.Count -gt 0) {
+      $nonHealthy = $disk.HealthStatus | Where-Object { $_ -and $_ -notmatch '^(?i)healthy$' }
+      if ($nonHealthy.Count -gt 0) {
+        $reasons += ("HealthStatus {0}" -f ($nonHealthy -join ', '))
+        if ($nonHealthy | Where-Object { $_ -match '(?i)(unhealthy|failed)' }) {
+          $severity = Get-MaxSeverity $severity 'high'
+        } else {
+          $severity = Get-MaxSeverity $severity 'medium'
+        }
+      }
+    }
+
+    if ($reasons.Count -eq 0) { continue }
+
+    if ($disk.IsBoot -eq $true -or $disk.IsSystem -eq $true) {
+      if ($severity) {
+        $severity = Promote-Severity $severity 1
+      } else {
+        $severity = 'high'
+      }
+      $reasons = @('Boot/System disk') + $reasons
+    }
+
+    if (-not $severity) { $severity = 'medium' }
+
+    $labelParts = @()
+    if ($disk.Number -ne $null -and $disk.Number -ne '') { $labelParts += ("Disk {0}" -f $disk.Number) }
+    if ($disk.FriendlyName) { $labelParts += $disk.FriendlyName }
+    $label = if ($labelParts.Count -gt 0) { $labelParts -join ' - ' } else { 'Disk' }
+
+    $diskProblems += [pscustomobject]@{
+      Severity = $severity
+      Message  = ("{0} reports {1}" -f $label, ($reasons -join '; '))
+      Evidence = $disk.Raw
+    }
+  }
+
+  if ($diskProblems.Count -gt 0) {
+    $aggregateSeverity = $null
+    $messages = @()
+    $evidenceBlocks = @()
+    foreach ($problem in $diskProblems) {
+      $aggregateSeverity = Get-MaxSeverity $aggregateSeverity $problem.Severity
+      $messages += $problem.Message
+      $evidenceBlocks += $problem.Evidence
+    }
+
+    if (-not $aggregateSeverity) { $aggregateSeverity = 'medium' }
+    $evidenceText = ($evidenceBlocks | Where-Object { $_ } | Select-Object -Unique) -join "`n`n"
+    $messageText = "Disk health problems detected: {0}" -f ($messages -join '; ')
+    Add-Issue $aggregateSeverity "Storage/Disks" $messageText $evidenceText
+  }
+  elseif ($diskEntries.Count -gt 0) {
+    $sampleDisk = $diskEntries | Select-Object -First 1
+    Add-Normal "Storage/Disks" "All discovered disks report Online/Healthy status" ($sampleDisk.Raw)
+  }
+}
+
+# volume health status
+if ($raw['volumes']) {
+  $volumeLines = [regex]::Split($raw['volumes'],'\r?\n')
+  $volumeProblems = @()
+
+  foreach ($line in $volumeLines) {
+    if (-not $line) { continue }
+    if ($line -match '^(?i)\s*(DriveLetter|FileSystem|----)') { continue }
+
+    $trimmed = $line.Trim()
+    if (-not $trimmed) { continue }
+
+    $reasons = @()
+    $severity = $null
+
+    $healthMatch = [regex]::Match($line,'(?i)\b(Healthy|Warning|Unhealthy|Unknown|Failed|Degraded)\b')
+    if ($healthMatch.Success) {
+      $healthValue = $healthMatch.Groups[1].Value
+      if ($healthValue -notmatch '^(?i)Healthy$') {
+        $reasons += ("HealthStatus {0}" -f $healthValue)
+        if ($healthValue -match '(?i)(Unhealthy|Failed)') {
+          $severity = Get-MaxSeverity $severity 'high'
+        } elseif ($healthValue -match '(?i)(Warning|Degraded)') {
+          $severity = Get-MaxSeverity $severity 'medium'
+        } else {
+          $severity = Get-MaxSeverity $severity 'medium'
+        }
+      }
+    }
+
+    if ($line -match '(?i)\bRAW\b') {
+      $reasons += 'File system RAW'
+      $severity = Get-MaxSeverity $severity 'high'
+    }
+
+    if ($reasons.Count -eq 0) { continue }
+
+    $driveLetter = $null
+    if ($line -match '^\s*([A-Z]):') {
+      $driveLetter = $matches[1].Value
+    } elseif ($line -match '^\s*([A-Z])\b') {
+      $driveLetter = $matches[1].Value
+    }
+
+    $columns = @()
+    try {
+      $columns = [regex]::Split($trimmed,'\s{2,}') | Where-Object { $_ }
+    } catch {
+      $columns = @()
+    }
+
+    $label = $null
+    if ($columns.Count -ge 2) {
+      $label = $columns[1].Trim()
+    } elseif ($columns.Count -ge 1) {
+      $label = $columns[0].Trim()
+    }
+
+    if ($driveLetter -and $driveLetter.Length -gt 0 -and $driveLetter.ToUpperInvariant() -eq 'C') {
+      $severity = if ($severity) { Promote-Severity $severity 1 } else { 'medium' }
+    }
+
+    if (-not $severity) { $severity = 'medium' }
+
+    $displayParts = @()
+    if ($driveLetter) { $displayParts += ("Volume {0}" -f $driveLetter) }
+    if ($label -and ($driveLetter -ne $label)) { $displayParts += $label }
+    $displayName = if ($displayParts.Count -gt 0) { $displayParts -join ' - ' } else { 'Volume' }
+
+    $volumeProblems += [pscustomobject]@{
+      Severity = $severity
+      Message  = ("{0} reports {1}" -f $displayName, ($reasons -join '; '))
+      Evidence = $trimmed
+    }
+  }
+
+  if ($volumeProblems.Count -gt 0) {
+    $aggregateSeverity = $null
+    $messages = @()
+    $evidenceLines = @()
+    foreach ($problem in $volumeProblems) {
+      $aggregateSeverity = Get-MaxSeverity $aggregateSeverity $problem.Severity
+      $messages += $problem.Message
+      $evidenceLines += $problem.Evidence
+    }
+
+    if (-not $aggregateSeverity) { $aggregateSeverity = 'medium' }
+    $messageText = "Volume health warnings: {0}" -f ($messages -join '; ')
+    $evidenceText = ($evidenceLines | Where-Object { $_ } | Select-Object -Unique) -join "`n"
+    Add-Issue $aggregateSeverity "Storage/Volumes" $messageText $evidenceText
   }
 }
 
