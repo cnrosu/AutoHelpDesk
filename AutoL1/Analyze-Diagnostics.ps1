@@ -246,22 +246,45 @@ foreach($key in $raw.Keys){
 $issues = New-Object System.Collections.Generic.List[pscustomobject]
 function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence=""){
   $logMsg = if ($null -eq $msg) { "" } else { $msg }
-  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $sev.ToUpper(), $area, $logMsg)
+  $sevKey = if ($sev) { $sev.ToLowerInvariant() } else { "" }
+  $badgeText = 'ISSUE'
+  $cssClass = 'ok'
+
+  switch ($sevKey) {
+    'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
+    'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
+    'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
+    'low'      { $badgeText = 'OK';        $cssClass = 'ok' }
+    'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
+    default    {
+      if ($sev) {
+        $badgeText = $sev.ToUpperInvariant()
+      }
+    }
+  }
+
+  $logSeverity = if ($sev) { $sev.ToUpperInvariant() } else { $badgeText }
+  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $logSeverity, $area, $logMsg)
   $issues.Add([pscustomobject]@{
-    Severity = $sev
-    Area     = $area
-    Message  = $msg
-    Evidence = if($evidence){ $evidence.Substring(0,[Math]::Min(1500,$evidence.Length)) } else { "" }
+    Severity  = $sev
+    Area      = $area
+    Message   = $msg
+    Evidence  = if($evidence){ $evidence.Substring(0,[Math]::Min(1500,$evidence.Length)) } else { "" }
+    CssClass  = $cssClass
+    BadgeText = $badgeText
   })
 }
 
 # healthy findings
 $normals = New-Object System.Collections.Generic.List[pscustomobject]
-function Add-Normal([string]$area,[string]$msg,[string]$evidence=""){
+function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){
+  $normalizedBadge = if ($badgeText) { $badgeText.ToUpperInvariant() } else { 'GOOD' }
   $normals.Add([pscustomobject]@{
     Area     = $area
     Message  = $msg
     Evidence = if($evidence){ $evidence.Substring(0,[Math]::Min(800,$evidence.Length)) } else { "" }
+    CssClass  = 'good'
+    BadgeText = $normalizedBadge
   })
 }
 
@@ -818,8 +841,28 @@ if ($raw['hotfixes']){
 }
 
 # disk SMART status
-if ($raw['diskdrives'] -and -not ($raw['diskdrives'] -match 'Pred Fail|Bad|Unknown')) {
-  Add-Normal "Storage/SMART" "SMART status shows no failure indicators" (([regex]::Split($raw['diskdrives'],'\r?\n') | Select-Object -First 12) -join "`n")
+if ($raw['diskdrives']){
+  $smartText = $raw['diskdrives']
+  $failurePattern = '(?i)\b(Pred\s*Fail|Fail(?:ed|ing)?|Bad|Caution)\b'
+  if ($smartText -match $failurePattern) {
+    $failureMatches = [regex]::Matches($smartText, $failurePattern)
+    $keywords = $failureMatches | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ } | Sort-Object -Unique
+    $keywordSummary = if ($keywords) { $keywords -join ', ' } else { $null }
+    $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Where-Object { $_ -match $failurePattern } | Select-Object -First 12)
+    if (-not $evidenceLines -or $evidenceLines.Count -eq 0) {
+      $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Select-Object -First 12)
+    }
+    $evidenceText = $evidenceLines -join "`n"
+    $message = if ($keywordSummary) {
+      "SMART status reports failure indicators ({0})." -f $keywordSummary
+    } else {
+      'SMART status reports failure indicators.'
+    }
+    Add-Issue "critical" "Storage/SMART" $message $evidenceText
+  }
+  elseif ($smartText -notmatch '(?i)Unknown') {
+    Add-Normal "Storage/SMART" "SMART status shows no failure indicators" (([regex]::Split($smartText,'\r?\n') | Select-Object -First 12) -join "`n")
+  }
 }
 
 # volume free space
@@ -899,16 +942,15 @@ $css = @'
 body{font-family:Segoe UI,Arial;margin:16px}
 h1,h2{color:#0b63a6}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;border:1px solid #ccc;margin-right:6px}
-.critical{background:#ffebee;border-color:#d32f2f}
-.high{background:#fff3e0;border-color:#ef6c00}
-.medium{background:#fffde7;border-color:#f9a825}
-.low{background:#e8f5e9;border-color:#43a047}
-.info{background:#e3f2fd;border-color:#1e88e5}
+.good{background:#e8f5e9;border-color:#43a047}
+.ok{background:#e3f2fd;border-color:#1e88e5}
+.warning{background:#fff3e0;border-color:#ef6c00}
+.bad{background:#ffebee;border-color:#d32f2f}
+.critical{background:#000;border-color:#FFD400;color:#FFD400}
 .uptime-good{background:#e8f5e9;border-color:#43a047;color:#1b5e20}
 .uptime-warning{background:#fff8e1;border-color:#fbc02d;color:#8c6d1f}
 .uptime-bad{background:#ffebee;border-color:#ef5350;color:#b71c1c}
 .uptime-critical{background:#ffebee;border-color:#c62828;color:#8e0000}
-.ok{background:#f1f8e9;border-color:#66bb6a;color:#2e7d32}
 .card{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:12px}
 pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-height:280px}
 table.kv td{padding:6px 10px;border:1px solid #ddd}
@@ -952,11 +994,11 @@ $sumTable = @"
 <div class='card'>
   <div>
     <span class='badge'>Score: <b>$score/100</b></span>
-    <span class='badge'>Critical: $(@($issues | Where-Object {$_.Severity -eq 'critical'}).Count)</span>
-    <span class='badge'>High: $(@($issues | Where-Object {$_.Severity -eq 'high'}).Count)</span>
-    <span class='badge'>Medium: $(@($issues | Where-Object {$_.Severity -eq 'medium'}).Count)</span>
-    <span class='badge'>Low: $(@($issues | Where-Object {$_.Severity -eq 'low'}).Count)</span>
-    <span class='badge'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
+    <span class='badge critical'>Critical: $(@($issues | Where-Object {$_.Severity -eq 'critical'}).Count)</span>
+    <span class='badge bad'>High: $(@($issues | Where-Object {$_.Severity -eq 'high'}).Count)</span>
+    <span class='badge warning'>Medium: $(@($issues | Where-Object {$_.Severity -eq 'medium'}).Count)</span>
+    <span class='badge ok'>Low: $(@($issues | Where-Object {$_.Severity -eq 'low'}).Count)</span>
+    <span class='badge good'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
   </div>
   <table class='kv' cellspacing='0' cellpadding='0' style='margin-top:10px'>
     <tr><td>Folder</td><td>$(Encode-Html $summary.Folder)</td></tr>
@@ -986,7 +1028,12 @@ if ($normals.Count -eq 0){
   $goodHtml += '<div class="card"><i>No specific positives recorded.</i></div>'
 } else {
   foreach($g in $normals){
-    $goodHtml += "<div class='card'><span class='badge ok'>OK</span> <b>$(Encode-Html $($g.Area))</b>: $(Encode-Html $($g.Message))"
+    $cardClass = if ($g.CssClass) { $g.CssClass } else { 'good' }
+    $badgeText = if ($g.BadgeText) { $g.BadgeText } else { 'GOOD' }
+    $badgeHtml = Encode-Html $badgeText
+    $areaHtml = Encode-Html $($g.Area)
+    $messageHtml = Encode-Html $($g.Message)
+    $goodHtml += "<div class='card {0}'><span class='badge {0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
     if ($g.Evidence){ $goodHtml += "<pre>$(Encode-Html $($g.Evidence))</pre>" }
     $goodHtml += "</div>"
   }
@@ -994,10 +1041,15 @@ if ($normals.Count -eq 0){
 
 $issuesHtml = "<h2>Detected Issues</h2>"
 if ($issues.Count -eq 0){
-  $issuesHtml += '<div class="card">No obvious issues detected from the provided outputs.</div>'
+  $issuesHtml += "<div class='card good'><span class='badge good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
 } else {
   foreach($i in $issues){
-    $issuesHtml += "<div class='card'><div class='badge $($i.Severity)'>$($i.Severity.ToUpper())</div> <b>$(Encode-Html $($i.Area))</b>: $(Encode-Html $($i.Message))"
+    $cardClass = if ($i.CssClass) { $i.CssClass } else { 'ok' }
+    $badgeText = if ($i.BadgeText) { $i.BadgeText } elseif ($i.Severity) { $i.Severity.ToUpperInvariant() } else { 'ISSUE' }
+    $badgeHtml = Encode-Html $badgeText
+    $areaHtml = Encode-Html $($i.Area)
+    $messageHtml = Encode-Html $($i.Message)
+    $issuesHtml += "<div class='card {0}'><div class='badge {0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
     if ($i.Evidence){ $issuesHtml += "<pre>$(Encode-Html $i.Evidence)</pre>" }
     $issuesHtml += "</div>"
   }
