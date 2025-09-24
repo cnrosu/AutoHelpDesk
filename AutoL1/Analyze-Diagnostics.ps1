@@ -178,6 +178,34 @@ function Add-Normal([string]$area,[string]$msg,[string]$evidence=""){
   })
 }
 
+function Get-BoolFromString {
+  param(
+    [string]$Value
+  )
+
+  if ($null -eq $Value) { return $null }
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return $null }
+
+  $lower = $trimmed.ToLowerInvariant()
+  switch ($lower) {
+    'true' { return $true }
+    'false' { return $false }
+    'yes' { return $true }
+    'no' { return $false }
+    'enabled' { return $true }
+    'disabled' { return $false }
+    'on' { return $true }
+    'off' { return $false }
+    default {
+      if ($lower -match '^[01]$') {
+        return ($lower -eq '1')
+      }
+      return $null
+    }
+  }
+}
+
 function Get-UptimeClassification {
   param(
     [double]$Days,
@@ -361,16 +389,92 @@ if ($raw['tracert'] -and ($raw['tracert'] -match "over a maximum of" -and $raw['
 # defender
 if ($raw['defender']){
   $rt = [regex]::Match($raw['defender'],'RealTimeProtectionEnabled\s*:\s*(True|False)','IgnoreCase')
-  $sigAge = [regex]::Match($raw['defender'],'AntispywareSignatureAge\s*:\s*(\d+)','IgnoreCase')
   if ($rt.Success -and $rt.Groups[1].Value -ieq "False"){ Add-Issue "high" "Security" "Defender real-time protection is OFF." $raw['defender'] }
-  if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -gt 7){ Add-Issue "medium" "Security" "Defender signatures appear old (>7 days)." $sigAge.Value }
+
+  $signaturePatterns = @(
+    @{ Label = 'Antivirus';    Regex = 'AntivirusSignatureAge\s*:\s*(\d+)'; },
+    @{ Label = 'Antispyware'; Regex = 'AntispywareSignatureAge\s*:\s*(\d+)'; },
+    @{ Label = 'NIS';         Regex = 'NISSignatureAge\s*:\s*(\d+)'; }
+  )
+  $signatureAges = @()
+  $signatureEvidence = @()
+  foreach($pattern in $signaturePatterns){
+    $match = [regex]::Match($raw['defender'],$pattern.Regex,'IgnoreCase')
+    if ($match.Success){
+      $signatureAges += [int]$match.Groups[1].Value
+      $signatureEvidence += $match.Value.Trim()
+    }
+  }
+  if ($signatureAges.Count -gt 0){
+    $maxSigAge = ($signatureAges | Measure-Object -Maximum).Maximum
+    $maxSigAgeInt = [int]$maxSigAge
+    $sigEvidenceText = if ($signatureEvidence.Count -gt 0) { $signatureEvidence -join "`n" } else { "" }
+
+    if ($maxSigAge -le 3){
+      Add-Normal "Security/Defender" ("Signature age GOOD ({0} days; daily updates confirmed)." -f $maxSigAgeInt) $sigEvidenceText
+    } elseif ($maxSigAge -le 7){
+      Add-Normal "Security/Defender" ("Signature age OK ({0} days; monitor that daily updates continue)." -f $maxSigAgeInt) $sigEvidenceText
+    } elseif ($maxSigAge -le 14){
+      Add-Issue "medium" "Security" ("Defender signatures WARNING tier ({0} days old). Signatures should update daily—even on isolated networks." -f $maxSigAgeInt) $sigEvidenceText
+    } elseif ($maxSigAge -le 30){
+      Add-Issue "high" "Security" ("Defender signatures BAD tier ({0} days old). Trigger an update promptly." -f $maxSigAgeInt) $sigEvidenceText
+    } else {
+      Add-Issue "critical" "Security" ("Defender signatures CRITICAL tier ({0} days old). Update signatures immediately." -f $maxSigAgeInt) $sigEvidenceText
+    }
+  }
 
   $rtOK = $rt.Success -and $rt.Groups[1].Value -ieq "True"
   if ($rtOK) {
     Add-Normal "Security/Defender" "Real-time protection ON" (([regex]::Split($raw['defender'],'\r?\n') | Select-Object -First 12) -join "`n")
   }
-  if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -le 7) {
-    Add-Normal "Security/Defender" "Signatures are recent (≤7 days)" $sigAge.Value
+
+  $engineVersionMatch = [regex]::Match($raw['defender'],'AMEngineVersion\s*:\s*([^\r\n]+)','IgnoreCase')
+  $platformVersionMatch = [regex]::Match($raw['defender'],'AMProductVersion\s*:\s*([^\r\n]+)','IgnoreCase')
+
+  $engineOutMatches = [regex]::Matches($raw['defender'],'(?im)^(?<name>[^\r\n]*Engine[^\r\n]*OutOfDate)\s*:\s*(?<value>[^\r\n]+)$')
+  $engineEvidence = @()
+  if ($engineVersionMatch.Success){ $engineEvidence += $engineVersionMatch.Value.Trim() }
+  $engineStatusTrue = $false
+  $engineStatusFalse = $false
+  foreach($m in $engineOutMatches){
+    $engineEvidence += $m.Value.Trim()
+    $boolVal = Get-BoolFromString $m.Groups['value'].Value
+    if ($null -eq $boolVal){ continue }
+    if ($boolVal){ $engineStatusTrue = $true } else { $engineStatusFalse = $true }
+  }
+  $engineVersionValue = if ($engineVersionMatch.Success) { $engineVersionMatch.Groups[1].Value.Trim() } else { $null }
+  $engineVersionMissing = $false
+  if ($engineVersionValue -and ($engineVersionValue -match '^(?:0+(?:\.0+)*)$' -or $engineVersionValue -match '(?i)not\s*available|unknown')){
+    $engineVersionMissing = $true
+  }
+  if ($engineStatusTrue -or $engineVersionMissing){
+    $engineEvidenceText = if ($engineEvidence.Count -gt 0) { $engineEvidence -join "`n" } else { $raw['defender'] }
+    Add-Issue "high" "Security" "Defender engine updates appear missing/out of date." $engineEvidenceText
+  } elseif ($engineStatusFalse -and -not $engineStatusTrue -and $engineEvidence.Count -gt 0){
+    Add-Normal "Security/Defender" "Defender engine reports up to date" ($engineEvidence -join "`n")
+  }
+
+  $platformOutMatches = [regex]::Matches($raw['defender'],'(?im)^(?<name>[^\r\n]*Platform[^\r\n]*OutOfDate)\s*:\s*(?<value>[^\r\n]+)$')
+  $platformEvidence = @()
+  if ($platformVersionMatch.Success){ $platformEvidence += $platformVersionMatch.Value.Trim() }
+  $platformStatusTrue = $false
+  $platformStatusFalse = $false
+  foreach($m in $platformOutMatches){
+    $platformEvidence += $m.Value.Trim()
+    $boolVal = Get-BoolFromString $m.Groups['value'].Value
+    if ($null -eq $boolVal){ continue }
+    if ($boolVal){ $platformStatusTrue = $true } else { $platformStatusFalse = $true }
+  }
+  $platformVersionValue = if ($platformVersionMatch.Success) { $platformVersionMatch.Groups[1].Value.Trim() } else { $null }
+  $platformVersionMissing = $false
+  if ($platformVersionValue -and ($platformVersionValue -match '^(?:0+(?:\.0+)*)$' -or $platformVersionValue -match '(?i)not\s*available|unknown')){
+    $platformVersionMissing = $true
+  }
+  if ($platformStatusTrue -or $platformVersionMissing){
+    $platformEvidenceText = if ($platformEvidence.Count -gt 0) { $platformEvidence -join "`n" } else { $raw['defender'] }
+    Add-Issue "high" "Security" "Defender platform updates appear missing/out of date." $platformEvidenceText
+  } elseif ($platformStatusFalse -and -not $platformStatusTrue -and $platformEvidence.Count -gt 0){
+    Add-Normal "Security/Defender" "Defender platform reports up to date" ($platformEvidence -join "`n")
   }
 } else {
   Add-Issue "info" "Security" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
