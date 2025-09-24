@@ -25,73 +25,96 @@ $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
 $reportDir = Join-Path -Path $OutRoot -ChildPath $timestamp
 New-Item -Path $reportDir -ItemType Directory -Force | Out-Null
 
+$overallTimer = [System.Diagnostics.Stopwatch]::StartNew()
+Write-Host "Starting diagnostics collection..."
+Write-Host "Output folder: $reportDir"
+
 # Simple helper to run a command and write output
-function Save-Output([string]$name, [scriptblock]$action) {
-  $file = Join-Path $reportDir ("$name.txt")
-  $sep = "`n===== $name : $(Get-Date) =====`n"
+function Save-Output {
+  param(
+    [Parameter(Mandatory)] [string]$Name,
+    [Parameter(Mandatory)] [scriptblock]$Action
+  )
+
+  $file = Join-Path $reportDir ("$Name.txt")
+  $sep = "`n===== $Name : $(Get-Date) =====`n"
   Add-Content -Path $file -Value $sep
   try {
-    & $action *>&1 | Out-File -FilePath $file -Encoding UTF8 -Append
+    & $Action *>&1 | Out-File -FilePath $file -Encoding UTF8 -Append
   } catch {
-    "ERROR running $name : $_" | Out-File -FilePath $file -Append
+    "ERROR running $Name : $_" | Out-File -FilePath $file -Append
+    Write-Warning "Encountered an error while collecting $Name. Review $file for details."
   }
   return $file
 }
 
-# Commands to capture
+$capturePlan = @(
+  @{ Name = "ipconfig_all"; Description = "Detailed IP configuration (ipconfig /all)"; Action = { ipconfig /all } },
+  @{ Name = "route_print"; Description = "Routing table (route print)"; Action = { route print } },
+  @{ Name = "netstat_ano"; Description = "Active connections and ports (netstat -ano)"; Action = { netstat -ano } },
+  @{ Name = "arp_table"; Description = "ARP cache entries (arp -a)"; Action = { arp -a } },
+  @{ Name = "nslookup_google"; Description = "DNS resolution test for google.com"; Action = { nslookup google.com } },
+  @{ Name = "tracert_google"; Description = "Traceroute to 8.8.8.8"; Action = { tracert -d -h 10 8.8.8.8 } },
+  @{ Name = "ping_google"; Description = "Ping test to 8.8.8.8"; Action = { ping -n 4 8.8.8.8 } },
+  @{ Name = "systeminfo"; Description = "General system information"; Action = { systeminfo } },
+  @{ Name = "OS_CIM"; Description = "Operating system CIM inventory"; Action = { Get-CimInstance Win32_OperatingSystem | Format-List * } },
+  @{ Name = "ComputerInfo"; Description = "ComputerInfo snapshot"; Action = { Get-ComputerInfo | Select-Object CsName, WindowsVersion, WindowsBuildLabEx, OsName, OsArchitecture, WindowsProductName, OsHardwareAbstractionLayer, Bios* | Format-List * } },
+  @{ Name = "NetworkAdapterConfigs"; Description = "Network adapter configuration details"; Action = { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * } },
+  @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
+  @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },
+  @{ Name = "Disk_Drives"; Description = "Physical disk inventory (wmic diskdrive)"; Action = { wmic diskdrive get model,serialNumber,status,size } },
+  @{ Name = "Volumes"; Description = "Volume overview (Get-Volume)"; Action = { Get-Volume | Format-Table -AutoSize } },
+  @{ Name = "Disks"; Description = "Disk layout (Get-Disk)"; Action = { Get-Disk | Format-List * } },
+  @{ Name = "Hotfixes"; Description = "Recent hotfixes"; Action = { Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 50 | Format-List * } },
+  @{ Name = "Programs_Reg"; Description = "Installed programs (64-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
+  @{ Name = "Programs_Reg_32"; Description = "Installed programs (32-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
+  @{ Name = "Services"; Description = "Service state overview"; Action = { Get-Service | Sort-Object Status,Name | Format-Table -AutoSize } },
+  @{ Name = "Processes"; Description = "Running processes (tasklist /v)"; Action = { tasklist /v } },
+  @{ Name = "Drivers"; Description = "Driver inventory (driverquery)"; Action = { driverquery /v /fo list } },
+  @{ Name = "Event_System_100"; Description = "Latest 100 System event log entries"; Action = { wevtutil qe System /c:100 /f:text /rd:true } },
+  @{ Name = "Event_Application_100"; Description = "Latest 100 Application event log entries"; Action = { wevtutil qe Application /c:100 /f:text /rd:true } },
+  @{ Name = "Firewall"; Description = "Firewall profile status"; Action = { netsh advfirewall show allprofiles } },
+  @{ Name = "FirewallRules"; Description = "Firewall rules overview"; Action = { try { Get-NetFirewallRule | Select-Object DisplayName,Direction,Action,Enabled,Profile | Format-Table -AutoSize } catch { "Get-NetFirewallRule not present" } } },
+  @{ Name = "DefenderStatus"; Description = "Microsoft Defender health"; Action = { try { Get-MpComputerStatus | Format-List * } catch { "Get-MpComputerStatus not available or Defender absent" } } },
+  @{ Name = "NetShares"; Description = "File shares (net share)"; Action = { net share } },
+  @{ Name = "ScheduledTasks"; Description = "Scheduled task inventory"; Action = { schtasks /query /fo LIST /v } },
+  @{ Name = "Whoami"; Description = "Current user context"; Action = { whoami /all } },
+  @{ Name = "Uptime"; Description = "Last boot time"; Action = { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime } },
+  @{ Name = "TopCPU"; Description = "Top CPU processes"; Action = { Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 | Format-Table -AutoSize } },
+  @{ Name = "Memory"; Description = "Memory usage summary"; Action = { Get-CimInstance Win32_OperatingSystem | Select @{n='TotalVisibleMemoryMB';e={[math]::round($_.TotalVisibleMemorySize/1024,0)}}, @{n='FreePhysicalMemoryMB';e={[math]::round($_.FreePhysicalMemory/1024,0)}} | Format-List * } }
+)
+
 $files = @()
+$activity = "Collecting system diagnostics"
 
-$files += Save-Output "ipconfig_all" { ipconfig /all }
-$files += Save-Output "route_print" { route print }
-$files += Save-Output "netstat_ano" { netstat -ano }
-$files += Save-Output "arp_table" { arp -a }
-$files += Save-Output "nslookup_google" { nslookup google.com }
-$files += Save-Output "tracert_google" { tracert -d -h 10 8.8.8.8 }
-$files += Save-Output "ping_google" { ping -n 4 8.8.8.8 }
-$files += Save-Output "systeminfo" { systeminfo }
+for ($i = 0; $i -lt $capturePlan.Count; $i++) {
+  $stepNumber = $i + 1
+  $step = $capturePlan[$i]
+  $status = "[{0}/{1}] {2}" -f $stepNumber, $capturePlan.Count, $step.Description
+  $percent = [int](($i / $capturePlan.Count) * 100)
+  Write-Progress -Activity $activity -Status $status -PercentComplete $percent
+  Write-Host $status
 
-# WMI / CIM queries (more structured)
-$files += Save-Output "OS_CIM" { Get-CimInstance Win32_OperatingSystem | Format-List * }
-$files += Save-Output "ComputerInfo" { Get-ComputerInfo | Select-Object CsName, WindowsVersion, WindowsBuildLabEx, OsName, OsArchitecture, WindowsProductName, OsHardwareAbstractionLayer, Bios* | Format-List * }
+  $timer = [System.Diagnostics.Stopwatch]::StartNew()
+  $file = Save-Output -Name $step.Name -Action $step.Action
+  $timer.Stop()
 
-$files += Save-Output "NetworkAdapterConfigs" { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * }
-$files += Save-Output "NetIPAddresses" { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } }
-$files += Save-Output "NetAdapters" { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } }
+  if ($file) {
+    Write-Host ("     Saved to {0} ({1:N1}s)" -f $file, $timer.Elapsed.TotalSeconds)
+    $files += $file
+  }
 
-$files += Save-Output "Disk_Drives" { wmic diskdrive get model,serialNumber,status,size }
-$files += Save-Output "Volumes" { Get-Volume | Format-Table -AutoSize }
-$files += Save-Output "Disks" { Get-Disk | Format-List * }
+  $percentComplete = [int](($stepNumber / $capturePlan.Count) * 100)
+  Write-Progress -Activity $activity -Status $status -PercentComplete $percentComplete
+}
 
-$files += Save-Output "Hotfixes" { Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 50 | Format-List * }
-$files += Save-Output "Programs_Reg" { Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize }
-$files += Save-Output "Programs_Reg_32" { Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize }
-
-$files += Save-Output "Services" { Get-Service | Sort-Object Status,Name | Format-Table -AutoSize }
-$files += Save-Output "Processes" { tasklist /v }
-$files += Save-Output "Drivers" { driverquery /v /fo list }
-
-$files += Save-Output "Event_System_100" { wevtutil qe System /c:100 /f:text /rd:true }
-$files += Save-Output "Event_Application_100" { wevtutil qe Application /c:100 /f:text /rd:true }
-
-$files += Save-Output "Firewall" { netsh advfirewall show allprofiles }
-$files += Save-Output "FirewallRules" { try { Get-NetFirewallRule | Select-Object DisplayName,Direction,Action,Enabled,Profile | Format-Table -AutoSize } catch { "Get-NetFirewallRule not present" } }
-
-$files += Save-Output "DefenderStatus" { try { Get-MpComputerStatus | Format-List * } catch { "Get-MpComputerStatus not available or Defender absent" } }
-
-$files += Save-Output "NetShares" { net share }
-$files += Save-Output "ScheduledTasks" { schtasks /query /fo LIST /v }
-
-$files += Save-Output "Whoami" { whoami /all }
-$files += Save-Output "Uptime" { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime }
-
-# quick perf snapshot
-$files += Save-Output "TopCPU" { Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 | Format-Table -AutoSize }
-$files += Save-Output "Memory" { Get-CimInstance Win32_OperatingSystem | Select @{n='TotalVisibleMemoryMB';e={[math]::round($_.TotalVisibleMemorySize/1024,0)}}, @{n='FreePhysicalMemoryMB';e={[math]::round($_.FreePhysicalMemory/1024,0)}} | Format-List * }
+Write-Progress -Activity $activity -Completed
 
 # Save copies of the core raw outputs too
 Copy-Item -Path $files -Destination $reportDir -Force -ErrorAction SilentlyContinue
 
 # Simple parser: extract key fields from ipconfig /all
+Write-Host "Building quick summary from ipconfig_all.txt..."
 $ipOut = Get-Content (Join-Path $reportDir "ipconfig_all.txt") -Raw
 $Summary = @{
   Hostname = $env:COMPUTERNAME
@@ -103,9 +126,11 @@ $Summary = @{
 }
 $summaryFile = Join-Path $reportDir "summary.json"
 $Summary | ConvertTo-Json | Out-File -FilePath $summaryFile -Encoding UTF8
+Write-Host "Summary saved to: $summaryFile"
 
 # Basic HTML report
 if (-not $NoHtml) {
+  Write-Host "Generating HTML viewer (Report.html)..."
   $htmlFile = Join-Path $reportDir "Report.html"
   $html = @"
 <!doctype html>
@@ -145,6 +170,10 @@ pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-
   $html += "</body></html>"
   $html | Out-File -FilePath $htmlFile -Encoding UTF8
   Write-Host "HTML report written to: $htmlFile"
+} else {
+  Write-Host "Skipping HTML report generation (-NoHtml specified)."
 }
 
 Write-Host "All raw files saved to: $reportDir"
+$overallTimer.Stop()
+Write-Host ("Diagnostics collection finished in {0:N1}s" -f $overallTimer.Elapsed.TotalSeconds)
