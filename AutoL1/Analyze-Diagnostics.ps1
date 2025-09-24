@@ -139,6 +139,97 @@ function ConvertTo-NullableInt {
   return $null
 }
 
+function ConvertFrom-JsonSafe {
+  param([string]$Text)
+
+  if (-not $Text) { return $null }
+
+  try {
+    return $Text | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
+function ConvertTo-IntArray {
+  param($Value)
+
+  if ($null -eq $Value) { return @() }
+
+  if ($Value -is [string]) {
+    $trimmed = $Value.Trim()
+    if (-not $trimmed) { return @() }
+    $clean = ($trimmed -replace '^\{','') -replace '\}$',''
+    $parts = [regex]::Split($clean,'[\s,]+') | Where-Object { $_ }
+    $result = @()
+    foreach ($part in $parts) {
+      $parsed = 0
+      if ([int]::TryParse($part, [ref]$parsed)) {
+        $result += $parsed
+      }
+    }
+    return $result
+  }
+
+  if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+    $result = @()
+    foreach ($item in $Value) {
+      if ($null -eq $item) { continue }
+      $parsed = 0
+      if ([int]::TryParse([string]$item, [ref]$parsed)) {
+        $result += $parsed
+      }
+    }
+    return $result
+  }
+
+  $single = 0
+  if ([int]::TryParse([string]$Value, [ref]$single)) {
+    return @($single)
+  }
+
+  return @()
+}
+
+function Get-TopLines {
+  param(
+    [string]$Text,
+    [int]$Count = 12
+  )
+
+  if (-not $Text) { return '' }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  return ($lines | Select-Object -First $Count) -join "`n"
+}
+
+function Test-IsEnabledValue {
+  param($Value)
+
+  if ($null -eq $Value) { return $false }
+
+  try {
+    $text = [string]$Value
+  } catch {
+    $text = [string]$Value
+  }
+
+  if (-not $text) { return $false }
+  $trimmed = $text.Trim()
+  if (-not $trimmed) { return $false }
+
+  try {
+    $lower = $trimmed.ToLowerInvariant()
+  } catch {
+    $lower = $trimmed
+    if ($lower) { $lower = $lower.ToLowerInvariant() }
+  }
+
+  if ($lower -match '^(on|true|enabled|1)$') { return $true }
+  if ($lower -match 'yes') { return $true }
+  return $false
+}
+
 function Parse-KeyValueBlock {
   param([string]$Text)
 
@@ -582,6 +673,24 @@ $files = [ordered]@{
 
   firewall       = Find-ByContent @('Firewall')                  @('Windows Firewall with Advanced Security|Profile Settings')
   firewall_rules = Find-ByContent @('FirewallRules')             @('Rule Name:|DisplayName\s*:')
+  security_tpm   = Find-ByContent @('Security_TPM')              @('TpmPresent','TpmReady')
+  security_deviceguard = Find-ByContent @('Security_DeviceGuard') @('SecurityServicesRunning','DeviceGuard')
+  security_computersystem = Find-ByContent @('Security_ComputerSystem') @('PCSystemType','SystemSkuNumber')
+  security_systemenclosure = Find-ByContent @('Security_SystemEnclosure') @('ChassisTypes')
+  security_kerneldma = Find-ByContent @('Security_KernelDMA')    @('Kernel DMA Protection')
+  security_rdp   = Find-ByContent @('Security_RDP')              @('fDenyTSConnections','RdpTcp')
+  security_smb   = Find-ByContent @('Security_SMB')              @('EnableSMB1Protocol')
+  security_lsa   = Find-ByContent @('Security_LSA')              @('RunAsPPL','LmCompatibilityLevel')
+  security_ntlm  = Find-ByContent @('Security_NTLM')             @('RestrictSendingNTLMTraffic')
+  security_smartscreen = Find-ByContent @('Security_SmartScreen') @('SmartScreenEnabled')
+  security_asr   = Find-ByContent @('Security_ASR')              @('AttackSurfaceReduction','Rules')
+  security_exploit = Find-ByContent @('Security_ExploitProtection') @('Get-ProcessMitigation','ASLR')
+  security_wdac  = Find-ByContent @('Security_WDAC')             @('SmartAppControl','CodeIntegrity')
+  security_localadmins = Find-ByContent @('Security_LocalAdmins') @('Administrators','Member :')
+  security_laps  = Find-ByContent @('Security_LAPS')             @('AdmPwd','WindowsLAPS')
+  security_pslogging = Find-ByContent @('Security_PowerShellLogging') @('ScriptBlockLogging','ModuleLogging')
+  security_uac   = Find-ByContent @('Security_UAC')              @('EnableLUA')
+  security_ldap  = Find-ByContent @('Security_LDAP')             @('LDAPClientIntegrity','LDAPServerIntegrity')
 
   defender       = Find-ByContent @('DefenderStatus')            @('Get-MpComputerStatus|AMProductVersion')
   bitlocker      = Find-ByContent @('BitLockerStatus','BitLocker') @('(?im)^\s*Mount\s*Point\s*:','Get-BitLockerVolume')
@@ -648,7 +757,7 @@ function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence="")
 
 # healthy findings
 $normals = New-Object System.Collections.Generic.List[pscustomobject]
-function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){
+function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){ 
   $normalizedBadge = if ($badgeText) { $badgeText.ToUpperInvariant() } else { 'GOOD' }
   $normals.Add([pscustomobject]@{
     Area     = $area
@@ -656,6 +765,84 @@ function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$bad
     Evidence = if($evidence){ $evidence.Substring(0,[Math]::Min(800,$evidence.Length)) } else { "" }
     CssClass  = 'good'
     BadgeText = $normalizedBadge
+  })
+}
+
+$securityHeuristics = New-Object System.Collections.Generic.List[pscustomobject]
+$securityHealthOrder = @('good','info','warning','bad','critical')
+
+function Normalize-SecurityHealth {
+  param([string]$Value)
+
+  if (-not $Value) { return 'info' }
+
+  try {
+    $lower = $Value.ToLowerInvariant()
+  } catch {
+    $lower = [string]$Value
+    if ($lower) { $lower = $lower.ToLowerInvariant() }
+  }
+
+  switch ($lower) {
+    'good' { return 'good' }
+    'ok' { return 'good' }
+    'pass' { return 'good' }
+    'info' { return 'info' }
+    'low' { return 'info' }
+    'warning' { return 'warning' }
+    'medium' { return 'warning' }
+    'bad' { return 'bad' }
+    'high' { return 'bad' }
+    'critical' { return 'critical' }
+    'fail' { return 'bad' }
+    default { return 'info' }
+  }
+}
+
+function Get-SecurityHealthIndex {
+  param([string]$Value)
+
+  $normalized = Normalize-SecurityHealth $Value
+  return $securityHealthOrder.IndexOf($normalized)
+}
+
+function Get-WorstSecurityHealth {
+  param([string]$First,[string]$Second)
+
+  if (-not $First) { return (Normalize-SecurityHealth $Second) }
+  if (-not $Second) { return (Normalize-SecurityHealth $First) }
+
+  $firstIndex = Get-SecurityHealthIndex $First
+  $secondIndex = Get-SecurityHealthIndex $Second
+
+  if ($firstIndex -ge $secondIndex) { return (Normalize-SecurityHealth $First) }
+  return (Normalize-SecurityHealth $Second)
+}
+
+function Add-SecurityHeuristic {
+  param(
+    [string]$Name,
+    [string]$Status,
+    [string]$Health = 'info',
+    [string]$Details = '',
+    [string]$Evidence = ''
+  )
+
+  $controlName = if ($Name) { $Name } else { 'Control' }
+  $statusText = if ($null -ne $Status) { $Status } else { '' }
+  $normalizedHealth = Normalize-SecurityHealth $Health
+  $detailText = if ($null -ne $Details) { $Details } else { '' }
+  $evidenceTrimmed = ''
+  if ($Evidence) {
+    $evidenceTrimmed = $Evidence.Substring(0,[Math]::Min(1200,$Evidence.Length))
+  }
+
+  $securityHeuristics.Add([pscustomobject]@{
+    Name     = $controlName
+    Status   = $statusText
+    Health   = $normalizedHealth
+    Details  = $detailText
+    Evidence = $evidenceTrimmed
   })
 }
 
@@ -1300,6 +1487,111 @@ if ($raw['route']){
   }
 }
 
+$osCimMap = $null
+if ($raw['os_cim']) {
+  $osCimMap = Parse-KeyValueBlock $raw['os_cim']
+}
+
+$osVersionMajor = $null
+if ($osCimMap -and $osCimMap.ContainsKey('Version')) {
+  $versionText = $osCimMap['Version']
+  if ($versionText) {
+    $firstPart = ($versionText -split '\.')[0]
+    $parsedMajor = 0
+    if ([int]::TryParse($firstPart, [ref]$parsedMajor)) {
+      $osVersionMajor = $parsedMajor
+    }
+  }
+}
+if (-not $osVersionMajor -and $summary.OS_Version) {
+  $firstPart = ($summary.OS_Version -split '\.')[0]
+  $parsedMajor = 0
+  if ([int]::TryParse($firstPart, [ref]$parsedMajor)) {
+    $osVersionMajor = $parsedMajor
+  }
+}
+if ($osVersionMajor) { $summary.OSVersionMajor = $osVersionMajor }
+
+$computerSystemJson = ConvertFrom-JsonSafe $raw['security_computersystem']
+$systemSkuNumber = $null
+$pcSystemType = $null
+$pcSystemTypeEx = $null
+$partOfDomainFromCs = $null
+if ($computerSystemJson) {
+  if ($computerSystemJson.PSObject.Properties['SystemSkuNumber']) {
+    $systemSkuNumber = [string]$computerSystemJson.SystemSkuNumber
+  }
+  if ($computerSystemJson.PSObject.Properties['PCSystemType']) {
+    $pcSystemType = ConvertTo-NullableInt $computerSystemJson.PCSystemType
+  }
+  if ($computerSystemJson.PSObject.Properties['PCSystemTypeEx']) {
+    $pcSystemTypeEx = ConvertTo-NullableInt $computerSystemJson.PCSystemTypeEx
+  }
+  if ($computerSystemJson.PSObject.Properties['PartOfDomain']) {
+    $partOfDomainFromCs = $computerSystemJson.PartOfDomain
+  }
+  if ($computerSystemJson.PSObject.Properties['Domain']) {
+    if (-not $summary.Domain) { $summary.Domain = [string]$computerSystemJson.Domain }
+  }
+}
+if ($systemSkuNumber) { $summary.SystemSkuNumber = $systemSkuNumber }
+
+if ($summary.DomainJoined -eq $null -and $null -ne $partOfDomainFromCs) {
+  try {
+    $summary.DomainJoined = [bool]$partOfDomainFromCs
+  } catch {}
+}
+
+$enclosureJson = ConvertFrom-JsonSafe $raw['security_systemenclosure']
+$chassisTypes = @()
+if ($enclosureJson) {
+  if ($enclosureJson -is [System.Collections.IEnumerable] -and -not ($enclosureJson -is [string])) {
+    foreach ($entry in $enclosureJson) {
+      if (-not $entry) { continue }
+      if ($entry.PSObject.Properties['ChassisTypes']) {
+        $chassisTypes += (ConvertTo-IntArray $entry.ChassisTypes)
+      }
+    }
+  } elseif ($enclosureJson.PSObject.Properties['ChassisTypes']) {
+    $chassisTypes = ConvertTo-IntArray $enclosureJson.ChassisTypes
+  }
+}
+if ($chassisTypes) {
+  $chassisTypes = $chassisTypes | Where-Object { $_ -ne $null } | Sort-Object -Unique
+}
+
+$mobileChassisValues = @(8,9,10,11,12,14,18,21,30,31,32,33,34)
+$mobilePcSystemTypes = @(2,8,9,10,11)
+$isLaptop = $false
+foreach ($ct in $chassisTypes) {
+  if ($mobileChassisValues -contains $ct) { $isLaptop = $true; break }
+}
+if (-not $isLaptop -and $pcSystemType -ne $null -and ($mobilePcSystemTypes -contains $pcSystemType)) {
+  $isLaptop = $true
+}
+if (-not $isLaptop -and $pcSystemTypeEx -ne $null -and ($mobilePcSystemTypes -contains $pcSystemTypeEx)) {
+  $isLaptop = $true
+}
+if (-not $isLaptop -and $computerSystemJson) {
+  $family = $null
+  if ($computerSystemJson.PSObject.Properties['SystemFamily']) { $family = [string]$computerSystemJson.SystemFamily }
+  if (-not $family -and $computerSystemJson.PSObject.Properties['Model']) { $family = [string]$computerSystemJson.Model }
+  if ($family) {
+    try {
+      $familyLower = $family.ToLowerInvariant()
+      if ($familyLower -match '(?i)laptop|notebook|mobile|portable|ultrabook') { $isLaptop = $true }
+    } catch {}
+  }
+}
+$summary.IsLaptop = $isLaptop
+
+$isWorkstationProfile = ($summary.IsServer -ne $true)
+$isModernClient = $false
+if ($isWorkstationProfile -and $osVersionMajor -ge 10) {
+  $isModernClient = $true
+}
+$summary.IsModernClient = $isModernClient
+
 # nslookup / ping / tracert
 if ($raw['nslookup'] -and ($raw['nslookup'] -match "Request timed out|Non-existent domain")){
   Add-Issue "medium" "DNS" "nslookup shows timeouts or NXDOMAIN." $raw['nslookup']
@@ -1633,6 +1925,7 @@ if ($raw['outlook_scp']){
 }
 
 # office macro / protected view policies
+$macroSecurityStatus = New-Object System.Collections.Generic.List[pscustomobject]
 function Format-MacroContextEvidence {
   param(
     [pscustomobject]$Context
@@ -1729,6 +2022,7 @@ if ($raw['office_security']) {
     $hasIssue = $false
 
     $blockCompliant = @($appContexts | Where-Object { $_.BlockValue -eq 1 })
+    $blockFullyEnforced = ($appContexts.Count -gt 0 -and $blockCompliant.Count -eq $appContexts.Count)
     if ($blockCompliant.Count -eq 0) {
       $blockEvidence = ($appContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
       Add-Issue "high" "Office/Macros" ("{0} macro MOTW blocking disabled or not configured. Fix: Enforce via GPO/MDM." -f $appInfo.Name) $blockEvidence
@@ -1769,6 +2063,28 @@ if ($raw['office_security']) {
       Add-Issue "medium" "Office/Protected View" ("Protected View disabled for {0} ({1}). Fix: Enforce via GPO/MDM." -f $appInfo.Name, $pvReasonText) $pvEvidence
       $hasIssue = $true
     }
+
+    $strictContexts = @($appContexts | Where-Object {
+        $val = $_.WarningsValue
+        if ($null -eq $val) {
+          $false
+        } else {
+          $val -ge 3
+        }
+      })
+    $warningsStrict = ($appContexts.Count -gt 0 -and $strictContexts.Count -eq $appContexts.Count)
+    $protectedViewGood = ($pvDisabledContexts.Count -eq 0)
+    $macroEvidenceContext = if ($blockCompliant.Count -gt 0) { $blockCompliant[0] } elseif ($appContexts.Count -gt 0) { $appContexts[0] } else { $null }
+    $macroEvidenceText = if ($macroEvidenceContext) { Format-MacroContextEvidence $macroEvidenceContext } else { '' }
+    $macroSecurityStatus.Add([pscustomobject]@{
+      App               = $appInfo.Name
+      BlockEnforced     = $blockFullyEnforced
+      BlockEvidence     = if ($blockFullyEnforced -and $macroEvidenceContext) { $macroEvidenceText } else { '' }
+      AnyBlockContexts  = ($blockCompliant.Count -gt 0)
+      WarningsStrict    = $warningsStrict
+      ProtectedViewGood = $protectedViewGood
+      Evidence          = $macroEvidenceText
+    })
 
     if (-not $hasIssue) {
       $positiveParts = @()
@@ -1888,6 +2204,7 @@ if ($raw['defender']){
   Add-Issue "info" "Security" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
 }
 
+$securityFirewallSummary = $null
 # firewall profiles
 if ($raw['firewall']){
   $profiles = @{}
@@ -1902,9 +2219,17 @@ if ($raw['firewall']){
       Add-Issue "medium" "Firewall" "$pname profile is OFF." $b
     }
   }
-  if ($profiles.Count -gt 0 -and -not ($profiles.Values -contains $false)){
-    $profileSummary = ($profiles.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, ($(if ($_.Value) {"ON"} else {"OFF"})) }) -join "; "
-    Add-Normal "Security/Firewall" "All firewall profiles ON" $profileSummary
+  if ($profiles.Count -gt 0){
+    $profileStates = $profiles.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, ($(if ($_.Value) {"ON"} else {"OFF"})) }
+    $profileSummary = $profileStates -join "; "
+    if (-not ($profiles.Values -contains $false)){
+      Add-Normal "Security/Firewall" "All firewall profiles ON" $profileSummary
+    }
+    $securityFirewallSummary = [pscustomobject]@{
+      Profiles = $profiles
+      AllOn    = -not ($profiles.Values -contains $false)
+      Summary  = $profileSummary
+    }
   }
 }
 
@@ -1990,6 +2315,560 @@ if ($raw['bitlocker']) {
   }
 } elseif ($files['bitlocker']) {
   Add-Issue "low" "System/BitLocker" "BitLocker status file present but empty." ""
+}
+
+# security heuristics evaluation
+$isLaptopProfile = ($summary.IsLaptop -eq $true)
+$isModernClientProfile = ($summary.IsModernClient -eq $true)
+$isDomainJoinedProfile = ($summary.DomainJoined -eq $true)
+$deviceGuardData = ConvertFrom-JsonSafe $raw['security_deviceguard']
+$securityServicesRunning = @()
+$securityServicesConfigured = @()
+$availableSecurityProperties = @()
+$requiredSecurityProperties = @()
+if ($deviceGuardData) {
+  if ($deviceGuardData.PSObject.Properties['SecurityServicesRunning']) {
+    $securityServicesRunning = ConvertTo-IntArray $deviceGuardData.SecurityServicesRunning
+  }
+  if ($deviceGuardData.PSObject.Properties['SecurityServicesConfigured']) {
+    $securityServicesConfigured = ConvertTo-IntArray $deviceGuardData.SecurityServicesConfigured
+  }
+  if ($deviceGuardData.PSObject.Properties['AvailableSecurityProperties']) {
+    $availableSecurityProperties = ConvertTo-IntArray $deviceGuardData.AvailableSecurityProperties
+  }
+  if ($deviceGuardData.PSObject.Properties['RequiredSecurityProperties']) {
+    $requiredSecurityProperties = ConvertTo-IntArray $deviceGuardData.RequiredSecurityProperties
+  }
+}
+
+$lsaMap = Parse-KeyValueBlock $raw['security_lsa']
+$ntlmMap = Parse-KeyValueBlock $raw['security_ntlm']
+$smartScreenMap = Parse-KeyValueBlock $raw['security_smartscreen']
+$uacMap = Parse-KeyValueBlock $raw['security_uac']
+$ldapMap = Parse-KeyValueBlock $raw['security_ldap']
+
+# 1. TPM present and ready
+$tpmText = $raw['security_tpm']
+if ($tpmText) {
+  $tpmMap = Parse-KeyValueBlock $tpmText
+  $tpmPresent = Get-BoolFromString $tpmMap['TpmPresent']
+  $tpmReady = Get-BoolFromString $tpmMap['TpmReady']
+  $specVersion = if ($tpmMap.ContainsKey('SpecVersion')) { $tpmMap['SpecVersion'] } else { '' }
+  $tpmEvidence = Get-TopLines $tpmText 12
+  if ($tpmPresent -eq $true -and $tpmReady -eq $true) {
+    $details = if ($specVersion) { "SpecVersion: $specVersion" } else { 'TPM ready' }
+    Add-SecurityHeuristic 'TPM' 'Present and ready' 'good' $details $tpmEvidence
+  } elseif ($tpmPresent -eq $true) {
+    $details = 'TPM detected but not ready.'
+    if ($specVersion) { $details = "$details SpecVersion: $specVersion" }
+    Add-SecurityHeuristic 'TPM' 'Present but not ready' 'warning' $details $tpmEvidence
+    Add-Issue 'medium' 'Security/TPM' 'TPM detected but not ready. Initialize TPM to meet security baselines.' $tpmEvidence
+  } else {
+    $details = if ($specVersion) { "SpecVersion (reported): $specVersion" } else { 'No TPM detected.' }
+    $health = if ($isModernClientProfile) { 'bad' } else { 'warning' }
+    $issueSeverity = if ($isModernClientProfile) { 'high' } else { 'medium' }
+    Add-SecurityHeuristic 'TPM' 'Not detected' $health $details $tpmEvidence
+    Add-Issue $issueSeverity 'Security/TPM' 'No TPM detected. Modern Windows devices require TPM 2.0 for security assurances.' $tpmEvidence
+  }
+} else {
+  Add-SecurityHeuristic 'TPM' 'Not captured' 'warning' 'Get-Tpm output missing.' ''
+}
+
+# 2. Memory integrity (HVCI)
+$dgEvidenceLines = @()
+if ($securityServicesConfigured.Count -gt 0) { $dgEvidenceLines += "Configured: $($securityServicesConfigured -join ',')" }
+if ($securityServicesRunning.Count -gt 0) { $dgEvidenceLines += "Running: $($securityServicesRunning -join ',')" }
+if ($availableSecurityProperties.Count -gt 0) { $dgEvidenceLines += "Available: $($availableSecurityProperties -join ',')" }
+if ($requiredSecurityProperties.Count -gt 0) { $dgEvidenceLines += "Required: $($requiredSecurityProperties -join ',')" }
+$dgEvidence = $dgEvidenceLines -join "`n"
+$hvciRunning = ($securityServicesRunning -contains 2)
+$hvciAvailable = ($availableSecurityProperties -contains 2) -or ($requiredSecurityProperties -contains 2)
+if ($hvciRunning) {
+  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Enabled' 'good' 'Hypervisor-protected Code Integrity running (service 2).' $dgEvidence
+} elseif ($hvciAvailable) {
+  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Disabled' 'warning' 'HVCI supported but not running.' $dgEvidence
+  Add-Issue 'medium' 'Security/HVCI' 'Memory integrity (HVCI) is available but not running. Enable virtualization-based protection.' $dgEvidence
+} elseif ($deviceGuardData) {
+  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not supported' 'info' 'Device Guard reports HVCI not available.' $dgEvidence
+} else {
+  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not captured' 'warning' 'Device Guard status unavailable.' ''
+}
+
+# 3. Credential Guard / LSA isolation
+$credentialGuardRunning = ($securityServicesRunning -contains 1)
+$runAsPpl = ConvertTo-NullableInt $lsaMap['RunAsPPL']
+$runAsPplBoot = ConvertTo-NullableInt $lsaMap['RunAsPPLBoot']
+$lsaEvidenceLines = @()
+if ($credentialGuardRunning) { $lsaEvidenceLines += 'SecurityServicesRunning includes 1 (Credential Guard).' }
+if ($runAsPpl -ne $null) { $lsaEvidenceLines += "RunAsPPL: $runAsPpl" }
+if ($runAsPplBoot -ne $null) { $lsaEvidenceLines += "RunAsPPLBoot: $runAsPplBoot" }
+$lsaEvidence = $lsaEvidenceLines -join "`n"
+if ($credentialGuardRunning -and $runAsPpl -eq 1) {
+  Add-SecurityHeuristic 'Credential Guard (LSA isolation)' 'Enabled' 'good' 'Credential Guard running with LSA protection.' $lsaEvidence
+} else {
+  Add-SecurityHeuristic 'Credential Guard (LSA isolation)' 'Disabled' 'warning' 'Credential Guard or LSA RunAsPPL not enforced.' $lsaEvidence
+  Add-Issue 'medium' 'Security/Credential Guard' 'Credential Guard or LSA protection is not enforced. Enable RunAsPPL and Credential Guard.' $lsaEvidence
+}
+
+# 4. Kernel DMA protection
+$dmaText = $raw['security_kerneldma']
+if ($dmaText) {
+  $dmaMatch = [regex]::Match($dmaText,'(?im)^\s*Kernel DMA Protection\s*:\s*(.+)$')
+  $dmaStatus = if ($dmaMatch.Success) { $dmaMatch.Groups[1].Value.Trim() } else { '' }
+  $dmaEvidence = Get-TopLines $dmaText 20
+  if ($dmaStatus) {
+    $lower = $dmaStatus.ToLowerInvariant()
+    $dmaDisabled = ($lower -match 'not available' -or $lower -match 'off' -or $lower -match 'disabled' -or $lower -match 'unsupported')
+    if ($dmaDisabled -and $isLaptopProfile) {
+      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus 'warning' 'Kernel DMA protection not enabled on mobile device.' $dmaEvidence
+      Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection is disabled or unsupported on this mobile device.' $dmaEvidence
+    } else {
+      $health = if ($dmaDisabled) { 'info' } else { 'good' }
+      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus $health '' $dmaEvidence
+    }
+  } else {
+    Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence
+  }
+} else {
+  Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'msinfo32 output missing.' ''
+}
+
+# 5. Windows Firewall
+if ($securityFirewallSummary) {
+  if ($securityFirewallSummary.AllOn) {
+    Add-SecurityHeuristic 'Windows Firewall' 'All profiles ON' 'good' '' $securityFirewallSummary.Summary
+  } else {
+    Add-SecurityHeuristic 'Windows Firewall' 'Profile(s) OFF' 'warning' 'One or more firewall profiles disabled.' $securityFirewallSummary.Summary
+  }
+} else {
+  Add-SecurityHeuristic 'Windows Firewall' 'Not captured' 'warning' 'Firewall status output missing.' ''
+}
+
+# 6. RDP exposure
+$rdpMap = Parse-KeyValueBlock $raw['security_rdp']
+$denyConnections = ConvertTo-NullableInt $rdpMap['fDenyTSConnections']
+$userAuthValue = ConvertTo-NullableInt $rdpMap['UserAuthentication']
+$rdpEnabled = ($denyConnections -eq 0)
+$nlaEnabled = ($userAuthValue -eq 1)
+$rdpEvidence = Get-TopLines $raw['security_rdp'] 18
+if ($rdpMap.Count -eq 0 -and -not $raw['security_rdp']) {
+  Add-SecurityHeuristic 'Remote Desktop' 'Not captured' 'warning' 'Terminal Server registry data unavailable.' ''
+} elseif ($rdpEnabled) {
+  if (-not $nlaEnabled) {
+    Add-SecurityHeuristic 'Remote Desktop' 'Enabled without NLA' 'bad' 'NLA (UserAuthentication) not enforced.' $rdpEvidence
+    Add-Issue 'high' 'Security/RDP' 'Remote Desktop is enabled without Network Level Authentication. Enforce NLA or disable RDP.' $rdpEvidence
+  } else {
+    $health = if ($isLaptopProfile) { 'warning' } else { 'info' }
+    if ($isLaptopProfile) {
+      Add-Issue 'medium' 'Security/RDP' 'Remote Desktop is enabled on a mobile device. Validate exposure and access controls.' $rdpEvidence
+    }
+    Add-SecurityHeuristic 'Remote Desktop' 'Enabled with NLA' $health 'RDP enabled; NLA enforced.' $rdpEvidence
+  }
+} else {
+  Add-SecurityHeuristic 'Remote Desktop' 'Disabled' 'good' '' $rdpEvidence
+}
+
+# 7. SMB & legacy protocols
+$smbMap = Parse-KeyValueBlock $raw['security_smb']
+$enableSmb1 = Get-BoolFromString $smbMap['EnableSMB1Protocol']
+$smbEvidence = Get-TopLines $raw['security_smb'] 20
+if ($enableSmb1 -eq $true) {
+  Add-SecurityHeuristic 'SMB1 protocol' 'Enabled' 'bad' 'SMB1 protocol enabled on server configuration.' $smbEvidence
+  Add-Issue 'high' 'Security/SMB' 'SMB1 protocol is enabled. Disable SMB1 to mitigate legacy protocol risks.' $smbEvidence
+} elseif ($enableSmb1 -eq $false) {
+  Add-SecurityHeuristic 'SMB1 protocol' 'Disabled' 'good' '' $smbEvidence
+} else {
+  Add-SecurityHeuristic 'SMB1 protocol' 'Status unknown' 'warning' '' $smbEvidence
+}
+
+$restrictSendingLsa = ConvertTo-NullableInt $lsaMap['RestrictSendingNTLMTraffic']
+$restrictSendingMsv = ConvertTo-NullableInt $ntlmMap['RestrictSendingNTLMTraffic']
+$restrictReceivingMsv = ConvertTo-NullableInt $ntlmMap['RestrictReceivingNTLMTraffic']
+$auditReceivingMsv = ConvertTo-NullableInt $ntlmMap['AuditReceivingNTLMTraffic']
+$ntlmEvidenceLines = @()
+if ($restrictSendingLsa -ne $null) { $ntlmEvidenceLines += "Lsa RestrictSendingNTLMTraffic: $restrictSendingLsa" }
+if ($restrictSendingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 RestrictSendingNTLMTraffic: $restrictSendingMsv" }
+if ($restrictReceivingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 RestrictReceivingNTLMTraffic: $restrictReceivingMsv" }
+if ($auditReceivingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 AuditReceivingNTLMTraffic: $auditReceivingMsv" }
+$ntlmEvidence = $ntlmEvidenceLines -join "`n"
+$ntlmRestricted = $false
+if (($restrictSendingLsa -ne $null -and $restrictSendingLsa -ge 1) -or ($restrictSendingMsv -ne $null -and $restrictSendingMsv -ge 1)) {
+  $ntlmRestricted = $true
+}
+if ($auditReceivingMsv -ne $null -and $auditReceivingMsv -ge 1) { $ntlmRestricted = $true }
+if ($ntlmRestricted) {
+  Add-SecurityHeuristic 'NTLM restrictions' 'Policies enforced' 'good' '' $ntlmEvidence
+} else {
+  Add-SecurityHeuristic 'NTLM restrictions' 'Not enforced' 'warning' 'NTLM traffic not audited or restricted.' $ntlmEvidence
+  Add-Issue 'medium' 'Security/NTLM' 'NTLM hardening policies are not configured. Enforce RestrictSending/Audit NTLM settings.' $ntlmEvidence
+}
+
+# 8. SmartScreen
+if ($smartScreenMap.Count -gt 0) {
+  $smartScreenDisabled = $false
+  $explorerValue = $smartScreenMap['Explorer.SmartScreenEnabled']
+  if ($explorerValue -and $explorerValue.ToString().Trim().ToLowerInvariant() -match 'off|0|disable') { $smartScreenDisabled = $true }
+  $policyValue = $smartScreenMap['Policy.System.EnableSmartScreen']
+  if ($policyValue -ne $null -and (ConvertTo-NullableInt $policyValue) -eq 0) { $smartScreenDisabled = $true }
+  $smartScreenSummary = ($smartScreenMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+  if ($smartScreenDisabled) {
+    Add-SecurityHeuristic 'SmartScreen' 'Disabled' 'warning' 'SmartScreen policy not enforced.' $smartScreenSummary
+    Add-Issue 'medium' 'Security/SmartScreen' 'SmartScreen is disabled. Enable SmartScreen for app and URL protection.' $smartScreenSummary
+  } else {
+    Add-SecurityHeuristic 'SmartScreen' 'Enabled/Not disabled' 'good' '' $smartScreenSummary
+  }
+} else {
+  Add-SecurityHeuristic 'SmartScreen' 'Not captured' 'warning' 'SmartScreen registry values unavailable.' ''
+}
+
+# 9. Attack Surface Reduction rules
+$asrData = ConvertFrom-JsonSafe $raw['security_asr']
+$asrRules = @{}
+if ($asrData -and $asrData.PSObject.Properties['Rules']) {
+  foreach ($rule in $asrData.Rules) {
+    if (-not $rule) { continue }
+    $id = [string]$rule.Id
+    if (-not $id) { continue }
+    $idUpper = $id.ToUpperInvariant()
+    $actionValue = $null
+    if ($rule.PSObject.Properties['Action']) { $actionValue = ConvertTo-NullableInt $rule.Action }
+    $asrRules[$idUpper] = $actionValue
+  }
+}
+$requiredAsrSets = @(
+  @{ Label = 'Block Office macros from Internet'; Ids = @('3B576869-A4EC-4529-8536-B80A7769E899') },
+  @{ Label = 'Block Win32 API calls from Office'; Ids = @('D4F940AB-401B-4EFC-AADC-AD5F3C50688A') },
+  @{ Label = 'Block executable content from email/WebDAV'; Ids = @('BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550','D3E037E1-3EB8-44C8-A917-57927947596D') },
+  @{ Label = 'Block credential stealing from LSASS'; Ids = @('9E6C4E1F-7D60-472F-B5E9-2D3BEEB1BF0E') }
+)
+foreach ($set in $requiredAsrSets) {
+  $label = $set.Label
+  $ids = $set.Ids
+  $missing = @()
+  $nonBlocking = @()
+  foreach ($id in $ids) {
+    $lookup = $id.ToUpperInvariant()
+    if (-not $asrRules.ContainsKey($lookup)) {
+      $missing += $lookup
+      continue
+    }
+    $action = $asrRules[$lookup]
+    if ($action -ne 1) {
+      $nonBlocking += "{0} => {1}" -f $lookup, $action
+    }
+  }
+  if ($missing.Count -eq 0 -and $nonBlocking.Count -eq 0 -and $ids.Count -gt 0) {
+    $evidence = ($ids | ForEach-Object { "{0} => 1" -f $_ }) -join "`n"
+    Add-SecurityHeuristic ("ASR: {0}" -f $label) 'Block' 'good' '' $evidence
+  } else {
+    $detailsParts = @()
+    if ($missing.Count -gt 0) { $detailsParts += ("Missing rule(s): {0}" -f ($missing -join ', ')) }
+    if ($nonBlocking.Count -gt 0) { $detailsParts += ("Non-blocking: {0}" -f ($nonBlocking -join '; ')) }
+    $detailText = if ($detailsParts.Count -gt 0) { $detailsParts -join '; ' } else { 'Rule not enforced.' }
+    $evidenceLines = @()
+    foreach ($id in $ids) {
+      $lookup = $id.ToUpperInvariant()
+      if ($asrRules.ContainsKey($lookup)) {
+        $evidenceLines += "{0} => {1}" -f $lookup, $asrRules[$lookup]
+      } else {
+        $evidenceLines += "{0} => (missing)" -f $lookup
+      }
+    }
+    $evidence = $evidenceLines -join "`n"
+    Add-SecurityHeuristic ("ASR: {0}" -f $label) 'Not blocking' 'warning' $detailText $evidence
+    Add-Issue 'medium' 'Security/ASR' ("ASR rule not enforced: {0}. Configure to Block (1)." -f $label) $evidence
+  }
+}
+
+# 10. Exploit protection mitigations
+$exploitData = ConvertFrom-JsonSafe $raw['security_exploit']
+$cfgEnabled = $false
+$depEnabled = $false
+$aslrEnabled = $false
+$exploitEvidenceLines = @()
+if ($exploitData) {
+  if ($exploitData.PSObject.Properties['CFG']) {
+    $cfgValue = $exploitData.CFG.Enable
+    $cfgEnabled = Test-IsEnabledValue $cfgValue
+    $exploitEvidenceLines += "CFG.Enable: $cfgValue"
+  }
+  if ($exploitData.PSObject.Properties['DEP']) {
+    $depValue = $exploitData.DEP.Enable
+    $depEnabled = Test-IsEnabledValue $depValue
+    $exploitEvidenceLines += "DEP.Enable: $depValue"
+  }
+  if ($exploitData.PSObject.Properties['ASLR']) {
+    $aslrValue = $exploitData.ASLR.Enable
+    $aslrEnabled = Test-IsEnabledValue $aslrValue
+    $exploitEvidenceLines += "ASLR.Enable: $aslrValue"
+  }
+}
+$exploitEvidence = $exploitEvidenceLines -join "`n"
+if ($cfgEnabled -and $depEnabled -and $aslrEnabled) {
+  Add-SecurityHeuristic 'Exploit protection (system)' 'CFG/DEP/ASLR enforced' 'good' '' $exploitEvidence
+} elseif ($exploitData) {
+  $details = @()
+  if (-not $cfgEnabled) { $details += 'CFG disabled' }
+  if (-not $depEnabled) { $details += 'DEP disabled' }
+  if (-not $aslrEnabled) { $details += 'ASLR disabled' }
+  $detailText = if ($details.Count -gt 0) { $details -join '; ' } else { 'Mitigation status unknown.' }
+  Add-SecurityHeuristic 'Exploit protection (system)' 'Relaxed' 'warning' $detailText $exploitEvidence
+  Add-Issue 'medium' 'Security/ExploitProtection' ('Exploit protection mitigations not fully enabled ({0}).' -f $detailText) $exploitEvidence
+} else {
+  Add-SecurityHeuristic 'Exploit protection (system)' 'Not captured' 'warning' 'Get-ProcessMitigation output unavailable.' ''
+}
+
+# 11. WDAC / Smart App Control
+$wdacData = ConvertFrom-JsonSafe $raw['security_wdac']
+$wdacEvidenceLines = @()
+$wdacEnforced = $false
+if ($securityServicesConfigured -contains 4 -or $securityServicesRunning -contains 4) {
+  $wdacEnforced = $true
+  $wdacEvidenceLines += 'DeviceGuard SecurityServices include 4 (Code Integrity).'
+}
+if ($wdacData -and $wdacData.PSObject.Properties['DeviceGuard']) {
+  $dgSection = $wdacData.DeviceGuard
+  if ($dgSection.PSObject.Properties['CodeIntegrityPolicyEnforcementStatus']) {
+    $ciStatus = ConvertTo-NullableInt $dgSection.CodeIntegrityPolicyEnforcementStatus
+    $wdacEvidenceLines += "CodeIntegrityPolicyEnforcementStatus: $ciStatus"
+    if ($ciStatus -ge 1) { $wdacEnforced = $true }
+  }
+}
+if ($wdacEnforced) {
+  Add-SecurityHeuristic 'WDAC' 'Policy enforced' 'good' '' ($wdacEvidenceLines -join "`n")
+} else {
+  Add-SecurityHeuristic 'WDAC' 'No policy detected' 'warning' 'No WDAC enforcement detected.' ($wdacEvidenceLines -join "`n")
+  if ($isModernClientProfile) {
+    Add-Issue 'medium' 'Security/WDAC' 'No WDAC policy enforcement detected. Evaluate Application Control requirements.' ($wdacEvidenceLines -join "`n")
+  }
+}
+
+$smartAppEvidence = ''
+$smartAppState = $null
+if ($wdacData -and $wdacData.PSObject.Properties['Registry']) {
+  $registrySection = $wdacData.Registry
+  foreach ($prop in $registrySection.PSObject.Properties) {
+    if ($prop.Name -match 'SmartAppControl') {
+      $smartAppEntry = $prop.Value
+      if ($smartAppEntry -and $smartAppEntry.PSObject.Properties['Enabled']) {
+        $smartAppState = ConvertTo-NullableInt $smartAppEntry.Enabled
+      }
+      $smartAppEvidence = ($smartAppEntry.PSObject.Properties | ForEach-Object { "{0}: {1}" -f $_.Name, $_.Value }) -join "`n"
+    }
+  }
+}
+$isWindows11 = $false
+if ($summary.OS -and $summary.OS -match 'Windows\s*11') { $isWindows11 = $true }
+if (-not $smartAppEvidence) { $smartAppEvidence = $smartScreenMap['Policy.System.EnableSmartScreen'] }
+if ($isWindows11 -and $smartAppState -ne 1) {
+  Add-SecurityHeuristic 'Smart App Control' 'Off' 'warning' 'Smart App Control not in enforced mode.' $smartAppEvidence
+  Add-Issue 'medium' 'Security/SmartAppControl' 'Smart App Control is not enabled on Windows 11 device.' $smartAppEvidence
+} elseif ($smartAppState -eq 1) {
+  Add-SecurityHeuristic 'Smart App Control' 'On' 'good' '' $smartAppEvidence
+} else {
+  Add-SecurityHeuristic 'Smart App Control' 'Not configured' 'info' '' $smartAppEvidence
+}
+
+# 12. Local Administrators & LAPS
+$localAdminsText = $raw['security_localadmins']
+$localAdminMembers = @()
+if ($localAdminsText) {
+  $matches = [regex]::Matches($localAdminsText,'(?im)^\s*Member\s*:\s*(.+)$')
+  foreach ($m in $matches) {
+    $memberName = $m.Groups[1].Value.Trim()
+    if ($memberName) { $localAdminMembers += $memberName }
+  }
+}
+$localAdminEvidence = if ($localAdminMembers.Count -gt 0) { $localAdminMembers -join "`n" } else { Get-TopLines $localAdminsText 20 }
+$whoamiText = $raw['whoami']
+$isCurrentUserAdmin = $false
+if ($whoamiText) {
+  $adminLine = ([regex]::Split($whoamiText,'\r?\n') | Where-Object { $_ -match '(?i)builtin\\\\administrators' } | Select-Object -First 1)
+  if ($adminLine -and $adminLine -match '(?i)enabled') { $isCurrentUserAdmin = $true }
+}
+if ($isCurrentUserAdmin) {
+  Add-SecurityHeuristic 'Local admin rights' 'Current user in Administrators' 'bad' '' ($localAdminEvidence)
+  Add-Issue 'high' 'Security/LocalAdmin' 'The current user is a member of the local Administrators group. Use least privilege accounts.' $localAdminEvidence
+} else {
+  $memberSummary = if ($localAdminMembers.Count -gt 0) { "Members: $($localAdminMembers -join ', ')" } else { 'Group membership not captured.' }
+  Add-SecurityHeuristic 'Local admin rights' 'Least privilege verified' 'good' $memberSummary ($localAdminEvidence)
+}
+
+$lapsData = ConvertFrom-JsonSafe $raw['security_laps']
+$lapsEnabled = $false
+$lapsEvidenceLines = @()
+if ($lapsData) {
+  if ($lapsData.PSObject.Properties['Legacy']) {
+    $legacy = $lapsData.Legacy
+    if ($legacy -and $legacy.PSObject.Properties['AdmPwdEnabled']) {
+      $legacyEnabled = ConvertTo-NullableInt $legacy.AdmPwdEnabled
+      $lapsEvidenceLines += "Legacy AdmPwdEnabled: $legacyEnabled"
+      if ($legacyEnabled -eq 1) { $lapsEnabled = $true }
+    }
+  }
+  if ($lapsData.PSObject.Properties['WindowsLAPS']) {
+    $modern = $lapsData.WindowsLAPS
+    foreach ($prop in $modern.PSObject.Properties) {
+      $lapsEvidenceLines += "WindowsLAPS {0}: {1}" -f $prop.Name, $prop.Value
+      if ($prop.Name -eq 'BackupDirectory' -and $prop.Value -ne $null) { $lapsEnabled = $true }
+      if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $prop.Value) -eq 1) { $lapsEnabled = $true }
+    }
+  }
+  if ($lapsData.PSObject.Properties['Status']) { $lapsEvidenceLines += $lapsData.Status }
+}
+$lapsEvidence = $lapsEvidenceLines -join "`n"
+if ($lapsEnabled) {
+  Add-SecurityHeuristic 'LAPS/PLAP' 'Policy detected' 'good' '' $lapsEvidence
+} else {
+  Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence
+}
+
+# 13. UAC
+$enableLua = ConvertTo-NullableInt $uacMap['EnableLUA']
+$consentPrompt = ConvertTo-NullableInt $uacMap['ConsentPromptBehaviorAdmin']
+$secureDesktop = ConvertTo-NullableInt $uacMap['PromptOnSecureDesktop']
+$uacEvidence = ($uacMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -and ($consentPrompt -eq $null -or $consentPrompt -ge 2)) {
+  Add-SecurityHeuristic 'UAC' 'Secure' 'good' '' $uacEvidence
+} else {
+  $issues = @()
+  if ($enableLua -ne 1) { $issues += 'EnableLUA=0' }
+  if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $issues += "ConsentPrompt=$consentPrompt" }
+  if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $issues += 'PromptOnSecureDesktop=0' }
+  $detail = if ($issues.Count -gt 0) { $issues -join '; ' } else { 'UAC configuration unclear.' }
+  Add-SecurityHeuristic 'UAC' 'Weakened' 'warning' $detail $uacEvidence
+  Add-Issue 'medium' 'Security/UAC' ('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail) $uacEvidence
+}
+
+# 14. PowerShell logging & AMSI
+$psLoggingData = ConvertFrom-JsonSafe $raw['security_pslogging']
+$scriptBlockEnabled = $false
+$moduleLoggingEnabled = $false
+$transcriptionEnabled = $false
+$psLoggingEvidenceLines = @()
+if ($psLoggingData -and -not $psLoggingData.PSObject.Properties['Status']) {
+  foreach ($prop in $psLoggingData.PSObject.Properties) {
+    $entry = $psLoggingData.$($prop.Name)
+    if (-not $entry) { continue }
+    if ($prop.Name -match 'ScriptBlockLogging') {
+      if ($entry.PSObject.Properties['EnableScriptBlockLogging']) {
+        $scriptBlockEnabled = ((ConvertTo-NullableInt $entry.EnableScriptBlockLogging) -eq 1)
+        $psLoggingEvidenceLines += "EnableScriptBlockLogging: $($entry.EnableScriptBlockLogging)"
+      }
+    }
+    if ($prop.Name -match 'ModuleLogging') {
+      if ($entry.PSObject.Properties['EnableModuleLogging']) {
+        $moduleLoggingEnabled = ((ConvertTo-NullableInt $entry.EnableModuleLogging) -eq 1)
+        $psLoggingEvidenceLines += "EnableModuleLogging: $($entry.EnableModuleLogging)"
+      }
+    }
+    if ($prop.Name -match 'Transcription') {
+      if ($entry.PSObject.Properties['EnableTranscripting']) {
+        $transcriptionEnabled = ((ConvertTo-NullableInt $entry.EnableTranscripting) -eq 1)
+        $psLoggingEvidenceLines += "EnableTranscripting: $($entry.EnableTranscripting)"
+      }
+    }
+  }
+}
+if ($psLoggingEvidenceLines.Count -eq 0 -and $psLoggingData -and $psLoggingData.PSObject.Properties['Status']) {
+  $psLoggingEvidenceLines += $psLoggingData.Status
+}
+$psLoggingEvidence = $psLoggingEvidenceLines -join "`n"
+if ($scriptBlockEnabled -and $moduleLoggingEnabled) {
+  Add-SecurityHeuristic 'PowerShell logging' 'Script block & module logging enabled' 'good' '' $psLoggingEvidence
+} else {
+  $detailParts = @()
+  if (-not $scriptBlockEnabled) { $detailParts += 'Script block logging disabled' }
+  if (-not $moduleLoggingEnabled) { $detailParts += 'Module logging disabled' }
+  if (-not $transcriptionEnabled) { $detailParts += 'Transcription not enabled' }
+  $detail = if ($detailParts.Count -gt 0) { $detailParts -join '; ' } else { 'Logging state unknown.' }
+  Add-SecurityHeuristic 'PowerShell logging' 'Insufficient logging' 'warning' $detail $psLoggingEvidence
+  Add-Issue 'medium' 'Security/PowerShellLogging' ('PowerShell logging is incomplete ({0}). Enable required logging for auditing.' -f $detail) $psLoggingEvidence
+}
+
+# 15. NTLM / LDAP hardening
+$ldapClientIntegrity = ConvertTo-NullableInt $ldapMap['LDAPClientIntegrity']
+$ldapChannelBinding = ConvertTo-NullableInt $ldapMap['LdapEnforceChannelBinding']
+$ldapServerIntegrity = ConvertTo-NullableInt $ldapMap['LDAPServerIntegrity']
+$ldapEvidence = ($ldapMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+$ldapSigningOk = ($ldapClientIntegrity -ge 1) -or ($ldapServerIntegrity -ge 1)
+$channelBindingOk = ($ldapChannelBinding -ge 1)
+if ($isDomainJoinedProfile) {
+  if ($ldapSigningOk -and $channelBindingOk -and $ntlmRestricted) {
+    Add-SecurityHeuristic 'LDAP/NTLM hardening' 'Policies enforced' 'good' '' $ldapEvidence
+  } else {
+    $hardeningDetails = @()
+    if (-not $ldapSigningOk) { $hardeningDetails += 'LDAP signing not required' }
+    if (-not $channelBindingOk) { $hardeningDetails += 'LDAP channel binding not enforced' }
+    if (-not $ntlmRestricted) { $hardeningDetails += 'NTLM restrictions absent' }
+    $detailText = if ($hardeningDetails.Count -gt 0) { $hardeningDetails -join '; ' } else { 'Hardening gaps detected.' }
+    Add-SecurityHeuristic 'LDAP/NTLM hardening' 'Gaps detected' 'bad' $detailText ($ldapEvidence + "`n" + $ntlmEvidence)
+    Add-Issue 'high' 'Security/LDAPNTLM' ('LDAP/NTLM hardening not enforced ({0}). Configure signing, channel binding, and NTLM controls.' -f $detailText) ($ldapEvidence + "`n" + $ntlmEvidence)
+  }
+} else {
+  Add-SecurityHeuristic 'LDAP/NTLM hardening' 'Not domain joined' 'info' '' $ldapEvidence
+}
+
+# 16. DHCP server ranges
+$dhcpServers = @()
+if ($raw['ipconfig']) {
+  foreach ($line in [regex]::Split($raw['ipconfig'],'\r?\n')) {
+    $match = [regex]::Match($line,'(?i)DHCP Server\s*[^:]*:\s*([0-9\.]+)')
+    if ($match.Success) {
+      $address = $match.Groups[1].Value.Trim()
+      if ($address) { $dhcpServers += $address }
+    }
+  }
+}
+$publicDhcp = @()
+foreach ($server in $dhcpServers) {
+  if (-not (Test-IsRFC1918 $server)) { $publicDhcp += $server }
+}
+if ($publicDhcp.Count -gt 0) {
+  $evidence = 'DHCP Servers: ' + ($dhcpServers -join ', ')
+  Add-SecurityHeuristic 'DHCP servers' ('Public DHCP detected: ' + ($publicDhcp -join ', ')) 'bad' '' $evidence
+  Add-Issue 'high' 'Security/DHCP' ('Non-private DHCP servers detected: {0}. Investigate rogue DHCP sources.' -f ($publicDhcp -join ', ')) $evidence
+} elseif ($dhcpServers.Count -gt 0) {
+  $evidence = 'DHCP Servers: ' + ($dhcpServers -join ', ')
+  Add-SecurityHeuristic 'DHCP servers' ('Private DHCP: ' + ($dhcpServers -join ', ')) 'good' '' $evidence
+} else {
+  Add-SecurityHeuristic 'DHCP servers' 'No DHCP servers detected' 'info' '' ''
+}
+
+# 17-19. Office macro protections
+if ($macroSecurityStatus.Count -gt 0) {
+  $allBlock = ($macroSecurityStatus | Where-Object { $_.BlockEnforced })
+  $allStrict = ($macroSecurityStatus | Where-Object { $_.WarningsStrict })
+  $allPvGood = ($macroSecurityStatus | Where-Object { $_.ProtectedViewGood })
+  $blockOk = ($allBlock.Count -eq $macroSecurityStatus.Count)
+  $warnOk = ($allStrict.Count -eq $macroSecurityStatus.Count)
+  $pvOk = ($allPvGood.Count -eq $macroSecurityStatus.Count)
+  $blockEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: Block={1}" -f $_.App, $_.BlockEnforced }) -join "`n"
+  $warnEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: WarningsStrict={1}" -f $_.App, $_.WarningsStrict }) -join "`n"
+  $pvEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: ProtectedViewGood={1}" -f $_.App, $_.ProtectedViewGood }) -join "`n"
+  Add-SecurityHeuristic 'Office MOTW macro blocking' (if ($blockOk) { 'Enforced' } else { 'Gaps detected' }) (if ($blockOk) { 'good' } else { 'warning' }) '' $blockEvidence
+  Add-SecurityHeuristic 'Office macro notifications' (if ($warnOk) { 'Strict' } else { 'Allows macros' }) (if ($warnOk) { 'good' } else { 'warning' }) '' $warnEvidence
+  Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence
+} else {
+  Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' ''
+  Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' ''
+  Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' ''
+}
+
+# 20. BitLocker recovery key escrow
+$bitlockerText = $raw['bitlocker']
+if ($bitlockerText) {
+  $recoveryMatch = [regex]::Matches($bitlockerText,'(?im)^\s*Key\s*Protector\s*Type\s*:\s*RecoveryPassword')
+  $recoveryCount = $recoveryMatch.Count
+  $bitlockerEvidence = Get-TopLines $bitlockerText 40
+  if ($recoveryCount -gt 0) {
+    Add-SecurityHeuristic 'BitLocker recovery key' ('Recovery passwords present (' + $recoveryCount + ')') 'good' '' $bitlockerEvidence
+  } else {
+    Add-SecurityHeuristic 'BitLocker recovery key' 'Recovery password not detected' 'warning' 'Ensure recovery keys are escrowed to AD/Azure AD.' $bitlockerEvidence
+    Add-Issue 'medium' 'Security/BitLockerRecovery' 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' $bitlockerEvidence
+  }
+} else {
+  Add-SecurityHeuristic 'BitLocker recovery key' 'Not captured' 'warning' 'BitLocker output missing.' ''
 }
 
 # crucial services snapshot
@@ -2974,6 +3853,68 @@ $servicesCardHtml = @"
 </details>
 "@.Trim()
 
+$securityBadgeMap = @{
+  good     = @{ Class = 'report-badge--good';     Label = 'GOOD' }
+  info     = @{ Class = 'report-badge--ok';       Label = 'INFO' }
+  warning  = @{ Class = 'report-badge--warning';  Label = 'WARNING' }
+  bad      = @{ Class = 'report-badge--bad';      Label = 'BAD' }
+  critical = @{ Class = 'report-badge--critical'; Label = 'CRITICAL' }
+}
+
+$securityRows = ''
+$overallSecurityHealth = 'good'
+foreach ($entry in $securityHeuristics) {
+  if (-not $entry) { continue }
+  $overallSecurityHealth = Get-WorstSecurityHealth $overallSecurityHealth $entry.Health
+  $healthKey = Normalize-SecurityHealth $entry.Health
+  $badgeMeta = if ($securityBadgeMap.ContainsKey($healthKey)) { $securityBadgeMap[$healthKey] } else { $securityBadgeMap['info'] }
+  $nameHtml = Encode-Html $entry.Name
+  $statusHtml = Encode-Html $entry.Status
+  $detailsValue = if ($null -ne $entry.Details) { $entry.Details } else { '' }
+  $detailsHtml = Encode-Html $detailsValue
+  if ($entry.Evidence) {
+    $evidenceHtml = Encode-Html $entry.Evidence
+    $detailsHtml += "<br><details class='report-details'><summary>Evidence</summary><pre class='report-pre'>$evidenceHtml</pre></details>"
+  }
+  $badgeHtml = "<span class='report-badge {0}'>{1}</span>" -f $badgeMeta.Class, (Encode-Html $badgeMeta.Label)
+  $securityRows += "<tr><td class='security-control-cell'>$nameHtml</td><td class='security-status-cell'>$statusHtml</td><td class='security-health-cell'>$badgeHtml</td><td class='security-details-cell'>$detailsHtml</td></tr>"
+}
+
+if (-not $securityRows) {
+  $securityBodyContent = "<div class='report-card'><i>No security heuristics recorded.</i></div>"
+} else {
+  $securityBodyContent = "<table class='report-table report-table--security' cellspacing='0' cellpadding='0'><tr><th>Control</th><th>Status</th><th>Health</th><th>Details</th></tr>$securityRows</table>"
+}
+
+$normalizedOverall = Normalize-SecurityHealth $overallSecurityHealth
+switch ($normalizedOverall) {
+  'critical' { $securityCardClass = 'critical'; $securityBadgeClass = 'critical'; $securityBadgeLabel = 'CRITICAL' }
+  'bad'      { $securityCardClass = 'bad';      $securityBadgeClass = 'bad';      $securityBadgeLabel = 'BAD' }
+  'warning'  { $securityCardClass = 'warning';  $securityBadgeClass = 'warning';  $securityBadgeLabel = 'WARNING' }
+  default    { $securityCardClass = 'good';     $securityBadgeClass = 'good';     $securityBadgeLabel = 'GOOD' }
+}
+
+$securityCardHtml = @"
+<details class='report-card report-card--$securityCardClass' open='open'>
+  <summary>
+    <span class='report-badge report-badge--$securityBadgeClass'>$securityBadgeLabel</span>
+    <span class='report-card__summary-text'><strong>Security Baseline Heuristics</strong></span>
+  </summary>
+  <div class='report-card__body'>$securityBodyContent</div>
+</details>
+"@.Trim()
+
+$baselineCards = ''
+if ($securityCardHtml) { $baselineCards += $securityCardHtml }
+if ($servicesCardHtml) {
+  if ($baselineCards) { $baselineCards += "" }
+  $baselineCards += $servicesCardHtml
+}
+if (-not $baselineCards) {
+  $baselineCards = "<div class='report-card'><i>No baseline snapshots available.</i></div>"
+}
+$baselineHtml = New-ReportSection -Title 'Baseline Snapshots' -ContentHtml $baselineCards -Open
+
 # Failed report summary
 $failedReports = New-Object System.Collections.Generic.List[pscustomobject]
 foreach($key in $files.Keys){
@@ -3328,5 +4269,5 @@ $tail = "</body></html>"
 # Write and return path
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $baselineHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
