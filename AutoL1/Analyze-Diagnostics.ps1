@@ -534,6 +534,7 @@ $files = [ordered]@{
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
   computerinfo   = Find-ByContent @('ComputerInfo')              @('CsName\s*:','WindowsBuildLabEx\s*:')
+  power_settings = Find-ByContent @('Power_Settings','PowerSettings','PowerCfg') @('HiberbootEnabled','Fast Startup','powercfg /a')
 
   nic_configs    = Find-ByContent @('NetworkAdapterConfigs')     @('Win32_NetworkAdapterConfiguration')
   netip          = Find-ByContent @('NetIPAddresses','NetIP')    @('IPAddress','InterfaceIndex')
@@ -826,6 +827,61 @@ if ($secureBootState) {
 } elseif ($computerInfoText -and $uefiStatus -eq $true) {
   $secureBootEvidenceText = $firmwareEvidenceText
   Add-Issue "low" "System/Secure Boot" "Secure Boot state not reported despite UEFI firmware." $secureBootEvidenceText
+}
+
+$fastStartupState = $null
+$fastStartupEvidenceLines = @()
+if ($raw['power_settings']) {
+  $powerSettingsText = $raw['power_settings']
+  $hiberMatch = [regex]::Match($powerSettingsText,'(?im)^\s*HiberbootEnabled\s*[:=]\s*(.+)$')
+  if ($hiberMatch.Success) {
+    $hiberValueText = $hiberMatch.Groups[1].Value.Trim()
+    if ($hiberValueText) { $fastStartupEvidenceLines += $hiberMatch.Value.Trim() }
+    $fastStartupState = Get-BoolFromString -Value $hiberValueText
+    if ($fastStartupState -eq $null) {
+      $numericMatch = [regex]::Match($hiberValueText,'0x[0-9a-fA-F]+|\d+')
+      if ($numericMatch.Success) {
+        $numericText = $numericMatch.Value
+        try {
+          if ($numericText -match '^0x') {
+            $fastStartupState = ([Convert]::ToInt32($numericText.Substring(2),16) -ne 0)
+          } else {
+            $fastStartupState = ([int]$numericText -ne 0)
+          }
+        } catch {
+          $fastStartupState = $null
+        }
+      }
+    }
+  } elseif ($powerSettingsText -match '(?i)value not present') {
+    $fastStartupEvidenceLines += 'HiberbootEnabled value not present.'
+  }
+
+  $fastStartupLines = [regex]::Matches($powerSettingsText,'(?im)^.*Fast Startup.*$')
+  foreach ($lineMatch in $fastStartupLines) {
+    $lineValue = $lineMatch.Value.Trim()
+    if ($lineValue) { $fastStartupEvidenceLines += $lineValue }
+  }
+}
+
+if ($fastStartupState -ne $null) {
+  $summary.FastStartupEnabled = $fastStartupState
+}
+
+if ($fastStartupState -eq $true) {
+  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  if (-not $fastStartupEvidence) { $fastStartupEvidence = 'HiberbootEnabled value indicates Fast Startup enabled.' }
+  Add-Issue "medium" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
+} elseif ($fastStartupState -eq $false) {
+  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  if ($fastStartupEvidence) {
+    Add-Normal "System/Fast Startup" "Fast Startup disabled" $fastStartupEvidence
+  }
+} elseif ($raw['power_settings']) {
+  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  if ($fastStartupEvidence) {
+    Add-Issue "low" "System/Fast Startup" "Unable to determine Fast Startup (Fast Boot) state from available data." $fastStartupEvidence
+  }
 }
 
 if ($raw['dsreg']){
@@ -2595,6 +2651,12 @@ $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
 $ipv4Html = Encode-Html ($summary.IPv4)
 $gatewayHtml = Encode-Html ($summary.Gateway)
 $dnsHtml = Encode-Html ($summary.DNS)
+$fastStartupDisplay = if ($summary.ContainsKey('FastStartupEnabled') -and $summary.FastStartupEnabled -ne $null) {
+  if ($summary.FastStartupEnabled) { 'Enabled' } else { 'Disabled' }
+} else {
+  'Unknown'
+}
+$fastStartupHtml = Encode-Html $fastStartupDisplay
 
 $sumTable = @"
 <h1>Device Health Report</h1>
@@ -2612,6 +2674,7 @@ $sumTable = @"
     <tr><td>Device State</td><td>$deviceStateHtml</td></tr>
     <tr><td>OS</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
+    <tr><td>Fast Startup (Fast Boot)</td><td>$fastStartupHtml</td></tr>
     <tr><td>IPv4</td><td>$ipv4Html</td></tr>
     <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
     <tr><td>DNS</td><td>$dnsHtml</td></tr>
