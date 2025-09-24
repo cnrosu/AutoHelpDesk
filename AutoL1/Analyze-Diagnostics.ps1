@@ -877,7 +877,7 @@ function Encode-Html([string]$s){
   }
 }
 
-$reportName = "AutoL1_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
+$reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
 
 # CSS: literal here-string (no expansion); closing '@ on column 1
@@ -904,7 +904,7 @@ table.list td, table.list th{padding:6px 10px;border:1px solid #ddd}
 </style>
 '@
 
-$head = '<!doctype html><html><head><meta charset="utf-8"><title>Auto L1 Device Report</title>' + $css + '</head><body>'
+$head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title>' + $css + '</head><body>'
 
 # Expanding here-string for summary (variables expand); closing "@ at column 1
 $serverDisplayValue = if ($summary.IsServer -eq $true) {
@@ -935,7 +935,7 @@ if ($summary.UptimeStatus) {
 }
 
 $sumTable = @"
-<h1>Auto L1 Device Report</h1>
+<h1>Device Health Report</h1>
 <div class='card'>
   <div>
     <span class='badge'>Score: <b>$score/100</b></span>
@@ -1014,7 +1014,7 @@ $debugHtml = "<details><summary>Debug</summary><div class='card'><b>Files map</b
 $tail = "</body></html>"
 
 # Write and return path
-$reportName = "AutoL1_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
+$reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
 ($head + $sumTable + $foundHtml + $goodHtml + $issuesHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
