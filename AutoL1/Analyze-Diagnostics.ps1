@@ -1567,25 +1567,112 @@ if ($failedReports.Count -eq 0){
 }
 $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
 
+function Get-NormalCategory {
+  param(
+    [string]$Area
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Area)) {
+    return 'Hardware'
+  }
+
+  $prefix = ($Area -split '/')[0]
+  if ([string]::IsNullOrWhiteSpace($prefix)) {
+    $prefix = $Area
+  }
+
+  $trimmed = $prefix.Trim()
+
+  switch -Regex ($trimmed) {
+    '^(?i)(outlook|office)$' { return 'Office' }
+    '^(?i)(network|dns)$'    { return 'Network' }
+    '^(?i)security$'         { return 'Security' }
+    '^(?i)(storage|os|events|services|scheduled tasks)$' { return 'Hardware' }
+    default { return 'Hardware' }
+  }
+}
+
+function New-GoodCardHtml {
+  param(
+    [pscustomobject]$Entry
+  )
+
+  $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'good' }
+  $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } else { 'GOOD' }
+  $badgeHtml = Encode-Html $badgeText
+  $areaHtml = Encode-Html $Entry.Area
+  $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
+  $messageHtml = Encode-Html $messageValue
+  $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
+  $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
+
+  $cardHtml = "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+
+  if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
+    $evidenceHtml = Encode-Html $Entry.Evidence
+    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>{0}</pre></div>" -f $evidenceHtml
+  }
+
+  $cardHtml += "</details>"
+  return $cardHtml
+}
+
 # Issues
 $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $goodCards = ''
-  foreach($g in $normals){
-    $cardClass = if ($g.CssClass) { $g.CssClass } else { 'good' }
-    $badgeText = if ($g.BadgeText) { $g.BadgeText } else { 'GOOD' }
-    $badgeHtml = Encode-Html $badgeText
-    $areaHtml = Encode-Html $($g.Area)
-    $messageHtml = Encode-Html $($g.Message)
-    $hasMessage = -not [string]::IsNullOrWhiteSpace($g.Message)
-    $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
-    $goodCards += "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
-    if ($g.Evidence){ $goodCards += "<div class='report-card__body'><pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre></div>" }
-    $goodCards += "</details>"
+  $categoryOrder = @('Office','Network','Hardware','Security')
+  $categorized = [ordered]@{}
+
+  foreach ($category in $categoryOrder) {
+    $categorized[$category] = New-Object System.Collections.Generic.List[string]
   }
-  $goodContent = $goodCards
+
+  foreach ($entry in $normals){
+    $category = Get-NormalCategory -Area $entry.Area
+    if (-not $categorized.Contains($category)) {
+      $categorized[$category] = New-Object System.Collections.Generic.List[string]
+    }
+    $categorized[$category].Add((New-GoodCardHtml -Entry $entry))
+  }
+
+  $firstNonEmpty = $null
+  foreach ($category in $categoryOrder) {
+    if ($categorized.Contains($category) -and $categorized[$category].Count -gt 0) {
+      $firstNonEmpty = $category
+      break
+    }
+  }
+  if (-not $firstNonEmpty) { $firstNonEmpty = $categoryOrder[0] }
+
+  $tabName = 'good-tabs'
+  $goodTabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+  $index = 0
+
+  foreach ($category in $categoryOrder) {
+    if (-not $categorized.Contains($category)) { continue }
+
+    $cardsList = $categorized[$category]
+    $count = $cardsList.Count
+    $slug = [regex]::Replace($category.ToLowerInvariant(), '[^a-z0-9]+', '-')
+    $slug = [regex]::Replace($slug, '^-+|-+$', '')
+    if (-not $slug) { $slug = "cat$index" }
+
+    $tabId = "{0}-{1}" -f $tabName, $slug
+    $checkedAttr = if ($category -eq $firstNonEmpty) { " checked='checked'" } else { '' }
+    $labelText = "{0} ({1})" -f $category, $count
+    $labelHtml = Encode-Html $labelText
+    $panelContent = if ($count -gt 0) { ($cardsList -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
+
+    $goodTabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
+    $goodTabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelHtml
+    $goodTabs += "<div class='report-tabs__panel'>$panelContent</div>"
+    $index++
+  }
+
+  $goodTabs += "</div></div>"
+  $goodContent = $goodTabs
 }
 $goodHtml = New-ReportSection -Title $goodTitle -ContentHtml $goodContent -Open
 
