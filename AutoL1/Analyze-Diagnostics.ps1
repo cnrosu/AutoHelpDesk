@@ -2006,31 +2006,31 @@ foreach ($svc in $serviceDefinitions) {
     $statusDisplay = "$statusDisplay (Trigger Start)"
   }
 
-  $evidence = if ($evidenceParts.Count -gt 0) { $evidenceParts -join "`n`n" } else { '' }
   $combinedNotes = if ($noteParts.Count -gt 0) { ($noteParts -join ' ') } else { '' }
   $noteForOutput = if (-not [string]::IsNullOrWhiteSpace($combinedNotes)) { $combinedNotes } else { 'None recorded.' }
 
-  if ($isHealthy) {
-    $normalDetails = New-Object System.Collections.Generic.List[string]
-    $statusValue = if (-not [string]::IsNullOrWhiteSpace($statusDisplay)) { $statusDisplay } else { 'Unknown' }
-    [void]$normalDetails.Add("Status: $statusValue")
-    $startValue = if (-not [string]::IsNullOrWhiteSpace($startDisplayForTable)) { $startDisplayForTable } else { 'Unknown' }
-    [void]$normalDetails.Add("Start Type: $startValue")
-    [void]$normalDetails.Add("Notes: $noteForOutput")
+  $statusValue = if (-not [string]::IsNullOrWhiteSpace($statusDisplay)) { $statusDisplay } else { 'Unknown' }
+  $startValue = if (-not [string]::IsNullOrWhiteSpace($startDisplayForTable)) { $startDisplayForTable } else { 'Unknown' }
+  $detailLines = New-Object System.Collections.Generic.List[string]
+  [void]$detailLines.Add("Status: $statusValue")
+  [void]$detailLines.Add("Start Type: $startValue")
+  [void]$detailLines.Add("Notes: $noteForOutput")
 
-    if ($evidenceParts.Count -gt 0) {
-      [void]$normalDetails.Add('')
-      foreach ($part in $evidenceParts) {
-        if (-not [string]::IsNullOrWhiteSpace($part)) {
-          [void]$normalDetails.Add($part)
-        }
+  if ($evidenceParts.Count -gt 0) {
+    [void]$detailLines.Add('')
+    foreach ($part in $evidenceParts) {
+      if (-not [string]::IsNullOrWhiteSpace($part)) {
+        [void]$detailLines.Add($part)
       }
     }
+  }
 
-    $normalEvidence = $normalDetails -join "`n"
-    Add-Normal 'Services' $svc.Display $normalEvidence
+  $serviceDetailsBlock = $detailLines -join "`n"
+
+  if ($isHealthy) {
+    Add-Normal 'Services' $svc.Display $serviceDetailsBlock
   } elseif ($issueSeverity -and $issueMessage) {
-    Add-Issue $issueSeverity 'Services' $issueMessage $evidence
+    Add-Issue $issueSeverity 'Services' $issueMessage $serviceDetailsBlock
   }
 
   $serviceEvaluations.Add([pscustomobject]@{
