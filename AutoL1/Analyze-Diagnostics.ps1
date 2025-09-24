@@ -1523,7 +1523,7 @@ $serviceEvaluations = New-Object System.Collections.Generic.List[pscustomobject]
 $isWorkstationProfile = ($summary.IsServer -ne $true)
 
 foreach ($svc in $serviceDefinitions) {
-  $goodMessage = $null
+  $isHealthy = $false
   $issueSeverity = $null
   $issueMessage = $null
   $tag = 'info'
@@ -1534,6 +1534,10 @@ foreach ($svc in $serviceDefinitions) {
   $normalizedStatus = 'unknown'
   $normalizedStart = 'unknown'
   $startDisplayForTable = 'Unknown'
+  $noteParts = @()
+  if (-not [string]::IsNullOrWhiteSpace($svc.Note)) {
+    $noteParts += $svc.Note
+  }
 
   if ($servicesTextAvailable) {
     if ($serviceSnapshot.ContainsKey($svc.Name)) {
@@ -1561,7 +1565,7 @@ foreach ($svc in $serviceDefinitions) {
       'WSearch' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           if ($isAutomatic) {
             $tag = 'bad'
@@ -1585,7 +1589,7 @@ foreach ($svc in $serviceDefinitions) {
       'Dnscache' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           $tag = 'critical'
           $issueSeverity = 'critical'
@@ -1605,7 +1609,7 @@ foreach ($svc in $serviceDefinitions) {
       'NlaSvc' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           if ($isAutomatic) {
             $tag = 'bad'
@@ -1629,7 +1633,7 @@ foreach ($svc in $serviceDefinitions) {
       'LanmanWorkstation' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           $tag = 'bad'
           $issueSeverity = 'high'
@@ -1643,7 +1647,7 @@ foreach ($svc in $serviceDefinitions) {
       'RpcSs' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           $tag = 'critical'
           $issueSeverity = 'critical'
@@ -1657,7 +1661,7 @@ foreach ($svc in $serviceDefinitions) {
       'RpcEptMapper' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           $tag = 'critical'
           $issueSeverity = 'critical'
@@ -1681,12 +1685,13 @@ foreach ($svc in $serviceDefinitions) {
 
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           if ($isManual) {
             if ($systemHasProxy -eq $false) {
               $tag = 'good'
-              $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable — no proxy configured)"
+              $isHealthy = $true
+              $noteParts += 'No system proxy detected; manual trigger start is expected.'
             } elseif ($systemHasProxy -eq $true) {
               $tag = 'warning'
               $issueSeverity = 'medium'
@@ -1718,7 +1723,7 @@ foreach ($svc in $serviceDefinitions) {
       'BITS' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           if ($isAutomatic) {
             $tag = 'bad'
@@ -1742,7 +1747,7 @@ foreach ($svc in $serviceDefinitions) {
       'ClickToRunSvc' {
         if ($normalizedStatus -eq 'running') {
           $tag = 'good'
-          $goodMessage = "Service: $($svc.Display) running ($startDisplayForTable)"
+          $isHealthy = $true
         } else {
           if ($isAutomatic) {
             $tag = 'bad'
@@ -1764,14 +1769,33 @@ foreach ($svc in $serviceDefinitions) {
     }
   }
 
-  $evidence = if ($evidenceParts.Count -gt 0) { $evidenceParts -join "`n`n" } else { '' }
-
   if ($svc.Name -eq 'WinHttpAutoProxySvc' -and $tag -eq 'good' -and $normalizedStatus -ne 'running' -and $statusDisplay -and $statusDisplay -notmatch '(?i)trigger') {
     $statusDisplay = "$statusDisplay (Trigger Start)"
   }
 
-  if ($goodMessage) {
-    Add-Normal 'Services' $goodMessage ''
+  $evidence = if ($evidenceParts.Count -gt 0) { $evidenceParts -join "`n`n" } else { '' }
+  $combinedNotes = if ($noteParts.Count -gt 0) { ($noteParts -join ' ') } else { '' }
+  $noteForOutput = if (-not [string]::IsNullOrWhiteSpace($combinedNotes)) { $combinedNotes } else { 'None recorded.' }
+
+  if ($isHealthy) {
+    $normalDetails = New-Object System.Collections.Generic.List[string]
+    $statusValue = if (-not [string]::IsNullOrWhiteSpace($statusDisplay)) { $statusDisplay } else { 'Unknown' }
+    [void]$normalDetails.Add("Status: $statusValue")
+    $startValue = if (-not [string]::IsNullOrWhiteSpace($startDisplayForTable)) { $startDisplayForTable } else { 'Unknown' }
+    [void]$normalDetails.Add("Start Type: $startValue")
+    [void]$normalDetails.Add("Notes: $noteForOutput")
+
+    if ($evidenceParts.Count -gt 0) {
+      [void]$normalDetails.Add('')
+      foreach ($part in $evidenceParts) {
+        if (-not [string]::IsNullOrWhiteSpace($part)) {
+          [void]$normalDetails.Add($part)
+        }
+      }
+    }
+
+    $normalEvidence = $normalDetails -join "`n"
+    Add-Normal 'Services' $svc.Display $normalEvidence
   } elseif ($issueSeverity -and $issueMessage) {
     Add-Issue $issueSeverity 'Services' $issueMessage $evidence
   }
@@ -1782,7 +1806,7 @@ foreach ($svc in $serviceDefinitions) {
     Status      = $statusDisplay
     StartType   = $startDisplayForTable
     Tag         = $tag
-    Note        = $svc.Note
+    Note        = $noteForOutput
   })
 }
 
@@ -2419,13 +2443,6 @@ if ($normals.Count -eq 0){
       $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
     $categorized[$category].Add((New-GoodCardHtml -Entry $entry))
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($servicesCardHtml)) {
-    if (-not $categorized.Contains('Services')) {
-      $categorized['Services'] = New-Object System.Collections.Generic.List[string]
-    }
-    $categorized['Services'].Insert(0, $servicesCardHtml)
   }
 
   $firstNonEmpty = $null
