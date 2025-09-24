@@ -38,6 +38,19 @@ function Find-ByContent([string[]]$nameHints, [string[]]$needles) {
   return $null
 }
 
+function Convert-SizeToGB {
+  param(
+    [double]$Value,
+    [string]$Unit
+  )
+  if (-not $Unit) { return $Value }
+  switch ($Unit.ToUpper()) {
+    'TB' { return $Value * 1024 }
+    'MB' { return $Value / 1024 }
+    default { return $Value }
+  }
+}
+
 # map logical keys → discovered files
 $files = [ordered]@{
   ipconfig       = Find-ByContent @('ipconfig_all')              @('Windows IP Configuration')
@@ -115,6 +128,16 @@ function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence="")
   })
 }
 
+# healthy findings
+$normals = New-Object System.Collections.Generic.List[pscustomobject]
+function Add-Normal([string]$area,[string]$msg,[string]$evidence=""){
+  $normals.Add([pscustomobject]@{
+    Area     = $area
+    Message  = $msg
+    Evidence = if($evidence){ $evidence.Substring(0,[Math]::Min(800,$evidence.Length)) } else { "" }
+  })
+}
+
 # ---------- parsers ----------
 $summary = @{}
 $summary.Folder = (Resolve-Path $InputFolder).Path
@@ -138,6 +161,26 @@ if (-not $summary.LastBoot -and $raw['os_cim']){
   $m = [regex]::Match($raw['os_cim'],'LastBootUpTime\s*:\s*(.+)'); if ($m.Success){ $summary.LastBoot = $m.Groups[1].Value.Trim() }
 }
 
+$uptimeThresholdDays = 30
+if ($summary.LastBoot){
+  $bootDt = $null
+  if ($summary.LastBoot -match '^\d{14}\.\d{6}[-+]\d{3}$'){
+    try { $bootDt = [System.Management.ManagementDateTimeConverter]::ToDateTime($summary.LastBoot) } catch {}
+  }
+  if (-not $bootDt){
+    $parsedBoot = $null
+    if ([datetime]::TryParse($summary.LastBoot, [ref]$parsedBoot)) { $bootDt = $parsedBoot }
+  }
+  if ($bootDt){
+    $uptimeDays = (New-TimeSpan -Start $bootDt -End (Get-Date)).TotalDays
+    if ($uptimeDays -le $uptimeThresholdDays){
+      Add-Normal "OS/Uptime" ("Uptime reasonable ({0} days)" -f [math]::Round($uptimeDays,1)) $summary.LastBoot
+    }
+  } else {
+    Add-Normal "OS/Uptime" "Last boot captured" $summary.LastBoot
+  }
+}
+
 # ipconfig
 if ($raw['ipconfig']){
   $ipv4s = [regex]::Matches($raw['ipconfig'],'IPv4 Address[^\d]*([\d\.]+)') | ForEach-Object { $_.Groups[1].Value }
@@ -157,12 +200,29 @@ if ($raw['ipconfig']){
   if ($dns | Where-Object { $public -contains $_ }) {
     Add-Issue "medium" "DNS" "Public DNS in use — fine at home; breaks AD in corp environments." ($dns -join ", ")
   }
+
+  if ($ipv4s -and -not ($ipv4s | Where-Object { $_ -like "169.254.*" })) {
+    Add-Normal "Network/IP" "IPv4 address acquired" ("IPv4: " + (($ipv4s | Select-Object -Unique) -join ", "))
+  }
+  if ($gws) {
+    Add-Normal "Network/Routing" "Default gateway present" ("GW: " + (($gws | Select-Object -Unique) -join ", "))
+  }
+  if ($dns) {
+    Add-Normal "Network/DNS" "DNS servers configured" ("DNS: " + (($dns | Select-Object -Unique) -join ", "))
+  }
 }
 
 # route
 if ($raw['route']){
-  if (-not ([regex]::IsMatch($raw['route'],'\s0\.0\.0\.0\s+0\.0\.0\.0\s+\d+\.\d+\.\d+\.\d+'))) {
+  $hasDefault = [regex]::IsMatch($raw['route'],'\s0\.0\.0\.0\s+0\.0\.0\.0\s+\d+\.\d+\.\d+\.\d+')
+  if (-not $hasDefault) {
     Add-Issue "high" "Network" "Routing table lacks a default route (0.0.0.0/0)." $raw['route']
+  }
+  if ($hasDefault) {
+    $routeLines = ([regex]::Split($raw['route'],'\r?\n') | Where-Object { $_ -match '^\s*0\.0\.0\.0\s+0\.0\.0\.0' } | Select-Object -First 2)
+    if ($routeLines){
+      Add-Normal "Network/Routing" "Default route 0.0.0.0/0 present" ($routeLines -join "`n")
+    }
   }
 }
 
@@ -170,8 +230,26 @@ if ($raw['route']){
 if ($raw['nslookup'] -and ($raw['nslookup'] -match "Request timed out|Non-existent domain")){
   Add-Issue "medium" "DNS" "nslookup shows timeouts or NXDOMAIN." $raw['nslookup']
 }
+if ($raw['nslookup'] -and $raw['nslookup'] -match "Server:\s*(.+)") {
+  Add-Normal "DNS" "DNS resolver responds" (([regex]::Split($raw['nslookup'],'\r?\n') | Select-Object -First 6) -join "`n")
+}
 if ($raw['ping'] -and ($raw['ping'] -match "Received\s*=\s*0")){
   Add-Issue "high" "Network" "Ping to 8.8.8.8 failed (0 received)." $raw['ping']
+}
+if ($raw['ping']){
+  $pingMatch = [regex]::Match($raw['ping'],'Packets:\s*Sent\s*=\s*(\d+),\s*Received\s*=\s*(\d+),\s*Lost\s*=\s*(\d+)')
+  if ($pingMatch.Success) {
+    $sent = [int]$pingMatch.Groups[1].Value
+    $rcv = [int]$pingMatch.Groups[2].Value
+    $lost = [int]$pingMatch.Groups[3].Value
+    if ($sent -gt 0 -and $lost -eq 0) {
+      $avgMatch = [regex]::Match($raw['ping'],"Average\s*=\s*(\d+)\w*")
+      $avg = $avgMatch.Groups[1].Value
+      $avgLabel = if ($avg) { " (avg $avg ms)" } else { "" }
+      $pingTail = ([regex]::Split($raw['ping'],'\r?\n') | Select-Object -Last 6) -join "`n"
+      Add-Normal "Network/ICMP" ("Ping OK" + $avgLabel) $pingTail
+    }
+  }
 }
 if ($raw['tracert'] -and ($raw['tracert'] -match "over a maximum of" -and $raw['tracert'] -notmatch "Trace complete")){
   Add-Issue "low" "Network" "Traceroute didn’t complete within hop limit (may be normal if ICMP filtered)." $raw['tracert']
@@ -183,28 +261,47 @@ if ($raw['defender']){
   $sigAge = [regex]::Match($raw['defender'],'AntispywareSignatureAge\s*:\s*(\d+)','IgnoreCase')
   if ($rt.Success -and $rt.Groups[1].Value -ieq "False"){ Add-Issue "high" "Security" "Defender real-time protection is OFF." $raw['defender'] }
   if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -gt 7){ Add-Issue "medium" "Security" "Defender signatures appear old (>7 days)." $sigAge.Value }
+
+  $rtOK = $rt.Success -and $rt.Groups[1].Value -ieq "True"
+  if ($rtOK) {
+    Add-Normal "Security/Defender" "Real-time protection ON" (([regex]::Split($raw['defender'],'\r?\n') | Select-Object -First 12) -join "`n")
+  }
+  if ($sigAge.Success -and [int]$sigAge.Groups[1].Value -le 7) {
+    Add-Normal "Security/Defender" "Signatures are recent (≤7 days)" $sigAge.Value
+  }
 } else {
   Add-Issue "info" "Security" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
 }
 
 # firewall profiles
 if ($raw['firewall']){
+  $profiles = @{}
   $blocks = ($raw['firewall'] -split "Profile Settings:")
   foreach($b in $blocks){
-    if ($b -match 'State\s*OFF'){ 
-      $nameMatch = [regex]::Match($b,'^(.*?)[\r\n]') 
-      $name = if($nameMatch.Success){ $nameMatch.Groups[1].Value.Trim() } else { "Profile" }
-      Add-Issue "medium" "Firewall" "$name profile is OFF." $b
+    if (-not $b -or -not $b.Trim()) { continue }
+    $nameMatch = [regex]::Match($b,'^(.*?)[\r\n]')
+    $pname = if($nameMatch.Success){ $nameMatch.Groups[1].Value.Trim() } else { "Profile" }
+    $isOn = ($b -match 'State\s*ON')
+    if ($pname) { $profiles[$pname] = $isOn }
+    if (-not $isOn -and $b -match 'State\s*OFF'){
+      Add-Issue "medium" "Firewall" "$pname profile is OFF." $b
     }
+  }
+  if ($profiles.Count -gt 0 -and -not ($profiles.Values -contains $false)){
+    $profileSummary = ($profiles.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, ($(if ($_.Value) {"ON"} else {"OFF"})) }) -join "; "
+    Add-Normal "Security/Firewall" "All firewall profiles ON" $profileSummary
   }
 }
 
 # services (quick)
 if ($raw['services']){
   $crit = @("Dhcp","Dnscache","WlanSvc","LanmanWorkstation","LanmanServer","WinDefend")
+  $running = @()
   foreach($svc in $crit){
     if ($raw['services'] -match "^\s*$svc\s+Stopped" ){ Add-Issue "high" "Services" "Core service stopped: $svc" "" }
+    elseif ($raw['services'] -match "^\s*$svc\s+Running") { $running += $svc }
   }
+  if ($running.Count -gt 0) { Add-Normal "Services" ("Core services running: " + ($running -join ", ")) "" }
 }
 
 # events quick counters
@@ -217,6 +314,66 @@ function Add-EventStats($txt,$name){
 }
 Add-EventStats $raw['event_system'] "System"
 Add-EventStats $raw['event_app'] "Application"
+
+function Get-EventCounts($txt){
+  if (-not $txt){ return @{E=0;W=0} }
+  return @{
+    E = ([regex]::Matches($txt,'\bError\b','IgnoreCase')).Count
+    W = ([regex]::Matches($txt,'\bWarning\b','IgnoreCase')).Count
+  }
+}
+$sysEW = Get-EventCounts $raw['event_system']
+$appEW = Get-EventCounts $raw['event_app']
+if ($sysEW.E -lt 5 -and $appEW.E -lt 5){
+  Add-Normal "Events" "Low recent error counts in System/Application" ("System: E=$($sysEW.E) W=$($sysEW.W) ; Application: E=$($appEW.E) W=$($appEW.W)")
+}
+
+# netstat summary
+if ($raw['netstat']){
+  $lstn = ([regex]::Matches($raw['netstat'],'\sLISTENING\s+\d+$','Multiline')).Count
+  if ($lstn -le 150){
+    Add-Normal "Network/Netstat" "Reasonable number of listening sockets" ("LISTENING count: " + $lstn)
+  }
+}
+
+# hotfix presence
+if ($raw['hotfixes']){
+  $hfCount = ([regex]::Matches($raw['hotfixes'],'^KB\d+','Multiline')).Count
+  if ($hfCount -gt 0){
+    Add-Normal "OS/Patching" "Hotfixes present" ("Counted KB lines: " + $hfCount)
+  }
+}
+
+# disk SMART status
+if ($raw['diskdrives'] -and -not ($raw['diskdrives'] -match 'Pred Fail|Bad|Unknown')) {
+  Add-Normal "Storage/SMART" "SMART status shows no failure indicators" (([regex]::Split($raw['diskdrives'],'\r?\n') | Select-Object -First 12) -join "`n")
+}
+
+# volume free space
+if ($raw['volumes']){
+  $healthy = @()
+  foreach($line in ([regex]::Split($raw['volumes'],'\r?\n'))){
+    $match = [regex]::Match($line,'^\s*([A-Z]):.*?(\d+(?:\.\d+)?)\s*(TB|GB|MB).*?(\d+(?:\.\d+)?)\s*(TB|GB|MB)')
+    if ($match.Success){
+      $dl = $match.Groups[1].Value
+      $sz = [double]$match.Groups[2].Value
+      $szUnit = $match.Groups[3].Value
+      $fr = [double]$match.Groups[4].Value
+      $frUnit = $match.Groups[5].Value
+      $szGB = Convert-SizeToGB -Value $sz -Unit $szUnit
+      $frGB = Convert-SizeToGB -Value $fr -Unit $frUnit
+      if ($szGB -gt 0){
+        $pct = [math]::Round(($frGB/$szGB)*100,0)
+        if ($pct -ge 20){
+          $healthy += ("{0}: {1}% free ({2} GB of {3} GB)" -f $dl, $pct, [math]::Round($frGB,1), [math]::Round($szGB,1))
+        }
+      }
+    }
+  }
+  if ($healthy.Count -gt 0){
+    Add-Normal "Storage/Free Space" "Volumes have healthy free space (≥20%)" ($healthy -join "; ")
+  }
+}
 
 # ---------- scoring ----------
 $weights = @{ critical=10; high=6; medium=3; low=1; info=0 }
@@ -291,6 +448,17 @@ foreach($r in $foundRows){ $foundHtml += "<tr><td>$(Encode-Html $($r.Key))</td><
 $foundHtml += "</table></div>"
 
 # Issues
+$goodHtml = "<h2>What Looks Good</h2>"
+if ($normals.Count -eq 0){
+  $goodHtml += '<div class="card"><i>No specific positives recorded.</i></div>'
+} else {
+  foreach($g in $normals){
+    $goodHtml += "<div class='card'><b>$(Encode-Html $($g.Area))</b>: $(Encode-Html $($g.Message))"
+    if ($g.Evidence){ $goodHtml += "<pre>$(Encode-Html $($g.Evidence))</pre>" }
+    $goodHtml += "</div>"
+  }
+}
+
 $issuesHtml = "<h2>Detected Issues</h2>"
 if ($issues.Count -eq 0){
   $issuesHtml += '<div class="card">No obvious issues detected from the provided outputs.</div>'
@@ -328,5 +496,5 @@ $tail = "</body></html>"
 # Write and return path
 $reportName = "AutoL1_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $foundHtml + $issuesHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $foundHtml + $goodHtml + $issuesHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
