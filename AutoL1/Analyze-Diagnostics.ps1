@@ -374,7 +374,20 @@ if ($summary.LastBoot){
   }
   if (-not $bootDt){
     $parsedBoot = $null
-    if ([datetime]::TryParse($summary.LastBoot, [ref]$parsedBoot)) { $bootDt = $parsedBoot }
+    foreach ($culture in @([System.Globalization.CultureInfo]::CurrentCulture, [System.Globalization.CultureInfo]::InvariantCulture)) {
+      try {
+        $parsedBoot = [datetime]::Parse($summary.LastBoot, $culture)
+        break
+      } catch {
+        $parsedBoot = $null
+      }
+    }
+    if ($parsedBoot) {
+      $now = Get-Date
+      if ($parsedBoot -le $now.AddMinutes(1)) {
+        $bootDt = $parsedBoot
+      }
+    }
   }
     if ($bootDt){
       $uptimeDays = (New-TimeSpan -Start $bootDt -End (Get-Date)).TotalDays
