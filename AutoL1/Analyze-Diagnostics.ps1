@@ -208,17 +208,17 @@ $files = [ordered]@{
   processes      = Find-ByContent @('Processes','tasklist')      @('Image Name\s+PID|====')
   drivers        = Find-ByContent @('Drivers','driverquery')     @('Driver Name|Display Name')
 
-  event_system   = Find-ByContent @('Event_System')              @('Log Name:\s*System|Provider Name=')
-  event_app      = Find-ByContent @('Event_Application')         @('Log Name:\s*Application|Provider Name=')
+  event_system   = Find-ByContent @('Event_System')              @('(?im)^\s*Log Name\s*[:=]\s*System','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
+  event_app      = Find-ByContent @('Event_Application')         @('(?im)^\s*Log Name\s*[:=]\s*Application','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
 
   firewall       = Find-ByContent @('Firewall')                  @('Windows Firewall with Advanced Security|Profile Settings')
   firewall_rules = Find-ByContent @('FirewallRules')             @('Rule Name:|DisplayName\s*:')
 
   defender       = Find-ByContent @('DefenderStatus')            @('Get-MpComputerStatus|AMProductVersion')
   shares         = Find-ByContent @('NetShares')                 @('Share name|Resource')
-  tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('Folder:\s|TaskName')
+  tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('(?im)^Folder:\s','(?im)^TaskName:\s','(?im)^HostName:\s')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
-  dsreg          = Find-ByContent @('dsregcmd_status','dsregcmd','dsreg_status','dsreg') @('AzureAdJoined','Device State','dsregcmd')
+  dsreg          = Find-ByContent @('dsregcmd_status','dsregcmd','dsreg_status','dsreg') @('AzureAdJoined','Device State','TenantName','dsregcmd')
   uptime         = Find-ByContent @('Uptime')                    @('\d{4}-\d{2}-\d{2}')
   topcpu         = Find-ByContent @('TopCPU')                    @('ProcessName|CPU')
   memory         = Find-ByContent @('Memory')                    @('TotalVisibleMemoryMB|FreePhysicalMemoryMB')
@@ -897,6 +897,35 @@ if ($sysEW.E -lt 5 -and $appEW.E -lt 5){
   Add-Normal "Events" "Low recent error counts in System/Application" ("System: E=$($sysEW.E) W=$($sysEW.W) ; Application: E=$($appEW.E) W=$($appEW.W)")
 }
 
+$eventLogLabels = @{
+  event_system = 'System'
+  event_app    = 'Application'
+}
+foreach($eventKey in $eventLogLabels.Keys){
+  $text = $raw[$eventKey]
+  if (-not $text){ continue }
+  if ($text -match '(?im)^Event\['){ continue }
+  if ($text -match '(?im)^\s*Log Name\s*[:=]'){ continue }
+  if ($text -match '(?im)^\s*Provider(?: Name)?\s*[:=]'){ continue }
+  if ($text -match '(?i)TimeCreated'){ continue }
+  if ($text -match '(?i)EventID'){ continue }
+  $lines = [regex]::Split($text,'\r?\n')
+  $snippet = ($lines | Where-Object { $_ -and $_.Trim() } | Select-Object -First 6)
+  if (-not $snippet -or $snippet.Count -eq 0){
+    $snippet = $lines | Select-Object -First 6
+  }
+  $evidence = if ($snippet) { ($snippet -join "`n").Trim() } else { '' }
+  $label = $eventLogLabels[$eventKey]
+  Add-Normal ("Events/$label") "Collected (unparsed format)" $evidence
+}
+
+if ($raw['tasks']){
+  $scheduleInfo = [regex]::Match($raw['tasks'],'(?im)^Schedule:\s*Scheduling data is not available in this format\.?')
+  if ($scheduleInfo.Success){
+    Add-Normal "Scheduled Tasks" "Contains on-demand/unscheduled entries" $scheduleInfo.Value
+  }
+}
+
 # netstat summary
 if ($raw['netstat']){
   $lstn = ([regex]::Matches($raw['netstat'],'\sLISTENING\s+\d+$','Multiline')).Count
@@ -1201,7 +1230,7 @@ foreach($key in $files.Keys){
     continue
   }
 
-  $errorLine = ([regex]::Split($rawContent,'\r?\n') | Where-Object { $_ -match '(?i)ERROR running|not present|not available|missing or failed|is not recognized|The system cannot find' } | Select-Object -First 1)
+  $errorLine = ([regex]::Split($rawContent,'\r?\n') | Where-Object { $_ -match '(?i)ERROR running|not present|missing or failed|is not recognized|The system cannot find' } | Select-Object -First 1)
   if ($errorLine){
     $failedReports.Add([pscustomobject]@{
       Key = $key
