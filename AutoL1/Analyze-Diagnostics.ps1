@@ -159,6 +159,68 @@ function Get-WinHttpProxyInfo {
   }
 }
 
+function Parse-BitLockerStatus {
+  param([string]$Text)
+
+  $entries = New-Object System.Collections.Generic.List[pscustomobject]
+  if (-not $Text) { return $entries }
+
+  $blocks = [regex]::Split($Text, '\r?\n\s*\r?\n')
+  foreach ($block in $blocks) {
+    if (-not $block) { continue }
+    $trimmed = $block.Trim()
+    if (-not $trimmed) { continue }
+
+    $mountMatch = [regex]::Match($trimmed,'(?im)^\s*Mount\s*Point\s*:\s*(.+)$')
+    if (-not $mountMatch.Success) {
+      $mountMatch = [regex]::Match($trimmed,'(?im)^\s*MountPoint\s*:\s*(.+)$')
+    }
+    if (-not $mountMatch.Success) { continue }
+
+    $volumeTypeMatch = [regex]::Match($trimmed,'(?im)^\s*Volume\s*Type\s*:\s*(.+)$')
+    $protectionMatch = [regex]::Match($trimmed,'(?im)^\s*Protection\s*Status\s*:\s*(.+)$')
+    $volumeStatusMatch = [regex]::Match($trimmed,'(?im)^\s*Volume\s*Status\s*:\s*(.+)$')
+    $encryptionMatch = [regex]::Match($trimmed,'(?im)^\s*Encryption\s*Percentage\s*:\s*(.+)$')
+
+    $mountPoint = $mountMatch.Groups[1].Value.Trim()
+    $volumeType = if ($volumeTypeMatch.Success) { $volumeTypeMatch.Groups[1].Value.Trim() } else { '' }
+    $protectionText = if ($protectionMatch.Success) { $protectionMatch.Groups[1].Value.Trim() } else { '' }
+    $volumeStatus = if ($volumeStatusMatch.Success) { $volumeStatusMatch.Groups[1].Value.Trim() } else { '' }
+
+    $protectionEnabled = $null
+    if ($protectionText) {
+      $protectionEnabled = Get-BoolFromString -Value $protectionText
+    }
+
+    $encryptionPercent = $null
+    if ($encryptionMatch.Success) {
+      $encText = $encryptionMatch.Groups[1].Value.Trim()
+      if ($encText) {
+        $normalized = ($encText -replace '[^0-9\.,]', '')
+        if ($normalized) {
+          $normalized = $normalized -replace ',', '.'
+          $parsedValue = 0.0
+          if ([double]::TryParse($normalized, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsedValue)) {
+            $encryptionPercent = $parsedValue
+          }
+        }
+      }
+    }
+
+    $entries.Add([pscustomobject]@{
+      MountPoint          = $mountPoint
+      VolumeType          = $volumeType
+      ProtectionStatus    = $protectionText
+      ProtectionEnabled   = $protectionEnabled
+      VolumeStatus        = $volumeStatus
+      EncryptionPercentage = $encryptionPercent
+      RawBlock            = $trimmed
+    })
+  }
+
+  return $entries
+}
+
 $script:ResolveDnsAvailable = $null
 function Resolve-Safe {
   param(
@@ -328,6 +390,7 @@ $files = [ordered]@{
   firewall_rules = Find-ByContent @('FirewallRules')             @('Rule Name:|DisplayName\s*:')
 
   defender       = Find-ByContent @('DefenderStatus')            @('Get-MpComputerStatus|AMProductVersion')
+  bitlocker      = Find-ByContent @('BitLockerStatus','BitLocker') @('(?im)^\s*Mount\s*Point\s*:','Get-BitLockerVolume')
   shares         = Find-ByContent @('NetShares')                 @('Share name|Resource')
   tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('(?im)^Folder:\s','(?im)^TaskName:\s','(?im)^HostName:\s')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
@@ -513,6 +576,86 @@ if ($raw['systeminfo']){
   }
 }
 
+$computerInfoText = $raw['computerinfo']
+$firmwareEvidenceLines = @()
+$secureBootEvidenceLines = @()
+if ($computerInfoText) {
+  $biosFirmwareMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosFirmwareType\s*:\s*(.+)$')
+  if ($biosFirmwareMatch.Success) {
+    $summary.BiosFirmwareType = $biosFirmwareMatch.Groups[1].Value.Trim()
+    $firmwareEvidenceLines += $biosFirmwareMatch.Value.Trim()
+  }
+
+  $biosModeMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosMode\s*:\s*(.+)$')
+  if ($biosModeMatch.Success) {
+    $summary.BiosMode = $biosModeMatch.Groups[1].Value.Trim()
+    $firmwareEvidenceLines += $biosModeMatch.Value.Trim()
+  }
+
+  $secureBootMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosSecureBootState\s*:\s*(.+)$')
+  if ($secureBootMatch.Success) {
+    $summary.BiosSecureBootState = $secureBootMatch.Groups[1].Value.Trim()
+    $secureBootEvidenceLines += $secureBootMatch.Value.Trim()
+  }
+}
+
+$uefiIndicator = $null
+if ($summary.BiosFirmwareType) {
+  $uefiIndicator = $summary.BiosFirmwareType
+} elseif ($summary.BiosMode) {
+  $uefiIndicator = $summary.BiosMode
+}
+
+$uefiStatus = $null
+if ($uefiIndicator) {
+  $indicatorNormalized = ($uefiIndicator -replace '\s+', '').ToLowerInvariant()
+  if ($indicatorNormalized -match 'uefi') {
+    $uefiStatus = $true
+  } elseif ($indicatorNormalized -match 'bios' -or $indicatorNormalized -match 'legacy') {
+    $uefiStatus = $false
+  }
+}
+if ($uefiStatus -ne $null) { $summary.UefiFirmware = $uefiStatus }
+
+$firmwareEvidenceText = $null
+if ($firmwareEvidenceLines.Count -gt 0) {
+  $firmwareEvidenceText = $firmwareEvidenceLines -join "`n"
+} elseif ($computerInfoText) {
+  $firmwareEvidenceText = (([regex]::Split($computerInfoText,'\r?\n') | Where-Object { $_ -match '(?i)Bios' } | Select-Object -First 6)) -join "`n"
+}
+
+if ($uefiStatus -eq $true) {
+  Add-Normal "System/Firmware" "UEFI firmware mode detected" $firmwareEvidenceText
+} elseif ($uefiStatus -eq $false) {
+  Add-Issue "medium" "System/Firmware" "Legacy BIOS firmware mode detected—enable UEFI to support modern security protections." $firmwareEvidenceText
+} elseif ($computerInfoText) {
+  Add-Issue "low" "System/Firmware" "Unable to determine firmware mode from Get-ComputerInfo output." $firmwareEvidenceText
+}
+
+$secureBootState = $summary.BiosSecureBootState
+$secureBootEvidenceText = $null
+if ($secureBootState) {
+  if ($uefiIndicator) {
+    $secureBootEvidenceLines += ("Firmware indicator: {0}" -f $uefiIndicator)
+  }
+  $secureBootEvidenceText = $secureBootEvidenceLines -join "`n"
+  $secureBootValue = Get-BoolFromString -Value $secureBootState
+  if ($secureBootValue -eq $true) {
+    Add-Normal "System/Secure Boot" "Secure Boot enabled" $secureBootEvidenceText
+    $summary.SecureBootEnabled = $true
+  } elseif ($secureBootValue -eq $false) {
+    Add-Issue "high" "System/Secure Boot" "Secure Boot is disabled." $secureBootEvidenceText
+    $summary.SecureBootEnabled = $false
+  } elseif ($secureBootState -match '(?i)unsupported|not supported') {
+    Add-Issue "low" "System/Secure Boot" "Secure Boot unsupported on this hardware." $secureBootEvidenceText
+  } else {
+    Add-Issue "low" "System/Secure Boot" ("Secure Boot state reported as '{0}'." -f $secureBootState) $secureBootEvidenceText
+  }
+} elseif ($computerInfoText -and $uefiStatus -eq $true) {
+  $secureBootEvidenceText = $firmwareEvidenceText
+  Add-Issue "low" "System/Secure Boot" "Secure Boot state not reported despite UEFI firmware." $secureBootEvidenceText
+}
+
 if ($raw['dsreg']){
   $dsregMap = @{}
   foreach($line in [regex]::Split($raw['dsreg'],'\r?\n')){
@@ -610,14 +753,14 @@ if ($summary.LastBoot){
         $rangeSuffix = if ($rangeText) { " ({0})" -f $rangeText } else { "" }
         if ($classification.Label -eq 'Good'){
           $message = "{0} uptime {1} days within {2} range{3}." -f $profileName, $roundedDays, $classification.Label, $rangeSuffix
-          Add-Normal "OS/Uptime" $message $summary.LastBoot
+          Add-Normal "System/Uptime" $message $summary.LastBoot
         } elseif ($classification.Severity) {
           $message = "{0} uptime {1} days in {2} range{3}." -f $profileName, $roundedDays, $classification.Label, $rangeSuffix
-          Add-Issue $classification.Severity "OS/Uptime" $message $summary.LastBoot
+          Add-Issue $classification.Severity "System/Uptime" $message $summary.LastBoot
         }
       }
     } else {
-    Add-Normal "OS/Uptime" "Last boot captured" $summary.LastBoot
+    Add-Normal "System/Uptime" "Last boot captured" $summary.LastBoot
   }
 }
 
@@ -1281,6 +1424,85 @@ if ($raw['firewall']){
   }
 }
 
+# BitLocker status
+if ($raw['bitlocker']) {
+  $bitlockerText = $raw['bitlocker']
+  if ($bitlockerText -match '(?i)Get-BitLockerVolume cmdlet not available') {
+    Add-Issue "low" "System/BitLocker" "BitLocker cmdlets unavailable on this system (likely unsupported edition)." (($bitlockerText -split "\r?\n") | Select-Object -First 8) -join "`n"
+  } elseif ($bitlockerText -match '(?i)Get-BitLockerVolume failed') {
+    Add-Issue "low" "System/BitLocker" "Failed to query BitLocker status." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
+  } else {
+    $bitlockerEntries = Parse-BitLockerStatus $bitlockerText
+    if ($bitlockerEntries.Count -gt 0) {
+      $FormatBitLockerEntry = {
+        param($entry)
+        $details = @()
+        if ($entry.MountPoint) { $details += "Mount: $($entry.MountPoint)" }
+        if ($entry.VolumeType) { $details += "Type: $($entry.VolumeType)" }
+        if ($entry.ProtectionStatus) { $details += "Protection: $($entry.ProtectionStatus)" }
+        if ($entry.VolumeStatus) { $details += "Status: $($entry.VolumeStatus)" }
+        if ($null -ne $entry.EncryptionPercentage) { $details += "Encryption: $([math]::Round($entry.EncryptionPercentage,1))%" }
+        if ($details.Count -eq 0) { return $entry.RawBlock }
+        return $details -join '; '
+      }
+
+      $osVolumes = New-Object System.Collections.Generic.List[pscustomobject]
+      foreach ($entry in $bitlockerEntries) {
+        $typeNorm = if ($entry.VolumeType) { ($entry.VolumeType -replace '\s+', '').ToLowerInvariant() } else { '' }
+        $mountNorm = if ($entry.MountPoint) { $entry.MountPoint.Trim().ToUpperInvariant() } else { '' }
+        $isOs = $false
+        if ($typeNorm -match 'operatingsystem' -or $typeNorm -eq 'system' -or $typeNorm -eq 'osvolume') { $isOs = $true }
+        elseif ($mountNorm -match '^C:$') { $isOs = $true }
+        if ($isOs) { $osVolumes.Add($entry) }
+      }
+
+      if ($osVolumes.Count -gt 0) {
+        $osArray = @($osVolumes.ToArray())
+        $unprotected = @($osArray | Where-Object { $_.ProtectionEnabled -ne $true })
+        $partial = @($osArray | Where-Object { $_.ProtectionEnabled -eq $true -and $null -ne $_.EncryptionPercentage -and $_.EncryptionPercentage -lt 99 })
+        $unknown = @($osArray | Where-Object { $null -eq $_.ProtectionEnabled -and $_.ProtectionStatus })
+
+        if ($unprotected.Count -gt 0) {
+          $mountList = ($unprotected | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          if (-not $mountList) { $mountList = 'Unknown volume' }
+          $evidence = ($unprotected | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Issue "high" "System/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
+          $summary.BitLockerSystemProtected = $false
+        } elseif ($partial.Count -gt 0) {
+          $mountList = ($partial | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          if (-not $mountList) { $mountList = 'Unknown volume' }
+          $evidence = ($partial | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Issue "medium" "System/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
+          $summary.BitLockerSystemProtected = $false
+        } elseif ($unknown.Count -gt 0) {
+          $mountList = ($unknown | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          if (-not $mountList) { $mountList = 'Unknown volume' }
+          $evidence = ($unknown | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Issue "low" "System/BitLocker" ("BitLocker protection state unclear for system volume(s): {0}." -f ($mountList)) $evidence
+        } else {
+          $evidence = ($osArray | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Normal "System/BitLocker" "BitLocker protection active for system volume(s)." $evidence
+          $summary.BitLockerSystemProtected = $true
+        }
+      } else {
+        $protectedVolumes = @($bitlockerEntries | Where-Object { $_.ProtectionEnabled -eq $true })
+        if ($protectedVolumes.Count -gt 0) {
+          $evidence = ($protectedVolumes | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Normal "System/BitLocker" "BitLocker enabled on captured volume(s)." $evidence
+        } else {
+          $evidence = ($bitlockerEntries | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
+          Add-Issue "medium" "System/BitLocker" "No BitLocker-protected volumes detected." $evidence
+          $summary.BitLockerSystemProtected = $false
+        }
+      }
+    } else {
+      Add-Issue "low" "System/BitLocker" "BitLocker output captured but no volumes parsed." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
+    }
+  }
+} elseif ($files['bitlocker']) {
+  Add-Issue "low" "System/BitLocker" "BitLocker status file present but empty." ""
+}
+
 # crucial services snapshot
 $serviceDefinitions = @(
   [pscustomobject]@{ Name='WSearch';            Display='Windows Search (WSearch)';                         Note='Outlook search depends on this.' },
@@ -1732,7 +1954,7 @@ foreach($eventKey in $eventLogLabels.Keys){
 if ($raw['tasks']){
   $scheduleInfo = [regex]::Match($raw['tasks'],'(?im)^Schedule:\s*Scheduling data is not available in this format\.?')
   if ($scheduleInfo.Success){
-    Add-Normal "Scheduled Tasks" "Contains on-demand/unscheduled entries" $scheduleInfo.Value
+    Add-Normal "System/Scheduled Tasks" "Contains on-demand/unscheduled entries" $scheduleInfo.Value
   }
 }
 
@@ -1748,7 +1970,7 @@ if ($raw['netstat']){
 if ($raw['hotfixes']){
   $hfCount = ([regex]::Matches($raw['hotfixes'],'^KB\d+','Multiline')).Count
   if ($hfCount -gt 0){
-    Add-Normal "OS/Patching" "Hotfixes present" ("Counted KB lines: " + $hfCount)
+    Add-Normal "System/Patching" "Hotfixes present" ("Counted KB lines: " + $hfCount)
   }
 }
 
@@ -2122,8 +2344,8 @@ function Get-NormalCategory {
     '^(?i)(outlook|office)$' { return 'Office' }
     '^(?i)(network|dns)$'    { return 'Network' }
     '^(?i)security$'         { return 'Security' }
-    '^(?i)os$'               { return 'OS' }
-    '^(?i)scheduled tasks$'  { return 'OS' }
+    '^(?i)system$'           { return 'System' }
+    '^(?i)scheduled tasks$'  { return 'System' }
     '^(?i)storage$'          { return 'Hardware' }
     default { return 'Hardware' }
   }
@@ -2325,7 +2547,7 @@ $issuesHtml = New-ReportSection -Title $issuesTitle -ContentHtml $issuesContent 
 
 # Raw extracts (key files)
 $rawSections = ''
-foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender')){
+foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender','bitlocker')){
   if ($files[$key]) {
     $fileName = [IO.Path]::GetFileName($files[$key])
     $content = Read-Text $files[$key]
