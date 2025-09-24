@@ -195,6 +195,7 @@ $files = [ordered]@{
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
   computerinfo   = Find-ByContent @('ComputerInfo')              @('CsName\s*:','WindowsBuildLabEx\s*:')
+  faststartup    = Find-ByContent @('Power_FastStartup','FastStartup','FastBoot') @('HiberbootEnabled','Fast Startup')
 
   nic_configs    = Find-ByContent @('NetworkAdapterConfigs')     @('Win32_NetworkAdapterConfiguration')
   netip          = Find-ByContent @('NetIPAddresses','NetIP')    @('IPAddress','InterfaceIndex')
@@ -455,6 +456,63 @@ if ($summary.Domain -and $summary.DomainJoined -eq $null){
   $domainTrimmed = $summary.Domain.Trim()
   if ($domainTrimmed -and $domainTrimmed.ToUpperInvariant() -eq 'WORKGROUP'){
     $summary.DomainJoined = $false
+  }
+}
+
+$summary.FastStartupEnabled = $null
+$summary.FastStartupValue = $null
+if ($raw['faststartup']){
+  $fastStartupLine = ([regex]::Split($raw['faststartup'],'\r?\n') | Where-Object { $_ -match 'HiberbootEnabled' } | Select-Object -First 1)
+  if ($fastStartupLine){ $fastStartupLine = $fastStartupLine.Trim() }
+  $fastValueText = $null
+  if ($fastStartupLine){
+    $matchLine = [regex]::Match($fastStartupLine,'(?i)HiberbootEnabled\s*(?:(?:REG_[A-Z0-9_]+)\s+)?(?:[:=]\s*)?(0x[0-9a-fA-F]+|\d+|true|false|enabled|disabled|on|off)')
+    if ($matchLine.Success){ $fastValueText = $matchLine.Groups[1].Value.Trim() }
+  }
+  if (-not $fastValueText){
+    $matchBody = [regex]::Match($raw['faststartup'],'(?i)HiberbootEnabled\s*(?:(?:REG_[A-Z0-9_]+)\s+)?(?:[:=]\s*)?(0x[0-9a-fA-F]+|\d+|true|false|enabled|disabled|on|off)')
+    if ($matchBody.Success){ $fastValueText = $matchBody.Groups[1].Value.Trim() }
+  }
+  if ($fastValueText){
+    $fastToken = ($fastValueText -split '[\s\(]',2)[0].Trim()
+    if ($fastToken){
+      $fastBool = $null
+      $fastNumeric = $null
+      $boolCandidate = Get-BoolFromString $fastToken
+      if ($null -ne $boolCandidate){
+        $fastBool = $boolCandidate
+        $fastNumeric = if ($fastBool) { 1 } else { 0 }
+      } else {
+        if ($fastToken -like '0x*'){
+          $hexPart = $fastToken.Substring(2)
+          if ($hexPart){
+            try { $fastNumeric = [Convert]::ToInt32($hexPart,16) } catch {}
+          }
+        } else {
+          $parsedInt = 0
+          if ([int]::TryParse($fastToken,[ref]$parsedInt)){
+            $fastNumeric = $parsedInt
+          }
+        }
+        if ($null -ne $fastNumeric){
+          $fastBool = ($fastNumeric -ne 0)
+        }
+      }
+      if ($null -ne $fastBool){
+        $summary.FastStartupEnabled = $fastBool
+        if ($null -ne $fastNumeric){ $summary.FastStartupValue = $fastNumeric }
+      }
+    }
+  }
+  if ($summary.FastStartupEnabled -eq $true){
+    $fastEvidence = if ($fastStartupLine) { $fastStartupLine } else { ([regex]::Split($raw['faststartup'],'\r?\n') | Select-Object -First 4) -join "`n" }
+    $valueSuffix = if ($null -ne $summary.FastStartupValue) { " (HiberbootEnabled=$($summary.FastStartupValue))" } else { "" }
+    Add-Issue "low" "OS/Startup" ("Fast Startup (Fast Boot) is enabled{0}." -f $valueSuffix) $fastEvidence
+  } elseif ($summary.FastStartupEnabled -eq $false) {
+    if ($fastStartupLine){
+      $valueSuffix = if ($null -ne $summary.FastStartupValue) { " (HiberbootEnabled=$($summary.FastStartupValue))" } else { "" }
+      Add-Normal "OS/Startup" ("Fast Startup (Fast Boot) is disabled{0}." -f $valueSuffix) $fastStartupLine
+    }
   }
 }
 
@@ -1607,6 +1665,25 @@ $ipv4Html = Encode-Html ($summary.IPv4)
 $gatewayHtml = Encode-Html ($summary.Gateway)
 $dnsHtml = Encode-Html ($summary.DNS)
 $lastBootHtml = Encode-Html ($summary.LastBoot)
+$fastStartupDisplay = 'Unknown'
+if ($summary.FastStartupEnabled -eq $true){
+  if ($null -ne $summary.FastStartupValue){
+    $fastStartupDisplay = "Enabled (HiberbootEnabled=$($summary.FastStartupValue))"
+  } else {
+    $fastStartupDisplay = 'Enabled'
+  }
+} elseif ($summary.FastStartupEnabled -eq $false) {
+  if ($null -ne $summary.FastStartupValue){
+    $fastStartupDisplay = "Disabled (HiberbootEnabled=$($summary.FastStartupValue))"
+  } else {
+    $fastStartupDisplay = 'Disabled'
+  }
+} elseif ($files['faststartup']) {
+  if (-not $raw['faststartup']){
+    $fastStartupDisplay = 'Captured (no output)'
+  }
+}
+$fastStartupHtml = Encode-Html $fastStartupDisplay
 
 $sumTable = @"
 <h1>Device Health Report</h1>
@@ -1630,6 +1707,7 @@ $sumTable = @"
     <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
     <tr><td>DNS</td><td>$dnsHtml</td></tr>
     <tr><td>Last Boot</td><td>$lastBootHtml</td></tr>
+    <tr><td>Fast Startup</td><td>$fastStartupHtml</td></tr>
   </table>
   <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>
 </div>
