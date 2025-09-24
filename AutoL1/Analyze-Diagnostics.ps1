@@ -116,6 +116,150 @@ function ConvertTo-NullableBool {
   return $null
 }
 
+function Get-PropertyLines {
+  param(
+    [string]$Text,
+    [string]$PropertyName
+  )
+
+  if (-not $Text -or -not $PropertyName) { return @() }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $results = New-Object System.Collections.Generic.List[string]
+  $escaped = [regex]::Escape($PropertyName)
+  $pattern = "^\s*$escaped\s*:\s*(.*)$"
+
+  for ($i = 0; $i -lt $lines.Length; $i++) {
+    $line = $lines[$i]
+    if ($null -eq $line) { continue }
+    $match = [regex]::Match($line, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) { continue }
+
+    $value = $match.Groups[1].Value
+    if ($null -ne $value) {
+      $trimmed = $value.Trim()
+      if ($trimmed) { $results.Add($trimmed) }
+    }
+
+    $j = $i + 1
+    while ($j -lt $lines.Length) {
+      $nextLine = $lines[$j]
+      if ($null -eq $nextLine) { break }
+      if (-not $nextLine.Trim()) { break }
+      if ($nextLine -match '^\s+\S') {
+        $results.Add($nextLine.Trim())
+        $j++
+      } else {
+        break
+      }
+    }
+  }
+
+  return $results.ToArray()
+}
+
+function Get-FirstPropertyValue {
+  param(
+    [string]$Text,
+    [string]$PropertyName
+  )
+
+  $values = Get-PropertyLines -Text $Text -PropertyName $PropertyName
+  foreach ($value in $values) {
+    if ($null -eq $value) { continue }
+    $trimmed = $value.Trim()
+    if ($trimmed) { return $trimmed }
+  }
+
+  return $null
+}
+
+function Parse-IntFromString {
+  param([string]$Value)
+
+  if (-not $Value) { return $null }
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return $null }
+
+  $hexMatch = [regex]::Match($trimmed,'(?i)0x[0-9a-f]+')
+  if ($hexMatch.Success) {
+    $hexText = $hexMatch.Value.Substring(2)
+    try { return [Convert]::ToInt32($hexText,16) } catch {}
+  }
+
+  $intMatch = [regex]::Match($trimmed,'[-+]?\d+')
+  if ($intMatch.Success) {
+    try { return [int]$intMatch.Value } catch {}
+  }
+
+  return $null
+}
+
+function Parse-IntListFromProperty {
+  param(
+    [string]$Text,
+    [string]$PropertyName
+  )
+
+  $values = Get-PropertyLines -Text $Text -PropertyName $PropertyName
+  $numbers = New-Object System.Collections.Generic.List[int]
+
+  foreach ($value in $values) {
+    if (-not $value) { continue }
+    $clean = ($value -replace '[{}]', '').Trim()
+    if (-not $clean) { continue }
+    $matches = [regex]::Matches($clean,'-?\d+')
+    foreach ($m in $matches) {
+      if (-not $m.Success) { continue }
+      try {
+        [void]$numbers.Add([int]$m.Value)
+      } catch {}
+    }
+  }
+
+  return $numbers.ToArray()
+}
+
+function Test-IsPortableSystem {
+  param(
+    [Nullable[int]]$PcSystemType,
+    [Nullable[int]]$PcSystemTypeEx,
+    [int[]]$ChassisTypes
+  )
+
+  $portable = @(2,8,9,10,11,12,14,18)
+
+  if ($PcSystemTypeEx -ne $null -and ($portable -contains [int]$PcSystemTypeEx)) { return $true }
+  if ($PcSystemType -ne $null -and ($portable -contains [int]$PcSystemType)) { return $true }
+
+  if ($ChassisTypes) {
+    foreach ($type in $ChassisTypes) {
+      if ($portable -contains $type) { return $true }
+    }
+  }
+
+  return $false
+}
+
+function Get-MitigationSection {
+  param(
+    [string]$Text,
+    [string]$SectionName
+  )
+
+  if (-not $Text -or -not $SectionName) { return @{} }
+
+  $escaped = [regex]::Escape($SectionName)
+  $pattern = "(?ms)^\s*$escaped\s*:\s*(?<body>.*?)(?=^\s*[A-Z0-9_]+\s*:|\Z)"
+  $match = [regex]::Match($Text, $pattern)
+  if ($match.Success) {
+    $body = $match.Groups['body'].Value
+    if ($body) { return Parse-KeyValueBlock $body }
+  }
+
+  return @{}
+}
+
 function Parse-KeyValueBlock {
   param([string]$Text)
 
@@ -560,7 +704,24 @@ $files = [ordered]@{
   firewall_rules = Find-ByContent @('FirewallRules')             @('Rule Name:|DisplayName\s*:')
 
   defender       = Find-ByContent @('DefenderStatus')            @('Get-MpComputerStatus|AMProductVersion')
+  defender_prefs = Find-ByContent @('DefenderPreferences','MpPreference') @('AttackSurfaceReductionRules','ASRRulesExpanded')
   bitlocker      = Find-ByContent @('BitLockerStatus','BitLocker') @('(?im)^\s*Mount\s*Point\s*:','Get-BitLockerVolume')
+  bitlocker_json = Find-ByContent @('BitLockerStatusJson','BitLockerJson') @('"MountPoint"','KeyProtector')
+  tpm_status     = Find-ByContent @('TPMStatus','TPM')           @('TpmPresent','Get-Tpm')
+  device_guard   = Find-ByContent @('DeviceGuardStatus','DeviceGuard') @('SecurityServicesRunning','Win32_DeviceGuard')
+  reg_lsa        = Find-ByContent @('Registry_Lsa','Lsa')        @('RunAsPPL','Control\\Lsa')
+  computer_system = Find-ByContent @('ComputerSystem')           @('Win32_ComputerSystem','PCSystemType')
+  msinfo32       = Find-ByContent @('MSInfo32','msinfo32')       @('Kernel DMA Protection','Device Encryption Support')
+  rdp_config     = Find-ByContent @('RDPConfig','Terminal Server') @('fDenyTSConnections','RDP-Tcp')
+  smb_config     = Find-ByContent @('SmbServerConfiguration','SmbConfig') @('EnableSMB1Protocol')
+  ntlm_settings  = Find-ByContent @('NTLMSettings','MSV1_0','NTLM') @('RestrictSendingNTLMTraffic','LmCompatibilityLevel')
+  spooler_service = Find-ByContent @('PrintSpoolerService','Spooler') @('Spooler')
+  time_status    = Find-ByContent @('TimeStatus','w32tm')        @('w32tm','Phase Offset','Clock Skew')
+  smartscreen    = Find-ByContent @('SmartScreen')               @('SmartScreenEnabled','EnableSmartScreen','AppHost')
+  process_mitigation = Find-ByContent @('ProcessMitigation','Exploit') @('Get-ProcessMitigation','CFG','ASLR','DEP')
+  wdac_policy    = Find-ByContent @('WDACPolicy','CI Policy')    @('PolicyKey','CI policy')
+  smart_app_control = Find-ByContent @('SmartAppControl')        @('Smart App Control','SmartAppControl')
+
   shares         = Find-ByContent @('NetShares')                 @('Share name|Resource')
   tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('(?im)^Folder:\s','(?im)^TaskName:\s','(?im)^HostName:\s')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
@@ -938,6 +1099,49 @@ if ($summary.Domain -and $summary.DomainJoined -eq $null){
   }
 }
 
+$pcSystemType = $null
+$pcSystemTypeEx = $null
+$chassisTypeList = @()
+
+if ($raw['computer_system']) {
+  $csProps = Parse-KeyValueBlock $raw['computer_system']
+  if ($csProps.ContainsKey('Manufacturer') -and -not $summary.ContainsKey('SystemManufacturer')) {
+    $summary.SystemManufacturer = $csProps['Manufacturer']
+  }
+  if ($csProps.ContainsKey('Model') -and -not $summary.ContainsKey('SystemModel')) {
+    $summary.SystemModel = $csProps['Model']
+  }
+  if ($csProps.ContainsKey('SystemFamily') -and -not $summary.ContainsKey('SystemFamily')) {
+    $summary.SystemFamily = $csProps['SystemFamily']
+  }
+  if ($csProps.ContainsKey('SystemSKUNumber') -and -not $summary.ContainsKey('SystemSku')) {
+    $summary.SystemSku = $csProps['SystemSKUNumber']
+  }
+  if ($csProps.ContainsKey('PCSystemType')) {
+    $pcSystemType = Parse-IntFromString $csProps['PCSystemType']
+  }
+  if ($csProps.ContainsKey('PCSystemTypeEx')) {
+    $pcSystemTypeEx = Parse-IntFromString $csProps['PCSystemTypeEx']
+  }
+  if ($csProps.ContainsKey('ChassisTypes')) {
+    $chassisRaw = $csProps['ChassisTypes']
+    if ($chassisRaw) {
+      $chassisMatches = [regex]::Matches($chassisRaw,'\d+')
+      foreach ($cm in $chassisMatches) {
+        try { $chassisTypeList += [int]$cm.Value } catch {}
+      }
+    }
+  }
+}
+
+if ($pcSystemType -ne $null) { $summary.PCSystemType = $pcSystemType }
+if ($pcSystemTypeEx -ne $null) { $summary.PCSystemTypeEx = $pcSystemTypeEx }
+
+if (-not $summary.ContainsKey('IsPortable') -and ($pcSystemType -ne $null -or $pcSystemTypeEx -ne $null -or $chassisTypeList.Count -gt 0)) {
+  $portable = Test-IsPortableSystem -PcSystemType $pcSystemType -PcSystemTypeEx $pcSystemTypeEx -ChassisTypes $chassisTypeList
+  $summary.IsPortable = $portable
+}
+
 $summary.IsServer = $null
 if ($summary.OS -and $summary.OS -match 'server'){
   $summary.IsServer = $true
@@ -945,6 +1149,16 @@ if ($summary.OS -and $summary.OS -match 'server'){
   $summary.IsServer = $true
 } elseif ($summary.OS -or $summary.OS_Version) {
   $summary.IsServer = $false
+}
+
+$summary.IsModernWindows = $false
+$osNameText = if ($summary.OS) { $summary.OS } else { '' }
+$osVersionText = if ($summary.OS_Version) { $summary.OS_Version } else { '' }
+if ($osNameText -match 'Windows\s+11' -or $osNameText -match 'Windows\s+10' -or $osNameText -match 'Windows\s+8\.1'){ $summary.IsModernWindows = $true }
+elseif ($osVersionText -match '\b11\.' -or $osVersionText -match '\b10\.') { $summary.IsModernWindows = $true }
+
+if (-not $summary.ContainsKey('IsModernDevice')) {
+  $summary.IsModernDevice = ($summary.IsServer -ne $true) -and ($summary.IsModernWindows -eq $true)
 }
 
 if ($summary.LastBoot){
@@ -1632,6 +1846,500 @@ if ($raw['defender']){
   Add-Issue "info" "Security" "Defender status not captured (3rd-party AV or cmdlet unavailable)." ""
 }
 
+$boolIsModernDevice = ($summary.ContainsKey('IsModernDevice') -and $summary.IsModernDevice -eq $true)
+$boolIsPortable = ($summary.ContainsKey('IsPortable') -and $summary.IsPortable -eq $true)
+$osNameForFlags = if ($summary.OS) { $summary.OS } else { '' }
+$boolIsWindows11 = ($osNameForFlags -match 'Windows\s+11')
+
+# TPM status
+if ($raw['tpm_status']) {
+  $tpmText = $raw['tpm_status']
+  if ($tpmText -match '(?i)Get-Tpm cmdlet not available') {
+    Add-Issue "info" "System/TPM" "Get-Tpm cmdlet not available on this system." $tpmText
+  } elseif ($tpmText -match '(?i)Get-Tpm failed') {
+    $snippet = (($tpmText -split "\r?\n") | Select-Object -First 8) -join "`n"
+    Add-Issue "low" "System/TPM" "Failed to query TPM status." $snippet
+  } else {
+    $presentText = Get-FirstPropertyValue $tpmText 'TpmPresent'
+    $readyText = Get-FirstPropertyValue $tpmText 'TpmReady'
+    $enabledText = Get-FirstPropertyValue $tpmText 'TpmEnabled'
+    $present = Get-BoolFromString $presentText
+    $ready = Get-BoolFromString $readyText
+    $enabled = Get-BoolFromString $enabledText
+
+    $tpmEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('TpmPresent','TpmReady','TpmEnabled','SpecVersion','ManufacturerVersion')) {
+      $values = Get-PropertyLines -Text $tpmText -PropertyName $propName
+      if ($values -and $values.Count -gt 0) {
+        foreach ($value in ($values | Select-Object -First 2)) {
+          $tpmEvidenceLines.Add(("{0}: {1}" -f $propName, $value))
+        }
+      }
+    }
+    if ($tpmEvidenceLines.Count -eq 0) {
+      $tpmEvidenceLines.AddRange([string[]](($tpmText -split "\r?\n") | Select-Object -First 8))
+    }
+    $tpmEvidence = ($tpmEvidenceLines | Where-Object { $_ }) -join "`n"
+
+    if ($present -eq $true -and $ready -eq $true -and ($enabled -eq $true -or $enabled -eq $null)) {
+      Add-Normal "System/TPM" "TPM present and ready." $tpmEvidence
+    } elseif ($present -eq $true) {
+      Add-Issue "medium" "System/TPM" "TPM detected but not ready/initialized." $tpmEvidence
+    } elseif ($present -eq $false) {
+      $tpmSeverity = if ($boolIsModernDevice) { 'high' } else { 'medium' }
+      Add-Issue $tpmSeverity "System/TPM" "No TPM detected on this device." $tpmEvidence
+    }
+  }
+}
+
+# Device Guard / Credential Guard / Memory integrity
+$deviceGuardText = $raw['device_guard']
+if ($deviceGuardText) {
+  if ($deviceGuardText -match '(?i)Get-CimInstance Win32_DeviceGuard failed') {
+    Add-Issue "info" "System/Memory Integrity" "Win32_DeviceGuard query failed." $deviceGuardText
+  } else {
+    $runningServices = Parse-IntListFromProperty $deviceGuardText 'SecurityServicesRunning'
+    $availableProps = Parse-IntListFromProperty $deviceGuardText 'AvailableSecurityProperties'
+    $requiredProps = Parse-IntListFromProperty $deviceGuardText 'RequiredSecurityProperties'
+    $vbStatusText = Get-FirstPropertyValue $deviceGuardText 'VirtualizationBasedSecurityStatus'
+    $vbStatus = Parse-IntFromString $vbStatusText
+
+    $memoryIntegrityRunning = $false
+    if ($runningServices -and ($runningServices -contains 2)) { $memoryIntegrityRunning = $true }
+    $credentialGuardRunning = $false
+    if ($runningServices -and ($runningServices -contains 1)) { $credentialGuardRunning = $true }
+
+    $dgEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('SecurityServicesRunning','SecurityServicesConfigured','AvailableSecurityProperties','RequiredSecurityProperties','VirtualizationBasedSecurityStatus')) {
+      $values = Get-PropertyLines -Text $deviceGuardText -PropertyName $propName
+      if ($values -and $values.Count -gt 0) {
+        foreach ($value in ($values | Select-Object -First 4)) {
+          $dgEvidenceLines.Add(("{0}: {1}" -f $propName, $value))
+        }
+      }
+    }
+    $dgEvidence = if ($dgEvidenceLines.Count -gt 0) { ($dgEvidenceLines -join "`n") } else { (($deviceGuardText -split "\r?\n") | Select-Object -First 12) -join "`n" }
+
+    $vbAvailable = ($availableProps -and ($availableProps -contains 2 -or $availableProps -contains 1 -or $availableProps -contains 3))
+    if ($memoryIntegrityRunning) {
+      Add-Normal "System/Memory Integrity" "Memory integrity (HVCI) is active." $dgEvidence
+    } elseif ($boolIsModernDevice -or $vbAvailable -or ($vbStatus -ne $null -and $vbStatus -gt 0)) {
+      Add-Issue "medium" "System/Memory Integrity" "Memory integrity (HVCI) is not running." $dgEvidence
+    }
+
+    $runAsPplText = if ($raw['reg_lsa']) { Get-FirstPropertyValue $raw['reg_lsa'] 'RunAsPPL' } else { $null }
+    $runAsPplValue = Parse-IntFromString $runAsPplText
+    $runAsPplEnabled = ($runAsPplValue -eq 1)
+    $credentialEvidenceLines = New-Object System.Collections.Generic.List[string]
+    if ($runAsPplText) { $credentialEvidenceLines.Add("RunAsPPL: $runAsPplText") }
+    if ($dgEvidenceLines.Count -gt 0) {
+      $credentialEvidenceLines.AddRange([string[]]($dgEvidenceLines | Where-Object { $_ -match 'SecurityServicesRunning' } | Select-Object -Unique))
+    }
+    $credentialEvidence = ($credentialEvidenceLines | Where-Object { $_ }) -join "`n"
+
+    if ($credentialGuardRunning -and $runAsPplEnabled) {
+      Add-Normal "System/Credential Guard" "Credential Guard (LSA protection) is enabled." $credentialEvidence
+    } else {
+      $cgParts = @()
+      if (-not $credentialGuardRunning) { $cgParts += 'service not reporting as running' }
+      if (-not $runAsPplEnabled) { $cgParts += 'RunAsPPL registry not enforced' }
+      if ($cgParts.Count -gt 0) {
+        Add-Issue "medium" "System/Credential Guard" ("Credential Guard not fully enabled ({0})." -f ($cgParts -join '; ')) $credentialEvidence
+      }
+    }
+  }
+}
+
+# Kernel DMA protection
+if ($raw['msinfo32']) {
+  $msinfoText = $raw['msinfo32']
+  if ($msinfoText -match '(?i)msinfo32 report failed') {
+    Add-Issue "info" "System/Kernel DMA Protection" "Unable to capture Kernel DMA Protection status." $msinfoText
+  } else {
+    $dmaMatch = [regex]::Match($msinfoText,'(?im)^\s*Kernel DMA Protection\s*:\s*(.+)$')
+    if ($dmaMatch.Success) {
+      $dmaValue = $dmaMatch.Groups[1].Value.Trim()
+      $encMatch = [regex]::Match($msinfoText,'(?im)^\s*Device Encryption Support\s*:\s*(.+)$')
+      $dmaEvidenceLines = @("Kernel DMA Protection: $dmaValue")
+      if ($encMatch.Success) { $dmaEvidenceLines += ("Device Encryption Support: {0}" -f $encMatch.Groups[1].Value.Trim()) }
+      $dmaEvidence = $dmaEvidenceLines -join "`n"
+      $dmaLower = $dmaValue.ToLowerInvariant()
+      if ($dmaLower -match 'on|enabled') {
+        Add-Normal "System/Kernel DMA Protection" "Kernel DMA protection is enabled." $dmaEvidence
+      } elseif ($boolIsPortable) {
+        Add-Issue "medium" "System/Kernel DMA Protection" ("Kernel DMA protection not enabled (reported as '{0}')." -f $dmaValue) $dmaEvidence
+      } else {
+        Add-Issue "low" "System/Kernel DMA Protection" ("Kernel DMA protection not enabled (reported as '{0}')." -f $dmaValue) $dmaEvidence
+      }
+    }
+  }
+}
+
+# Remote Desktop configuration
+if ($raw['rdp_config']) {
+  $rdpText = $raw['rdp_config']
+  if ($rdpText -match '(?i)Terminal Server key query failed' -and $rdpText -notmatch '### RDP-Tcp') {
+    Add-Issue "info" "System/RDP" "Unable to query Remote Desktop registry keys." $rdpText
+  } else {
+    $denyText = Get-FirstPropertyValue $rdpText 'fDenyTSConnections'
+    $denyValue = Parse-IntFromString $denyText
+    $userAuthText = Get-FirstPropertyValue $rdpText 'UserAuthentication'
+    $userAuthValue = Parse-IntFromString $userAuthText
+
+    $rdpEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('fDenyTSConnections','UserAuthentication','SecurityLayer')) {
+      $values = Get-PropertyLines -Text $rdpText -PropertyName $propName
+      if ($values -and $values.Count -gt 0) {
+        foreach ($value in ($values | Select-Object -First 2)) {
+          $rdpEvidenceLines.Add(("{0}: {1}" -f $propName, $value))
+        }
+      }
+    }
+    $rdpEvidence = ($rdpEvidenceLines | Where-Object { $_ }) -join "`n"
+
+    $rdpEnabled = ($denyValue -eq 0)
+    $nlaEnabled = ($userAuthValue -eq 1)
+    if ($rdpEnabled) {
+      if (-not $nlaEnabled) {
+        Add-Issue "high" "System/RDP" "Remote Desktop enabled without Network Level Authentication." $rdpEvidence
+      } elseif ($boolIsPortable) {
+        Add-Issue "medium" "System/RDP" "Remote Desktop enabled with NLA—confirm requirement on portable devices." $rdpEvidence
+      } else {
+        Add-Normal "System/RDP" "Remote Desktop enabled with NLA enforced." $rdpEvidence
+      }
+    } elseif ($denyValue -eq 1) {
+      Add-Normal "System/RDP" "Remote Desktop disabled." $rdpEvidence
+    }
+  }
+}
+
+# SMB1 / NTLM hardening
+if ($raw['smb_config']) {
+  $smbText = $raw['smb_config']
+  if ($smbText -match '(?i)Get-SmbServerConfiguration cmdlet not available') {
+    Add-Issue "info" "System/SMB" "Get-SmbServerConfiguration cmdlet not available." $smbText
+  } elseif ($smbText -match '(?i)Get-SmbServerConfiguration failed') {
+    Add-Issue "info" "System/SMB" "Failed to query SMB server configuration." $smbText
+  } else {
+    $smb1Text = Get-FirstPropertyValue $smbText 'EnableSMB1Protocol'
+    $smb1Enabled = Get-BoolFromString $smb1Text
+    if ($smb1Enabled -eq $null -and $smb1Text) {
+      $smb1Lower = $smb1Text.Trim().ToLowerInvariant()
+      if ($smb1Lower -match 'true|enabled|on') { $smb1Enabled = $true }
+      elseif ($smb1Lower -match 'false|disabled|off') { $smb1Enabled = $false }
+    }
+    $smbEvidence = (($smbText -split "\r?\n") | Where-Object { $_ -match 'EnableSMB1Protocol|RejectUnencryptedAccess|RequireSecuritySignature' } | Select-Object -First 6) -join "`n"
+    if ($smb1Enabled -eq $true) {
+      Add-Issue "high" "System/SMB" "SMB1 protocol is enabled." $smbEvidence
+    } elseif ($smb1Enabled -eq $false) {
+      Add-Normal "System/SMB" "SMB1 protocol disabled." $smbEvidence
+    }
+  }
+}
+
+if ($raw['ntlm_settings']) {
+  $ntlmText = $raw['ntlm_settings']
+  if ($ntlmText -match '(?i)key query failed') {
+    Add-Issue "info" "System/NTLM" "Unable to query NTLM registry settings." $ntlmText
+  } else {
+    $restrictText = Get-FirstPropertyValue $ntlmText 'RestrictSendingNTLMTraffic'
+    $restrictValue = Parse-IntFromString $restrictText
+    $auditText = Get-FirstPropertyValue $ntlmText 'AuditReceivingNTLMTraffic'
+    $auditValue = Parse-IntFromString $auditText
+    $lmLevelText = Get-FirstPropertyValue $ntlmText 'LmCompatibilityLevel'
+    $lmLevelValue = Parse-IntFromString $lmLevelText
+
+    $ntlmEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('RestrictSendingNTLMTraffic','AuditReceivingNTLMTraffic','LmCompatibilityLevel')) {
+      $values = Get-PropertyLines -Text $ntlmText -PropertyName $propName
+      if ($values -and $values.Count -gt 0) {
+        foreach ($value in ($values | Select-Object -First 2)) {
+          $ntlmEvidenceLines.Add(("{0}: {1}" -f $propName, $value))
+        }
+      }
+    }
+    $ntlmEvidence = ($ntlmEvidenceLines | Where-Object { $_ }) -join "`n"
+
+    $restrictStrong = ($restrictValue -ne $null -and $restrictValue -ge 2)
+    if (-not $restrictStrong) {
+      Add-Issue "medium" "System/NTLM" "NTLM restrictions not enforced (RestrictSendingNTLMTraffic < 2)." $ntlmEvidence
+    } elseif ($auditValue -lt 2 -and $auditValue -ne $null) {
+      Add-Issue "medium" "System/NTLM" "NTLM inbound auditing not configured (AuditReceivingNTLMTraffic < 2)." $ntlmEvidence
+    } elseif ($restrictStrong) {
+      Add-Normal "System/NTLM" "NTLM restrictions enforced." $ntlmEvidence
+    }
+
+    if ($lmLevelValue -ne $null -and $lmLevelValue -lt 5) {
+      Add-Issue "low" "System/NTLM" "LmCompatibilityLevel below recommended value 5." $ntlmEvidence
+    }
+  }
+}
+
+# Print Spooler service
+if ($raw['spooler_service']) {
+  $spoolerText = $raw['spooler_service']
+  if ($spoolerText -match '(?i)Get-Service Spooler failed') {
+    Add-Issue "info" "System/Print Spooler" "Unable to query Print Spooler service." $spoolerText
+  } else {
+    $statusText = Get-FirstPropertyValue $spoolerText 'Status'
+    $startText = Get-FirstPropertyValue $spoolerText 'StartType'
+    $isRunning = $false
+    if ($statusText) {
+      $statusLower = $statusText.Trim().ToLowerInvariant()
+      if ($statusLower -match 'running|started|active') { $isRunning = $true }
+    }
+    $spoolerEvidence = (($spoolerText -split "\r?\n") | Where-Object { $_ -match 'Status|StartType' } | Select-Object -First 6) -join "`n"
+    if ($isRunning) {
+      Add-Issue "low" "System/Print Spooler" "Print Spooler service is running. Disable if not required." $spoolerEvidence
+    } elseif ($statusText) {
+      Add-Normal "System/Print Spooler" "Print Spooler not running." $spoolerEvidence
+    }
+  }
+}
+
+# Time synchronization
+if ($raw['time_status']) {
+  $timeText = $raw['time_status']
+  if ($timeText -match '(?i)w32tm query failed') {
+    Add-Issue "info" "System/Time Sync" "w32tm query failed." $timeText
+  } else {
+    $offsetMatch = [regex]::Match($timeText,'(?im)^\s*Phase\s+Offset\s*:\s*([-+]?\d+(?:\.\d+)?)\s*s')
+    if (-not $offsetMatch.Success) {
+      $offsetMatch = [regex]::Match($timeText,'(?im)^\s*Clock\s*Skew\s*:\s*([-+]?\d+(?:\.\d+)?)\s*s')
+    }
+    $timeEvidenceLines = @()
+    foreach ($pattern in @('Phase\s+Offset','Clock\s*Skew','Source','Stratum','Last Successful Sync')) {
+      $match = [regex]::Match($timeText,"(?im)^\s*${pattern}[^\r\n]*$")
+      if ($match.Success) { $timeEvidenceLines += $match.Value.Trim() }
+    }
+    $timeEvidence = if ($timeEvidenceLines.Count -gt 0) { ($timeEvidenceLines -join "`n") } else { ($timeText -split "\r?\n" | Select-Object -First 10) -join "`n" }
+
+    if ($offsetMatch.Success) {
+      try {
+        $offsetSeconds = [double]$offsetMatch.Groups[1].Value
+        $offsetAbs = [math]::Abs($offsetSeconds)
+        if ($offsetAbs -gt 5) {
+          Add-Issue "medium" "System/Time Sync" ("Clock offset {0:N2}s exceeds guidance. Investigate time source." -f $offsetSeconds) $timeEvidence
+        } elseif ($offsetAbs -le 1) {
+          Add-Normal "System/Time Sync" ("Clock offset within ±1s ({0:N2}s)." -f $offsetSeconds) $timeEvidence
+        } else {
+          Add-Issue "low" "System/Time Sync" ("Clock offset {0:N2}s. Monitor time synchronization." -f $offsetSeconds) $timeEvidence
+        }
+      } catch {
+        Add-Issue "info" "System/Time Sync" "Unable to parse time offset." $timeEvidence
+      }
+    }
+  }
+}
+
+# SmartScreen configuration
+if ($raw['smartscreen']) {
+  $smartText = $raw['smartscreen']
+  if ($smartText -match '(?i)query failed') {
+    Add-Issue "info" "System/SmartScreen" "Unable to query SmartScreen configuration." $smartText
+  } else {
+    $explorerSetting = Get-FirstPropertyValue $smartText 'SmartScreenEnabled'
+    $policySetting = Get-FirstPropertyValue $smartText 'EnableSmartScreen'
+    $shellLevel = Get-FirstPropertyValue $smartText 'ShellSmartScreenLevel'
+
+    $effective = $null
+    if ($policySetting) {
+      $policyValue = Parse-IntFromString $policySetting
+      if ($policyValue -eq 1) { $effective = $true }
+      elseif ($policyValue -eq 0) { $effective = $false }
+    }
+    if ($null -eq $effective -and $explorerSetting) {
+      $explorerLower = $explorerSetting.Trim().ToLowerInvariant()
+      if ($explorerLower -match 'requireadmin|warn|prompt|block') { $effective = $true }
+      elseif ($explorerLower -match 'off|disabled|0') { $effective = $false }
+    }
+
+    $smartEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('SmartScreenEnabled','EnableSmartScreen','ShellSmartScreenLevel')) {
+      $values = Get-PropertyLines -Text $smartText -PropertyName $propName
+      if ($values -and $values.Count -gt 0) {
+        foreach ($value in ($values | Select-Object -First 2)) {
+          $smartEvidenceLines.Add(("{0}: {1}" -f $propName, $value))
+        }
+      }
+    }
+    $smartEvidence = ($smartEvidenceLines | Where-Object { $_ }) -join "`n"
+
+    if ($effective -eq $false) {
+      Add-Issue "medium" "System/SmartScreen" "SmartScreen protection disabled." $smartEvidence
+    } elseif ($effective -eq $true) {
+      Add-Normal "System/SmartScreen" "SmartScreen protection enabled." $smartEvidence
+    }
+  }
+}
+
+# Attack Surface Reduction rules
+if ($raw['defender_prefs']) {
+  $prefText = $raw['defender_prefs']
+  if ($prefText -match '(?i)Get-MpPreference cmdlet not available') {
+    Add-Issue "info" "System/ASR" "Get-MpPreference cmdlet not available." $prefText
+  } elseif ($prefText -match '(?i)Get-MpPreference failed') {
+    Add-Issue "info" "System/ASR" "Failed to query Microsoft Defender preferences." $prefText
+  } else {
+    $lines = [regex]::Split($prefText,'\r?\n')
+    $capture = $false
+    $asrMap = @{}
+    foreach ($line in $lines) {
+      if (-not $capture) {
+        if ($line -match '^ASRRulesExpanded:') { $capture = $true }
+        continue
+      }
+      $trimLine = $line.Trim()
+      if (-not $trimLine) { continue }
+      if ($trimLine -eq 'None') { break }
+      $kv = [regex]::Match($trimLine,'(?i)\{?([0-9a-f-]{32,36})\}?\s*=\s*([^\s]+)')
+      if ($kv.Success) {
+        $guidKey = $kv.Groups[1].Value.Trim().ToUpperInvariant()
+        $valueRaw = $kv.Groups[2].Value.Trim()
+        $val = Parse-IntFromString $valueRaw
+        if ($val -eq $null) {
+          $boolVal = Get-BoolFromString $valueRaw
+          if ($boolVal -ne $null) { $val = if ($boolVal) { 1 } else { 0 } }
+        }
+        if ($val -eq $null -and $valueRaw) {
+          switch ($valueRaw.ToLowerInvariant()) {
+            'block' { $val = 1 }
+            'audit' { $val = 2 }
+            'warn'  { $val = 6 }
+            'off'   { $val = 0 }
+          }
+        }
+        if ($val -ne $null) {
+          $asrMap[$guidKey] = $val
+        } else {
+          $asrMap[$guidKey] = $valueRaw
+        }
+      }
+    }
+
+    $requiredAsrRules = @(
+      @{ Guid = '3B576869-A4EC-4529-8536-B80A7769E899'; Name = 'Block Office macros from the Internet' },
+      @{ Guid = 'D4F940AB-401B-4EFC-AADC-AD5F3C50688A'; Name = 'Block Win32 API calls from Office' },
+      @{ Guid = 'BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550'; Name = 'Block executable content from email' },
+      @{ Guid = 'D3E037E1-3EB8-44C8-A917-57927947596D'; Name = 'Block executable content from WebDAV/OneDrive' },
+      @{ Guid = '9E6C4E1F-7D60-472F-B5E9-2D3BEEB1BF0E'; Name = 'Block credential stealing from LSASS' }
+    )
+
+    $missingAsr = @()
+    $asrEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($rule in $requiredAsrRules) {
+      $guidKey = $rule.Guid.ToUpperInvariant()
+      if ($asrMap.ContainsKey($guidKey)) {
+        $asrEvidenceLines.Add(("{0} = {1}" -f $guidKey, $asrMap[$guidKey]))
+      }
+      $action = if ($asrMap.ContainsKey($guidKey)) { $asrMap[$guidKey] } else { $null }
+      if ($action -ne 1) {
+        $missingAsr += $rule.Name
+      }
+    }
+    $asrEvidence = if ($asrEvidenceLines.Count -gt 0) { ($asrEvidenceLines -join "`n") } else { ($prefText -split "\r?\n" | Select-Object -First 12) -join "`n" }
+
+    if ($missingAsr.Count -gt 0) {
+      Add-Issue "medium" "System/ASR" ("Required ASR rules not set to Block: {0}." -f ($missingAsr -join '; ')) $asrEvidence
+    } elseif ($requiredAsrRules.Count -gt 0) {
+      Add-Normal "System/ASR" "Required ASR rules enforced." $asrEvidence
+    }
+  }
+}
+
+# Exploit protection (system)
+if ($raw['process_mitigation']) {
+  $mitText = $raw['process_mitigation']
+  if ($mitText -match '(?i)Get-ProcessMitigation cmdlet not available') {
+    Add-Issue "info" "System/Exploit Protection" "Get-ProcessMitigation cmdlet not available." $mitText
+  } elseif ($mitText -match '(?i)Get-ProcessMitigation failed') {
+    Add-Issue "info" "System/Exploit Protection" "Failed to query system exploit protection." $mitText
+  } else {
+    $cfg = Get-MitigationSection $mitText 'CFG'
+    $dep = Get-MitigationSection $mitText 'DEP'
+    $aslr = Get-MitigationSection $mitText 'ASLR'
+
+    $convertMitigationValue = {
+      param($value)
+      if ($null -eq $value) { return $null }
+      $text = [string]$value
+      if (-not $text) { return $null }
+      $trim = $text.Trim()
+      if (-not $trim) { return $null }
+      $boolVal = Get-BoolFromString $trim
+      if ($null -ne $boolVal) { return $boolVal }
+      $lower = $trim.ToLowerInvariant()
+      switch ($lower) {
+        'on' { return $true }
+        'off' { return $false }
+        'enabled' { return $true }
+        'enable' { return $true }
+        'disabled' { return $false }
+        'disable' { return $false }
+        default { return $null }
+      }
+    }
+
+    $cfgEnable = & $convertMitigationValue ($cfg['Enable'])
+    $depEnable = & $convertMitigationValue ($dep['Enable'])
+    $aslrEnable = & $convertMitigationValue ($aslr['Enable'])
+    $aslrForce = & $convertMitigationValue ($aslr['ForceRelocateImages'])
+
+    $mitigationIssues = @()
+    if ($depEnable -ne $true) { $mitigationIssues += 'DEP system-wide enforcement disabled' }
+    if ($cfgEnable -ne $true) { $mitigationIssues += 'Control Flow Guard disabled' }
+    if ($aslrEnable -ne $true -or $aslrForce -ne $true) { $mitigationIssues += 'ASLR not fully enforced' }
+
+    $mitEvidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($section in @(@{Name='DEP'; Data=$dep}, @{Name='ASLR'; Data=$aslr}, @{Name='CFG'; Data=$cfg})) {
+      foreach ($key in $section.Data.Keys) {
+        $mitEvidenceLines.Add(("{0}/{1}: {2}" -f $section.Name, $key, $section.Data[$key]))
+      }
+    }
+    $mitEvidence = if ($mitEvidenceLines.Count -gt 0) { ($mitEvidenceLines | Select-Object -First 12 -Unique) -join "`n" } else { ($mitText -split "\r?\n" | Select-Object -First 14) -join "`n" }
+
+    if ($mitigationIssues.Count -gt 0) {
+      Add-Issue "medium" "System/Exploit Protection" ("Exploit protection gaps: {0}." -f ($mitigationIssues -join '; ')) $mitEvidence
+    } else {
+      Add-Normal "System/Exploit Protection" "DEP, ASLR, and CFG enforced." $mitEvidence
+    }
+  }
+}
+
+# WDAC / Smart App Control
+if ($raw['wdac_policy']) {
+  $wdacText = $raw['wdac_policy']
+  if ($wdacText -match '(?i)CI policy query failed') {
+    Add-Issue "info" "System/WDAC" "Unable to enumerate WDAC policies." $wdacText
+  } else {
+    if ($wdacText -match '(?i)No WDAC policy keys found') {
+      Add-Issue "medium" "System/WDAC" "No WDAC policies detected." $wdacText
+    } else {
+      $policyMatches = [regex]::Matches($wdacText,'(?im)^PolicyKey\s*:\s*(.+)$')
+      if ($policyMatches.Count -gt 0) {
+        $policyEvidence = ($policyMatches | ForEach-Object { "PolicyKey: $($_.Groups[1].Value.Trim())" } | Select-Object -Unique) -join "`n"
+        Add-Normal "System/WDAC" "WDAC policies present." $policyEvidence
+      }
+    }
+  }
+}
+
+if ($boolIsWindows11 -and $raw['smart_app_control']) {
+  $sacText = $raw['smart_app_control']
+  if ($sacText -match '(?i)Smart App Control query failed') {
+    Add-Issue "info" "System/Smart App Control" "Unable to determine Smart App Control state." $sacText
+  } else {
+    $stateText = Get-FirstPropertyValue $sacText 'State'
+    $stateValue = Parse-IntFromString $stateText
+    $sacEvidence = (($sacText -split "\r?\n") | Where-Object { $_ -match 'State' } | Select-Object -First 6) -join "`n"
+    if ($stateValue -eq 2 -or ($stateText -and $stateText.Trim().ToLowerInvariant() -eq 'on')) {
+      Add-Normal "System/Smart App Control" "Smart App Control is ON." $sacEvidence
+    } elseif ($stateText) {
+      Add-Issue "medium" "System/Smart App Control" ("Smart App Control not enabled (state '{0}')." -f $stateText.Trim()) $sacEvidence
+    }
+  }
+}
+
 # firewall profiles
 if ($raw['firewall']){
   $profiles = @{}
@@ -1643,12 +2351,12 @@ if ($raw['firewall']){
     $isOn = ($b -match 'State\s*ON')
     if ($pname) { $profiles[$pname] = $isOn }
     if (-not $isOn -and $b -match 'State\s*OFF'){
-      Add-Issue "medium" "Firewall" "$pname profile is OFF." $b
+      Add-Issue "medium" "System/Firewall" "$pname profile is OFF." $b
     }
   }
   if ($profiles.Count -gt 0 -and -not ($profiles.Values -contains $false)){
     $profileSummary = ($profiles.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, ($(if ($_.Value) {"ON"} else {"OFF"})) }) -join "; "
-    Add-Normal "Security/Firewall" "All firewall profiles ON" $profileSummary
+    Add-Normal "System/Firewall" "All firewall profiles ON" $profileSummary
   }
 }
 
@@ -1672,6 +2380,38 @@ if ($raw['bitlocker']) {
         if ($null -ne $entry.EncryptionPercentage) { $details += "Encryption: $([math]::Round($entry.EncryptionPercentage,1))%" }
         if ($details.Count -eq 0) { return $entry.RawBlock }
         return $details -join '; '
+      }
+
+      $protectorMap = @{}
+      $bitlockerJsonText = $raw['bitlocker_json']
+      if ($bitlockerJsonText -and $bitlockerJsonText.Trim()) {
+        if ($bitlockerJsonText -notmatch '(?i)Get-BitLockerVolume cmdlet not available' -and $bitlockerJsonText -notmatch '(?i)Get-BitLockerVolume \(JSON\) failed') {
+          try {
+            $jsonParsed = $bitlockerJsonText | ConvertFrom-Json -ErrorAction Stop
+            if ($jsonParsed) {
+              if ($jsonParsed -isnot [System.Collections.IEnumerable]) { $jsonParsed = @($jsonParsed) }
+              foreach ($vol in $jsonParsed) {
+                if (-not $vol) { continue }
+                $mountValue = ''
+                if ($vol.PSObject.Properties['MountPoint']) { $mountValue = [string]$vol.MountPoint }
+                $mountNorm = if ($mountValue) { $mountValue.Trim().ToUpperInvariant() } else { '' }
+                $protectorTypes = New-Object System.Collections.Generic.List[string]
+                if ($vol.PSObject.Properties['KeyProtector'] -and $vol.KeyProtector) {
+                  foreach ($kp in $vol.KeyProtector) {
+                    if (-not $kp) { continue }
+                    $typeValue = $null
+                    if ($kp.PSObject.Properties['KeyProtectorType']) { $typeValue = $kp.KeyProtectorType }
+                    elseif ($kp.PSObject.Properties['Type']) { $typeValue = $kp.Type }
+                    if ($typeValue) { $protectorTypes.Add(([string]$typeValue).Trim()) }
+                  }
+                }
+                if ($mountNorm) { $protectorMap[$mountNorm] = $protectorTypes.ToArray() }
+              }
+            }
+          } catch {
+            Add-Issue "info" "System/BitLocker Recovery" "Failed to parse BitLocker JSON output." (($bitlockerJsonText -split "\r?\n") | Select-Object -First 12) -join "`n"
+          }
+        }
       }
 
       $osVolumes = New-Object System.Collections.Generic.List[pscustomobject]
@@ -1997,6 +2737,35 @@ foreach ($svc in $serviceDefinitions) {
           } elseif ($isDisabled) {
             $tag = 'info'
           }
+        }
+      }
+
+      if ($osVolumes.Count -gt 0 -and $protectorMap.Count -gt 0) {
+        $missingRecovery = @()
+        foreach ($entry in $osVolumes) {
+          $mountNorm = if ($entry.MountPoint) { $entry.MountPoint.Trim().ToUpperInvariant() } else { '' }
+          $protectorTypes = if ($protectorMap.ContainsKey($mountNorm)) { $protectorMap[$mountNorm] } else { @() }
+          $hasRecovery = $false
+          foreach ($ptype in $protectorTypes) {
+            if ($ptype -match '(?i)recovery|numerical') { $hasRecovery = $true; break }
+          }
+          if (-not $hasRecovery) {
+            $missingRecovery += (if ($mountNorm) { $mountNorm } else { 'Operating system volume' })
+          }
+        }
+
+        $protectorEvidenceLines = New-Object System.Collections.Generic.List[string]
+        foreach ($key in $protectorMap.Keys) {
+          $types = $protectorMap[$key]
+          $typeText = if ($types -and $types.Count -gt 0) { ($types -join ', ') } else { 'None' }
+          $protectorEvidenceLines.Add(("{0}: {1}" -f $key, $typeText))
+        }
+        $protectorEvidence = ($protectorEvidenceLines | Select-Object -First 12) -join "`n"
+
+        if ($missingRecovery.Count -gt 0) {
+          Add-Issue "high" "System/BitLocker Recovery" ("BitLocker recovery password not detected for: {0}." -f ($missingRecovery -join ', ')) $protectorEvidence
+        } else {
+          Add-Normal "System/BitLocker Recovery" "BitLocker recovery passwords present for OS volume(s)." $protectorEvidence
         }
       }
     }

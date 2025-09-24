@@ -328,6 +328,53 @@ $capturePlan = @(
   @{ Name = "Firewall"; Description = "Firewall profile status"; Action = { netsh advfirewall show allprofiles } },
   @{ Name = "FirewallRules"; Description = "Firewall rules overview"; Action = { try { Get-NetFirewallRule | Select-Object DisplayName,Direction,Action,Enabled,Profile | Format-Table -AutoSize } catch { "Get-NetFirewallRule not present" } } },
   @{ Name = "DefenderStatus"; Description = "Microsoft Defender health"; Action = { try { Get-MpComputerStatus | Format-List * } catch { "Get-MpComputerStatus not available or Defender absent" } } },
+  @{ Name = "TPMStatus"; Description = "TPM status"; Action = {
+      $tpmCmd = Get-Command Get-Tpm -ErrorAction SilentlyContinue
+      if (-not $tpmCmd) {
+        "Get-Tpm cmdlet not available on this system."
+      } else {
+        try {
+          Get-Tpm | Format-List *
+        } catch {
+          "Get-Tpm failed: $_"
+        }
+      }
+    } },
+  @{ Name = "DeviceGuardStatus"; Description = "Device Guard and VBS status"; Action = {
+      try {
+        Get-CimInstance -Namespace 'root\\Microsoft\\Windows\\DeviceGuard' -ClassName Win32_DeviceGuard | Format-List *
+      } catch {
+        "Get-CimInstance Win32_DeviceGuard failed: $_"
+      }
+    } },
+  @{ Name = "ComputerSystem"; Description = "Computer system details"; Action = {
+      try {
+        Get-CimInstance -ClassName Win32_ComputerSystem | Format-List *
+      } catch {
+        "Get-CimInstance Win32_ComputerSystem failed: $_"
+      }
+    } },
+  @{ Name = "MSInfo32"; Description = "Kernel DMA protection excerpt"; Action = {
+      $tempFile = Join-Path $env:TEMP ("msinfo32_{0}.txt" -f ([guid]::NewGuid().ToString('N')))
+      try {
+        $proc = Start-Process -FilePath msinfo32.exe -ArgumentList "/report `"$tempFile`"" -WindowStyle Hidden -PassThru -ErrorAction Stop
+        if ($proc) { $proc.WaitForExit(300000) }
+        if (Test-Path $tempFile) {
+          $content = Get-Content -Path $tempFile -ErrorAction SilentlyContinue
+          if ($content) {
+            $content | Where-Object { $_ -match 'Kernel DMA Protection|Device Encryption Support' }
+          } else {
+            "msinfo32 report completed but no content was returned."
+          }
+        } else {
+          "msinfo32 report failed to produce output."
+        }
+      } catch {
+        "msinfo32 report failed: $_"
+      } finally {
+        if (Test-Path $tempFile) { Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue }
+      }
+    } },
   @{ Name = "BitLockerStatus"; Description = "BitLocker volume status"; Action = {
       $bitlockerCmd = Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue
       if (-not $bitlockerCmd) {
@@ -338,6 +385,157 @@ $capturePlan = @(
         } catch {
           "Get-BitLockerVolume failed: $_"
         }
+      }
+    } },
+  @{ Name = "BitLockerStatusJson"; Description = "BitLocker volume status (JSON)"; Action = {
+      $bitlockerCmd = Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue
+      if (-not $bitlockerCmd) {
+        "Get-BitLockerVolume cmdlet not available on this system."
+      } else {
+        try {
+          Get-BitLockerVolume | Select-Object MountPoint,VolumeType,KeyProtector | ConvertTo-Json -Depth 4
+        } catch {
+          "Get-BitLockerVolume (JSON) failed: $_"
+        }
+      }
+    } },
+  @{ Name = "RDPConfig"; Description = "Remote Desktop configuration"; Action = {
+      Write-Output "### Terminal Server"
+      try {
+        $tsSettings = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' -ErrorAction Stop
+        $tsSettings | Select-Object fDenyTSConnections, UserAuthentication | Format-List *
+      } catch {
+        "Terminal Server key query failed: $_"
+      }
+      Write-Output ""
+      Write-Output "### RDP-Tcp"
+      try {
+        $tcpSettings = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -ErrorAction Stop
+        $tcpSettings | Select-Object UserAuthentication, SecurityLayer | Format-List *
+      } catch {
+        "RDP-Tcp key query failed: $_"
+      }
+    } },
+  @{ Name = "SmbServerConfiguration"; Description = "SMB server configuration"; Action = {
+      $smbCmd = Get-Command Get-SmbServerConfiguration -ErrorAction SilentlyContinue
+      if (-not $smbCmd) {
+        "Get-SmbServerConfiguration cmdlet not available."
+      } else {
+        try {
+          Get-SmbServerConfiguration | Select-Object EnableSMB1Protocol, EnableSMB2Protocol, RejectUnencryptedAccess, RequireSecuritySignature | Format-List *
+        } catch {
+          "Get-SmbServerConfiguration failed: $_"
+        }
+      }
+    } },
+  @{ Name = "NTLMSettings"; Description = "NTLM authentication settings"; Action = {
+      Write-Output "### Lsa"
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name LmCompatibilityLevel, RestrictSendingNTLMTraffic -ErrorAction Stop | Format-List *
+      } catch {
+        "Lsa key query failed: $_"
+      }
+      Write-Output ""
+      Write-Output "### MSV1_0"
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0' -ErrorAction Stop | Format-List *
+      } catch {
+        "MSV1_0 key query failed: $_"
+      }
+    } },
+  @{ Name = "PrintSpoolerService"; Description = "Print Spooler service status"; Action = {
+      try {
+        Get-Service -Name Spooler -ErrorAction Stop | Select-Object Name,Status,StartType | Format-List *
+      } catch {
+        "Get-Service Spooler failed: $_"
+      }
+    } },
+  @{ Name = "TimeStatus"; Description = "Time synchronization status"; Action = {
+      try {
+        w32tm /query /status
+      } catch {
+        "w32tm query failed: $_"
+      }
+    } },
+  @{ Name = "SmartScreen"; Description = "SmartScreen configuration"; Action = {
+      Write-Output "### Explorer SmartScreen"
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer' -Name SmartScreenEnabled -ErrorAction Stop | Format-List *
+      } catch {
+        "Explorer key query failed: $_"
+      }
+      Write-Output ""
+      Write-Output "### System Policy"
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -ErrorAction Stop | Format-List *
+      } catch {
+        "System policy key query failed: $_"
+      }
+      Write-Output ""
+      Write-Output "### AppHost"
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppHost' -ErrorAction Stop | Format-List *
+      } catch {
+        "AppHost key query failed: $_"
+      }
+    } },
+  @{ Name = "DefenderPreferences"; Description = "Microsoft Defender preferences"; Action = {
+      $mpPrefCmd = Get-Command Get-MpPreference -ErrorAction SilentlyContinue
+      if (-not $mpPrefCmd) {
+        "Get-MpPreference cmdlet not available."
+      } else {
+        try {
+          $pref = Get-MpPreference
+          $pref | Format-List *
+          Write-Output ""
+          Write-Output "ASRRulesExpanded:"
+          if ($pref.AttackSurfaceReductionRules_Ids) {
+            for ($i = 0; $i -lt $pref.AttackSurfaceReductionRules_Ids.Count; $i++) {
+              $id = $pref.AttackSurfaceReductionRules_Ids[$i]
+              $action = $null
+              if ($pref.AttackSurfaceReductionRules_Actions.Count -gt $i) { $action = $pref.AttackSurfaceReductionRules_Actions[$i] }
+              Write-Output ("{0}={1}" -f $id, $action)
+            }
+          } else {
+            Write-Output "None"
+          }
+        } catch {
+          "Get-MpPreference failed: $_"
+        }
+      }
+    } },
+  @{ Name = "ProcessMitigation"; Description = "Exploit protection (system)"; Action = {
+      $pmCmd = Get-Command Get-ProcessMitigation -ErrorAction SilentlyContinue
+      if (-not $pmCmd) {
+        "Get-ProcessMitigation cmdlet not available."
+      } else {
+        try {
+          Get-ProcessMitigation -System | Format-List *
+        } catch {
+          "Get-ProcessMitigation failed: $_"
+        }
+      }
+    } },
+  @{ Name = "WDACPolicy"; Description = "WDAC policy inventory"; Action = {
+      Write-Output "### CI Policy"
+      try {
+        $policies = Get-ChildItem -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy' -ErrorAction Stop
+        if (-not $policies) {
+          Write-Output "No WDAC policy keys found."
+        } else {
+          foreach ($policy in $policies) {
+            Write-Output ("PolicyKey: {0}" -f $policy.PSChildName)
+          }
+        }
+      } catch {
+        "CI policy query failed: $_"
+      }
+    } },
+  @{ Name = "SmartAppControl"; Description = "Smart App Control state"; Action = {
+      try {
+        Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SmartAppControl' -ErrorAction Stop | Format-List *
+      } catch {
+        "Smart App Control query failed: $_"
       }
     } },
   @{ Name = "NetShares"; Description = "File shares (net share)"; Action = { net share } },
