@@ -204,6 +204,7 @@ details.report-card[open] > summary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-xs);
   width: auto;
   padding: var(--space-xs) var(--space-md);
   border-radius: var(--radius-pill);
@@ -214,6 +215,15 @@ details.report-card[open] > summary {
   font-size: 0.95rem;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.report-tabs__label-badge {
+  flex-shrink: 0;
+}
+
+.report-tabs__label-count {
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .report-tabs__label:hover {
