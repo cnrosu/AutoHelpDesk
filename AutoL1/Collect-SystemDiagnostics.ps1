@@ -48,6 +48,47 @@ function Save-Output {
   return $file
 }
 
+function Export-RegistryValues {
+  param(
+    [Parameter(Mandatory)][string[]]$Paths
+  )
+
+  foreach ($path in $Paths) {
+    if (-not $path) { continue }
+
+    Write-Output ("[Path] {0}" -f $path)
+    if (Test-Path -LiteralPath $path) {
+      try {
+        $item = Get-ItemProperty -LiteralPath $path -ErrorAction Stop
+        $props = $item.PSObject.Properties |
+          Where-Object { $_.Name -notmatch '^(PSPath|PSParentPath|PSChildName|PSDrive|PSProvider)$' }
+
+        if (-not $props -or $props.Count -eq 0) {
+          Write-Output "(no values)"
+        } else {
+          foreach ($prop in $props) {
+            $value = $prop.Value
+            if ($null -eq $value) {
+              $valueText = '(null)'
+            } elseif ($value -is [System.Array]) {
+              $valueText = ($value | ForEach-Object { $_ }) -join ', '
+            } else {
+              $valueText = $value.ToString()
+            }
+            Write-Output ("{0} = {1}" -f $prop.Name, $valueText)
+          }
+        }
+      } catch {
+        Write-Output ("(error reading key: {0})" -f $_)
+      }
+    } else {
+      Write-Output "(path not found)"
+    }
+
+    Write-Output ""
+  }
+}
+
 $capturePlan = @(
   @{ Name = "ipconfig_all"; Description = "Detailed IP configuration (ipconfig /all)"; Action = { ipconfig /all } },
   @{ Name = "route_print"; Description = "Routing table (route print)"; Action = { route print } },
@@ -344,6 +385,57 @@ $capturePlan = @(
   @{ Name = "ScheduledTasks"; Description = "Scheduled task inventory"; Action = { schtasks /query /fo LIST /v } },
   @{ Name = "dsregcmd_status"; Description = "Azure AD registration status (dsregcmd /status)"; Action = { dsregcmd /status } },
   @{ Name = "Whoami"; Description = "Current user context"; Action = { whoami /all } },
+  @{ Name = "Policy_Autorun"; Description = "Autorun and autoplay policy snapshot"; Action = {
+      Write-Output "### Autorun Policy Snapshot"
+      Export-RegistryValues -Paths @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer'
+      )
+    } },
+  @{ Name = "Policy_RemovableStorage"; Description = "Removable storage device policy snapshot"; Action = {
+      Write-Output "### Removable Storage Policy Snapshot"
+      $basePath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices'
+      Export-RegistryValues -Paths @($basePath)
+      if (Test-Path -LiteralPath $basePath) {
+        Get-ChildItem -LiteralPath $basePath -ErrorAction SilentlyContinue | ForEach-Object {
+          Export-RegistryValues -Paths @($_.PSPath)
+        }
+      }
+    } },
+  @{ Name = "Policy_BitLockerToGo"; Description = "BitLocker To Go enforcement policy snapshot"; Action = {
+      Write-Output "### BitLocker To Go Policy Snapshot"
+      Export-RegistryValues -Paths @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\FVE',
+        'HKLM:\SOFTWARE\Policies\Microsoft\FVE\RDV'
+      )
+    } },
+  @{ Name = "Policy_System"; Description = "System policy snapshot (UAC, consent prompts)"; Action = {
+      Write-Output "### System Policy Snapshot"
+      Export-RegistryValues -Paths @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System')
+    } },
+  @{ Name = "Policy_PowerShell"; Description = "PowerShell logging policy snapshot"; Action = {
+      Write-Output "### PowerShell Policy Snapshot"
+      Export-RegistryValues -Paths @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription',
+        'HKLM:\SOFTWARE\Microsoft\Windows Script Host\Settings'
+      )
+    } },
+  @{ Name = "Policy_LDAP_NTLM"; Description = "LDAP signing and NTLM hardening snapshot"; Action = {
+      Write-Output "### LDAP/NTLM Policy Snapshot"
+      Export-RegistryValues -Paths @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LDAP',
+        'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters',
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0',
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+      )
+    } },
+  @{ Name = "User_NearbySharing"; Description = "Nearby sharing configuration for current user"; Action = {
+      Write-Output "### Nearby Sharing Settings"
+      Export-RegistryValues -Paths @('HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP')
+    } },
   @{ Name = "Uptime"; Description = "Last boot time"; Action = { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime } },
   @{ Name = "TopCPU"; Description = "Top CPU processes"; Action = { Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 | Format-Table -AutoSize } },
   @{ Name = "Memory"; Description = "Memory usage summary"; Action = { Get-CimInstance Win32_OperatingSystem | Select @{n='TotalVisibleMemoryMB';e={[math]::round($_.TotalVisibleMemorySize/1024,0)}}, @{n='FreePhysicalMemoryMB';e={[math]::round($_.FreePhysicalMemory/1024,0)}} | Format-List * } }

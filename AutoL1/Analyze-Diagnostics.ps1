@@ -150,6 +150,44 @@ function Parse-KeyValueBlock {
   return $map
 }
 
+function Parse-RegistryDump {
+  param([string]$Text)
+
+  $sections = New-Object System.Collections.Generic.List[pscustomobject]
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $sections }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $current = $null
+
+  foreach ($line in $lines) {
+    if ($line -match '^\s*\[Path\]\s*(.+)$') {
+      if ($current) { $sections.Add($current) }
+      $pathValue = $matches[1].Trim()
+      $current = [pscustomobject]@{
+        Path   = $pathValue
+        Values = @{}
+        Lines  = New-Object System.Collections.Generic.List[string]
+      }
+      continue
+    }
+
+    if (-not $current) { continue }
+
+    $trimmed = $line.Trim()
+    if ($trimmed) { $current.Lines.Add($trimmed) }
+
+    $kvMatch = [regex]::Match($line,'^\s*([^=]+?)\s*=\s*(.+)$')
+    if ($kvMatch.Success) {
+      $name = $kvMatch.Groups[1].Value.Trim()
+      $value = $kvMatch.Groups[2].Value.Trim()
+      if ($name) { $current.Values[$name] = $value }
+    }
+  }
+
+  if ($current) { $sections.Add($current) }
+  return $sections
+}
+
 function Convert-DiskBlock {
   param([string]$BlockText)
 
@@ -291,6 +329,16 @@ function Parse-ServiceSnapshot {
   }
 
   return $map
+}
+
+function Get-ServiceRecord {
+  param($Map,[string]$Name)
+
+  if (-not $Map -or -not $Name) { return $null }
+  foreach ($key in $Map.Keys) {
+    if ($key -and $key -ieq $Name) { return $Map[$key] }
+  }
+  return $null
 }
 
 function Get-WinHttpProxyInfo {
@@ -565,6 +613,13 @@ $files = [ordered]@{
   tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('(?im)^Folder:\s','(?im)^TaskName:\s','(?im)^HostName:\s')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
   dsreg          = Find-ByContent @('dsregcmd_status','dsregcmd','dsreg_status','dsreg') @('AzureAdJoined','Device State','TenantName','dsregcmd')
+  policy_autorun = Find-ByContent @('Policy_Autorun')            @('Autorun Policy Snapshot','NoDriveTypeAutoRun')
+  policy_removable = Find-ByContent @('Policy_RemovableStorage') @('Removable Storage Policy Snapshot','Deny_Write','Deny_All')
+  policy_bitlockertogo = Find-ByContent @('Policy_BitLockerToGo') @('BitLocker To Go Policy Snapshot','RDVEnforceBDE')
+  policy_system  = Find-ByContent @('Policy_System')             @('System Policy Snapshot','EnableLUA','ConsentPromptBehaviorAdmin')
+  policy_powershell = Find-ByContent @('Policy_PowerShell')      @('PowerShell Policy Snapshot','ScriptBlockLogging','ModuleLogging')
+  policy_ldap_ntlm = Find-ByContent @('Policy_LDAP_NTLM')        @('LDAP/NTLM Policy Snapshot','LDAP','MSV1_0','Lsa')
+  user_nearbysharing = Find-ByContent @('User_NearbySharing')    @('Nearby Sharing Settings','NearShare')
   uptime         = Find-ByContent @('Uptime')                    @('\d{4}-\d{2}-\d{2}')
   topcpu         = Find-ByContent @('TopCPU')                    @('ProcessName|CPU')
   memory         = Find-ByContent @('Memory')                    @('TotalVisibleMemoryMB|FreePhysicalMemoryMB')
@@ -661,6 +716,26 @@ function Get-BoolFromString {
       return $null
     }
   }
+}
+
+function ConvertTo-IntFromString {
+  param([string]$Value)
+
+  if ($null -eq $Value) { return $null }
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return $null }
+
+  $hexMatch = [regex]::Match($trimmed,'(?i)0x[0-9a-f]+')
+  if ($hexMatch.Success) {
+    try { return [Convert]::ToInt32($hexMatch.Value.Substring(2),16) } catch { return $null }
+  }
+
+  $intMatch = [regex]::Match($trimmed,'-?\d+')
+  if ($intMatch.Success) {
+    try { return [int]$intMatch.Value } catch { return $null }
+  }
+
+  return $null
 }
 
 function Get-UptimeClassification {
@@ -1736,6 +1811,361 @@ if ($raw['bitlocker']) {
   Add-Issue "low" "System/BitLocker" "BitLocker status file present but empty." ""
 }
 
+# Removable media and user privilege checks
+$autorunSections = Parse-RegistryDump $raw['policy_autorun']
+if ($autorunSections.Count -gt 0) {
+  $autorunDriveRecords = @()
+  $autorunNoAutoRecords = @()
+  foreach ($section in $autorunSections) {
+    if ($section.Values.ContainsKey('NoDriveTypeAutoRun')) {
+      $rawValue = $section.Values['NoDriveTypeAutoRun']
+      $autorunDriveRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('NoAutoRun')) {
+      $rawValue = $section.Values['NoAutoRun']
+      $autorunNoAutoRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+  }
+
+  $autorunIssues = @()
+  $autorunEvidence = @()
+  foreach ($record in $autorunDriveRecords) { $autorunEvidence += ("{0}: NoDriveTypeAutoRun = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $autorunNoAutoRecords) { $autorunEvidence += ("{0}: NoAutoRun = {1}" -f $record.Path, $record.Raw) }
+
+  if ($autorunDriveRecords.Count -eq 0) {
+    $autorunIssues += 'NoDriveTypeAutoRun value not found.'
+  } elseif (-not ($autorunDriveRecords | Where-Object { $_.Int -eq 255 })) {
+    $captured = ($autorunDriveRecords | ForEach-Object { $_.Raw }) -join ', '
+    $autorunIssues += ("NoDriveTypeAutoRun not set to 0xFF (captured: {0})." -f $captured)
+  }
+
+  if ($autorunNoAutoRecords.Count -eq 0) {
+    $autorunIssues += 'NoAutoRun value not found.'
+  } elseif (-not ($autorunNoAutoRecords | Where-Object { $_.Int -eq 1 })) {
+    $captured = ($autorunNoAutoRecords | ForEach-Object { $_.Raw }) -join ', '
+    $autorunIssues += ("NoAutoRun not set to 1 (captured: {0})." -f $captured)
+  }
+
+  $autorunEvidenceText = if ($autorunEvidence.Count -gt 0) { $autorunEvidence -join "`n" } else { '' }
+  if ($autorunIssues.Count -gt 0) {
+    $message = "Autorun/Autoplay policy gaps: {0}" -f ($autorunIssues -join ' ')
+    Add-Issue 'medium' 'Hardware/Removable Media' $message $autorunEvidenceText
+  } else {
+    Add-Normal 'Hardware/Removable Media' 'Autorun/Autoplay disabled via policy (NoDriveTypeAutoRun = 0xFF, NoAutoRun = 1).' $autorunEvidenceText
+  }
+} elseif ($files['policy_autorun']) {
+  Add-Issue 'info' 'Hardware/Removable Media' 'Autorun policy snapshot captured but no registry data parsed.' ''
+}
+
+$removableSections = Parse-RegistryDump $raw['policy_removable']
+if ($removableSections.Count -gt 0) {
+  $denyWriteRecords = @()
+  $denyAllRecords = @()
+  foreach ($section in $removableSections) {
+    if ($section.Values.ContainsKey('Deny_Write')) {
+      $rawValue = $section.Values['Deny_Write']
+      $denyWriteRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('Deny_All')) {
+      $rawValue = $section.Values['Deny_All']
+      $denyAllRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+  }
+
+  $removableEvidence = @()
+  foreach ($record in $denyWriteRecords) { $removableEvidence += ("{0}: Deny_Write = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $denyAllRecords) { $removableEvidence += ("{0}: Deny_All = {1}" -f $record.Path, $record.Raw) }
+
+  $hasDenyWrite = (($denyWriteRecords | Where-Object { $_.Int -eq 1 }).Count -gt 0)
+  $hasDenyAll = (($denyAllRecords | Where-Object { $_.Int -eq 1 }).Count -gt 0)
+  $removableEvidenceText = if ($removableEvidence.Count -gt 0) { $removableEvidence -join "`n" } else { '' }
+  if ($hasDenyWrite -or $hasDenyAll) {
+    $message = if ($hasDenyAll) { 'Removable storage access denied by policy.' } else { 'Removable storage write access blocked by policy.' }
+    Add-Normal 'Hardware/Removable Media' $message $removableEvidenceText
+  } else {
+    $severity = if ($summary.DomainJoined -eq $true) { 'high' } else { 'medium' }
+    if (($denyWriteRecords + $denyAllRecords).Count -gt 0) {
+      $values = (($denyWriteRecords + $denyAllRecords) | ForEach-Object { "{0}={1}" -f $_.Path, $_.Raw }) -join '; '
+      $message = "Removable storage policy does not deny write access (captured values: {0})." -f $values
+    } else {
+      $message = 'Removable storage policy values not found.'
+    }
+    Add-Issue $severity 'Hardware/Removable Media' $message $removableEvidenceText
+  }
+} elseif ($files['policy_removable']) {
+  Add-Issue 'info' 'Hardware/Removable Media' 'Removable storage policy snapshot captured but no registry data parsed.' ''
+}
+
+$bitLockerPolicySections = Parse-RegistryDump $raw['policy_bitlockertogo']
+if ($bitLockerPolicySections.Count -gt 0) {
+  $rdvEnforceRecords = @()
+  $rdvAllowRecords = @()
+  foreach ($section in $bitLockerPolicySections) {
+    if ($section.Values.ContainsKey('RDVEnforceBDE')) {
+      $rawValue = $section.Values['RDVEnforceBDE']
+      $rdvEnforceRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('RDVAllowBDE')) {
+      $rawValue = $section.Values['RDVAllowBDE']
+      $rdvAllowRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+  }
+
+  $bitLockerPolicyEvidence = @()
+  foreach ($record in $rdvEnforceRecords) { $bitLockerPolicyEvidence += ("{0}: RDVEnforceBDE = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $rdvAllowRecords) { $bitLockerPolicyEvidence += ("{0}: RDVAllowBDE = {1}" -f $record.Path, $record.Raw) }
+  $bitLockerEvidenceText = if ($bitLockerPolicyEvidence.Count -gt 0) { $bitLockerPolicyEvidence -join "`n" } else { '' }
+  $enforceEnabled = (($rdvEnforceRecords | Where-Object { $_.Int -ge 1 }).Count -gt 0)
+  if ($enforceEnabled) {
+    Add-Normal 'Hardware/Removable Media' 'BitLocker To Go enforcement detected (RDVEnforceBDE enabled).' $bitLockerEvidenceText
+  } else {
+    $severity = if ($summary.DomainJoined -eq $true) { 'high' } else { 'medium' }
+    $captured = if ($rdvEnforceRecords.Count -gt 0) { ($rdvEnforceRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'not captured' }
+    $message = "BitLocker To Go enforcement not detected (RDVEnforceBDE values: {0})." -f $captured
+    Add-Issue $severity 'Hardware/Removable Media' $message $bitLockerEvidenceText
+  }
+} elseif ($files['policy_bitlockertogo']) {
+  Add-Issue 'info' 'Hardware/Removable Media' 'BitLocker To Go policy snapshot captured but no registry data parsed.' ''
+}
+
+$whoamiText = $raw['whoami']
+if ($whoamiText) {
+  $isLocalAdmin = $false
+  $adminEvidence = @()
+  $membershipMatch = [regex]::Match($whoamiText,'(?is)Local Group Memberships\s*:\s*(?<members>.+?)(?=\r?\n\S|\z)')
+  $membershipLines = @()
+  if ($membershipMatch.Success) {
+    $membershipLines = ([regex]::Split($membershipMatch.Groups['members'].Value,'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($line in $membershipLines) {
+      $normalized = ($line -replace '^\*','').Trim()
+      if ($normalized -match '(?i)\bAdministrators\b') { $isLocalAdmin = $true }
+    }
+  }
+  $adminLineMatches = [regex]::Matches($whoamiText,'(?im)^.*Administrators.*$')
+  foreach ($match in $adminLineMatches) {
+    $text = $match.Value.Trim()
+    if ($text) { $adminEvidence += $text }
+  }
+  if ($membershipLines.Count -gt 0) {
+    foreach ($line in $membershipLines) { $adminEvidence += ("Membership: {0}" -f $line) }
+  }
+
+  if ($isLocalAdmin -or ($adminLineMatches.Count -gt 0)) {
+    $evidenceText = if ($adminEvidence.Count -gt 0) { ($adminEvidence | Select-Object -First 8) -join "`n" } else { '' }
+    Add-Issue 'high' 'User/Local Admin' 'Logged-on account is member of local Administrators. Enforce LAPS/just-in-time admin controls.' $evidenceText
+  } elseif ($membershipLines.Count -gt 0) {
+    $evidenceText = ($membershipLines | Select-Object -First 8) -join "`n"
+    Add-Normal 'User/Local Admin' 'Logged-on account not in local Administrators group.' $evidenceText
+  }
+
+  $lapsEvidence = @()
+  foreach ($sourceKey in @('programs','programs32','services')) {
+    $sourceText = $raw[$sourceKey]
+    if ([string]::IsNullOrWhiteSpace($sourceText)) { continue }
+    foreach ($line in [regex]::Split($sourceText,'\r?\n')) {
+      $trim = $line.Trim()
+      if (-not $trim) { continue }
+      if ($trim -match '(?i)\b(Local Administrator Password Solution|Windows\s+LAPS|Microsoft\s+LAPS|Privileged\s+Local\s+Admin(?:istrator)? Password)\b' -or $trim -match '(?i)\bLAPS\b') {
+        $lapsEvidence += ("{0}: {1}" -f $sourceKey, $trim)
+      }
+    }
+  }
+  if ($lapsEvidence.Count -gt 0) {
+    $lapsEvidenceText = ($lapsEvidence | Select-Object -First 8) -join "`n"
+    Add-Normal 'User/LAPS' 'LAPS/PLAP components detected on this device.' $lapsEvidenceText
+  }
+} elseif ($files['whoami']) {
+  Add-Issue 'info' 'User/Local Admin' 'whoami /all output captured but empty.' ''
+}
+
+$systemPolicySections = Parse-RegistryDump $raw['policy_system']
+if ($systemPolicySections.Count -gt 0) {
+  $enableLuaRecords = @()
+  $consentRecords = @()
+  $secureDesktopRecords = @()
+  foreach ($section in $systemPolicySections) {
+    if ($section.Values.ContainsKey('EnableLUA')) {
+      $rawValue = $section.Values['EnableLUA']
+      $enableLuaRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('ConsentPromptBehaviorAdmin')) {
+      $rawValue = $section.Values['ConsentPromptBehaviorAdmin']
+      $consentRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('PromptOnSecureDesktop')) {
+      $rawValue = $section.Values['PromptOnSecureDesktop']
+      $secureDesktopRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+  }
+
+  $uacIssues = @()
+  $uacEvidence = @()
+  foreach ($record in $enableLuaRecords) { $uacEvidence += ("{0}: EnableLUA = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $consentRecords) { $uacEvidence += ("{0}: ConsentPromptBehaviorAdmin = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $secureDesktopRecords) { $uacEvidence += ("{0}: PromptOnSecureDesktop = {1}" -f $record.Path, $record.Raw) }
+
+  if ($enableLuaRecords.Count -eq 0) {
+    $uacIssues += 'EnableLUA value not found.'
+  } elseif (-not ($enableLuaRecords | Where-Object { $_.Int -eq 1 })) {
+    $values = ($enableLuaRecords | ForEach-Object { $_.Raw }) -join ', '
+    $uacIssues += ("EnableLUA not set to 1 (captured: {0})." -f $values)
+  }
+
+  if ($consentRecords.Count -eq 0) {
+    $uacIssues += 'ConsentPromptBehaviorAdmin value not found.'
+  } elseif (-not ($consentRecords | Where-Object { $_.Int -in 1,2,5 })) {
+    $values = ($consentRecords | ForEach-Object { $_.Raw }) -join ', '
+    $uacIssues += ("ConsentPromptBehaviorAdmin not set to secure option (captured: {0})." -f $values)
+  }
+
+  if ($secureDesktopRecords.Count -eq 0) {
+    $uacIssues += 'PromptOnSecureDesktop value not found.'
+  } elseif (-not ($secureDesktopRecords | Where-Object { $_.Int -eq 1 })) {
+    $values = ($secureDesktopRecords | ForEach-Object { $_.Raw }) -join ', '
+    $uacIssues += ("PromptOnSecureDesktop not set to 1 (captured: {0})." -f $values)
+  }
+
+  $uacEvidenceText = if ($uacEvidence.Count -gt 0) { $uacEvidence -join "`n" } else { '' }
+  if ($uacIssues.Count -gt 0) {
+    $message = "UAC hardening gaps detected: {0}" -f ($uacIssues -join ' ')
+    Add-Issue 'medium' 'User/UAC' $message $uacEvidenceText
+  } else {
+    Add-Normal 'User/UAC' 'UAC enabled with secure consent prompts and secure desktop.' $uacEvidenceText
+  }
+} elseif ($files['policy_system']) {
+  Add-Issue 'info' 'User/UAC' 'System policy snapshot captured but no registry data parsed.' ''
+}
+
+$psPolicySections = Parse-RegistryDump $raw['policy_powershell']
+if ($psPolicySections.Count -gt 0) {
+  $scriptBlockRecords = @()
+  $moduleRecords = @()
+  $transcriptionRecords = @()
+  $amsiEvidence = @()
+  $amsiDisabled = $false
+  foreach ($section in $psPolicySections) {
+    foreach ($key in $section.Values.Keys) {
+      $rawValue = $section.Values[$key]
+      $intValue = ConvertTo-IntFromString $rawValue
+      switch -Regex ($key) {
+        '^(?i)EnableScriptBlockLogging$' {
+          $scriptBlockRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }
+          continue
+        }
+        '^(?i)EnableModuleLogging$' {
+          $moduleRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }
+          continue
+        }
+        '^(?i)EnableTranscription$' {
+          $transcriptionRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }
+          continue
+        }
+      }
+
+      if ($key -match '(?i)Amsi') {
+        if ($intValue -eq 0) { $amsiDisabled = $true }
+        $amsiEvidence += ("{0}: {1} = {2}" -f $section.Path, $key, $rawValue)
+      }
+    }
+  }
+
+  $psEvidence = @()
+  foreach ($record in $scriptBlockRecords) { $psEvidence += ("{0}: EnableScriptBlockLogging = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $moduleRecords) { $psEvidence += ("{0}: EnableModuleLogging = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $transcriptionRecords) { $psEvidence += ("{0}: EnableTranscription = {1}" -f $record.Path, $record.Raw) }
+  foreach ($entry in $amsiEvidence) { $psEvidence += $entry }
+  $psEvidenceText = if ($psEvidence.Count -gt 0) { $psEvidence -join "`n" } else { '' }
+
+  $scriptBlockEnabled = (($scriptBlockRecords | Where-Object { $_.Int -eq 1 }).Count -gt 0)
+  $moduleLoggingEnabled = (($moduleRecords | Where-Object { $_.Int -eq 1 }).Count -gt 0)
+
+  $psIssues = @()
+  if (-not $scriptBlockRecords -or -not $scriptBlockEnabled) {
+    $values = if ($scriptBlockRecords.Count -gt 0) { ($scriptBlockRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'not captured' }
+    $psIssues += ("Script Block Logging disabled or not configured (values: {0})." -f $values)
+  }
+  if (-not $moduleRecords -or -not $moduleLoggingEnabled) {
+    $values = if ($moduleRecords.Count -gt 0) { ($moduleRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'not captured' }
+    $psIssues += ("Module Logging disabled or not configured (values: {0})." -f $values)
+  }
+
+  if ($psIssues.Count -gt 0) {
+    $message = "PowerShell logging gaps: {0}" -f ($psIssues -join ' ')
+    Add-Issue 'medium' 'User/PowerShell Logging' $message $psEvidenceText
+  } elseif ($scriptBlockEnabled -and $moduleLoggingEnabled) {
+    Add-Normal 'User/PowerShell Logging' 'PowerShell script block and module logging enabled.' $psEvidenceText
+  }
+
+  if ($amsiDisabled) {
+    Add-Issue 'high' 'User/PowerShell Logging' 'AMSI appears disabled via registry configuration.' $psEvidenceText
+  }
+} elseif ($files['policy_powershell']) {
+  Add-Issue 'info' 'User/PowerShell Logging' 'PowerShell policy snapshot captured but no registry data parsed.' ''
+}
+
+if ($summary.DomainJoined -eq $true -or $summary.EnterpriseJoined -eq $true) {
+  $ldapPolicySections = Parse-RegistryDump $raw['policy_ldap_ntlm']
+  if ($ldapPolicySections.Count -gt 0) {
+    $ldapClientRecords = @()
+    $ldapServerRecords = @()
+    $channelRecords = @()
+    $auditRecords = @()
+    $restrictRecords = @()
+    foreach ($section in $ldapPolicySections) {
+      foreach ($key in $section.Values.Keys) {
+        $rawValue = $section.Values[$key]
+        $intValue = ConvertTo-IntFromString $rawValue
+        switch -Regex ($key) {
+          'LDAPClientIntegrity' { $ldapClientRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }; continue }
+          'LDAPServerIntegrity' { $ldapServerRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }; continue }
+          'LdapEnforceChannelBinding' { $channelRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }; continue }
+          'AuditReceivingNTLMTraffic' { $auditRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }; continue }
+          'Restrict(?:Receiving|Sending)NTLMTraffic' { $restrictRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = $intValue }; continue }
+        }
+      }
+    }
+
+    $ldapEvidence = @()
+    foreach ($record in $ldapClientRecords) { $ldapEvidence += ("{0}: LDAPClientIntegrity = {1}" -f $record.Path, $record.Raw) }
+    foreach ($record in $ldapServerRecords) { $ldapEvidence += ("{0}: LDAPServerIntegrity = {1}" -f $record.Path, $record.Raw) }
+    foreach ($record in $channelRecords) { $ldapEvidence += ("{0}: LdapEnforceChannelBinding = {1}" -f $record.Path, $record.Raw) }
+    foreach ($record in $auditRecords) { $ldapEvidence += ("{0}: AuditReceivingNTLMTraffic = {1}" -f $record.Path, $record.Raw) }
+    foreach ($record in $restrictRecords) { $ldapEvidence += ("{0}: RestrictNTLM = {1}" -f $record.Path, $record.Raw) }
+    $ldapEvidenceText = if ($ldapEvidence.Count -gt 0) { $ldapEvidence -join "`n" } else { '' }
+
+    $signingGood = (($ldapServerRecords | Where-Object { $_.Int -ge 2 }).Count -gt 0) -or (($ldapClientRecords | Where-Object { $_.Int -ge 2 }).Count -gt 0)
+    $channelGood = (($channelRecords | Where-Object { $_.Int -ge 1 }).Count -gt 0)
+    $auditGood = (($auditRecords | Where-Object { $_.Int -ge 1 }).Count -gt 0)
+
+    $ldapIssues = @()
+    if (-not $signingGood) {
+      if ($ldapClientRecords.Count -gt 0 -or $ldapServerRecords.Count -gt 0) {
+        $values = (($ldapClientRecords + $ldapServerRecords) | ForEach-Object { $_.Raw }) -join ', '
+        $ldapIssues += ("LDAP signing not required (captured values: {0})." -f $values)
+      } else {
+        $ldapIssues += 'LDAP signing values not found.'
+      }
+    }
+    if (-not $channelGood) {
+      $values = if ($channelRecords.Count -gt 0) { ($channelRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'not captured' }
+      $ldapIssues += ("LDAP channel binding not enforced (captured values: {0})." -f $values)
+    }
+    if (-not $auditGood) {
+      $values = if ($auditRecords.Count -gt 0) { ($auditRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'not captured' }
+      $ldapIssues += ("NTLM audit level not set (AuditReceivingNTLMTraffic values: {0})." -f $values)
+    }
+
+    if ($ldapIssues.Count -gt 0) {
+      $message = "LDAP/NTLM hardening gaps: {0}" -f ($ldapIssues -join ' ')
+      Add-Issue 'high' 'User/NTLM & LDAP Hardening' $message $ldapEvidenceText
+    } else {
+      Add-Normal 'User/NTLM & LDAP Hardening' 'LDAP signing/channel binding enforced and NTLM auditing enabled.' $ldapEvidenceText
+    }
+  } elseif ($files['policy_ldap_ntlm']) {
+    Add-Issue 'info' 'User/NTLM & LDAP Hardening' 'LDAP/NTLM policy snapshot captured but no registry data parsed.' ''
+  }
+}
+
 # crucial services snapshot
 $serviceDefinitions = @(
   [pscustomobject]@{ Name='WSearch';            Display='Windows Search (WSearch)';                         Note='Outlook search depends on this.' },
@@ -2060,6 +2490,69 @@ if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
     Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
   }
 }
+if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
+  $bluetoothRecord = Get-ServiceRecord $serviceSnapshot 'bthserv'
+  if ($bluetoothRecord) {
+    $btStatus = Normalize-ServiceStatus $bluetoothRecord.Status
+    $btStart = Normalize-ServiceStartType $bluetoothRecord.StartType
+    $btEvidence = $bluetoothRecord.RawLine
+    if ($btStart -eq 'disabled' -or $btStatus -eq 'stopped') {
+      Add-Normal 'Hardware/Peripheral Risk' 'Bluetooth Support Service disabled or stopped.' $btEvidence
+    } elseif ($btStatus -eq 'running' -or $btStart -in @('automatic','automatic-delayed','manual')) {
+      $statusValue = if ($bluetoothRecord.Status) { $bluetoothRecord.Status } else { 'Unknown' }
+      $startValue = if ($bluetoothRecord.StartType) { $bluetoothRecord.StartType } else { 'Unknown' }
+      $message = "Bluetooth Support Service active (Status: {0}, StartType: {1})." -f $statusValue, $startValue
+      Add-Issue 'low' 'Hardware/Peripheral Risk' $message $btEvidence
+    }
+  }
+
+  $icsRecord = Get-ServiceRecord $serviceSnapshot 'icssvc'
+  if ($icsRecord) {
+    $icsStatus = Normalize-ServiceStatus $icsRecord.Status
+    $icsStart = Normalize-ServiceStartType $icsRecord.StartType
+    $icsEvidence = $icsRecord.RawLine
+    if ($icsStatus -eq 'running') {
+      $statusValue = if ($icsRecord.Status) { $icsRecord.Status } else { 'Running' }
+      $startValue = if ($icsRecord.StartType) { $icsRecord.StartType } else { 'Unknown' }
+      $message = "Internet Connection Sharing service running (Status: {0}, StartType: {1})." -f $statusValue, $startValue
+      Add-Issue 'low' 'Hardware/Peripheral Risk' $message $icsEvidence
+    } elseif ($icsStart -eq 'disabled') {
+      Add-Normal 'Hardware/Peripheral Risk' 'Internet Connection Sharing service disabled.' $icsEvidence
+    }
+  }
+}
+
+$nearbySections = Parse-RegistryDump $raw['user_nearbysharing']
+if ($nearbySections.Count -gt 0) {
+  $channelRecords = @()
+  $authRecords = @()
+  foreach ($section in $nearbySections) {
+    if ($section.Values.ContainsKey('NearShareChannel')) {
+      $rawValue = $section.Values['NearShareChannel']
+      $channelRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+    if ($section.Values.ContainsKey('NearShareChannelUserAuth')) {
+      $rawValue = $section.Values['NearShareChannelUserAuth']
+      $authRecords += [pscustomobject]@{ Path = $section.Path; Raw = $rawValue; Int = ConvertTo-IntFromString $rawValue }
+    }
+  }
+
+  $nearbyEvidence = @()
+  foreach ($record in $channelRecords) { $nearbyEvidence += ("{0}: NearShareChannel = {1}" -f $record.Path, $record.Raw) }
+  foreach ($record in $authRecords) { $nearbyEvidence += ("{0}: NearShareChannelUserAuth = {1}" -f $record.Path, $record.Raw) }
+  $nearbyEvidenceText = if ($nearbyEvidence.Count -gt 0) { $nearbyEvidence -join "`n" } else { '' }
+  $nearbyEnabled = (($channelRecords | Where-Object { $_.Int -gt 0 }).Count -gt 0)
+  if ($nearbyEnabled) {
+    $channelValues = if ($channelRecords.Count -gt 0) { ($channelRecords | ForEach-Object { $_.Raw }) -join ', ' } else { 'unknown' }
+    $message = "Nearby sharing enabled (NearShareChannel values: {0})." -f $channelValues
+    Add-Issue 'low' 'Hardware/Peripheral Risk' $message $nearbyEvidenceText
+  } else {
+    Add-Normal 'Hardware/Peripheral Risk' 'Nearby sharing disabled.' $nearbyEvidenceText
+  }
+} elseif ($files['user_nearbysharing']) {
+  Add-Issue 'info' 'Hardware/Peripheral Risk' 'Nearby sharing settings capture present but empty.' ''
+}
+
 
 # events quick counters
 function Get-EventHighlights {
@@ -2797,6 +3290,7 @@ function Get-NormalCategory {
     '^(?i)system$'           { return 'System' }
     '^(?i)scheduled tasks$'  { return 'System' }
     '^(?i)storage$'          { return 'Hardware' }
+    '^(?i)user$'             { return 'User' }
     default { return 'Hardware' }
   }
 }
@@ -2856,7 +3350,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Services','Office','Network','OS','Hardware','Security')
+  $categoryOrder = @('Services','Office','Network','OS','Hardware','Security','User')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
