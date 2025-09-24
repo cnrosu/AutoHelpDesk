@@ -27,6 +27,91 @@
   background-color: var(--color-surface);
 }
 
+.report-section {
+  margin: var(--space-lg) 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background-color: var(--color-surface);
+  overflow: hidden;
+}
+
+.report-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-heading);
+  background-color: var(--color-surface-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.report-section > summary::-webkit-details-marker,
+.report-subsection > summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-section > summary::after {
+  content: '\25BC';
+  font-size: 0.75rem;
+  color: var(--color-text-note);
+  transition: transform 0.2s ease;
+}
+
+.report-section[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.report-section[open] > summary {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.report-section__content {
+  padding: var(--space-md);
+}
+
+.report-section__content > .report-card:last-child,
+.report-section__content > .report-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.report-subsection {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background-color: var(--color-surface);
+  overflow: hidden;
+}
+
+.report-subsection > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-md);
+  font-weight: 600;
+  color: var(--color-heading);
+  background-color: var(--color-surface-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.report-subsection > summary::after {
+  content: '\25BC';
+  font-size: 0.7rem;
+  color: var(--color-text-note);
+  transition: transform 0.2s ease;
+}
+
+.report-subsection[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.report-subsection__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+}
+
 .report-badge-group {
   display: flex;
   flex-wrap: wrap;
@@ -36,7 +121,8 @@
 
 .report-badge {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  gap: var(--space-xxs);
   padding: var(--space-xxs) var(--space-sm);
   border-radius: var(--radius-pill);
   font-size: 0.875rem;
@@ -44,6 +130,32 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border-subtle);
   color: var(--color-text-primary);
+}
+
+.report-badge__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: inherit;
+}
+
+.report-badge__value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.report-badge__suffix {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-note);
+}
+
+.report-badge--score {
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border-subtle);
 }
 
 .report-badge--good {
