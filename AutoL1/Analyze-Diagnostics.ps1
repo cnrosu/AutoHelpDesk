@@ -138,6 +138,48 @@ function Add-Normal([string]$area,[string]$msg,[string]$evidence=""){
   })
 }
 
+function Get-UptimeClassification {
+  param(
+    [double]$Days,
+    [bool]$IsServer
+  )
+
+  $profileName = if ($IsServer) { 'Server' } else { 'Workstation' }
+  $ranges = if ($IsServer) {
+    @(
+      @{ Label = 'Good';     Min = 0;   Max = 30; Severity = $null;        Css = 'uptime-good';     RangeText = '≤ 30 days' },
+      @{ Label = 'Warning';  Min = 31;  Max = 60; Severity = 'medium';     Css = 'uptime-warning'; RangeText = '31–60 days' },
+      @{ Label = 'Bad';      Min = 61;  Max = 90; Severity = 'high';       Css = 'uptime-bad';     RangeText = '61–90 days' },
+      @{ Label = 'Critical'; Min = 91;  Max = $null; Severity = 'critical'; Css = 'uptime-critical'; RangeText = '> 90 days' }
+    )
+  } else {
+    @(
+      @{ Label = 'Good';     Min = 0;   Max = 14; Severity = $null;        Css = 'uptime-good';     RangeText = '≤ 14 days' },
+      @{ Label = 'Warning';  Min = 15;  Max = 30; Severity = 'medium';     Css = 'uptime-warning'; RangeText = '15–30 days' },
+      @{ Label = 'Bad';      Min = 31;  Max = 60; Severity = 'high';       Css = 'uptime-bad';     RangeText = '31–60 days' },
+      @{ Label = 'Critical'; Min = 61;  Max = $null; Severity = 'critical'; Css = 'uptime-critical'; RangeText = '> 60 days' }
+    )
+  }
+
+  foreach ($range in $ranges) {
+    $min = if ($null -ne $range.Min) { [double]$range.Min } else { 0 }
+    $max = if ($null -ne $range.Max) { [double]$range.Max } else { $null }
+    if (($Days -ge $min) -and ($null -eq $max -or $Days -le $max)) {
+      return [pscustomobject]@{
+        Label       = $range.Label
+        Severity    = $range.Severity
+        CssClass    = $range.Css
+        ProfileName = $profileName
+        RangeText   = $range.RangeText
+        MinDays     = $min
+        MaxDays     = $max
+      }
+    }
+  }
+
+  return $null
+}
+
 # ---------- parsers ----------
 $summary = @{}
 $summary.Folder = (Resolve-Path $InputFolder).Path
@@ -161,7 +203,15 @@ if (-not $summary.LastBoot -and $raw['os_cim']){
   $m = [regex]::Match($raw['os_cim'],'LastBootUpTime\s*:\s*(.+)'); if ($m.Success){ $summary.LastBoot = $m.Groups[1].Value.Trim() }
 }
 
-$uptimeThresholdDays = 30
+$summary.IsServer = $null
+if ($summary.OS -and $summary.OS -match 'server'){
+  $summary.IsServer = $true
+} elseif ($summary.OS_Version -and $summary.OS_Version -match 'server'){
+  $summary.IsServer = $true
+} elseif ($summary.OS -or $summary.OS_Version) {
+  $summary.IsServer = $false
+}
+
 if ($summary.LastBoot){
   $bootDt = $null
   if ($summary.LastBoot -match '^\d{14}\.\d{6}[-+]\d{3}$'){
@@ -171,12 +221,25 @@ if ($summary.LastBoot){
     $parsedBoot = $null
     if ([datetime]::TryParse($summary.LastBoot, [ref]$parsedBoot)) { $bootDt = $parsedBoot }
   }
-  if ($bootDt){
-    $uptimeDays = (New-TimeSpan -Start $bootDt -End (Get-Date)).TotalDays
-    if ($uptimeDays -le $uptimeThresholdDays){
-      Add-Normal "OS/Uptime" ("Uptime reasonable ({0} days)" -f [math]::Round($uptimeDays,1)) $summary.LastBoot
-    }
-  } else {
+    if ($bootDt){
+      $uptimeDays = (New-TimeSpan -Start $bootDt -End (Get-Date)).TotalDays
+      $classification = Get-UptimeClassification -Days $uptimeDays -IsServer:($summary.IsServer -eq $true)
+      if ($classification){
+        $summary.UptimeDays = $uptimeDays
+        $summary.UptimeStatus = $classification
+        $roundedDays = [math]::Round($uptimeDays,1)
+        $rangeText = $classification.RangeText
+        $profileName = $classification.ProfileName
+        $rangeSuffix = if ($rangeText) { " ({0})" -f $rangeText } else { "" }
+        if ($classification.Label -eq 'Good'){
+          $message = "{0} uptime {1} days within {2} range{3}." -f $profileName, $roundedDays, $classification.Label, $rangeSuffix
+          Add-Normal "OS/Uptime" $message $summary.LastBoot
+        } elseif ($classification.Severity) {
+          $message = "{0} uptime {1} days in {2} range{3}." -f $profileName, $roundedDays, $classification.Label, $rangeSuffix
+          Add-Issue $classification.Severity "OS/Uptime" $message $summary.LastBoot
+        }
+      }
+    } else {
     Add-Normal "OS/Uptime" "Last boot captured" $summary.LastBoot
   }
 }
@@ -405,6 +468,10 @@ h1,h2{color:#0b63a6}
 .medium{background:#fffde7;border-color:#f9a825}
 .low{background:#e8f5e9;border-color:#43a047}
 .info{background:#e3f2fd;border-color:#1e88e5}
+.uptime-good{background:#e8f5e9;border-color:#43a047;color:#1b5e20}
+.uptime-warning{background:#fff8e1;border-color:#fbc02d;color:#8c6d1f}
+.uptime-bad{background:#ffebee;border-color:#ef5350;color:#b71c1c}
+.uptime-critical{background:#ffebee;border-color:#c62828;color:#8e0000}
 .ok{background:#f1f8e9;border-color:#66bb6a;color:#2e7d32}
 .card{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:12px}
 pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-height:280px}
@@ -417,6 +484,33 @@ table.list td, table.list th{padding:6px 10px;border:1px solid #ddd}
 $head = '<!doctype html><html><head><meta charset="utf-8"><title>Auto L1 Device Report</title>' + $css + '</head><body>'
 
 # Expanding here-string for summary (variables expand); closing "@ at column 1
+$serverDisplayValue = if ($summary.IsServer -eq $true) {
+  'Yes'
+} elseif ($summary.IsServer -eq $false -and ($summary.OS -or $summary.OS_Version)) {
+  'No'
+} else {
+  'Unknown'
+}
+$serverDisplayHtml = Encode-Html $serverDisplayValue
+
+$uptimeSummaryHtml = ''
+if ($summary.UptimeStatus) {
+  $badgeClass = $summary.UptimeStatus.CssClass
+  $badgeLabelHtml = Encode-Html ($summary.UptimeStatus.Label.ToUpper())
+  $daysRounded = if ($null -ne $summary.UptimeDays) { [math]::Round($summary.UptimeDays,1) } else { $null }
+  $daysHtml = if ($null -ne $daysRounded) { Encode-Html ("{0:N1}" -f $daysRounded) } else { Encode-Html '0.0' }
+  $profileHtml = Encode-Html $summary.UptimeStatus.ProfileName
+  $rangeHtml = Encode-Html $summary.UptimeStatus.RangeText
+  $uptimeSummaryHtml = "<span class='badge {0}'>{1}</span> {2} days ({3} thresholds: {4})" -f $badgeClass, $badgeLabelHtml, $daysHtml, $profileHtml, $rangeHtml
+  if ($summary.IsServer -eq $null) {
+    $uptimeSummaryHtml += " <small class='note'>{0}</small>" -f (Encode-Html 'Server detection unavailable; workstation thresholds applied.')
+  }
+} elseif ($summary.LastBoot) {
+  $uptimeSummaryHtml = "<small class='note'>{0}</small>" -f (Encode-Html 'Last boot captured; uptime could not be determined.')
+} else {
+  $uptimeSummaryHtml = "<small class='note'>{0}</small>" -f (Encode-Html 'Uptime data not captured.')
+}
+
 $sumTable = @"
 <h1>Auto L1 Device Report</h1>
 <div class='card'>
@@ -431,6 +525,8 @@ $sumTable = @"
   <table class='kv' cellspacing='0' cellpadding='0' style='margin-top:10px'>
     <tr><td>Folder</td><td>$(Encode-Html $summary.Folder)</td></tr>
     <tr><td>OS</td><td>$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))</td></tr>
+    <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
+    <tr><td>Uptime</td><td>$uptimeSummaryHtml</td></tr>
     <tr><td>IPv4</td><td>$(Encode-Html ($summary.IPv4))</td></tr>
     <tr><td>Gateway</td><td>$(Encode-Html ($summary.Gateway))</td></tr>
     <tr><td>DNS</td><td>$(Encode-Html ($summary.DNS))</td></tr>
