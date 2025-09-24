@@ -201,6 +201,7 @@ details.report-card[open] > summary {
   order: 0;
   flex: 1 1 160px;
   min-width: 140px;
+  max-width: 175px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
