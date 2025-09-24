@@ -82,6 +82,16 @@ details.report-card[open] > summary {
   padding: var(--space-sm) var(--space-md) var(--space-md) calc(var(--space-md) + 1.25rem);
 }
 
+.report-card__body > .report-card__explanation {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.report-card__body > .report-card__explanation:last-child {
+  margin-bottom: 0;
+}
+
 .report-card__body > .report-pre {
   margin-top: 0;
 }
