@@ -195,6 +195,7 @@ $files = [ordered]@{
   nic_configs    = Find-ByContent @('NetworkAdapterConfigs')     @('Win32_NetworkAdapterConfiguration')
   netip          = Find-ByContent @('NetIPAddresses','NetIP')    @('IPAddress','InterfaceIndex')
   netadapters    = Find-ByContent @('NetAdapters')               @('Name\s*:.*Status','LinkSpeed|Speed')
+  winhttp_proxy  = Find-ByContent @('WinHTTP_Proxy','winhttp_proxy') @('WinHTTP proxy settings','Direct access','Proxy Server')
 
   diskdrives     = Find-ByContent @('Disk_Drives')               @('Model\s+Serial|Model\s+SerialNumber','Status')
   volumes        = Find-ByContent @('Volumes')                   @('DriveLetter|FileSystem|HealthStatus')
@@ -205,6 +206,7 @@ $files = [ordered]@{
   programs32     = Find-ByContent @('Programs_Reg_32')           @('DisplayName\s+DisplayVersion')
 
   services       = Find-ByContent @('Services')                  @('Status\s+Name|SERVICE_NAME')
+  core_services  = Find-ByContent @('Core_Services','CoreServices') @('Name,DisplayName,Status,StartType')
   processes      = Find-ByContent @('Processes','tasklist')      @('Image Name\s+PID|====')
   drivers        = Find-ByContent @('Drivers','driverquery')     @('Driver Name|Display Name')
 
@@ -357,6 +359,43 @@ function Get-UptimeClassification {
   }
 
   return $null
+}
+
+function Normalize-ServiceStatus {
+  param([string]$Status)
+
+  if ($null -eq $Status) { return 'Unknown' }
+  $trimmed = $Status.Trim()
+  if (-not $trimmed) { return 'Unknown' }
+
+  $lower = $trimmed.ToLowerInvariant()
+  switch ($lower) {
+    'running' { return 'Running' }
+    'stopped' { return 'Stopped' }
+    'paused'  { return 'Paused' }
+    'notfound' { return 'NotFound' }
+    'not found' { return 'NotFound' }
+    default { return $trimmed }
+  }
+}
+
+function Normalize-ServiceStartType {
+  param([string]$StartType)
+
+  if ($null -eq $StartType) { return 'Unknown' }
+  $trimmed = $StartType.Trim()
+  if (-not $trimmed) { return 'Unknown' }
+
+  $lower = $trimmed.ToLowerInvariant()
+  if ($lower -eq 'notfound' -or $lower -eq 'not found') { return 'NotFound' }
+  if ($trimmed -match '(?i)automatic' -and $trimmed -match '(?i)delay') { return 'Automatic (Delayed)' }
+  if ($trimmed -match '(?i)automatic') { return 'Automatic' }
+  if ($trimmed -match '(?i)manual') { return 'Manual' }
+  if ($trimmed -match '(?i)demand') { return 'Manual' }
+  if ($trimmed -match '(?i)disabled') { return 'Disabled' }
+  if ($trimmed -match '(?i)boot') { return 'Boot' }
+  if ($trimmed -match '(?i)system') { return 'System' }
+  return $trimmed
 }
 
 # ---------- parsers ----------
@@ -873,6 +912,271 @@ if ($raw['services']){
   if ($running.Count -gt 0) { Add-Normal "Services" ("Core services running: " + ($running -join ", ")) "" }
 }
 
+# services report (detailed)
+$servicesReport = [ordered]@{
+  Rows           = New-Object System.Collections.Generic.List[pscustomobject]
+  SeverityCounts = @{ good = 0; warning = 0; bad = 0; critical = 0; info = 0 }
+  DataAvailable  = $false
+  Missing        = $false
+  ParseError     = $false
+}
+$coreServicesMap = @{}
+$servicesRaw = $raw['core_services']
+if ($servicesRaw) {
+  $csvLines = [regex]::Split($servicesRaw,'\r?\n') | Where-Object { $_ -and ($_ -notmatch '^=====') }
+  $csvText = ($csvLines -join "`n").Trim()
+  if ($csvText) {
+    try {
+      $parsedCore = $csvText | ConvertFrom-Csv
+      foreach ($entry in $parsedCore) {
+        if (-not $entry) { continue }
+        $nameKey = $null
+        if ($entry.PSObject.Properties['Name']) { $nameKey = $entry.Name }
+        if (-not $nameKey) { continue }
+        $trimmedName = $nameKey.Trim()
+        if (-not $trimmedName) { continue }
+        $coreServicesMap[$trimmedName] = $entry
+      }
+      if ($coreServicesMap.Count -gt 0) { $servicesReport.DataAvailable = $true }
+    } catch {
+      $servicesReport.ParseError = $true
+    }
+  } else {
+    $servicesReport.ParseError = $true
+  }
+} else {
+  $servicesReport.Missing = $true
+}
+if (-not $servicesReport.DataAvailable -and -not $servicesReport.Missing) {
+  $servicesReport.ParseError = $true
+}
+if ($servicesReport.Missing -or $servicesReport.ParseError) {
+  Add-Issue 'low' 'Services' 'Core services snapshot not collected' ''
+}
+
+$winHttpProxyConfigured = $false
+$winHttpProxyEvidence = @()
+if ($raw['winhttp_proxy']) {
+  $proxyLines = [regex]::Split($raw['winhttp_proxy'],'\r?\n')
+  $hasDirect = $proxyLines | Where-Object { $_ -match '(?i)Direct access' }
+  if (-not $hasDirect) {
+    foreach ($line in $proxyLines) {
+      if (-not $line -or -not $line.Trim()) { continue }
+      if ($line -match '(?i)Proxy\s+Server') {
+        $parts = $line -split '[:=]',2
+        if ($parts.Count -ge 2) {
+          $value = $parts[1].Trim()
+          if ($value -and $value -notmatch '(?i)\b(none|n/a|not set)\b') {
+            $winHttpProxyConfigured = $true
+            $winHttpProxyEvidence += $line.Trim()
+          }
+        }
+      }
+      if ($line -match '(?i)AutoConfig\s+URL') {
+        $parts = $line -split '[:=]',2
+        if ($parts.Count -ge 2) {
+          $value = $parts[1].Trim()
+          if ($value -and $value -notmatch '(?i)\b(none|n/a|not set)\b') {
+            $winHttpProxyConfigured = $true
+            $winHttpProxyEvidence += $line.Trim()
+          }
+        }
+      }
+    }
+    $winHttpProxyEvidence = $winHttpProxyEvidence | Where-Object { $_ } | Select-Object -Unique
+  }
+}
+
+$serviceDefinitions = @(
+  [pscustomobject]@{ Name='WSearch';             DisplayName='Windows Search';                          Importance='High';     Notes='Outlook search depends on this.' },
+  [pscustomobject]@{ Name='Dnscache';            DisplayName='DNS Client';                              Importance='High';     Notes='DNS resolution/cache for all apps.' },
+  [pscustomobject]@{ Name='NlaSvc';              DisplayName='Network Location Awareness';             Importance='High';     Notes='network profile changes; VPN/proxy awareness.' },
+  [pscustomobject]@{ Name='LanmanWorkstation';   DisplayName='Workstation';                            Importance='High';     Notes='SMB client for shares/printers.' },
+  [pscustomobject]@{ Name='RpcSs';               DisplayName='Remote Procedure Call (RPC)';            Importance='Critical'; Notes='core RPC runtime (do not disable).' },
+  [pscustomobject]@{ Name='RpcEptMapper';        DisplayName='RPC Endpoint Mapper';                    Importance='Critical'; Notes='RPC endpoint directory.' },
+  [pscustomobject]@{ Name='WinHttpAutoProxySvc'; DisplayName='WinHTTP Web Proxy Auto-Discovery';       Importance='Medium';   Notes='WPAD/PAC for system services.' },
+  [pscustomobject]@{ Name='BITS';                DisplayName='Background Intelligent Transfer Service';Importance='High';     Notes='background transfers for updates/AV/Office.' },
+  [pscustomobject]@{ Name='ClickToRunSvc';       DisplayName='Microsoft Office Click-to-Run Service';  Importance='Medium';   Notes='Office updates and repair.' }
+)
+
+$autoBadServices = @('WSearch','Dnscache','NlaSvc','BITS','ClickToRunSvc','LanmanWorkstation')
+$manualWarningServices = @('WSearch','BITS','ClickToRunSvc','NlaSvc')
+$isWorkstation = ($summary.IsServer -ne $true)
+
+if ($servicesReport.DataAvailable) {
+foreach ($definition in $serviceDefinitions) {
+  $name = $definition.Name
+  $displayName = $definition.DisplayName
+  $record = $null
+  if ($coreServicesMap.ContainsKey($name)) { $record = $coreServicesMap[$name] }
+  if ($record -and $record.PSObject.Properties['DisplayName'] -and $record.DisplayName) {
+    $displayName = $record.DisplayName
+  }
+
+  if ($record) {
+    $rawStatus = if ($record.PSObject.Properties['Status']) { $record.Status } else { $null }
+    $rawStartType = if ($record.PSObject.Properties['StartType']) { $record.StartType } else { $null }
+    $statusNormalized = Normalize-ServiceStatus $rawStatus
+    $startTypeNormalized = Normalize-ServiceStartType $rawStartType
+    if (-not $startTypeNormalized -or $startTypeNormalized -eq 'Unknown') {
+      if ($record.PSObject.Properties['StartMode']) {
+        $startTypeNormalized = Normalize-ServiceStartType $record.StartMode
+      }
+    }
+  } else {
+    $statusNormalized = 'NotFound'
+    $startTypeNormalized = 'NotFound'
+  }
+
+  $statusDisplay = if ($statusNormalized) { $statusNormalized } else { 'Unknown' }
+  $displayStartType = if ($startTypeNormalized -and $startTypeNormalized -ne 'NotFound') { $startTypeNormalized } elseif ($statusNormalized -eq 'NotFound') { '—' } else { 'Unknown' }
+
+  $tag = 'info'
+  $issueSeverity = $null
+  $issueMessage = $null
+  $issueEvidence = $null
+  $goodMessage = $null
+
+  $isRunning = ($statusNormalized -eq 'Running')
+  $isStopped = ($statusNormalized -eq 'Stopped')
+  $isPaused = ($statusNormalized -eq 'Paused')
+  if ($isPaused) { $isStopped = $true }
+  $isNotFound = ($statusNormalized -eq 'NotFound')
+  $startTypeAuto = ($startTypeNormalized -match '^Automatic')
+  $startTypeManual = ($startTypeNormalized -match '^Manual')
+  $startTypeDisabled = ($startTypeNormalized -match '^Disabled')
+
+  $handled = $false
+
+  if ($isRunning) {
+    $tag = 'good'
+    $goodMessage = "Service: $name running ($displayStartType)"
+    $handled = $true
+  } elseif ($isNotFound) {
+    $tag = 'info'
+    $statusDisplay = 'NotFound'
+    $displayStartType = '—'
+    $serviceLabel = if ($displayName) { $displayName } else { $name }
+    $issueSeverity = 'low'
+    $issueMessage = "$serviceLabel service not found (may not be installed on this SKU)."
+    $handled = $true
+  } elseif ($name -eq 'WinHttpAutoProxySvc') {
+    if ($winHttpProxyConfigured) {
+      $tag = 'warning'
+      $issueSeverity = 'medium'
+      $issueMessage = 'WinHttpAutoProxySvc stopped — system proxy/PAC configured; automatic proxy discovery will fail.'
+      if ($winHttpProxyEvidence -and $winHttpProxyEvidence.Count -gt 0) {
+        $issueEvidence = ($winHttpProxyEvidence -join "`n")
+      }
+    } else {
+      $tag = 'good'
+      $statusDisplay = 'Trigger Start (OK)'
+      if (-not $displayStartType -or $displayStartType -eq 'Unknown' -or $displayStartType -eq 'Manual') {
+        $displayStartType = 'Manual (Trigger Start)'
+      }
+      $goodMessage = "Service: $name running ($displayStartType)"
+    }
+    $handled = $true
+  } elseif ($name -eq 'RpcSs' -and -not $isRunning) {
+    $tag = 'critical'
+    $issueSeverity = 'critical'
+    $issueMessage = 'RpcSs not running — system unstable.'
+    $handled = $true
+  } elseif ($name -eq 'RpcEptMapper' -and -not $isRunning) {
+    $tag = 'critical'
+    $issueSeverity = 'critical'
+    $issueMessage = 'RpcEptMapper not running — RPC endpoint directory unavailable.'
+    $handled = $true
+  } elseif ($name -eq 'Dnscache' -and -not $isRunning) {
+    $tag = 'critical'
+    $issueSeverity = 'critical'
+    $issueMessage = 'Dnscache stopped — DNS lookups will fail/intermittent.'
+    $handled = $true
+  }
+
+  if (-not $handled -and $startTypeDisabled -and ($autoBadServices -contains $name)) {
+    $tag = 'bad'
+    $issueSeverity = 'high'
+    $issueMessage = switch ($name) {
+      'WSearch'          { 'WSearch disabled — Windows/Desktop search unavailable.' }
+      'NlaSvc'           { 'NlaSvc disabled — network profile detection broken.' }
+      'BITS'             { 'BITS disabled — background transfers for updates/AV/Office halted.' }
+      'ClickToRunSvc'    { 'ClickToRunSvc disabled — Office updates and repair blocked.' }
+      'LanmanWorkstation'{ 'LanmanWorkstation disabled — SMB shares/mapped drives broken.' }
+      'Dnscache'         { 'Dnscache disabled — DNS lookups will fail/intermittent.' }
+      default            { "$name disabled — service required." }
+    }
+    $handled = $true
+  }
+
+  if (-not $handled -and $isStopped -and $startTypeAuto -and ($autoBadServices -contains $name)) {
+    if ($name -eq 'Dnscache') {
+      $tag = 'critical'
+      $issueSeverity = 'critical'
+      $issueMessage = 'Dnscache stopped — DNS lookups will fail/intermittent.'
+    } else {
+      $tag = 'bad'
+      $issueSeverity = 'high'
+      $issueMessage = switch ($name) {
+        'WSearch'          { 'WSearch stopped — Windows/Desktop search unavailable.' }
+        'NlaSvc'           { 'NlaSvc stopped — network profile detection broken.' }
+        'BITS'             { 'BITS stopped — background transfers for updates/AV/Office halted.' }
+        'ClickToRunSvc'    { 'ClickToRunSvc stopped — Office updates and repair blocked.' }
+        'LanmanWorkstation'{ 'LanmanWorkstation stopped — SMB shares/mapped drives broken.' }
+        default            { "$name stopped — service required." }
+      }
+    }
+    $handled = $true
+  }
+
+  if (-not $handled -and $isStopped -and $startTypeManual -and $isWorkstation -and ($manualWarningServices -contains $name)) {
+    $tag = 'warning'
+    $issueSeverity = 'medium'
+    $issueMessage = switch ($name) {
+      'WSearch'       { 'WSearch stopped (manual) — desktop search will not run until started.' }
+      'NlaSvc'        { 'NlaSvc stopped (manual) — network profile awareness reduced.' }
+      'BITS'          { 'BITS stopped (manual) — background transfers won’t run automatically.' }
+      'ClickToRunSvc' { 'ClickToRunSvc stopped (manual) — Office updates may not run.' }
+      default         { "$name stopped (manual) — start if required." }
+    }
+    $handled = $true
+  }
+
+  if (-not $handled -and -not $isRunning) {
+    $tag = 'info'
+    $statusLabel = if ($statusDisplay) { $statusDisplay } else { 'Unknown' }
+    $issueSeverity = $null
+    $issueMessage = $null
+  }
+
+  $servicesReport.SeverityCounts[$tag]++
+
+  $servicesReport.Rows.Add([pscustomobject]@{
+    Name        = $name
+    DisplayName = $displayName
+    Status      = $statusDisplay
+    StartType   = $displayStartType
+    Importance  = $definition.Importance
+    Notes       = $definition.Notes
+    Tag         = $tag
+  })
+
+  if ($tag -eq 'good' -and $goodMessage) {
+    Add-Normal 'Services' $goodMessage
+  } elseif ($issueMessage) {
+    $sev = switch ($tag) {
+      'critical' { 'critical' }
+      'bad'      { 'high' }
+      'warning'  { 'medium' }
+      default    { 'low' }
+    }
+    if ($tag -eq 'info' -and -not $sev) { $sev = 'low' }
+    Add-Issue $sev 'Services' $issueMessage $issueEvidence
+  }
+}
+}
+
+
 # events quick counters
 function Add-EventStats($txt,$name){
   if (-not $txt) { return }
@@ -1296,6 +1600,50 @@ if ($issues.Count -eq 0){
 }
 $issuesHtml = New-ReportSection -Title $issuesTitle -ContentHtml $issuesContent -Open
 
+# Services section
+$servicesTitleCount = if ($servicesReport.DataAvailable) { $servicesReport.Rows.Count } else { 0 }
+$servicesTitle = "Services Report ({0})" -f $servicesTitleCount
+$servicesSummaryHtml = ''
+if ($servicesReport.DataAvailable) {
+  $criticalServices = $servicesReport.SeverityCounts['critical']
+  $badServices = $servicesReport.SeverityCounts['bad']
+  $warningServices = $servicesReport.SeverityCounts['warning']
+  $goodServices = $servicesReport.SeverityCounts['good']
+  $infoServices = $servicesReport.SeverityCounts['info']
+  $needsSummary = ($criticalServices + $badServices + $warningServices) -gt 0
+  if ($needsSummary) {
+    $summaryParts = @()
+    if ($criticalServices -gt 0) { $summaryParts += "Critical $criticalServices" }
+    if ($badServices -gt 0) { $summaryParts += "High $badServices" }
+    if ($warningServices -gt 0) { $summaryParts += "Medium $warningServices" }
+    $summaryParts += "Good $goodServices"
+    if ($infoServices -gt 0) { $summaryParts += "Info $infoServices" }
+    $servicesSummaryHtml = "<div class='services-report__summary'>{0}</div>" -f (($summaryParts | ForEach-Object { Encode-Html $_ }) -join ' · ')
+  }
+}
+
+$servicesRowsHtml = ''
+if ($servicesReport.DataAvailable -and $servicesReport.Rows.Count -gt 0) {
+  foreach ($row in $servicesReport.Rows) {
+    $nameHtml = Encode-Html $row.Name
+    $displayHtml = Encode-Html $row.DisplayName
+    $startTypeDisplay = if ($row.StartType) { $row.StartType } else { '—' }
+    $startTypeHtml = Encode-Html $startTypeDisplay
+    $importanceHtml = Encode-Html $row.Importance
+    $notesHtml = Encode-Html $row.Notes
+    $statusText = if ($row.Status) { $row.Status } else { 'Unknown' }
+    $statusHtml = Encode-Html $statusText
+    $tagName = if ($row.Tag) { $row.Tag } else { 'info' }
+    $statusBadge = "<span class='services-report__tag services-report__tag--{0} {0}'>{1}</span>" -f (Encode-Html $tagName), $statusHtml
+    $servicesRowsHtml += "<tr><td>$nameHtml</td><td>$displayHtml</td><td>$statusBadge</td><td>$startTypeHtml</td><td>$importanceHtml</td><td>$notesHtml</td></tr>"
+  }
+} else {
+  $servicesRowsHtml = "<tr><td colspan='6' class='services-report__nodata'>(No data)</td></tr>"
+}
+$servicesTableHtml = "<table class='report-table services-report__table' cellspacing='0' cellpadding='0'><thead><tr><th>Service</th><th>Display name</th><th>Status</th><th>Start type</th><th>Importance</th><th>Notes</th></tr></thead><tbody>$servicesRowsHtml</tbody></table>"
+$servicesContent = "<div class='services-report'>$servicesSummaryHtml<div class='report-card services-report__card'>$servicesTableHtml</div></div>"
+$servicesHtml = New-ReportSection -Title $servicesTitle -ContentHtml $servicesContent -Open
+
 # Raw extracts (key files)
 $rawSections = ''
 foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender')){
@@ -1329,5 +1677,5 @@ $tail = "</body></html>"
 # Write and return path
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $goodHtml + $issuesHtml + $servicesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
