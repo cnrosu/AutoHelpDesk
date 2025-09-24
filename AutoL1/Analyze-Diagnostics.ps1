@@ -2672,7 +2672,7 @@ $sumTable = @"
   <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
     <tr><td>Device Name</td><td>$deviceNameHtml</td></tr>
     <tr><td>Device State</td><td>$deviceStateHtml</td></tr>
-    <tr><td>OS</td><td>$osHtml</td></tr>
+    <tr><td>System</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
     <tr><td>Fast Startup (Fast Boot)</td><td>$fastStartupHtml</td></tr>
     <tr><td>IPv4</td><td>$ipv4Html</td></tr>
@@ -2856,7 +2856,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Services','Office','Network','OS','Hardware','Security')
+  $categoryOrder = @('Services','Office','Network','System','Hardware','Security')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
