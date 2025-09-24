@@ -1,0 +1,172 @@
+/* Device health report */
+
+.report-page {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.report-page h1 {
+  margin: 0 0 var(--space-md);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.report-page h2 {
+  margin: var(--space-lg) 0 var(--space-sm);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+.report-card {
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface);
+}
+
+.report-badge-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.report-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-xxs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+}
+
+.report-badge--good {
+  background-color: var(--color-state-good-bg);
+  border-color: var(--color-state-good-border);
+  color: var(--color-state-good-text);
+}
+
+.report-badge--ok {
+  background-color: var(--color-state-ok-bg);
+  border-color: var(--color-state-ok-border);
+  color: var(--color-state-ok-text);
+}
+
+.report-badge--warning {
+  background-color: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
+  color: var(--color-state-warning-text);
+}
+
+.report-badge--bad {
+  background-color: var(--color-state-bad-bg);
+  border-color: var(--color-state-bad-border);
+  color: var(--color-state-bad-text);
+}
+
+.report-badge--critical {
+  background-color: var(--color-state-critical-bg);
+  border-color: var(--color-state-critical-border);
+  color: var(--color-state-critical-text);
+}
+
+.report-badge--uptime-good {
+  background-color: var(--color-uptime-good-bg);
+  border-color: var(--color-uptime-good-border);
+  color: var(--color-uptime-good-text);
+}
+
+.report-badge--uptime-warning {
+  background-color: var(--color-uptime-warning-bg);
+  border-color: var(--color-uptime-warning-border);
+  color: var(--color-uptime-warning-text);
+}
+
+.report-badge--uptime-bad {
+  background-color: var(--color-uptime-bad-bg);
+  border-color: var(--color-uptime-bad-border);
+  color: var(--color-uptime-bad-text);
+}
+
+.report-badge--uptime-critical {
+  background-color: var(--color-uptime-critical-bg);
+  border-color: var(--color-uptime-critical-border);
+  color: var(--color-uptime-critical-text);
+}
+
+.report-card--good {
+  border-color: var(--color-state-good-border);
+  background-color: var(--color-state-good-bg);
+}
+
+.report-card--ok {
+  border-color: var(--color-state-ok-border);
+  background-color: var(--color-state-ok-bg);
+}
+
+.report-card--warning {
+  border-color: var(--color-state-warning-border);
+  background-color: var(--color-state-warning-bg);
+}
+
+.report-card--bad {
+  border-color: var(--color-state-bad-border);
+  background-color: var(--color-state-bad-bg);
+}
+
+.report-card--critical {
+  border-color: var(--color-state-critical-border);
+  background-color: var(--color-state-critical-bg);
+  color: var(--color-state-critical-text);
+}
+
+.report-note {
+  display: inline-block;
+  margin-top: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--color-text-note);
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-table--key-value {
+  margin-top: var(--space-sm);
+}
+
+.report-table--list {
+  margin-top: var(--space-sm);
+}
+
+.report-table th,
+.report-table td {
+  padding: var(--space-xs) var(--space-md);
+  font-size: 0.95rem;
+  text-align: left;
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface);
+}
+
+.report-pre {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  max-height: 280px;
+  overflow: auto;
+  font-family: "Consolas", "Courier New", monospace;
+  background-color: var(--color-surface-muted);
+  border-left: 4px solid var(--color-border-subtle);
+}
+
+.report-card--critical .report-pre {
+  background-color: var(--color-state-critical-bg);
+  border-color: var(--color-state-critical-border);
+  color: var(--color-state-critical-text);
+}
