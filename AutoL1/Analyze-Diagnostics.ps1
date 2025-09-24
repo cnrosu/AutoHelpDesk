@@ -1897,24 +1897,6 @@ $serverDisplayValue = if ($summary.IsServer -eq $true) {
 }
 $serverDisplayHtml = Encode-Html $serverDisplayValue
 
-$uptimeSummaryHtml = ''
-if ($summary.UptimeStatus) {
-  $badgeClass = $summary.UptimeStatus.CssClass
-  $badgeLabelHtml = Encode-Html ($summary.UptimeStatus.Label.ToUpper())
-  $daysRounded = if ($null -ne $summary.UptimeDays) { [math]::Round($summary.UptimeDays,1) } else { $null }
-  $daysHtml = if ($null -ne $daysRounded) { Encode-Html ("{0:N1}" -f $daysRounded) } else { Encode-Html '0.0' }
-  $profileHtml = Encode-Html $summary.UptimeStatus.ProfileName
-  $rangeHtml = Encode-Html $summary.UptimeStatus.RangeText
-  $uptimeSummaryHtml = "<span class='report-badge report-badge--{0}'>{1}</span> {2} days ({3} thresholds: {4})" -f $badgeClass, $badgeLabelHtml, $daysHtml, $profileHtml, $rangeHtml
-  if ($summary.IsServer -eq $null) {
-    $uptimeSummaryHtml += " <small class='report-note'>{0}</small>" -f (Encode-Html 'Server detection unavailable; workstation thresholds applied.')
-  }
-} elseif ($summary.LastBoot) {
-  $uptimeSummaryHtml = "<small class='report-note'>{0}</small>" -f (Encode-Html 'Last boot captured; uptime could not be determined.')
-} else {
-  $uptimeSummaryHtml = "<small class='report-note'>{0}</small>" -f (Encode-Html 'Uptime data not captured.')
-}
-
 $criticalCount = @($issues | Where-Object { $_.Severity -eq 'critical' }).Count
 $highCount = @($issues | Where-Object { $_.Severity -eq 'high' }).Count
 $mediumCount = @($issues | Where-Object { $_.Severity -eq 'medium' }).Count
@@ -2000,12 +1982,10 @@ if ($summary.WorkplaceJoined -eq $true) { $deviceStateDetails += 'Workplace join
 
 $deviceStateHtml = if ($deviceStateDetails.Count -gt 0) { ($deviceStateDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
 
-$folderHtml = Encode-Html $summary.Folder
 $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
 $ipv4Html = Encode-Html ($summary.IPv4)
 $gatewayHtml = Encode-Html ($summary.Gateway)
 $dnsHtml = Encode-Html ($summary.DNS)
-$lastBootHtml = Encode-Html ($summary.LastBoot)
 
 $sumTable = @"
 <h1>Device Health Report</h1>
@@ -2021,14 +2001,11 @@ $sumTable = @"
   <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
     <tr><td>Device Name</td><td>$deviceNameHtml</td></tr>
     <tr><td>Device State</td><td>$deviceStateHtml</td></tr>
-    <tr><td>Folder</td><td>$folderHtml</td></tr>
     <tr><td>OS</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
-    <tr><td>Uptime</td><td>$uptimeSummaryHtml</td></tr>
     <tr><td>IPv4</td><td>$ipv4Html</td></tr>
     <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
     <tr><td>DNS</td><td>$dnsHtml</td></tr>
-    <tr><td>Last Boot</td><td>$lastBootHtml</td></tr>
   </table>
   <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>
 </div>
