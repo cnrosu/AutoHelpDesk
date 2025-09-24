@@ -405,6 +405,7 @@ h1,h2{color:#0b63a6}
 .medium{background:#fffde7;border-color:#f9a825}
 .low{background:#e8f5e9;border-color:#43a047}
 .info{background:#e3f2fd;border-color:#1e88e5}
+.ok{background:#f1f8e9;border-color:#66bb6a;color:#2e7d32}
 .card{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:12px}
 pre{background:#f6f6f6;border-left:4px solid #ddd;padding:8px;overflow:auto;max-height:280px}
 table.kv td{padding:6px 10px;border:1px solid #ddd}
@@ -453,7 +454,7 @@ if ($normals.Count -eq 0){
   $goodHtml += '<div class="card"><i>No specific positives recorded.</i></div>'
 } else {
   foreach($g in $normals){
-    $goodHtml += "<div class='card'><b>$(Encode-Html $($g.Area))</b>: $(Encode-Html $($g.Message))"
+    $goodHtml += "<div class='card'><span class='badge ok'>OK</span> <b>$(Encode-Html $($g.Area))</b>: $(Encode-Html $($g.Message))"
     if ($g.Evidence){ $goodHtml += "<pre>$(Encode-Html $($g.Evidence))</pre>" }
     $goodHtml += "</div>"
   }
