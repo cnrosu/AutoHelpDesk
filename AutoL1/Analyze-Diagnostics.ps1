@@ -321,6 +321,199 @@ function Get-BoolFromString {
   }
 }
 
+function Normalize-IpconfigKey {
+  param(
+    [string]$Key
+  )
+
+  if (-not $Key) { return '' }
+  $clean = ($Key -replace '\.+', ' ')
+  $clean = ($clean -replace '\s+', ' ')
+  return $clean.Trim()
+}
+
+function Get-IpconfigAdapters {
+  param(
+    [string]$Text
+  )
+
+  $results = New-Object System.Collections.Generic.List[pscustomobject]
+  if (-not $Text) { return $results }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $current = $null
+  $currentLastKey = $null
+
+  foreach ($line in $lines) {
+    $lineClean = $line
+    if ($null -ne $lineClean) { $lineClean = $lineClean.TrimEnd() }
+
+    if ($lineClean -and ($lineClean -notmatch '^\s') -and ($lineClean -match ':\s*$')) {
+      if ($current) { $results.Add($current) }
+
+      $sectionName = ($lineClean -replace ':\s*$', '').Trim()
+      $current = [pscustomobject]@{
+        Name     = $sectionName
+        Values   = @{}
+        Lists    = @{}
+        RawLines = New-Object System.Collections.Generic.List[string]
+      }
+      $currentLastKey = $null
+      continue
+    }
+
+    if (-not $current) { continue }
+
+    $current.RawLines.Add($line)
+    $trimmed = if ($null -ne $line) { $line.Trim() } else { '' }
+    if (-not $trimmed) { continue }
+
+    $kv = [regex]::Match($line,'^\s*([^:]+?)\s*:\s*(.*)$')
+    if ($kv.Success) {
+      $key = Normalize-IpconfigKey $kv.Groups[1].Value
+      $value = $kv.Groups[2].Value.Trim()
+      if (-not $key) {
+        $currentLastKey = $null
+        continue
+      }
+
+      if (-not $current.Lists.ContainsKey($key)) {
+        $current.Lists[$key] = New-Object System.Collections.Generic.List[string]
+      }
+      if ($value) {
+        $current.Lists[$key].Add($value)
+      }
+      $current.Values[$key] = $value
+      $currentLastKey = $key
+      continue
+    }
+
+    if ($currentLastKey) {
+      if (-not $current.Lists.ContainsKey($currentLastKey)) {
+        $current.Lists[$currentLastKey] = New-Object System.Collections.Generic.List[string]
+      }
+      $current.Lists[$currentLastKey].Add($trimmed)
+    }
+  }
+
+  if ($current) { $results.Add($current) }
+
+  $converted = New-Object System.Collections.Generic.List[pscustomobject]
+  foreach ($adapter in $results) {
+    $listCopy = @{}
+    foreach ($key in $adapter.Lists.Keys) {
+      $rawValues = $adapter.Lists[$key]
+      $trimmedValues = @()
+      foreach ($item in $rawValues) {
+        if ([string]::IsNullOrWhiteSpace($item)) { continue }
+        $trimmedValues += $item.Trim()
+      }
+      $listCopy[$key] = @($trimmedValues)
+    }
+
+    $rawText = ($adapter.RawLines | Where-Object { $_ -ne $null }) -join "`n"
+    $converted.Add([pscustomobject]@{
+      Name    = $adapter.Name
+      Values  = $adapter.Values
+      Lists   = $listCopy
+      RawText = ($rawText.Trim())
+    })
+  }
+
+  return $converted
+}
+
+function Get-AdapterValueList {
+  param(
+    [pscustomobject]$Adapter,
+    [string[]]$Keys
+  )
+
+  $results = @()
+  if (-not $Adapter -or -not $Keys) { return $results }
+  $lists = $Adapter.Lists
+  if (-not $lists) { return $results }
+
+  foreach ($key in $Keys) {
+    if (-not $key) { continue }
+    if (-not $lists.ContainsKey($key)) { continue }
+    foreach ($entry in $lists[$key]) {
+      if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+      $results += $entry.Trim()
+    }
+  }
+
+  return $results
+}
+
+function Get-AdapterIPv4List {
+  param(
+    [pscustomobject]$Adapter
+  )
+
+  $values = Get-AdapterValueList -Adapter $Adapter -Keys @('IPv4 Address','IP Address')
+  $ipv4 = @()
+  foreach ($value in $values) {
+    $matches = [regex]::Matches($value,'\b\d{1,3}(?:\.\d{1,3}){3}\b')
+    foreach ($m in $matches) {
+      $ipv4 += $m.Value
+    }
+  }
+  return ($ipv4 | Select-Object -Unique)
+}
+
+function Extract-IPv4Values {
+  param(
+    [string[]]$Values
+  )
+
+  $results = @()
+  if (-not $Values) { return $results }
+  foreach ($value in $Values) {
+    if (-not $value) { continue }
+    $matches = [regex]::Matches($value,'\b\d{1,3}(?:\.\d{1,3}){3}\b')
+    foreach ($m in $matches) {
+      $results += $m.Value
+    }
+  }
+  return ($results | Select-Object -Unique)
+}
+
+function Parse-LocalDateTime {
+  param(
+    [string]$Value
+  )
+
+  if (-not $Value) { return $null }
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return $null }
+
+  $styles = [System.Globalization.DateTimeStyles]::AssumeLocal
+  $parsed = $null
+  if ([datetime]::TryParse($trimmed, [System.Globalization.CultureInfo]::CurrentCulture, $styles, [ref]$parsed)) {
+    return $parsed
+  }
+  if ([datetime]::TryParse($trimmed, [System.Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) {
+    return $parsed
+  }
+  return $null
+}
+
+function Format-TimeSpan {
+  param(
+    [TimeSpan]$Span
+  )
+
+  if (-not $Span) { return '' }
+  if ($Span.TotalDays -ge 1) {
+    return ('{0:N1} days' -f $Span.TotalDays)
+  }
+  if ($Span.TotalHours -ge 1) {
+    return ('{0:N1} hours' -f $Span.TotalHours)
+  }
+  return ('{0:N0} minutes' -f [math]::Round($Span.TotalMinutes,0))
+}
+
 function Get-UptimeClassification {
   param(
     [double]$Days,
@@ -514,6 +707,7 @@ if ($summary.LastBoot){
 
 $outlookConnectivityResult = $null
 $outlookOstDomains = @()
+$ipconfigApipaAdapters = @()
 
 # ipconfig
 if ($raw['ipconfig']){
@@ -521,6 +715,8 @@ if ($raw['ipconfig']){
   if (-not $ipv4s){ $ipv4s = [regex]::Matches($raw['ipconfig'],'IP(v4)? Address[^\d]*([\d\.]+)') | ForEach-Object { $_.Groups[2].Value } }
   $gws   = [regex]::Matches($raw['ipconfig'],'Default Gateway[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
   $dns   = [regex]::Matches($raw['ipconfig'],'DNS Servers[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
+
+  $adapterRecords = @(Get-IpconfigAdapters -Text $raw['ipconfig'])
 
   $uniqueIPv4 = @()
   foreach ($ip in $ipv4s) {
@@ -709,6 +905,168 @@ if ($raw['ipconfig']){
 
   if (-not $dnsContextHandled -and $dnsServers -and $dnsServers.Count -gt 0) {
     Add-Normal "Network/DNS" "DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
+  }
+
+  if ($adapterRecords.Count -gt 0) {
+    $now = Get-Date
+    $dhcpMissingServers = New-Object System.Collections.Generic.List[pscustomobject]
+    $dhcpPublicServers  = New-Object System.Collections.Generic.List[pscustomobject]
+    $dhcpStaticIssues   = New-Object System.Collections.Generic.List[pscustomobject]
+    $dhcpStaleLeases    = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($adapter in $adapterRecords) {
+      if (-not $adapter) { continue }
+
+      $adapterName = if ($adapter.Name) { $adapter.Name } else { 'Adapter' }
+      $values = if ($adapter.Values) { $adapter.Values } else { @{} }
+      $dhcpEnabledRaw = if ($values.ContainsKey('DHCP Enabled')) { $values['DHCP Enabled'] } else { $null }
+      $dhcpEnabled = if ($values.ContainsKey('DHCP Enabled')) { Get-BoolFromString $values['DHCP Enabled'] } else { $null }
+      $mediaState = if ($values.ContainsKey('Media State')) { $values['Media State'] } else { $null }
+      $mediaDisconnected = ($mediaState -and $mediaState -match '(?i)Media disconnected')
+
+      $ipv4List = Get-AdapterIPv4List -Adapter $adapter
+      if ($ipv4List) {
+        foreach ($addr in $ipv4List) {
+          if ($addr -like '169.254.*') {
+            if ($ipconfigApipaAdapters -notcontains $adapterName) { $ipconfigApipaAdapters += $adapterName }
+            break
+          }
+        }
+      }
+
+      $dhcpServerEntries = Get-AdapterValueList -Adapter $adapter -Keys @('DHCP Server')
+      $dhcpServerValidEntries = @()
+      foreach ($entry in $dhcpServerEntries) {
+        $trimEntry = $entry.Trim()
+        if (-not $trimEntry) { continue }
+        if ($trimEntry -match '(?i)\b0\.0\.0\.0\b') { continue }
+        if ($trimEntry -match '(?i)\b255\.255\.255\.255\b') { continue }
+        $dhcpServerValidEntries += $trimEntry
+      }
+      $dhcpServerIPv4 = Extract-IPv4Values $dhcpServerValidEntries
+
+      if ($dhcpEnabled -eq $true) {
+        if ($dhcpServerValidEntries.Count -eq 0) {
+          $evidenceLines = @(
+            "Adapter: $adapterName",
+            if ($dhcpEnabledRaw) { "DHCP Enabled: $dhcpEnabledRaw" } else { $null },
+            if ($ipv4List -and $ipv4List.Count -gt 0) { "IPv4 Address(es): " + ($ipv4List -join ', ') } else { $null },
+            'DHCP Server entries: (none captured)'
+          ) | Where-Object { $_ }
+          $dhcpMissingServers.Add([pscustomobject]@{
+            Adapter  = $adapterName
+            Evidence = ($evidenceLines -join "`n")
+          })
+        }
+
+        if ($dhcpServerIPv4.Count -gt 0) {
+          $publicServers = @()
+          foreach ($serverIP in $dhcpServerIPv4) {
+            if (-not $serverIP) { continue }
+            if (-not (Test-IsRFC1918 $serverIP)) {
+              if ($publicServers -notcontains $serverIP) { $publicServers += $serverIP }
+            }
+          }
+          if ($publicServers.Count -gt 0) {
+            $evidenceLines = @(
+              "Adapter: $adapterName",
+              if ($dhcpEnabledRaw) { "DHCP Enabled: $dhcpEnabledRaw" } else { $null },
+              "DHCP Server entries: " + ($dhcpServerValidEntries -join ', '),
+              "Public DHCP server candidate(s): " + ($publicServers -join ', ')
+            ) | Where-Object { $_ }
+            $dhcpPublicServers.Add([pscustomobject]@{
+              Adapter  = $adapterName
+              Servers  = $publicServers
+              Evidence = ($evidenceLines -join "`n")
+            })
+          }
+        }
+
+        $leaseObtainedRaw = if ($values.ContainsKey('Lease Obtained')) { $values['Lease Obtained'] } else { $null }
+        $leaseExpiresRaw  = if ($values.ContainsKey('Lease Expires'))  { $values['Lease Expires'] }  else { $null }
+        $leaseObtained = Parse-LocalDateTime $leaseObtainedRaw
+        $leaseExpires  = Parse-LocalDateTime $leaseExpiresRaw
+        if ($leaseObtained -and $ipv4List.Count -gt 0 -and -not $mediaDisconnected) {
+          if (-not $leaseExpires -or $leaseExpires -gt $now) {
+            $age = $now - $leaseObtained
+            if ($age.TotalMinutes -ge 0) {
+              $leaseDuration = $null
+              if ($leaseExpires -and $leaseExpires -gt $leaseObtained) { $leaseDuration = $leaseExpires - $leaseObtained }
+              $thresholdDays = 7.0
+              if ($leaseDuration) {
+                $candidateDays = $leaseDuration.TotalDays * 3
+                if ($candidateDays -lt 7) { $candidateDays = 7 }
+                if ($candidateDays -gt 30) { $candidateDays = 30 }
+                $thresholdDays = $candidateDays
+              }
+              if ($age.TotalDays -ge $thresholdDays) {
+                $ageText = Format-TimeSpan $age
+                $durationText = if ($leaseDuration) { Format-TimeSpan $leaseDuration } else { 'unknown' }
+                $thresholdText = ('{0:N1} days' -f $thresholdDays)
+                $evidenceLines = @(
+                  "Adapter: $adapterName",
+                  if ($ipv4List.Count -gt 0) { "IPv4 Address(es): " + ($ipv4List -join ', ') } else { $null },
+                  if ($leaseObtainedRaw) { "Lease Obtained: $leaseObtainedRaw" } else { $null },
+                  if ($leaseExpiresRaw)  { "Lease Expires: $leaseExpiresRaw" } else { $null },
+                  "Lease age: $ageText (threshold ≥ $thresholdText; duration $durationText)"
+                ) | Where-Object { $_ }
+                $dhcpStaleLeases.Add([pscustomobject]@{
+                  Adapter  = $adapterName
+                  Summary  = ('{0} ({1})' -f $adapterName, $ageText)
+                  Evidence = ($evidenceLines -join "`n")
+                })
+              }
+            }
+          }
+        }
+      }
+
+      if ($dhcpEnabled -eq $false -and -not $mediaDisconnected) {
+        $gatewayEntries = Get-AdapterValueList -Adapter $adapter -Keys @('Default Gateway')
+        $dnsEntries = Get-AdapterValueList -Adapter $adapter -Keys @('DNS Servers','DNS Server')
+        if ($ipv4List.Count -gt 0 -and $gatewayEntries.Count -eq 0 -and $dnsEntries.Count -eq 0) {
+          $evidenceLines = @(
+            "Adapter: $adapterName",
+            if ($dhcpEnabledRaw) { "DHCP Enabled: $dhcpEnabledRaw" } else { $null },
+            "IPv4 Address(es): " + ($ipv4List -join ', '),
+            'Default Gateway: (none captured)',
+            'DNS Servers: (none captured)'
+          ) | Where-Object { $_ }
+          $dhcpStaticIssues.Add([pscustomobject]@{
+            Adapter  = $adapterName
+            Evidence = ($evidenceLines -join "`n")
+          })
+        }
+      }
+    }
+
+    if ($dhcpMissingServers.Count -gt 0) {
+      $names = ($dhcpMissingServers | Select-Object -ExpandProperty Adapter | Sort-Object -Unique)
+      $message = "DHCP enabled but no DHCP server recorded for adapter(s): " + ($names -join ', ')
+      $evidence = ($dhcpMissingServers | ForEach-Object { $_.Evidence }) -join "`n`n"
+      Add-Issue "high" "Network/DHCP" $message $evidence
+    }
+
+    if ($dhcpStaticIssues.Count -gt 0) {
+      $names = ($dhcpStaticIssues | Select-Object -ExpandProperty Adapter | Sort-Object -Unique)
+      $message = "DHCP disabled but no static gateway/DNS captured on adapter(s): " + ($names -join ', ')
+      $evidence = ($dhcpStaticIssues | ForEach-Object { $_.Evidence }) -join "`n`n"
+      Add-Issue "high" "Network/DHCP" $message $evidence
+    }
+
+    if ($dhcpPublicServers.Count -gt 0) {
+      $summaries = $dhcpPublicServers | ForEach-Object { '{0} → {1}' -f $_.Adapter, ($_.Servers -join ', ') }
+      $message = "Public-scope DHCP server address observed: " + ($summaries -join '; ')
+      $evidence = ($dhcpPublicServers | ForEach-Object { $_.Evidence }) -join "`n`n"
+      Add-Issue "medium" "Network/DHCP" $message $evidence
+    }
+
+    if ($dhcpStaleLeases.Count -gt 0) {
+      $summaries = $dhcpStaleLeases | Select-Object -ExpandProperty Summary
+      $message = "Possible stale DHCP lease detected on adapter(s): " + ($summaries -join '; ')
+      $evidence = ($dhcpStaleLeases | ForEach-Object { $_.Evidence }) -join "`n`n"
+      Add-Issue "medium" "Network/DHCP" $message $evidence
+    }
   }
 }
 
@@ -1259,6 +1617,24 @@ function Get-EventHighlights {
   }
 }
 
+function Get-EventBlockSnippet {
+  param(
+    [string]$Block,
+    [int]$MaxLines = 8
+  )
+
+  if (-not $Block) { return '' }
+  $lines = [regex]::Split($Block,'\r?\n')
+  $selected = New-Object System.Collections.Generic.List[string]
+  foreach ($line in $lines) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $selected.Add($line.Trim())
+    if ($selected.Count -ge $MaxLines) { break }
+  }
+  if ($selected.Count -eq 0) { return '' }
+  return ($selected -join "`n")
+}
+
 function Add-EventStats($txt,$name){
   if (-not $txt) { return }
   $err = ([regex]::Matches($txt,'\bError\b','IgnoreCase')).Count
@@ -1294,6 +1670,74 @@ function Add-EventStats($txt,$name){
 }
 Add-EventStats $raw['event_system'] "System"
 Add-EventStats $raw['event_app'] "Application"
+
+$dhcpEventDefinitions = @{
+  '1001' = @{ Severity = 'high';     Message = 'DHCP client logged an IPv4 address conflict (Event ID 1001).' }
+  '1003' = @{ Severity = 'high';     Message = 'DHCP client failed to obtain a lease (Event ID 1003).' }
+  '1005' = @{ Severity = 'high';     Message = 'DHCP client failed to receive an IPv4 address (Event ID 1005).' }
+  '1006' = @{ Severity = 'high';     Message = 'DHCP client could not renew its lease (Event ID 1006).' }
+  '50013' = @{ Severity = 'medium';  Message = 'DHCP server NACKed the client lease (Event ID 50013).' }
+  '1046' = @{ Severity = 'critical'; Message = 'DHCP client reported scope exhaustion/no addresses (Event ID 1046).' }
+}
+
+$dhcpEventHits = @{}
+$dhcpEventEvidence = @{}
+if ($raw['event_system']) {
+  $eventPattern = '(?ms)^Event\[\d+\]:.*?(?=^Event\[\d+\]:|\z)'
+  $matches = [regex]::Matches($raw['event_system'], $eventPattern)
+  foreach ($match in $matches) {
+    $block = $match.Value
+    if (-not $block) { continue }
+    if ($block -notmatch '(?i)dhcp') { continue }
+
+    $providerMatch = [regex]::Match($block,'(?im)^\s*(?:Provider Name|Provider|Source)\s*[:=]\s*(?<provider>[^\r\n]+)')
+    $providerValue = if ($providerMatch.Success) { $providerMatch.Groups['provider'].Value.Trim() } else { '' }
+    if ($providerValue -and $providerValue -notmatch '(?i)dhcp') { continue }
+
+    $idMatch = [regex]::Match($block,'(?im)^\s*(?:Event ID|Id)\s*[:=]\s*(?<id>\d+)')
+    if (-not $idMatch.Success) { continue }
+    $eventId = $idMatch.Groups['id'].Value
+    if (-not $dhcpEventDefinitions.ContainsKey($eventId)) { continue }
+
+    if (-not $dhcpEventHits.ContainsKey($eventId)) {
+      $dhcpEventHits[$eventId] = 0
+      $dhcpEventEvidence[$eventId] = New-Object System.Collections.Generic.List[string]
+    }
+    $dhcpEventHits[$eventId] += 1
+
+    $snippet = Get-EventBlockSnippet -Block $block -MaxLines 8
+    if ($snippet -and $dhcpEventEvidence[$eventId].Count -lt 3) {
+      $dhcpEventEvidence[$eventId].Add($snippet)
+    }
+  }
+}
+
+if ($dhcpEventHits.Count -gt 0) {
+  foreach ($eventId in ($dhcpEventHits.Keys | Sort-Object {[int]$_})) {
+    if (-not $dhcpEventDefinitions.ContainsKey($eventId)) { continue }
+    $definition = $dhcpEventDefinitions[$eventId]
+    $count = $dhcpEventHits[$eventId]
+    $message = $definition.Message
+    if ($count -gt 1) {
+      $message = $message + " (seen $count times in recent System log sample)"
+    }
+
+    $evidenceParts = @()
+    if ($dhcpEventEvidence.ContainsKey($eventId)) {
+      $evidenceParts += $dhcpEventEvidence[$eventId]
+      $extra = $count - $dhcpEventEvidence[$eventId].Count
+      if ($extra -gt 0) { $evidenceParts += "(+{0} additional occurrence(s) in sample)" -f $extra }
+    }
+
+    if ($eventId -eq '1046' -and $ipconfigApipaAdapters -and $ipconfigApipaAdapters.Count -gt 0) {
+      $apipaSummary = "Adapters currently on APIPA: " + ($ipconfigApipaAdapters -join ', ')
+      $evidenceParts += $apipaSummary
+    }
+
+    $evidenceText = ($evidenceParts -join "`n`n")
+    Add-Issue $definition.Severity "Network/DHCP" $message $evidenceText
+  }
+}
 
 function Get-EventCounts($txt){
   if (-not $txt){ return @{E=0;W=0} }
