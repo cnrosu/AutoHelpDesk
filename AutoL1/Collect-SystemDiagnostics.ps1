@@ -303,6 +303,44 @@ $capturePlan = @(
   @{ Name = "dsregcmd_status"; Description = "Azure AD registration status (dsregcmd /status)"; Action = { dsregcmd /status } },
   @{ Name = "Whoami"; Description = "Current user context"; Action = { whoami /all } },
   @{ Name = "Uptime"; Description = "Last boot time"; Action = { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime } },
+  @{ Name = "FastStartupStatus"; Description = "Fast Startup (hiberboot) configuration"; Action = {
+      $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power'
+      Write-Output ("Registry Path : {0}" -f $regPath)
+
+      try {
+        $hiberboot = Get-ItemProperty -Path $regPath -Name HiberbootEnabled -ErrorAction Stop | Select-Object -ExpandProperty HiberbootEnabled
+        Write-Output ("HiberbootEnabled : {0}" -f $hiberboot)
+        if ($null -ne $hiberboot) {
+          $isEnabled = $null
+          try {
+            $isEnabled = [bool]([int]$hiberboot)
+          } catch {
+            if ($hiberboot -is [bool]) {
+              $isEnabled = [bool]$hiberboot
+            } elseif ($hiberboot -is [string] -and $hiberboot -match '^(0|1)$') {
+              $isEnabled = ([int]$hiberboot -ne 0)
+            } elseif ($hiberboot -is [string] -and $hiberboot -match '^0x[0-9a-f]+$') {
+              $isEnabled = ([Convert]::ToInt32($hiberboot, 16) -ne 0)
+            }
+          }
+
+          if ($null -ne $isEnabled) {
+            $statusLabel = if ($isEnabled) { 'Enabled' } else { 'Disabled' }
+            Write-Output ("Fast Startup Status : {0}" -f $statusLabel)
+          }
+        }
+      } catch {
+        Write-Output ("HiberbootEnabled query failed: {0}" -f $_)
+      }
+
+      Write-Output ""
+      Write-Output "powercfg /a output:"
+      try {
+        powercfg /a
+      } catch {
+        Write-Output ("powercfg /a failed: {0}" -f $_)
+      }
+    } },
   @{ Name = "TopCPU"; Description = "Top CPU processes"; Action = { Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 | Format-Table -AutoSize } },
   @{ Name = "Memory"; Description = "Memory usage summary"; Action = { Get-CimInstance Win32_OperatingSystem | Select @{n='TotalVisibleMemoryMB';e={[math]::round($_.TotalVisibleMemorySize/1024,0)}}, @{n='FreePhysicalMemoryMB';e={[math]::round($_.FreePhysicalMemory/1024,0)}} | Format-List * } }
 )
