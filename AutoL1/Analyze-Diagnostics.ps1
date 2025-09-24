@@ -218,6 +218,7 @@ $files = [ordered]@{
   shares         = Find-ByContent @('NetShares')                 @('Share name|Resource')
   tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('Folder:\s|TaskName')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
+  dsreg          = Find-ByContent @('dsregcmd_status','dsregcmd','dsreg_status','dsreg') @('AzureAdJoined','Device State','dsregcmd')
   uptime         = Find-ByContent @('Uptime')                    @('\d{4}-\d{2}-\d{2}')
   topcpu         = Find-ByContent @('TopCPU')                    @('ProcessName|CPU')
   memory         = Find-ByContent @('Memory')                    @('TotalVisibleMemoryMB|FreePhysicalMemoryMB')
@@ -379,6 +380,78 @@ if (-not $summary.OS_Version -and $raw['computerinfo']){
 }
 if (-not $summary.LastBoot -and $raw['os_cim']){
   $m = [regex]::Match($raw['os_cim'],'LastBootUpTime\s*:\s*(.+)'); if ($m.Success){ $summary.LastBoot = $m.Groups[1].Value.Trim() }
+}
+
+if (-not $summary.DeviceName -and $raw['computerinfo']){
+  $m = [regex]::Match($raw['computerinfo'],'CsName\s*:\s*(.+)'); if ($m.Success){ $summary.DeviceName = $m.Groups[1].Value.Trim() }
+}
+if (-not $summary.DeviceName -and $raw['systeminfo']){
+  $m = [regex]::Match($raw['systeminfo'],'(?im)^\s*Host Name\s*:\s*(.+)$'); if ($m.Success){ $summary.DeviceName = $m.Groups[1].Value.Trim() }
+}
+if ($raw['systeminfo']){
+  if (-not $summary.Domain -or -not $summary.Domain.Trim()){
+    $m = [regex]::Match($raw['systeminfo'],'(?im)^\s*Domain\s*:\s*(.+)$'); if ($m.Success){ $summary.Domain = $m.Groups[1].Value.Trim() }
+  }
+  if (-not $summary.DomainRole){
+    $m = [regex]::Match($raw['systeminfo'],'(?im)^\s*Domain Role\s*:\s*(.+)$'); if ($m.Success){ $summary.DomainRole = $m.Groups[1].Value.Trim() }
+  }
+  if (-not $summary.LogonServer){
+    $m = [regex]::Match($raw['systeminfo'],'(?im)^\s*Logon Server\s*:\s*(.+)$'); if ($m.Success){ $summary.LogonServer = $m.Groups[1].Value.Trim() }
+  }
+}
+
+if ($raw['dsreg']){
+  $dsregMap = @{}
+  foreach($line in [regex]::Split($raw['dsreg'],'\r?\n')){
+    $match = [regex]::Match($line,'^\s*([^:]+?)\s*:\s*(.+)$')
+    if ($match.Success){
+      $key = $match.Groups[1].Value.Trim()
+      $value = $match.Groups[2].Value.Trim()
+      if ($key){ $dsregMap[$key] = $value }
+    }
+  }
+
+  if ($dsregMap.ContainsKey('AzureAdJoined')){
+    $aad = Get-BoolFromString $dsregMap['AzureAdJoined']
+    if ($null -ne $aad){ $summary.AzureAdJoined = $aad }
+  }
+  if ($dsregMap.ContainsKey('WorkplaceJoined')){
+    $wp = Get-BoolFromString $dsregMap['WorkplaceJoined']
+    if ($null -ne $wp){ $summary.WorkplaceJoined = $wp }
+  }
+  if ($dsregMap.ContainsKey('EnterpriseJoined')){
+    $ent = Get-BoolFromString $dsregMap['EnterpriseJoined']
+    if ($null -ne $ent){ $summary.EnterpriseJoined = $ent }
+  }
+  if ($dsregMap.ContainsKey('DomainJoined')){
+    $dj = Get-BoolFromString $dsregMap['DomainJoined']
+    if ($null -ne $dj){ $summary.DomainJoined = $dj }
+  }
+  foreach($deviceKey in @('Device Name','DeviceName')){
+    if (-not $summary.DeviceName -and $dsregMap.ContainsKey($deviceKey)){
+      $summary.DeviceName = $dsregMap[$deviceKey]
+      break
+    }
+  }
+  if (-not $summary.Domain -and $dsregMap.ContainsKey('DomainName')){
+    $summary.Domain = $dsregMap['DomainName']
+  }
+  if ($dsregMap.ContainsKey('TenantName')){ $summary.AzureAdTenantName = $dsregMap['TenantName'] }
+  if ($dsregMap.ContainsKey('TenantId')){ $summary.AzureAdTenantId = $dsregMap['TenantId'] }
+  if ($dsregMap.ContainsKey('IdpDomain')){ $summary.AzureAdTenantDomain = $dsregMap['IdpDomain'] }
+  foreach($deviceIdKey in @('AzureAdDeviceId','DeviceId')){
+    if ($dsregMap.ContainsKey($deviceIdKey)){
+      $summary.AzureAdDeviceId = $dsregMap[$deviceIdKey]
+      break
+    }
+  }
+}
+
+if ($summary.Domain -and $summary.DomainJoined -eq $null){
+  $domainTrimmed = $summary.Domain.Trim()
+  if ($domainTrimmed -and $domainTrimmed.ToUpperInvariant() -eq 'WORKGROUP'){
+    $summary.DomainJoined = $false
+  }
 }
 
 $summary.IsServer = $null
@@ -933,6 +1006,20 @@ function Encode-Html([string]$s){
   }
 }
 
+function New-ReportSection {
+  param(
+    [string]$Title,
+    [string]$ContentHtml,
+    [switch]$Open
+  )
+
+  $openAttr = if ($Open.IsPresent) { ' open' } else { '' }
+  $titleValue = if ($null -ne $Title) { $Title } else { '' }
+  $titleHtml = Encode-Html $titleValue
+  $bodyHtml = if ($null -ne $ContentHtml) { $ContentHtml } else { '' }
+  return "<details class='report-section'$openAttr><summary>$titleHtml</summary><div class='report-section__content'>$bodyHtml</div></details>"
+}
+
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
 
@@ -989,80 +1076,212 @@ if ($summary.UptimeStatus) {
   $uptimeSummaryHtml = "<small class='report-note'>{0}</small>" -f (Encode-Html 'Uptime data not captured.')
 }
 
+$criticalCount = @($issues | Where-Object { $_.Severity -eq 'critical' }).Count
+$highCount = @($issues | Where-Object { $_.Severity -eq 'high' }).Count
+$mediumCount = @($issues | Where-Object { $_.Severity -eq 'medium' }).Count
+$lowCount = @($issues | Where-Object { $_.Severity -eq 'low' }).Count
+$infoCount = @($issues | Where-Object { $_.Severity -eq 'info' }).Count
+
+$deviceNameValue = if ($summary.DeviceName) { $summary.DeviceName } else { 'Unknown' }
+$deviceNameHtml = Encode-Html $deviceNameValue
+
+$domainNameValue = if ($summary.Domain) { $summary.Domain.Trim() } else { '' }
+$domainNameUpper = if ($domainNameValue) { $domainNameValue.ToUpperInvariant() } else { '' }
+$adDetails = @()
+if ($summary.DomainJoined -eq $true) {
+  if ($domainNameValue -and $domainNameUpper -ne 'WORKGROUP') {
+    $adDetails += "Joined to $domainNameValue"
+  } else {
+    $adDetails += 'Domain joined'
+    if ($domainNameValue) { $adDetails += "Reported domain: $domainNameValue" }
+  }
+} elseif ($summary.DomainJoined -eq $false) {
+  if ($domainNameUpper -eq 'WORKGROUP') {
+    $adDetails += 'Workgroup / not domain joined'
+  } elseif ($domainNameValue) {
+    $adDetails += "Not domain joined (reported: $domainNameValue)"
+  } else {
+    $adDetails += 'Not domain joined'
+  }
+} else {
+  if ($domainNameValue) {
+    if ($domainNameUpper -eq 'WORKGROUP') {
+      $adDetails += 'Workgroup / not domain joined'
+    } else {
+      $adDetails += "Join status unknown (reported: $domainNameValue)"
+    }
+  } else {
+    $adDetails += 'Join status unknown'
+  }
+}
+if ($summary.DomainRole) { $adDetails += "Role: $($summary.DomainRole)" }
+if ($summary.LogonServer) { $adDetails += "Logon Server: $($summary.LogonServer)" }
+$adSummaryHtml = if ($adDetails.Count -gt 0) { ($adDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
+
+$hybridNote = if ($summary.DomainJoined -eq $true -and $summary.AzureAdJoined -eq $true) { 'Hybrid joined (AD + Azure AD)' } else { $null }
+$azureDetails = @()
+if ($summary.AzureAdJoined -eq $true) {
+  $azureDetails += 'Azure AD join: Yes'
+} elseif ($summary.AzureAdJoined -eq $false) {
+  $azureDetails += 'Azure AD join: No'
+} else {
+  $azureDetails += 'Azure AD join: Unknown'
+}
+if ($hybridNote) { $azureDetails += $hybridNote }
+if ($summary.AzureAdTenantName) { $azureDetails += "Tenant: $($summary.AzureAdTenantName)" }
+if ($summary.AzureAdTenantDomain) { $azureDetails += "Tenant Domain: $($summary.AzureAdTenantDomain)" }
+if ($summary.AzureAdTenantId) { $azureDetails += "Tenant ID: $($summary.AzureAdTenantId)" }
+if ($summary.AzureAdDeviceId) { $azureDetails += "Device ID: $($summary.AzureAdDeviceId)" }
+if ($summary.EnterpriseJoined -eq $true) { $azureDetails += 'Enterprise join: Yes' }
+elseif ($summary.EnterpriseJoined -eq $false) { $azureDetails += 'Enterprise join: No' }
+if ($summary.WorkplaceJoined -eq $true) { $azureDetails += 'Workplace join: Yes' }
+elseif ($summary.WorkplaceJoined -eq $false) { $azureDetails += 'Workplace join: No' }
+$azureSummaryHtml = if ($azureDetails.Count -gt 0) { ($azureDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
+
+$folderHtml = Encode-Html $summary.Folder
+$osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
+$ipv4Html = Encode-Html ($summary.IPv4)
+$gatewayHtml = Encode-Html ($summary.Gateway)
+$dnsHtml = Encode-Html ($summary.DNS)
+$lastBootHtml = Encode-Html ($summary.LastBoot)
+
 $sumTable = @"
 <h1>Device Health Report</h1>
 <div class='report-card'>
   <div class='report-badge-group'>
-    <span class='report-badge'>Score: <b>$score/100</b></span>
-    <span class='report-badge report-badge--critical'>Critical: $(@($issues | Where-Object {$_.Severity -eq 'critical'}).Count)</span>
-    <span class='report-badge report-badge--bad'>High: $(@($issues | Where-Object {$_.Severity -eq 'high'}).Count)</span>
-    <span class='report-badge report-badge--warning'>Medium: $(@($issues | Where-Object {$_.Severity -eq 'medium'}).Count)</span>
-    <span class='report-badge report-badge--ok'>Low: $(@($issues | Where-Object {$_.Severity -eq 'low'}).Count)</span>
-    <span class='report-badge report-badge--good'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
+    <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>
+    <span class='report-badge report-badge--critical'><span class='report-badge__label'>CRITICAL</span><span class='report-badge__value'>$criticalCount</span></span>
+    <span class='report-badge report-badge--bad'><span class='report-badge__label'>HIGH</span><span class='report-badge__value'>$highCount</span></span>
+    <span class='report-badge report-badge--warning'><span class='report-badge__label'>MEDIUM</span><span class='report-badge__value'>$mediumCount</span></span>
+    <span class='report-badge report-badge--ok'><span class='report-badge__label'>LOW</span><span class='report-badge__value'>$lowCount</span></span>
+    <span class='report-badge report-badge--good'><span class='report-badge__label'>INFO</span><span class='report-badge__value'>$infoCount</span></span>
   </div>
   <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
-    <tr><td>Folder</td><td>$(Encode-Html $summary.Folder)</td></tr>
-    <tr><td>OS</td><td>$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))</td></tr>
+    <tr><td>Device Name</td><td>$deviceNameHtml</td></tr>
+    <tr><td>Active Directory</td><td>$adSummaryHtml</td></tr>
+    <tr><td>Azure AD / Entra</td><td>$azureSummaryHtml</td></tr>
+    <tr><td>Folder</td><td>$folderHtml</td></tr>
+    <tr><td>OS</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
     <tr><td>Uptime</td><td>$uptimeSummaryHtml</td></tr>
-    <tr><td>IPv4</td><td>$(Encode-Html ($summary.IPv4))</td></tr>
-    <tr><td>Gateway</td><td>$(Encode-Html ($summary.Gateway))</td></tr>
-    <tr><td>DNS</td><td>$(Encode-Html ($summary.DNS))</td></tr>
-    <tr><td>Last Boot</td><td>$(Encode-Html ($summary.LastBoot))</td></tr>
+    <tr><td>IPv4</td><td>$ipv4Html</td></tr>
+    <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
+    <tr><td>DNS</td><td>$dnsHtml</td></tr>
+    <tr><td>Last Boot</td><td>$lastBootHtml</td></tr>
   </table>
   <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>
 </div>
 "@
 
-# Found files table
-$foundRows = foreach($k in $files.Keys){
-  [pscustomobject]@{ Key=$k; File= if($files[$k]){ (Resolve-Path $files[$k]).Path } else { "(not found)" } }
+# Failed report summary
+$failedReports = New-Object System.Collections.Generic.List[pscustomobject]
+foreach($key in $files.Keys){
+  $filePath = $files[$key]
+  $rawContent = if ($raw.ContainsKey($key)) { $raw[$key] } else { '' }
+  $resolvedPath = if ($filePath) { (Resolve-Path $filePath -ErrorAction SilentlyContinue).Path } else { $null }
+
+  if (-not $filePath){
+    $failedReports.Add([pscustomobject]@{
+      Key = $key
+      Status = 'Missing'
+      Details = 'File not discovered in collection output.'
+      Path = $null
+    })
+    continue
+  }
+
+  $trimmed = if ($rawContent) { $rawContent.Trim() } else { '' }
+  if (-not $trimmed){
+    $failedReports.Add([pscustomobject]@{
+      Key = $key
+      Status = 'Empty'
+      Details = 'Captured file contained no output.'
+      Path = $resolvedPath
+    })
+    continue
+  }
+
+  $errorLine = ([regex]::Split($rawContent,'\r?\n') | Where-Object { $_ -match '(?i)ERROR running|not present|not available|missing or failed|is not recognized|The system cannot find' } | Select-Object -First 1)
+  if ($errorLine){
+    $failedReports.Add([pscustomobject]@{
+      Key = $key
+      Status = 'Command error'
+      Details = $errorLine.Trim()
+      Path = $resolvedPath
+    })
+  }
 }
-$foundHtml = "<h2>Found Files</h2><div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>File</th></tr>"
-foreach($r in $foundRows){ $foundHtml += "<tr><td>$(Encode-Html $($r.Key))</td><td>$(Encode-Html $($r.File))</td></tr>" }
-$foundHtml += "</table></div>"
+
+$failedTitle = "Failed Reports ({0})" -f $failedReports.Count
+if ($failedReports.Count -eq 0){
+  $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
+} else {
+  $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+  foreach($entry in $failedReports){
+    $detailParts = @()
+    if ($entry.Path){ $detailParts += "File: $($entry.Path)" }
+    if ($entry.Details){ $detailParts += $entry.Details }
+    $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
+    $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+  }
+  $failedContent += "</table></div>"
+}
+$failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
 
 # Issues
-$goodHtml = "<h2>What Looks Good</h2>"
+$goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
-  $goodHtml += '<div class="report-card"><i>No specific positives recorded.</i></div>'
+  $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
+  $goodCards = ''
   foreach($g in $normals){
     $cardClass = if ($g.CssClass) { $g.CssClass } else { 'good' }
     $badgeText = if ($g.BadgeText) { $g.BadgeText } else { 'GOOD' }
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($g.Area)
     $messageHtml = Encode-Html $($g.Message)
-    $goodHtml += "<div class='report-card report-card--{0}'><span class='report-badge report-badge--{0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($g.Evidence){ $goodHtml += "<pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre>" }
-    $goodHtml += "</div>"
+    $goodCards += "<div class='report-card report-card--{0}'><span class='report-badge report-badge--{0}'>{1}</span> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
+    if ($g.Evidence){ $goodCards += "<pre class='report-pre'>$(Encode-Html $($g.Evidence))</pre>" }
+    $goodCards += "</div>"
   }
+  $goodContent = $goodCards
 }
+$goodHtml = New-ReportSection -Title $goodTitle -ContentHtml $goodContent -Open
 
-$issuesHtml = "<h2>Detected Issues</h2>"
+$issuesTitle = "Detected Issues ({0})" -f $issues.Count
 if ($issues.Count -eq 0){
-  $issuesHtml += "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
+  $issuesContent = "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
 } else {
+  $issuesCards = ''
   foreach($i in $issues){
     $cardClass = if ($i.CssClass) { $i.CssClass } else { 'ok' }
     $badgeText = if ($i.BadgeText) { $i.BadgeText } elseif ($i.Severity) { $i.Severity.ToUpperInvariant() } else { 'ISSUE' }
     $badgeHtml = Encode-Html $badgeText
     $areaHtml = Encode-Html $($i.Area)
     $messageHtml = Encode-Html $($i.Message)
-    $issuesHtml += "<div class='report-card report-card--{0}'><div class='report-badge report-badge--{0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
-    if ($i.Evidence){ $issuesHtml += "<pre class='report-pre'>$(Encode-Html $i.Evidence)</pre>" }
-    $issuesHtml += "</div>"
+    $issuesCards += "<div class='report-card report-card--{0}'><div class='report-badge report-badge--{0}'>{1}</div> <b>{2}</b>: {3}" -f $cardClass, $badgeHtml, $areaHtml, $messageHtml
+    if ($i.Evidence){ $issuesCards += "<pre class='report-pre'>$(Encode-Html $i.Evidence)</pre>" }
+    $issuesCards += "</div>"
   }
+  $issuesContent = $issuesCards
 }
+$issuesHtml = New-ReportSection -Title $issuesTitle -ContentHtml $issuesContent -Open
 
 # Raw extracts (key files)
-$rawHtml = "<h2>Raw (key excerpts)</h2>"
+$rawSections = ''
 foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender')){
   if ($files[$key]) {
+    $fileName = [IO.Path]::GetFileName($files[$key])
     $content = Read-Text $files[$key]
-    $rawHtml += "<div class='report-card'><b>$(Encode-Html ([IO.Path]::GetFileName($files[$key])))</b><pre class='report-pre'>$(Encode-Html $content)</pre></div>"
+    $fileNameHtml = Encode-Html $fileName
+    $contentHtml = Encode-Html $content
+    $rawSections += "<details class='report-subsection'><summary>$fileNameHtml</summary><div class='report-subsection__body'><div class='report-card'><pre class='report-pre'>$contentHtml</pre></div></div></details>"
   }
 }
+if (-not $rawSections){
+  $rawSections = "<div class='report-card'><i>No raw excerpts available.</i></div>"
+}
+$rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml $rawSections
 
 $filesDump = ($files.Keys | ForEach-Object {
     $resolved = if($files[$_]){ (Resolve-Path $files[$_] -ErrorAction SilentlyContinue).Path } else { "(not found)" }
@@ -1081,5 +1300,5 @@ $tail = "</body></html>"
 # Write and return path
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $foundHtml + $goodHtml + $issuesHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
