@@ -328,6 +328,82 @@ $capturePlan = @(
   @{ Name = "Firewall"; Description = "Firewall profile status"; Action = { netsh advfirewall show allprofiles } },
   @{ Name = "FirewallRules"; Description = "Firewall rules overview"; Action = { try { Get-NetFirewallRule | Select-Object DisplayName,Direction,Action,Enabled,Profile | Format-Table -AutoSize } catch { "Get-NetFirewallRule not present" } } },
   @{ Name = "DefenderStatus"; Description = "Microsoft Defender health"; Action = { try { Get-MpComputerStatus | Format-List * } catch { "Get-MpComputerStatus not available or Defender absent" } } },
+  @{ Name = "Office_SecurityPolicies"; Description = "Office macro and Protected View policies"; Action = {
+      $apps = @('Excel','Word','PowerPoint')
+      $hives = @(
+        @{ Label = 'HKCU'; Root = 'HKCU:\Software\Microsoft\Office\16.0' },
+        @{ Label = 'HKLM'; Root = 'HKLM:\Software\Microsoft\Office\16.0' }
+      )
+
+      foreach ($hive in $hives) {
+        foreach ($app in $apps) {
+          $appPath = Join-Path -Path $hive.Root -ChildPath $app
+          $securityPath = Join-Path -Path $appPath -ChildPath 'Security'
+          $contextLabel = "{0}\\{1}" -f $hive.Label, $app
+
+          Write-Output ("Context : {0}" -f $contextLabel)
+          Write-Output ("Path : {0}" -f $securityPath)
+
+          $blockValue = 'NotConfigured'
+          $warningValue = 'NotConfigured'
+          $securityProps = $null
+
+          if (Test-Path $securityPath) {
+            try {
+              $securityProps = Get-ItemProperty -Path $securityPath -ErrorAction Stop
+            } catch {
+              Write-Output ("SecurityKeyError : {0}" -f $_)
+            }
+          }
+
+          if ($securityProps) {
+            $blockProp = $securityProps.PSObject.Properties['BlockContentExecutionFromInternet']
+            if ($blockProp -and $null -ne $blockProp.Value -and $blockProp.Value -ne '') {
+              $blockValue = $blockProp.Value
+            }
+
+            $warningProp = $securityProps.PSObject.Properties['VBAWarnings']
+            if ($warningProp -and $null -ne $warningProp.Value -and $warningProp.Value -ne '') {
+              $warningValue = $warningProp.Value
+            }
+          }
+
+          Write-Output ("BlockContentExecutionFromInternet : {0}" -f $blockValue)
+          Write-Output ("VBAWarnings : {0}" -f $warningValue)
+
+          $protectedViewPath = Join-Path -Path $securityPath -ChildPath 'ProtectedView'
+          Write-Output ("ProtectedViewPath : {0}" -f $protectedViewPath)
+
+          $pvInternetValue = 'NotConfigured'
+          $pvUnsafeValue = 'NotConfigured'
+          $protectedViewProps = $null
+
+          if (Test-Path $protectedViewPath) {
+            try {
+              $protectedViewProps = Get-ItemProperty -Path $protectedViewPath -ErrorAction Stop
+            } catch {
+              Write-Output ("ProtectedViewError : {0}" -f $_)
+            }
+          }
+
+          if ($protectedViewProps) {
+            $pvInternetProp = $protectedViewProps.PSObject.Properties['DisableInternetFilesInPV']
+            if ($pvInternetProp -and $null -ne $pvInternetProp.Value -and $pvInternetProp.Value -ne '') {
+              $pvInternetValue = $pvInternetProp.Value
+            }
+
+            $pvUnsafeProp = $protectedViewProps.PSObject.Properties['DisableUnsafeLocationsInPV']
+            if ($pvUnsafeProp -and $null -ne $pvUnsafeProp.Value -and $pvUnsafeProp.Value -ne '') {
+              $pvUnsafeValue = $pvUnsafeProp.Value
+            }
+          }
+
+          Write-Output ("ProtectedView.DisableInternetFilesInPV : {0}" -f $pvInternetValue)
+          Write-Output ("ProtectedView.DisableUnsafeLocationsInPV : {0}" -f $pvUnsafeValue)
+          Write-Output ""
+        }
+      }
+    } },
   @{ Name = "BitLockerStatus"; Description = "BitLocker volume status"; Action = {
       $bitlockerCmd = Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue
       if (-not $bitlockerCmd) {

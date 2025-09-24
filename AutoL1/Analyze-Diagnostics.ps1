@@ -116,6 +116,26 @@ function ConvertTo-NullableBool {
   return $null
 }
 
+function ConvertTo-NullableInt {
+  param($Value)
+
+  if ($Value -is [int]) { return [int]$Value }
+  if ($null -eq $Value) { return $null }
+
+  $stringValue = [string]$Value
+  if (-not $stringValue) { return $null }
+
+  $trimmed = $stringValue.Trim()
+  if (-not $trimmed) { return $null }
+
+  $parsed = 0
+  if ([int]::TryParse($trimmed, [ref]$parsed)) {
+    return $parsed
+  }
+
+  return $null
+}
+
 function Parse-KeyValueBlock {
   param([string]$Text)
 
@@ -530,6 +550,7 @@ $files = [ordered]@{
   outlook_ost    = Find-ByContent @('Outlook_OST')               @('FullName\s*:.*\.ost','No OST files found','Outlook OST root')
   outlook_autodiscover = Find-ByContent @('Autodiscover_DNS')    @('### Domain','autodiscover')
   outlook_scp    = Find-ByContent @('Outlook_SCP')               @('Autodiscover','serviceBindingInformation','SCP lookup')
+  office_security = Find-ByContent @('Office_SecurityPolicies')  @('BlockContentExecutionFromInternet','VBAWarnings','ProtectedView')
 
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
@@ -1534,6 +1555,168 @@ if ($raw['outlook_scp']){
       Add-Issue "medium" "Outlook/SCP" "Outlook/SCP: SCP query failed (domain join status unknown)." $scpEvidence
     } elseif ($bindingUrl) {
       Add-Normal "Outlook/SCP" ("GOOD Outlook/SCP: Autodiscover SCP published: {0}" -f $bindingUrl) $scpEvidence
+    }
+  }
+}
+
+# office macro / protected view policies
+function Format-MacroContextEvidence {
+  param(
+    [pscustomobject]$Context
+  )
+
+  $lines = @()
+  $contextLabel = if ($Context.Context) { $Context.Context } else { '(unknown)' }
+  $lines += ("Context: {0}" -f $contextLabel)
+
+  if ($Context.EvidenceLines -and $Context.EvidenceLines.Count -gt 0) {
+    $lines += $Context.EvidenceLines
+  } else {
+    $blockDisplay = if ($Context.BlockRaw) { $Context.BlockRaw } else { 'NotConfigured' }
+    $warningsDisplay = if ($Context.WarningsRaw) { $Context.WarningsRaw } else { 'NotConfigured' }
+    $pvInternetDisplay = if ($Context.PvInternetRaw) { $Context.PvInternetRaw } else { 'NotConfigured' }
+    $pvUnsafeDisplay = if ($Context.PvUnsafeRaw) { $Context.PvUnsafeRaw } else { 'NotConfigured' }
+    $lines += ("BlockContentExecutionFromInternet : {0}" -f $blockDisplay)
+    $lines += ("VBAWarnings : {0}" -f $warningsDisplay)
+    $lines += ("ProtectedView.DisableInternetFilesInPV : {0}" -f $pvInternetDisplay)
+    $lines += ("ProtectedView.DisableUnsafeLocationsInPV : {0}" -f $pvUnsafeDisplay)
+  }
+
+  return ($lines -join "`n")
+}
+
+if ($raw['office_security']) {
+  $macroLines = [regex]::Split($raw['office_security'],'\r?\n')
+  $macroContexts = New-Object System.Collections.Generic.List[pscustomobject]
+  $currentContext = $null
+
+  foreach ($line in $macroLines) {
+    $contextMatch = [regex]::Match($line,'^\s*Context\s*:\s*(.+)$')
+    if ($contextMatch.Success) {
+      $contextText = $contextMatch.Groups[1].Value.Trim()
+      $parts = $contextText -split '\\'
+      $hiveName = $null
+      $appName = $null
+      if ($parts.Count -ge 1) { $hiveName = $parts[0].Trim() }
+      if ($parts.Count -ge 2) { $appName = $parts[1].Trim() }
+      $appKey = $null
+      if ($appName) { $appKey = $appName.ToLowerInvariant() }
+
+      $currentContext = [pscustomobject]@{
+        Context        = $contextText
+        Hive           = $hiveName
+        App            = $appName
+        AppKey         = $appKey
+        BlockRaw       = 'NotConfigured'
+        WarningsRaw    = 'NotConfigured'
+        PvInternetRaw  = 'NotConfigured'
+        PvUnsafeRaw    = 'NotConfigured'
+        EvidenceLines  = New-Object System.Collections.Generic.List[string]
+      }
+      $macroContexts.Add($currentContext)
+      continue
+    }
+
+    if (-not $currentContext) { continue }
+    $trimmedLine = $line.Trim()
+    if (-not $trimmedLine) { continue }
+
+    $currentContext.EvidenceLines.Add($trimmedLine)
+
+    $blockMatch = [regex]::Match($trimmedLine,'^BlockContentExecutionFromInternet\s*:\s*(.+)$','IgnoreCase')
+    if ($blockMatch.Success) { $currentContext.BlockRaw = $blockMatch.Groups[1].Value.Trim() }
+
+    $warningMatch = [regex]::Match($trimmedLine,'^VBAWarnings\s*:\s*(.+)$','IgnoreCase')
+    if ($warningMatch.Success) { $currentContext.WarningsRaw = $warningMatch.Groups[1].Value.Trim() }
+
+    $pvInternetMatch = [regex]::Match($trimmedLine,'^ProtectedView\.DisableInternetFilesInPV\s*:\s*(.+)$','IgnoreCase')
+    if ($pvInternetMatch.Success) { $currentContext.PvInternetRaw = $pvInternetMatch.Groups[1].Value.Trim() }
+
+    $pvUnsafeMatch = [regex]::Match($trimmedLine,'^ProtectedView\.DisableUnsafeLocationsInPV\s*:\s*(.+)$','IgnoreCase')
+    if ($pvUnsafeMatch.Success) { $currentContext.PvUnsafeRaw = $pvUnsafeMatch.Groups[1].Value.Trim() }
+  }
+
+  foreach ($context in $macroContexts) {
+    $context.BlockValue = ConvertTo-NullableInt $context.BlockRaw
+    $context.WarningsValue = ConvertTo-NullableInt $context.WarningsRaw
+    $context.PvInternetValue = ConvertTo-NullableInt $context.PvInternetRaw
+    $context.PvUnsafeValue = ConvertTo-NullableInt $context.PvUnsafeRaw
+  }
+
+  $macroApps = @(
+    @{ Name = 'Excel'; Key = 'excel' },
+    @{ Name = 'Word'; Key = 'word' },
+    @{ Name = 'PowerPoint'; Key = 'powerpoint' }
+  )
+
+  foreach ($appInfo in $macroApps) {
+    $appContexts = @($macroContexts | Where-Object { $_.AppKey -eq $appInfo.Key })
+    if ($appContexts.Count -eq 0) { continue }
+
+    $hasIssue = $false
+
+    $blockCompliant = @($appContexts | Where-Object { $_.BlockValue -eq 1 })
+    if ($blockCompliant.Count -eq 0) {
+      $blockEvidence = ($appContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
+      Add-Issue "high" "Office/Macros" ("{0} macro MOTW blocking disabled or not configured. Fix: Enforce via GPO/MDM." -f $appInfo.Name) $blockEvidence
+      $hasIssue = $true
+    }
+
+    $laxContexts = @($appContexts | Where-Object {
+        $val = $_.WarningsValue
+        if ($null -ne $val) {
+          $val -lt 3
+        } else {
+          $raw = $_.WarningsRaw
+          if ([string]::IsNullOrWhiteSpace($raw)) {
+            $true
+          } else {
+            $raw -match '(?i)notconfigured'
+          }
+        }
+      })
+    if ($laxContexts.Count -gt 0) {
+      $warnValues = ($laxContexts | ForEach-Object { if ($_.WarningsRaw) { $_.WarningsRaw } else { 'NotConfigured' } } | Sort-Object -Unique) -join ', '
+      if (-not $warnValues) { $warnValues = 'NotConfigured' }
+      $warnEvidence = ($laxContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
+      Add-Issue "medium" "Office/Macros" ("{0} macro notification policy allows macros ({1}). Fix: Enforce via GPO/MDM." -f $appInfo.Name, $warnValues) $warnEvidence
+      $hasIssue = $true
+    }
+
+    $pvDisabledContexts = @($appContexts | Where-Object { ($_.PvInternetValue -eq 1) -or ($_.PvUnsafeValue -eq 1) })
+    if ($pvDisabledContexts.Count -gt 0) {
+      $pvReasons = @()
+      foreach ($ctx in $pvDisabledContexts) {
+        if ($ctx.PvInternetValue -eq 1) { $pvReasons += 'internet files' }
+        if ($ctx.PvUnsafeValue -eq 1) { $pvReasons += 'unsafe locations' }
+      }
+      $pvReasonText = ($pvReasons | Sort-Object -Unique) -join ', '
+      if (-not $pvReasonText) { $pvReasonText = 'Protected View' }
+      $pvEvidence = ($pvDisabledContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
+      Add-Issue "medium" "Office/Protected View" ("Protected View disabled for {0} ({1}). Fix: Enforce via GPO/MDM." -f $appInfo.Name, $pvReasonText) $pvEvidence
+      $hasIssue = $true
+    }
+
+    if (-not $hasIssue) {
+      $positiveParts = @()
+      if ($blockCompliant.Count -gt 0) { $positiveParts += 'MOTW macro blocking enforced' }
+      $strictWarnings = @($appContexts | Where-Object {
+          $val = $_.WarningsValue
+          if ($null -eq $val) {
+            $false
+          } else {
+            $val -ge 3
+          }
+        })
+      if ($strictWarnings.Count -gt 0) { $positiveParts += 'strict macro notification policy' }
+      if ($pvDisabledContexts.Count -eq 0) { $positiveParts += 'Protected View active for internet/unsafe files' }
+
+      if ($positiveParts.Count -gt 0) {
+        $evidenceContext = if ($blockCompliant.Count -gt 0) { $blockCompliant[0] } else { $appContexts[0] }
+        $positiveEvidence = Format-MacroContextEvidence $evidenceContext
+        $messageDetails = $positiveParts -join '; '
+        Add-Normal "Office/Macros" ("{0} macro protections verified ({1})." -f $appInfo.Name, $messageDetails) $positiveEvidence
+      }
     }
   }
 }
