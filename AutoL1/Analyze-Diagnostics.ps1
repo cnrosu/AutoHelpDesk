@@ -2055,11 +2055,19 @@ foreach ($entry in $serviceEvaluations) {
 }
 
 if (-not $serviceRows) {
-  $serviceContent = "<div class='report-card'><i>Service snapshot not available.</i></div>"
+  $servicesBodyContent = "<i>Service snapshot not available.</i>"
 } else {
-  $serviceContent = "<div class='report-card'><table class='report-table report-table--services' cellspacing='0' cellpadding='0'><tr><th>Service</th><th>Status</th><th>Start Type</th><th>Health</th><th>Notes</th></tr>$serviceRows</table></div>"
+  $servicesBodyContent = "<table class='report-table report-table--services' cellspacing='0' cellpadding='0'><tr><th>Service</th><th>Status</th><th>Start Type</th><th>Health</th><th>Notes</th></tr>$serviceRows</table>"
 }
-$servicesHtml = New-ReportSection -Title 'Crucial Windows Services' -ContentHtml $serviceContent -Open
+$servicesCardHtml = @"
+<details class='report-card report-card--good' open='open'>
+  <summary>
+    <span class='report-badge report-badge--good'>GOOD</span>
+    <span class='report-card__summary-text'><strong>Crucial Windows Services</strong></span>
+  </summary>
+  <div class='report-card__body'>$servicesBodyContent</div>
+</details>
+"@.Trim()
 
 # Failed report summary
 $failedReports = New-Object System.Collections.Generic.List[pscustomobject]
@@ -2133,6 +2141,7 @@ function Get-NormalCategory {
   $trimmed = $prefix.Trim()
 
   switch -Regex ($trimmed) {
+    '^(?i)services$'        { return 'Services' }
     '^(?i)(outlook|office)$' { return 'Office' }
     '^(?i)(network|dns)$'    { return 'Network' }
     '^(?i)security$'         { return 'Security' }
@@ -2173,7 +2182,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Office','Network','OS','Hardware','Security')
+  $categoryOrder = @('Services','Office','Network','OS','Hardware','Security')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
@@ -2186,6 +2195,13 @@ if ($normals.Count -eq 0){
       $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
     $categorized[$category].Add((New-GoodCardHtml -Entry $entry))
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($servicesCardHtml)) {
+    if (-not $categorized.Contains('Services')) {
+      $categorized['Services'] = New-Object System.Collections.Generic.List[string]
+    }
+    $categorized['Services'].Insert(0, $servicesCardHtml)
   }
 
   $firstNonEmpty = $null
@@ -2281,5 +2297,5 @@ $tail = "</body></html>"
 # Write and return path
 $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $servicesHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
