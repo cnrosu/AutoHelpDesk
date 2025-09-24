@@ -1,0 +1,27 @@
+@"
+# OS/Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+*.bak
+
+# Python / tooling caches (if any)
+__pycache__/
+*.pyc
+
+# PowerShell history
+*.pshistory
+
+# Diagnostics output
+DiagReports/
+*.html
+*.zip
+*.log
+
+# VSCode
+.vscode/
+
+# Misc
+*.orig
+"@ | Out-File -Encoding utf8 .gitignore

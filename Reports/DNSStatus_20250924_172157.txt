@@ -1,0 +1,14 @@
+=== DNS STATUS on FLASH 09/24/2025 17:21:57 ===
+
+--- Forwarders ---
+Get-DnsServerForwarder error: The term 'Get-DnsServerForwarder' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+
+--- Scavenging ---
+Scavenging query error: The term 'Get-DnsServerScavenging' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+
+--- Zones ---
+Zone list error: The term 'Get-DnsServerZone' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+
