@@ -137,42 +137,70 @@ $capturePlan = @(
       }
     } },
   @{ Name = "Outlook_SCP"; Description = "Autodiscover SCP search (Active Directory)"; Action = {
+      $domainJoined = $null
+      $domainQueryError = $null
+      try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($null -ne $cs.PartOfDomain) {
+          $domainJoined = [bool]$cs.PartOfDomain
+        }
+      } catch {
+        $domainQueryError = $_
+      }
+
+      if ($domainJoined -eq $true) {
+        Write-Output "PartOfDomain : True"
+      } elseif ($domainJoined -eq $false) {
+        Write-Output "PartOfDomain : False"
+        Write-Output "Status : Skipped (NotDomainJoined)"
+        return
+      } else {
+        Write-Output "PartOfDomain : Unknown"
+        if ($domainQueryError) {
+          Write-Output ("PartOfDomainError : {0}" -f $domainQueryError)
+        }
+      }
+
       try {
         $root = [ADSI]"LDAP://RootDSE"
         $configNc = $root.configurationNamingContext
         if (-not $configNc) {
-          "configurationNamingContext not available on this system."
+          Write-Output "Status : QueryFailed (ConfigurationNamingContextUnavailable)"
+          return
+        }
+
+        Write-Output ("ConfigurationNamingContext : {0}" -f $configNc)
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher
+        $searcher.SearchRoot = [ADSI]("LDAP://$configNc")
+        $searcher.Filter = "(&(objectClass=serviceConnectionPoint)(keywords=77378F46-2C66-4AA9-A6A6-3E7A48B19596))"
+        $searcher.PageSize = 1000
+        [void]$searcher.PropertiesToLoad.Add('name')
+        [void]$searcher.PropertiesToLoad.Add('serviceBindingInformation')
+        [void]$searcher.PropertiesToLoad.Add('keywords')
+        [void]$searcher.PropertiesToLoad.Add('distinguishedName')
+        [void]$searcher.PropertiesToLoad.Add('whenChanged')
+        $results = $searcher.FindAll()
+        if (-not $results -or $results.Count -eq 0) {
+          Write-Output "Status : NoResults"
         } else {
-          $searcher = New-Object System.DirectoryServices.DirectorySearcher
-          $searcher.SearchRoot = [ADSI]("LDAP://$configNc")
-          $searcher.Filter = "(&(objectClass=serviceConnectionPoint)(|(keywords=77378F46-2C66-4AA9-A6A6-3E5E921F0A02)(keywords=77378F46-2C66-4AA9-A6A6-3E5E921F0A03)))"
-          $searcher.PageSize = 1000
-          [void]$searcher.PropertiesToLoad.Add('name')
-          [void]$searcher.PropertiesToLoad.Add('serviceBindingInformation')
-          [void]$searcher.PropertiesToLoad.Add('keywords')
-          [void]$searcher.PropertiesToLoad.Add('distinguishedName')
-          [void]$searcher.PropertiesToLoad.Add('whenChanged')
-          $results = $searcher.FindAll()
-          if (-not $results -or $results.Count -eq 0) {
-            "No Autodiscover SCPs found."
-          } else {
-            foreach ($result in $results) {
-              $name = ($result.Properties['name'] | Select-Object -First 1)
-              $binding = $result.Properties['servicebindinginformation']
-              $keywords = $result.Properties['keywords']
-              $dn = ($result.Properties['distinguishedname'] | Select-Object -First 1)
-              $changed = ($result.Properties['whenchanged'] | Select-Object -First 1)
-              if ($name) { Write-Output ("Name : {0}" -f $name) }
-              if ($dn) { Write-Output ("DistinguishedName : {0}" -f $dn) }
-              if ($binding) { Write-Output ("ServiceBindingInformation : {0}" -f ($binding -join '; ')) }
-              if ($keywords) { Write-Output ("Keywords : {0}" -f ($keywords -join '; ')) }
-              if ($changed) { Write-Output ("WhenChanged : {0}" -f $changed) }
-              Write-Output ""
-            }
+          Write-Output ("Status : Found {0} result(s)" -f $results.Count)
+          foreach ($result in $results) {
+            $name = ($result.Properties['name'] | Select-Object -First 1)
+            $binding = $result.Properties['servicebindinginformation']
+            $keywords = $result.Properties['keywords']
+            $dn = ($result.Properties['distinguishedname'] | Select-Object -First 1)
+            $changed = ($result.Properties['whenchanged'] | Select-Object -First 1)
+            if ($name) { Write-Output ("Name : {0}" -f $name) }
+            if ($dn) { Write-Output ("DistinguishedName : {0}" -f $dn) }
+            if ($binding) { Write-Output ("ServiceBindingInformation : {0}" -f ($binding -join '; ')) }
+            if ($keywords) { Write-Output ("Keywords : {0}" -f ($keywords -join '; ')) }
+            if ($changed) { Write-Output ("WhenChanged : {0}" -f $changed) }
+            Write-Output ""
           }
         }
       } catch {
-        "Autodiscover SCP lookup failed: $_"
+        Write-Output "Status : QueryFailed (Exception)"
+        Write-Output ("Error : {0}" -f $_)
       }
     } },
   @{ Name = "systeminfo"; Description = "General system information"; Action = { systeminfo } },

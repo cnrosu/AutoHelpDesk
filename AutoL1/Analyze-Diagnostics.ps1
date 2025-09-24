@@ -983,30 +983,77 @@ if ($raw['outlook_autodiscover']){
 # autodiscover SCP discovery
 if ($raw['outlook_scp']){
   $scpText = $raw['outlook_scp']
-  $scpEvidenceLines = @([regex]::Split($scpText,'\r?\n') | Select-Object -First 20)
+  $scpLines = @([regex]::Split($scpText,'\r?\n'))
+  $scpEvidenceLines = @($scpLines | Select-Object -First 25)
   $scpEvidence = $scpEvidenceLines -join "`n"
-  if ($scpText -match 'Autodiscover SCP lookup failed'){
-    Add-Issue "info" "Outlook/SCP" "Autodiscover SCP lookup failed (machine may not be domain joined or AD unreachable)." $scpEvidence
-  } elseif ($scpText -match 'configurationNamingContext not available'){
-    Add-Issue "info" "Outlook/SCP" "configurationNamingContext unavailable; device likely not joined to Active Directory." $scpEvidence
-  } else {
-    $bindingMatches = [regex]::Matches($scpText,'(?im)^ServiceBindingInformation\s*:\s*(.+)$')
-    if ($bindingMatches.Count -gt 0){
-      $count = $bindingMatches.Count
-      $sampleCount = [Math]::Min($bindingMatches.Count,3)
-      $bindingSamples = @($bindingMatches | Select-Object -First $sampleCount | ForEach-Object { $_.Groups[1].Value.Trim() } | Where-Object { $_ })
-      $bindingEvidence = if ($bindingSamples -and $bindingSamples.Count -gt 0) { $bindingSamples -join "`n" } else { $scpEvidence }
-      $entryLabel = if ($count -eq 1) { 'entry' } else { 'entries' }
-      Add-Normal "Outlook/SCP" ("Autodiscover SCP present in Active Directory ({0} {1})." -f $count, $entryLabel) $bindingEvidence
-    } else {
-      $domainJoined = $summary.DomainJoined
-      $severity = if ($domainJoined -eq $true) { 'low' } else { 'info' }
-      $message = if ($domainJoined -eq $true) {
-        'Domain-joined device missing Autodiscover SCP registration.'
-      } else {
-        'Autodiscover SCP not found (expected for workgroup or Exchange Online-only scenarios).'
+
+  $partMatch = $scpLines | Where-Object { $_ -match '^(?i)PartOfDomain\s*:\s*(.+)$' } | Select-Object -First 1
+  $partValue = $null
+  if ($partMatch) {
+    $partRaw = ([regex]::Match($partMatch,'^(?i)PartOfDomain\s*:\s*(.+)$')).Groups[1].Value.Trim()
+    $partBool = Get-BoolFromString $partRaw
+    if ($null -ne $partBool) {
+      $partValue = $partBool
+    }
+  }
+  if ($null -ne $partValue) {
+    $summary.DomainJoined = $partValue
+  }
+
+  $statusMatch = $scpLines | Where-Object { $_ -match '^(?i)Status\s*:\s*(.+)$' } | Select-Object -Last 1
+  $statusValue = $null
+  if ($statusMatch) {
+    $statusValue = ([regex]::Match($statusMatch,'^(?i)Status\s*:\s*(.+)$')).Groups[1].Value.Trim()
+  }
+  $errorMatch = $scpLines | Where-Object { $_ -match '^(?i)Error\s*:\s*(.+)$' } | Select-Object -First 1
+
+  $bindingMatches = [regex]::Matches($scpText,'(?im)^ServiceBindingInformation\s*:\s*(.+)$')
+  $bindingValues = @()
+  foreach ($match in $bindingMatches) {
+    $value = $match.Groups[1].Value.Trim()
+    if (-not $value) { continue }
+    $splitValues = $value -split '\s*;\s*'
+    foreach ($entry in $splitValues) {
+      $entryTrim = $entry.Trim()
+      if ($entryTrim) {
+        $bindingValues += $entryTrim
+        break
       }
-      Add-Issue $severity "Outlook/SCP" $message $scpEvidence
+    }
+  }
+  $bindingUrl = if ($bindingValues.Count -gt 0) { $bindingValues[0] } else { $null }
+
+  $domainJoined = if ($null -ne $partValue) {
+    $partValue
+  } elseif ($summary.DomainJoined -ne $null) {
+    $summary.DomainJoined
+  } else {
+    $null
+  }
+
+  $statusLower = if ($statusValue) { $statusValue.ToLowerInvariant() } else { '' }
+  $queryFailed = $false
+  if ($statusLower -like 'queryfailed*') {
+    $queryFailed = $true
+  } elseif ($errorMatch) {
+    $queryFailed = $true
+  }
+
+  if ($domainJoined -eq $false) {
+    Add-Normal "Outlook/SCP" "GOOD Outlook/SCP: Not domain-joined; SCP not applicable." $scpEvidence
+  } elseif ($domainJoined -eq $true) {
+    if ($queryFailed) {
+      Add-Issue "medium" "Outlook/SCP" "Outlook/SCP: Domain-joined; SCP query failed (AD unreachable or permissions)." $scpEvidence
+    } elseif ($bindingUrl) {
+      Add-Normal "Outlook/SCP" ("GOOD Outlook/SCP: Autodiscover SCP published: {0}" -f $bindingUrl) $scpEvidence
+    } else {
+      Add-Issue "low" "Outlook/SCP" "Outlook/SCP: Domain-joined but no Autodiscover SCP found (OK if EXO-only)." $scpEvidence
+    }
+  } else {
+    if ($queryFailed) {
+      Add-Issue "medium" "Outlook/SCP" "Outlook/SCP: SCP query failed (domain join status unknown)." $scpEvidence
+    } elseif ($bindingUrl) {
+      Add-Normal "Outlook/SCP" ("GOOD Outlook/SCP: Autodiscover SCP published: {0}" -f $bindingUrl) $scpEvidence
     }
   }
 }
