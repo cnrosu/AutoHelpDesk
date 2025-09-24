@@ -51,6 +51,46 @@ function Convert-SizeToGB {
   }
 }
 
+function Get-FreeSpaceRule {
+  param(
+    [string]$DriveLetter,
+    [double]$SizeGB,
+    [string]$VolumeLine
+  )
+
+  $rule = [pscustomobject]@{
+    WarnPercent  = 0.20
+    WarnAbsolute = 25
+    CritPercent  = 0.10
+    CritAbsolute = 10
+    Description  = 'standard workstation rule'
+  }
+
+  if ($DriveLetter -eq 'C') {
+    $rule.Description = 'system drive rule'
+  } elseif ($VolumeLine -match '(?i)\b(data|archive)\b') {
+    $rule.WarnPercent  = 0.15
+    $rule.WarnAbsolute = 15
+    $rule.CritPercent  = 0.08
+    $rule.CritAbsolute = 8
+    $rule.Description  = 'relaxed data/archive rule'
+  }
+
+  $warnFloor = [math]::Max($SizeGB * $rule.WarnPercent, $rule.WarnAbsolute)
+  $critFloor = [math]::Max($SizeGB * $rule.CritPercent, $rule.CritAbsolute)
+
+  if ($SizeGB -le 0) {
+    $warnFloor = $rule.WarnAbsolute
+    $critFloor = $rule.CritAbsolute
+  }
+
+  return [pscustomobject]@{
+    WarnFloorGB = $warnFloor
+    CritFloorGB = $critFloor
+    Description = $rule.Description
+  }
+}
+
 # map logical keys → discovered files
 $files = [ordered]@{
   ipconfig       = Find-ByContent @('ipconfig_all')              @('Windows IP Configuration')
@@ -352,6 +392,8 @@ if ($raw['diskdrives'] -and -not ($raw['diskdrives'] -match 'Pred Fail|Bad|Unkno
 # volume free space
 if ($raw['volumes']){
   $healthy = @()
+  $warns = @()
+  $criticals = @()
   foreach($line in ([regex]::Split($raw['volumes'],'\r?\n'))){
     $match = [regex]::Match($line,'^\s*([A-Z]):.*?(\d+(?:\.\d+)?)\s*(TB|GB|MB).*?(\d+(?:\.\d+)?)\s*(TB|GB|MB)')
     if ($match.Success){
@@ -363,15 +405,39 @@ if ($raw['volumes']){
       $szGB = Convert-SizeToGB -Value $sz -Unit $szUnit
       $frGB = Convert-SizeToGB -Value $fr -Unit $frUnit
       if ($szGB -gt 0){
-        $pct = [math]::Round(($frGB/$szGB)*100,0)
-        if ($pct -ge 20){
-          $healthy += ("{0}: {1}% free ({2} GB of {3} GB)" -f $dl, $pct, [math]::Round($frGB,1), [math]::Round($szGB,1))
-        }
+        $pctFree = [math]::Round(($frGB/$szGB)*100,0)
+      } else {
+        $pctFree = 0
+      }
+
+      $thresholds = Get-FreeSpaceRule -DriveLetter $dl -SizeGB $szGB -VolumeLine $line
+      $warnFloorGB = $thresholds.WarnFloorGB
+      $critFloorGB = $thresholds.CritFloorGB
+      $freeRounded = [math]::Round($frGB,1)
+      $sizeRounded = [math]::Round($szGB,1)
+      $warnRounded = [math]::Round($warnFloorGB,1)
+      $critRounded = [math]::Round($critFloorGB,1)
+      $summary = "{0}: {1} GB free ({2}% of {3} GB)" -f $dl, $freeRounded, $pctFree, $sizeRounded
+
+      if ($frGB -lt $critFloorGB){
+        $criticals += ("{0}; below critical floor {1} GB (warn floor {2} GB, {3})." -f $summary, $critRounded, $warnRounded, $thresholds.Description)
+      }
+      elseif ($frGB -lt $warnFloorGB){
+        $warns += ("{0}; below warning floor {1} GB (critical floor {2} GB, {3})." -f $summary, $warnRounded, $critRounded, $thresholds.Description)
+      }
+      elseif ($szGB -gt 0){
+        $healthy += ("{0}; meets free space targets (warn {1} GB / crit {2} GB, {3})." -f $summary, $warnRounded, $critRounded, $thresholds.Description)
       }
     }
   }
+  if ($criticals.Count -gt 0){
+    Add-Issue "critical" "Storage/Free Space" "Free space critically low" ($criticals -join "; ")
+  }
+  if ($warns.Count -gt 0){
+    Add-Issue "high" "Storage/Free Space" "Free space warning" ($warns -join "; ")
+  }
   if ($healthy.Count -gt 0){
-    Add-Normal "Storage/Free Space" "Volumes have healthy free space (≥20%)" ($healthy -join "; ")
+    Add-Normal "Storage/Free Space" "Volumes meet free space targets" ($healthy -join "; ")
   }
 }
 
