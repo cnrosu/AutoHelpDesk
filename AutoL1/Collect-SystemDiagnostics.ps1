@@ -298,6 +298,18 @@ $capturePlan = @(
   @{ Name = "Firewall"; Description = "Firewall profile status"; Action = { netsh advfirewall show allprofiles } },
   @{ Name = "FirewallRules"; Description = "Firewall rules overview"; Action = { try { Get-NetFirewallRule | Select-Object DisplayName,Direction,Action,Enabled,Profile | Format-Table -AutoSize } catch { "Get-NetFirewallRule not present" } } },
   @{ Name = "DefenderStatus"; Description = "Microsoft Defender health"; Action = { try { Get-MpComputerStatus | Format-List * } catch { "Get-MpComputerStatus not available or Defender absent" } } },
+  @{ Name = "BitLockerStatus"; Description = "BitLocker volume status"; Action = {
+      $bitlockerCmd = Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue
+      if (-not $bitlockerCmd) {
+        "Get-BitLockerVolume cmdlet not available on this system."
+      } else {
+        try {
+          Get-BitLockerVolume | Format-List *
+        } catch {
+          "Get-BitLockerVolume failed: $_"
+        }
+      }
+    } },
   @{ Name = "NetShares"; Description = "File shares (net share)"; Action = { net share } },
   @{ Name = "ScheduledTasks"; Description = "Scheduled task inventory"; Action = { schtasks /query /fo LIST /v } },
   @{ Name = "dsregcmd_status"; Description = "Azure AD registration status (dsregcmd /status)"; Action = { dsregcmd /status } },
