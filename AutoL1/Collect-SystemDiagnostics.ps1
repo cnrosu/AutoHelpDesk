@@ -206,6 +206,36 @@ $capturePlan = @(
   @{ Name = "systeminfo"; Description = "General system information"; Action = { systeminfo } },
   @{ Name = "OS_CIM"; Description = "Operating system CIM inventory"; Action = { Get-CimInstance Win32_OperatingSystem | Format-List * } },
   @{ Name = "ComputerInfo"; Description = "ComputerInfo snapshot"; Action = { Get-ComputerInfo | Select-Object CsName, WindowsVersion, WindowsBuildLabEx, OsName, OsArchitecture, WindowsProductName, OsHardwareAbstractionLayer, Bios* | Format-List * } },
+  @{ Name = "Power_Settings"; Description = "Power configuration (Fast Startup)"; Action = {
+      Write-Output "Source : HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
+      try {
+        $powerKey = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power' -ErrorAction Stop
+        if ($powerKey) {
+          $hiberProperty = $powerKey.PSObject.Properties['HiberbootEnabled']
+          if ($hiberProperty) {
+            Write-Output ("HiberbootEnabled : {0}" -f $hiberProperty.Value)
+          } else {
+            Write-Output "HiberbootEnabled : (value not present)"
+          }
+        } else {
+          Write-Output "Failed to read power key (no data returned)."
+        }
+      } catch {
+        Write-Output ("Failed to query HiberbootEnabled : {0}" -f $_)
+      }
+
+      Write-Output ""
+      $powercfgCmd = Get-Command powercfg -ErrorAction SilentlyContinue
+      if ($powercfgCmd) {
+        try {
+          powercfg /a
+        } catch {
+          Write-Output ("powercfg /a failed: {0}" -f $_)
+        }
+      } else {
+        Write-Output "powercfg.exe not available."
+      }
+    } },
   @{ Name = "NetworkAdapterConfigs"; Description = "Network adapter configuration details"; Action = { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * } },
   @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
   @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },
