@@ -83,13 +83,30 @@ $files = [ordered]@{
   memory         = Find-ByContent @('Memory')                    @('TotalVisibleMemoryMB|FreePhysicalMemoryMB')
 }
 
+# dump discovery map when verbose
+Write-Verbose "Discovered files map:"
+foreach($key in $files.Keys){
+  $resolved = if($files[$key]){ (Resolve-Path $files[$key] -ErrorAction SilentlyContinue).Path } else { "(not found)" }
+  Write-Verbose ("  {0} = {1}" -f $key, $resolved)
+}
+
 # read contents
 $raw = @{}
 foreach($k in $files.Keys){ $raw[$k] = if($files[$k]){ Read-Text $files[$k] } else { "" } }
 
+Write-Verbose "Loaded raw text for keys:"
+foreach($key in $raw.Keys){
+  if ($raw[$key]) {
+    $snippet = $raw[$key].Substring(0,[Math]::Min(80,$raw[$key].Length)).Replace("`r"," ").Replace("`n"," ")
+    Write-Verbose ("  {0}: {1}" -f $key, $snippet)
+  }
+}
+
 # issues list
 $issues = New-Object System.Collections.Generic.List[pscustomobject]
 function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence=""){
+  $logMsg = if ($null -eq $msg) { "" } else { $msg }
+  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $sev.ToUpper(), $area, $logMsg)
   $issues.Add([pscustomobject]@{
     Severity = $sev
     Area     = $area
@@ -208,7 +225,14 @@ foreach($i in $issues){ $penalty += ($weights[$i.Severity]) }
 $score = [Math]::Max(0, 100 - [Math]::Min($penalty,80))
 
 # ---------- HTML ----------
-function H([string]$s){ return [System.Web.HttpUtility]::HtmlEncode($s) }
+function Encode-Html([string]$s){
+  if ($null -eq $s) { return "" }
+  try {
+    return [System.Web.HttpUtility]::HtmlEncode($s)
+  } catch {
+    try { return [System.Net.WebUtility]::HtmlEncode([string]$s) } catch { return [string]$s }
+  }
+}
 
 $reportName = "AutoL1_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
@@ -247,12 +271,12 @@ $sumTable = @"
     <span class='badge'>Info: $(@($issues | Where-Object {$_.Severity -eq 'info'}).Count)</span>
   </div>
   <table class='kv' cellspacing='0' cellpadding='0' style='margin-top:10px'>
-    <tr><td>Folder</td><td>$(H $summary.Folder)</td></tr>
-    <tr><td>OS</td><td>$(H ($summary.OS)) | $(H ($summary.OS_Version))</td></tr>
-    <tr><td>IPv4</td><td>$(H ($summary.IPv4))</td></tr>
-    <tr><td>Gateway</td><td>$(H ($summary.Gateway))</td></tr>
-    <tr><td>DNS</td><td>$(H ($summary.DNS))</td></tr>
-    <tr><td>Last Boot</td><td>$(H ($summary.LastBoot))</td></tr>
+    <tr><td>Folder</td><td>$(Encode-Html $summary.Folder)</td></tr>
+    <tr><td>OS</td><td>$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))</td></tr>
+    <tr><td>IPv4</td><td>$(Encode-Html ($summary.IPv4))</td></tr>
+    <tr><td>Gateway</td><td>$(Encode-Html ($summary.Gateway))</td></tr>
+    <tr><td>DNS</td><td>$(Encode-Html ($summary.DNS))</td></tr>
+    <tr><td>Last Boot</td><td>$(Encode-Html ($summary.LastBoot))</td></tr>
   </table>
   <small class='note'>Score is heuristic. Triage Critical/High items first.</small>
 </div>
@@ -263,7 +287,7 @@ $foundRows = foreach($k in $files.Keys){
   [pscustomobject]@{ Key=$k; File= if($files[$k]){ (Resolve-Path $files[$k]).Path } else { "(not found)" } }
 }
 $foundHtml = "<h2>Found Files</h2><div class='card'><table class='list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>File</th></tr>"
-foreach($r in $foundRows){ $foundHtml += "<tr><td>$(H $($r.Key))</td><td>$(H $($r.File))</td></tr>" }
+foreach($r in $foundRows){ $foundHtml += "<tr><td>$(Encode-Html $($r.Key))</td><td>$(Encode-Html $($r.File))</td></tr>" }
 $foundHtml += "</table></div>"
 
 # Issues
@@ -272,8 +296,8 @@ if ($issues.Count -eq 0){
   $issuesHtml += '<div class="card">No obvious issues detected from the provided outputs.</div>'
 } else {
   foreach($i in $issues){
-    $issuesHtml += "<div class='card'><div class='badge $($i.Severity)'>$($i.Severity.ToUpper())</div> <b>$(H $($i.Area))</b>: $(H $($i.Message))"
-    if ($i.Evidence){ $issuesHtml += "<pre>$([System.Web.HttpUtility]::HtmlEncode($i.Evidence))</pre>" }
+    $issuesHtml += "<div class='card'><div class='badge $($i.Severity)'>$($i.Severity.ToUpper())</div> <b>$(Encode-Html $($i.Area))</b>: $(Encode-Html $($i.Message))"
+    if ($i.Evidence){ $issuesHtml += "<pre>$(Encode-Html $i.Evidence)</pre>" }
     $issuesHtml += "</div>"
   }
 }
@@ -283,14 +307,26 @@ $rawHtml = "<h2>Raw (key excerpts)</h2>"
 foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender')){
   if ($files[$key]) {
     $content = Read-Text $files[$key]
-    $rawHtml += "<div class='card'><b>$(H ([IO.Path]::GetFileName($files[$key])))</b><pre>$([System.Web.HttpUtility]::HtmlEncode($content))</pre></div>"
+    $rawHtml += "<div class='card'><b>$(Encode-Html ([IO.Path]::GetFileName($files[$key])))</b><pre>$(Encode-Html $content)</pre></div>"
   }
 }
+
+$filesDump = ($files.Keys | ForEach-Object {
+    $resolved = if($files[$_]){ (Resolve-Path $files[$_] -ErrorAction SilentlyContinue).Path } else { "(not found)" }
+    "{0} = {1}" -f $_, $resolved
+  }) -join [Environment]::NewLine
+$rawDump = ($raw.Keys | Where-Object { $raw[$_] } | ForEach-Object {
+    $snippet = $raw[$_].Substring(0,[Math]::Min(120,$raw[$_].Length)).Replace("`r"," ").Replace("`n"," ")
+    "{0}: {1}" -f $_, $snippet
+  }) -join [Environment]::NewLine
+if (-not $filesDump){ $filesDump = "(no files discovered)" }
+if (-not $rawDump){ $rawDump = "(no raw entries populated)" }
+$debugHtml = "<details><summary>Debug</summary><div class='card'><b>Files map</b><pre>$(Encode-Html $filesDump)</pre></div><div class='card'><b>Raw samples</b><pre>$(Encode-Html $rawDump)</pre></div></details>"
 
 $tail = "</body></html>"
 
 # Write and return path
 $reportName = "AutoL1_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 $reportPath = Join-Path $InputFolder $reportName
-($head + $sumTable + $foundHtml + $issuesHtml + $rawHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
+($head + $sumTable + $foundHtml + $issuesHtml + $rawHtml + $debugHtml + $tail) | Out-File -FilePath $reportPath -Encoding UTF8
 $reportPath
