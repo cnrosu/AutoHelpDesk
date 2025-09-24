@@ -209,13 +209,88 @@ $capturePlan = @(
   @{ Name = "NetworkAdapterConfigs"; Description = "Network adapter configuration details"; Action = { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * } },
   @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
   @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },
+  @{ Name = "WinHttpProxy"; Description = "WinHTTP proxy configuration"; Action = { netsh winhttp show proxy } },
   @{ Name = "Disk_Drives"; Description = "Physical disk inventory (wmic diskdrive)"; Action = { wmic diskdrive get model,serialNumber,status,size } },
   @{ Name = "Volumes"; Description = "Volume overview (Get-Volume)"; Action = { Get-Volume | Format-Table -AutoSize } },
   @{ Name = "Disks"; Description = "Disk layout (Get-Disk)"; Action = { Get-Disk | Format-List * } },
   @{ Name = "Hotfixes"; Description = "Recent hotfixes"; Action = { Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 50 | Format-List * } },
   @{ Name = "Programs_Reg"; Description = "Installed programs (64-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
   @{ Name = "Programs_Reg_32"; Description = "Installed programs (32-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
-  @{ Name = "Services"; Description = "Service state overview"; Action = { Get-Service | Sort-Object Status,Name | Format-Table -AutoSize } },
+  @{ Name = "Services"; Description = "Service state overview"; Action = {
+      $services = $null
+      try {
+        $services = Get-CimInstance Win32_Service -ErrorAction Stop
+      } catch {
+        try {
+          $services = Get-WmiObject Win32_Service -ErrorAction Stop
+        } catch {
+          Write-Output ("Failed to query services: {0}" -f $_)
+          return
+        }
+      }
+
+      if (-not $services) {
+        Write-Output "No services returned."
+        return
+      }
+
+      $serviceList = @($services | Sort-Object Name)
+      Write-Output "Name`tStatus`tStartType`tDisplayName"
+      Write-Output "----`t------`t---------`t-----------"
+      foreach ($svc in $serviceList) {
+        if (-not $svc) { continue }
+
+        $nameValue = if ($svc.Name) { $svc.Name.Trim() } else { '' }
+        if (-not $nameValue) { continue }
+
+        $stateValue = ''
+        if ($svc.PSObject.Properties['State']) { $stateValue = $svc.State }
+        elseif ($svc.PSObject.Properties['Status']) { $stateValue = $svc.Status }
+        $stateValue = if ($stateValue) { $stateValue.Trim() } else { 'Unknown' }
+
+        $startMode = if ($svc.PSObject.Properties['StartMode']) { [string]$svc.StartMode } else { '' }
+        $delayed = $false
+        if ($svc.PSObject.Properties['DelayedAutoStart']) {
+          try { $delayed = [bool]$svc.DelayedAutoStart } catch { $delayed = $false }
+        }
+
+        $startType = 'Unknown'
+        if ($startMode) {
+          $modeLower = $startMode.Trim().ToLowerInvariant()
+          switch ($modeLower) {
+            { $_ -like 'auto*' } {
+              if ($delayed) {
+                $startType = 'Automatic (Delayed Start)'
+              } else {
+                $startType = 'Automatic'
+              }
+              break
+            }
+            'manual' {
+              $startType = 'Manual'
+              break
+            }
+            'disabled' {
+              $startType = 'Disabled'
+              break
+            }
+            default {
+              $startType = $startMode.Trim()
+            }
+          }
+        }
+
+        $displayName = ''
+        if ($svc.PSObject.Properties['DisplayName']) {
+          $displayName = [string]$svc.DisplayName
+        }
+        if ($displayName) {
+          $displayName = ($displayName -replace "[\t\r\n]+", ' ').Trim()
+        }
+
+        Write-Output ("{0}`t{1}`t{2}`t{3}" -f $nameValue, $stateValue, $startType, $displayName)
+      }
+    } },
   @{ Name = "Processes"; Description = "Running processes (tasklist /v)"; Action = { tasklist /v } },
   @{ Name = "Drivers"; Description = "Driver inventory (driverquery)"; Action = { driverquery /v /fo list } },
   @{ Name = "Event_System_100"; Description = "Latest 100 System event log entries"; Action = { wevtutil qe System /c:100 /f:text /rd:true } },
