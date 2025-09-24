@@ -1710,7 +1710,9 @@ function Get-NormalCategory {
     '^(?i)(outlook|office)$' { return 'Office' }
     '^(?i)(network|dns)$'    { return 'Network' }
     '^(?i)security$'         { return 'Security' }
-    '^(?i)(storage|os|events|services|scheduled tasks)$' { return 'Hardware' }
+    '^(?i)os$'               { return 'OS' }
+    '^(?i)scheduled tasks$'  { return 'OS' }
+    '^(?i)storage$'          { return 'Hardware' }
     default { return 'Hardware' }
   }
 }
@@ -1745,7 +1747,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Office','Network','Hardware','Security')
+  $categoryOrder = @('Office','Network','OS','Hardware','Security')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
