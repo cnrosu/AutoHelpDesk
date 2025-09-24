@@ -326,6 +326,33 @@ details.report-card[open] > summary {
   background-color: var(--color-surface);
 }
 
+.report-table--services {
+  margin-top: var(--space-sm);
+}
+
+.report-table--services .service-name-cell {
+  width: 28%;
+  font-weight: 600;
+}
+
+.report-table--services .service-status-cell,
+.report-table--services .service-start-cell,
+.report-table--services .service-tag-cell {
+  white-space: nowrap;
+}
+
+.report-table--services .service-status-cell {
+  font-weight: 600;
+}
+
+.report-table--services .service-tag-cell {
+  text-align: center;
+}
+
+.report-table--services .service-note-cell {
+  width: 32%;
+}
+
 .report-pre {
   margin-top: var(--space-sm);
   padding: var(--space-sm);
