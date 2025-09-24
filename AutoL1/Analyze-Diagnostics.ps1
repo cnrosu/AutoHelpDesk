@@ -819,13 +819,13 @@ if ($secureBootState) {
     Add-Issue "high" "System/Secure Boot" "Secure Boot is disabled." $secureBootEvidenceText
     $summary.SecureBootEnabled = $false
   } elseif ($secureBootState -match '(?i)unsupported|not supported') {
-    Add-Issue "low" "System/Secure Boot" "Secure Boot unsupported on this hardware." $secureBootEvidenceText
+    Add-Issue "high" "System/Secure Boot" "Secure Boot unsupported on this hardware." $secureBootEvidenceText
   } else {
-    Add-Issue "low" "System/Secure Boot" ("Secure Boot state reported as '{0}'." -f $secureBootState) $secureBootEvidenceText
+    Add-Issue "high" "System/Secure Boot" ("Secure Boot state reported as '{0}'." -f $secureBootState) $secureBootEvidenceText
   }
 } elseif ($computerInfoText -and $uefiStatus -eq $true) {
   $secureBootEvidenceText = $firmwareEvidenceText
-  Add-Issue "low" "System/Secure Boot" "Secure Boot state not reported despite UEFI firmware." $secureBootEvidenceText
+  Add-Issue "high" "System/Secure Boot" "Secure Boot state not reported despite UEFI firmware." $secureBootEvidenceText
 }
 
 if ($raw['dsreg']){
