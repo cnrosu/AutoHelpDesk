@@ -813,6 +813,9 @@ if ($secureBootState) {
     Add-Normal "System/Secure Boot" "Secure Boot enabled" $secureBootEvidenceText
     $summary.SecureBootEnabled = $true
   } elseif ($secureBootValue -eq $false) {
+    # CIS Windows benchmarks and Microsoft security baselines require Secure Boot to
+    # remain enabled to protect boot integrity, so treat a disabled state as a high
+    # severity finding.
     Add-Issue "high" "System/Secure Boot" "Secure Boot is disabled." $secureBootEvidenceText
     $summary.SecureBootEnabled = $false
   } elseif ($secureBootState -match '(?i)unsupported|not supported') {
@@ -1641,7 +1644,10 @@ if ($raw['bitlocker']) {
           $mountList = ($partial | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($partial | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Issue "medium" "System/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
+          # Industry guidance such as CIS Controls and Microsoft security baselines
+          # call for full BitLocker protection on OS drives; incomplete encryption
+          # leaves data at risk and should surface as a high severity issue.
+          Add-Issue "high" "System/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($unknown.Count -gt 0) {
           $mountList = ($unknown | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
@@ -1660,7 +1666,9 @@ if ($raw['bitlocker']) {
           Add-Normal "System/BitLocker" "BitLocker enabled on captured volume(s)." $evidence
         } else {
           $evidence = ($bitlockerEntries | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Issue "medium" "System/BitLocker" "No BitLocker-protected volumes detected." $evidence
+          # Devices without any BitLocker-protected volumes fail baseline controls for
+          # data-at-rest protection, so escalate this to a high severity gap.
+          Add-Issue "high" "System/BitLocker" "No BitLocker-protected volumes detected." $evidence
           $summary.BitLockerSystemProtected = $false
         }
       }
