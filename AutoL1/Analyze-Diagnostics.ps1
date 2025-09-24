@@ -1184,12 +1184,113 @@ if ($raw['services']){
 }
 
 # events quick counters
+function Get-EventHighlights {
+  param(
+    [string]$Text,
+    [string[]]$TargetLevels = @('Error'),
+    [int]$Max = 3
+  )
+
+  $snippets = New-Object System.Collections.Generic.List[string]
+  $matched = 0
+  if ([string]::IsNullOrWhiteSpace($Text)) {
+    return [pscustomobject]@{ Snippets = $snippets; Matched = 0 }
+  }
+
+  $levels = @($TargetLevels | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  $eventPattern = '(?ms)^Event\[\d+\]:.*?(?=^Event\[\d+\]:|\z)'
+  $matches = [regex]::Matches($Text, $eventPattern)
+
+  foreach ($match in $matches) {
+    $block = $match.Value
+    if (-not $block) { continue }
+
+    $levelMatch = [regex]::Match($block,'(?im)^\s*Level\s*[:=]\s*(?<level>[^\r\n]+)')
+    $levelValue = if ($levelMatch.Success) { $levelMatch.Groups['level'].Value.Trim() } else { '' }
+
+    $include = $true
+    if ($levels.Count -gt 0) {
+      $include = $false
+      foreach ($level in $levels) {
+        if ($levelValue -and $levelValue -match ('(?i)\b' + [regex]::Escape($level) + '\b')) { $include = $true; break }
+      }
+      if (-not $include) {
+        foreach ($level in $levels) {
+          if ($block -match ('(?i)\b' + [regex]::Escape($level) + '\b')) { $include = $true; break }
+        }
+      }
+    }
+
+    if (-not $include) { continue }
+
+    $matched++
+    if ($snippets.Count -ge $Max) { continue }
+
+    $lines = [regex]::Split($block,'\r?\n')
+    $selected = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $lines) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      $selected.Add($line.Trim())
+      if ($selected.Count -ge 8) { break }
+    }
+    if ($selected.Count -gt 0) {
+      $snippets.Add(($selected -join "`n"))
+    }
+  }
+
+  if ($matched -eq 0 -and $levels.Count -gt 0) {
+    $keywordPattern = '(?i)\b(' + (($levels | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')\b'
+    $lines = [regex]::Split($Text,'\r?\n')
+    foreach ($line in $lines) {
+      if (-not $line) { continue }
+      if ($line -notmatch $keywordPattern) { continue }
+      $matched++
+      if ($snippets.Count -lt $Max) {
+        $snippets.Add($line.Trim())
+      }
+    }
+  }
+
+  if ($matched -eq 0) { $matched = $snippets.Count }
+
+  return [pscustomobject]@{
+    Snippets = $snippets
+    Matched  = $matched
+  }
+}
+
 function Add-EventStats($txt,$name){
   if (-not $txt) { return }
   $err = ([regex]::Matches($txt,'\bError\b','IgnoreCase')).Count
   $warn= ([regex]::Matches($txt,'\bWarning\b','IgnoreCase')).Count
-  if ($err -ge 5){ Add-Issue "medium" "Events" "$name log shows many errors ($err in recent sample)." "" }
-  elseif ($warn -ge 10){ Add-Issue "low" "Events" "$name log shows many warnings ($warn in recent sample)." "" }
+  if ($err -ge 5){
+    $highlights = Get-EventHighlights -Text $txt -TargetLevels @('Error') -Max 3
+    $evidenceParts = @()
+    if ($highlights.Snippets.Count -gt 0) { $evidenceParts += $highlights.Snippets }
+    $extraErrors = [Math]::Max(0, $highlights.Matched - $highlights.Snippets.Count)
+    if ($extraErrors -gt 0) {
+      $evidenceParts += "(+{0} additional error events in sample)" -f $extraErrors
+    }
+    if ($evidenceParts.Count -eq 0) {
+      $evidenceParts += "Sample contained $err entries with 'Error'."
+    }
+    $evidenceText = $evidenceParts -join "`n`n"
+    Add-Issue "medium" "Events" "$name log shows many errors ($err in recent sample)." $evidenceText
+  }
+  elseif ($warn -ge 10){
+    $highlights = Get-EventHighlights -Text $txt -TargetLevels @('Warning') -Max 3
+    $evidenceParts = @()
+    if ($highlights.Snippets.Count -gt 0) { $evidenceParts += $highlights.Snippets }
+    $extraWarnings = [Math]::Max(0, $highlights.Matched - $highlights.Snippets.Count)
+    if ($extraWarnings -gt 0) {
+      $evidenceParts += "(+{0} additional warning events in sample)" -f $extraWarnings
+    }
+    if ($evidenceParts.Count -eq 0) {
+      $evidenceParts += "Sample contained $warn entries with 'Warning'."
+    }
+    $evidenceText = $evidenceParts -join "`n`n"
+    Add-Issue "low" "Events" "$name log shows many warnings ($warn in recent sample)." $evidenceText
+  }
 }
 Add-EventStats $raw['event_system'] "System"
 Add-EventStats $raw['event_app'] "Application"
