@@ -64,6 +64,9 @@ function Promote-Severity {
   return $script:SeverityOrder[$target]
 }
 
+# DNS heuristics configuration (override in-line as needed)
+[string[]]$AnycastDnsAllow = @()
+
 # ---------- helpers ----------
 function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
@@ -1074,8 +1077,22 @@ if ($raw['ipconfig']){
     if ($domainJoined -eq $true) { $summary.DomainJoined = $true }
     elseif ($domainJoined -eq $false) { $summary.DomainJoined = $false }
 
+    $dnsDebugData = [ordered]@{
+      PartOfDomain           = $domainJoined
+      DomainName             = $domainName
+      ForestName             = $forestName
+      ConfiguredDns          = $dnsServers
+      AdCapableDns           = @()
+      DcIPs                  = @()
+      DcCount                = 0
+      SecureChannelOK        = $null
+      AnycastOverrideMatched = $false
+    }
+
     if ($domainJoined -eq $false) {
+      Add-Normal "DNS/Internal" "GOOD DNS/Internal: Workgroup device, policy N/A."
       Add-Normal "Network/DNS" "Workgroup/standalone: DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
+      $summary.DnsDebug = $dnsDebugData
       $dnsContextHandled = $true
     } elseif ($domainJoined -eq $true) {
       Add-Normal "Network/DNS" "Domain-joined: DNS servers captured" ("DNS: " + ($dnsServers -join ", "))
@@ -1114,6 +1131,9 @@ if ($raw['ipconfig']){
         }
       }
       $dcIPs = $dcIPs | Where-Object { $_ } | Select-Object -Unique
+      $dcCount = $dcIPs.Count
+      $dnsDebugData.DcIPs = $dcIPs
+      $dnsDebugData.DcCount = $dcCount
 
       $dnsEval = @()
       foreach ($server in $dnsServers) {
@@ -1146,44 +1166,97 @@ if ($raw['ipconfig']){
         }
       }
 
-      $goodServers = $dnsEval | Where-Object { $_.IsDCIP -or $_.AuthoritativeAD -eq $true -or $_.ResolvesADSRV -eq $true }
-      if ($goodServers) {
-        $goodList = $goodServers | Select-Object -ExpandProperty Server -Unique
-        Add-Normal "DNS/Internal" "Domain-joined: AD-capable DNS present" ($goodList -join ", ")
+      $configuredCount = if ($dnsServers) { $dnsServers.Count } else { 0 }
+      $adCapableInOrder = @()
+      foreach ($server in $dnsServers) {
+        $entry = $dnsEval | Where-Object { $_.Server -eq $server } | Select-Object -First 1
+        if ($entry -and ($entry.IsDCIP -or $entry.AuthoritativeAD -eq $true -or $entry.ResolvesADSRV -eq $true)) {
+          if ($adCapableInOrder -notcontains $server) { $adCapableInOrder += $server }
+        }
       }
+      $dnsDebugData.AdCapableDns = $adCapableInOrder
 
       $dnsEvalTable = if ($dnsEval -and $dnsEval.Count -gt 0) { $dnsEval | Format-Table -AutoSize | Out-String } else { '' }
 
+      $normalizedAllow = @()
+      if ($AnycastDnsAllow) {
+        $normalizedAllow = $AnycastDnsAllow | Where-Object { $_ } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique
+      }
+      $anycastOverrideMatch = $false
+      $primaryServer = $dnsServers | Select-Object -First 1
+      if ($configuredCount -eq 1 -and $primaryServer) {
+        if ($normalizedAllow -and ($normalizedAllow -contains $primaryServer)) {
+          $anycastOverrideMatch = $true
+        }
+      }
+      $dnsDebugData.AnycastOverrideMatched = $anycastOverrideMatch
+
+      $secureOK = $null
+      try { $secureOK = Test-ComputerSecureChannel -Verbose:$false -ErrorAction Stop } catch { $secureOK = $null }
+      $dnsDebugData.SecureChannelOK = $secureOK
+
+      $canEvaluateDns = $dnsTestsAvailable -and ($dnsTestsAttempted -or $dcIPs.Count -gt 0)
+
+      $dnsEvidenceLines = @()
+      if ($configuredCount -gt 0) { $dnsEvidenceLines += ("Configured DNS: " + ($dnsServers -join ", ")) }
+      if ($adCapableInOrder.Count -gt 0) {
+        $dnsEvidenceLines += ("AD-capable DNS: " + ($adCapableInOrder -join ", "))
+      } else {
+        $dnsEvidenceLines += "AD-capable DNS: (none)"
+      }
+      if ($dcIPs.Count -gt 0) {
+        $dnsEvidenceLines += ("Discovered DC IPs: " + ($dcIPs -join ", "))
+      } else {
+        $dnsEvidenceLines += "Discovered DC IPs: (none)"
+      }
+      $dnsEvidenceLines += ("DC count: " + $dcCount)
+      if ($normalizedAllow -and $normalizedAllow.Count -gt 0) {
+        $dnsEvidenceLines += ("Anycast allowlist: " + ($normalizedAllow -join ", "))
+      }
+      $dnsEvidenceLines += ("Anycast override matched: " + ([string]$anycastOverrideMatch))
+      $dnsEvidenceLines += ("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
+      if ($dcCount -ge 2 -and $adCapableInOrder.Count -lt 2) {
+        $dnsEvidenceLines += ("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
+      }
+      if ($dnsEvalTable) {
+        $dnsEvidenceLines += ''
+        $dnsEvidenceLines += $dnsEvalTable.TrimEnd()
+      }
+      $dnsEvidence = $dnsEvidenceLines -join "`n"
+
+      if ($anycastOverrideMatch) {
+        Add-Normal "DNS/Internal" ("GOOD DNS/Internal: Single Anycast/VIP resolver approved by policy: {0}." -f $primaryServer) $dnsEvidence
+      } elseif ($canEvaluateDns) {
+        if ($adCapableInOrder.Count -ge 2) {
+          Add-Normal "DNS/Internal" ("GOOD DNS/Internal: Two or more AD-capable DNS servers detected: {0}." -f ($adCapableInOrder -join ", ")) $dnsEvidence
+        } elseif ($adCapableInOrder.Count -eq 1) {
+          $singleCapable = $adCapableInOrder[0]
+          $severity = if ($secureOK -eq $false) { 'medium' } else { 'high' }
+          Add-Issue $severity "DNS/Internal" ("DNS/Internal: Only one AD-capable DNS server configured (no failover) — {0}." -f $singleCapable) $dnsEvidence
+        } else {
+          if ($secureOK -eq $false) {
+            Add-Issue 'medium' "DNS/Internal" "DNS/Internal: Domain-joined but AD-capable DNS not present; device likely off-network/VPN down." $dnsEvidence
+          } else {
+            Add-Issue 'high' "DNS/Internal" "DNS/Internal: No AD-capable DNS resolvers configured; AD lookups will fail." $dnsEvidence
+          }
+        }
+      }
+
       $publicServers = $dnsEval | Where-Object { $_.IsPublic }
-      if ($publicServers) {
+      if (-not $anycastOverrideMatch -and $publicServers) {
         $pubList = $publicServers | Select-Object -ExpandProperty Server -Unique
         Add-Issue "medium" "DNS/Internal" "Domain-joined: public DNS servers detected ($($pubList -join ', '))." $dnsEvalTable
       }
 
-      $primaryServer = $dnsServers | Select-Object -First 1
-      if ($primaryServer) {
-        $primaryEval = $dnsEval | Where-Object { $_.Server -eq $primaryServer }
-        if ($primaryEval -and $primaryEval.IsPublic) {
-          Add-Issue "low" "DNS/Order" "Primary DNS is public; move internal server to the top." ("Primary: $primaryServer`nAll: " + ($dnsServers -join ", "))
+      if (-not $anycastOverrideMatch -and $primaryServer) {
+        $primaryEval = $dnsEval | Where-Object { $_.Server -eq $primaryServer } | Select-Object -First 1
+        $adCapableLater = $adCapableInOrder | Where-Object { $_ -ne $primaryServer } | Select-Object -First 1
+        if ($primaryEval -and $primaryEval.IsPublic -and $adCapableLater) {
+          Add-Issue "low" "DNS/Order" ("DNS/Order: Primary DNS is public; move internal AD-capable DNS to the top: Primary={0}; Internal={1}." -f $primaryServer, $adCapableLater) ("Primary: $primaryServer`nInternal: $adCapableLater`nAll: " + ($dnsServers -join ", "))
         }
       }
 
-      $needCritical = $false
-      if ($dnsTestsAvailable -and $dnsTestsAttempted) {
-        if (-not $goodServers -or $goodServers.Count -eq 0) {
-          $needCritical = $true
-        }
-      }
-
-      if ($needCritical) {
-        $secureOK = $null
-        try { $secureOK = Test-ComputerSecureChannel -Verbose:$false -ErrorAction Stop } catch { $secureOK = $null }
-        if ($secureOK -eq $false) {
-          Add-Issue "medium" "DNS/Internal" "Domain-joined but DNS not internal/AD-capable (device likely off-network/VPN down)." $dnsEvalTable
-        } else {
-          Add-Issue "critical" "DNS/Internal" "Domain-joined: DNS servers cannot resolve AD SRV records or are public." $dnsEvalTable
-        }
-      }
+      $summary.DnsDebug = $dnsDebugData
     }
   }
 
@@ -3014,7 +3087,58 @@ $rawDump = ($raw.Keys | Where-Object { $raw[$_] } | ForEach-Object {
   }) -join [Environment]::NewLine
 if (-not $filesDump){ $filesDump = "(no files discovered)" }
 if (-not $rawDump){ $rawDump = "(no raw entries populated)" }
-$debugHtml = "<details><summary>Debug</summary><div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div><div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div></details>"
+
+$dnsDebugHtmlSection = ''
+if ($summary.ContainsKey('DnsDebug') -and $summary.DnsDebug) {
+  $dnsDebugData = $summary.DnsDebug
+  $dnsDebugLines = @()
+
+  if ($dnsDebugData -is [System.Collections.IDictionary]) {
+    foreach ($key in $dnsDebugData.Keys) {
+      $value = $dnsDebugData[$key]
+      if ($null -eq $value) {
+        $valueText = 'Unknown'
+      } elseif ($value -is [string]) {
+        $valueText = $value
+      } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+        $items = @()
+        foreach ($item in $value) {
+          if ($null -eq $item) {
+            $items += 'Unknown'
+          } else {
+            $itemText = [string]$item
+            if ([string]::IsNullOrWhiteSpace($itemText)) { $items += '(empty)' } else { $items += $itemText }
+          }
+        }
+        if ($items.Count -eq 0) {
+          $valueText = '(none)'
+        } else {
+          $valueText = $items -join ', '
+        }
+      } else {
+        $valueText = [string]$value
+      }
+
+      if ([string]::IsNullOrWhiteSpace($valueText)) { $valueText = '(empty)' }
+      $dnsDebugLines += ("{0}: {1}" -f $key, $valueText)
+    }
+  } else {
+    $dnsDebugLines += [string]$dnsDebugData
+  }
+
+  if ($dnsDebugLines.Count -gt 0) {
+    $dnsDebugText = $dnsDebugLines -join "`n"
+    $dnsDebugHtmlSection = "<div class='report-card'><b>DNS heuristic data</b><pre class='report-pre'>$(Encode-Html $dnsDebugText)</pre></div>"
+  }
+}
+
+$filesCardHtml = "<div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div>"
+$rawCardHtml = "<div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div>"
+$debugCards = @($filesCardHtml)
+if ($dnsDebugHtmlSection) { $debugCards += $dnsDebugHtmlSection }
+$debugCards += $rawCardHtml
+$debugBodyHtml = ($debugCards -join '')
+$debugHtml = "<details><summary>Debug</summary>$debugBodyHtml</details>"
 
 $tail = "</body></html>"
 
