@@ -187,6 +187,10 @@ $files = [ordered]@{
   nslookup       = Find-ByContent @('nslookup_google','nslookup')@('Server:\s','Address:\s')
   tracert        = Find-ByContent @('tracert_google','tracert')  @('Tracing route to','over a maximum of')
   ping           = Find-ByContent @('ping_google','ping')        @('Pinging .* with','Packets: Sent =')
+  testnet_outlook443 = Find-ByContent @('TestNetConnection_Outlook443') @('Test-NetConnection','TcpTestSucceeded')
+  outlook_ost    = Find-ByContent @('Outlook_OST')               @('FullName\s*:.*\.ost','No OST files found','Outlook OST root')
+  outlook_autodiscover = Find-ByContent @('Autodiscover_DNS')    @('### Domain','autodiscover')
+  outlook_scp    = Find-ByContent @('Outlook_SCP')               @('Autodiscover','serviceBindingInformation','SCP lookup')
 
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
@@ -508,6 +512,9 @@ if ($summary.LastBoot){
   }
 }
 
+$outlookConnectivityResult = $null
+$outlookOstDomains = @()
+
 # ipconfig
 if ($raw['ipconfig']){
   $ipv4s = [regex]::Matches($raw['ipconfig'],'IPv4 Address[^\d]*([\d\.]+)') | ForEach-Object { $_.Groups[1].Value }
@@ -746,6 +753,262 @@ if ($raw['ping']){
 }
 if ($raw['tracert'] -and ($raw['tracert'] -match "over a maximum of" -and $raw['tracert'] -notmatch "Trace complete")){
   Add-Issue "low" "Network" "Traceroute didn’t complete within hop limit (may be normal if ICMP filtered)." $raw['tracert']
+}
+
+# outlook connectivity (HTTPS to EXO)
+if ($raw['testnet_outlook443']){
+  if ($raw['testnet_outlook443'] -match 'Test-NetConnection cmdlet not available'){
+    Add-Issue "info" "Outlook/Connectivity" "Test-NetConnection cmdlet not available to verify outlook.office365.com:443." $raw['testnet_outlook443']
+  } else {
+    $tcpMatch = [regex]::Match($raw['testnet_outlook443'],'TcpTestSucceeded\s*:\s*(True|False)','IgnoreCase')
+    $rttMatch = [regex]::Match($raw['testnet_outlook443'],'PingReplyDetails \(RTT\)\s*:\s*(\d+)\s*ms','IgnoreCase')
+    $remoteMatch = [regex]::Match($raw['testnet_outlook443'],'RemoteAddress\s*:\s*([^\r\n]+)','IgnoreCase')
+    $evidenceLines = @([regex]::Split($raw['testnet_outlook443'],'\r?\n') | Select-Object -First 12)
+    $evidenceText = $evidenceLines -join "`n"
+    if ($tcpMatch.Success -and $tcpMatch.Groups[1].Value -ieq 'True'){
+      $outlookConnectivityResult = $true
+      $rttText = if ($rttMatch.Success) { " (RTT {0} ms)" -f $rttMatch.Groups[1].Value.Trim() } else { "" }
+      $remoteSuffix = if ($remoteMatch.Success) { " (remote {0})" -f $remoteMatch.Groups[1].Value.Trim() } else { "" }
+      Add-Normal "Outlook/Connectivity" ("HTTPS connectivity to outlook.office365.com succeeded{0}{1}." -f $rttText, $remoteSuffix) $evidenceText
+    } elseif ($tcpMatch.Success -and $tcpMatch.Groups[1].Value -ieq 'False'){
+      $outlookConnectivityResult = $false
+      $remoteSuffix = if ($remoteMatch.Success) { " (remote {0})" -f $remoteMatch.Groups[1].Value.Trim() } else { "" }
+      Add-Issue "high" "Outlook/Connectivity" ("HTTPS connectivity to outlook.office365.com failed{0}." -f $remoteSuffix) $evidenceText
+    } else {
+      Add-Issue "info" "Outlook/Connectivity" "Unable to determine Test-NetConnection result for outlook.office365.com." $evidenceText
+    }
+  }
+}
+
+# outlook OST cache sizing (workstations)
+if (($summary.IsServer -ne $true) -and $raw['outlook_ost']){
+  $ostMatches = [regex]::Matches($raw['outlook_ost'],'(?ms)FullName\s*:\s*(?<full>[^\r\n]+).*?Length\s*:\s*(?<length>\d+)(?:.*?LastWriteTime\s*:\s*(?<lwt>[^\r\n]+))?')
+  if ($ostMatches.Count -gt 0){
+    $ostEntries = @()
+    foreach($m in $ostMatches){
+      $fullName = $m.Groups['full'].Value.Trim()
+      if (-not $fullName){ continue }
+      $lengthBytes = [double]$m.Groups['length'].Value
+      $lastWrite = if ($m.Groups['lwt'].Success) { $m.Groups['lwt'].Value.Trim() } else { $null }
+      $fileName = [System.IO.Path]::GetFileName($fullName)
+      $baseName = [System.IO.Path]::GetFileNameWithoutExtension($fullName)
+      $domainPart = $null
+      if ($baseName -match '@(?<domain>[^@]+)$'){
+        $domainPart = $matches['domain'].ToLowerInvariant()
+      }
+      if ($domainPart){ $outlookOstDomains += $domainPart }
+      $sizeGB = if ($lengthBytes -gt 0) { $lengthBytes / 1GB } else { 0 }
+      $ostEntries += [pscustomobject]@{
+        FullName       = $fullName
+        FileName       = $fileName
+        SizeGB         = $sizeGB
+        LastWriteTime  = $lastWrite
+      }
+    }
+    if ($ostEntries.Count -gt 0){
+      $outlookOstDomains = @($outlookOstDomains | Where-Object { $_ } | Sort-Object -Unique)
+      $ostEntries = $ostEntries | Sort-Object SizeGB -Descending
+      $criticalEntries = @()
+      $badEntries = @()
+      $warnEntries = @()
+      $healthyEntries = @()
+      foreach($entry in $ostEntries){
+        $sizeText = ('{0:N2}' -f $entry.SizeGB)
+        $lastWriteLabel = if ($entry.LastWriteTime) { " (LastWrite {0})" -f $entry.LastWriteTime } else { "" }
+        $line = "{0} - {1} GB{2}" -f $entry.FullName, $sizeText, $lastWriteLabel
+        if ($entry.SizeGB -gt 25){
+          $criticalEntries += $line
+        } elseif ($entry.SizeGB -gt 15){
+          $badEntries += $line
+        } elseif ($entry.SizeGB -gt 5){
+          $warnEntries += $line
+        } else {
+          $healthyEntries += $line
+        }
+      }
+      if ($criticalEntries.Count -gt 0){
+        Add-Issue "critical" "Outlook/OST" "OST cache HIGH tier (>25 GB) detected." ($criticalEntries -join "`n")
+      }
+      if ($badEntries.Count -gt 0){
+        Add-Issue "high" "Outlook/OST" "OST cache BAD tier (15–25 GB) detected." ($badEntries -join "`n")
+      }
+      if ($warnEntries.Count -gt 0){
+        Add-Issue "medium" "Outlook/OST" "OST cache WARN tier (5–15 GB) detected." ($warnEntries -join "`n")
+      }
+      if ($criticalEntries.Count -eq 0 -and $badEntries.Count -eq 0 -and $warnEntries.Count -eq 0 -and $healthyEntries.Count -gt 0){
+        $largestEntry = $ostEntries | Select-Object -First 1
+        $largestText = ('{0:N2}' -f $largestEntry.SizeGB)
+        $count = $ostEntries.Count
+        $plural = if ($count -eq 1) { '' } else { 's' }
+        $sampleCount = [Math]::Min($healthyEntries.Count,5)
+        $healthyEvidence = @($healthyEntries | Select-Object -First $sampleCount) -join "`n"
+        Add-Normal "Outlook/OST" ("OST cache sizes within guidance (max {0} GB across {1} file{2})." -f $largestText, $count, $plural) $healthyEvidence
+      }
+    }
+  }
+}
+
+# autodiscover DNS CNAME validation
+if ($raw['outlook_autodiscover']){
+  $autoText = $raw['outlook_autodiscover']
+  if ($autoText -match 'Resolve-DnsName cmdlet not available'){
+    Add-Issue "info" "Outlook/Autodiscover" "Resolve-DnsName cmdlet not available to check autodiscover CNAME." $autoText
+  } elseif ($autoText -match 'No domain candidates identified'){
+    Add-Issue "info" "Outlook/Autodiscover" "No domain candidates identified for autodiscover lookup." $autoText
+  } else {
+    $lines = [regex]::Split($autoText,'\r?\n')
+    $blocks = @()
+    $currentDomain = $null
+    $currentLines = @()
+    foreach($line in $lines){
+      $domainMatch = [regex]::Match($line,'^###\s*Domain:\s*(.+)$')
+      if ($domainMatch.Success){
+        if ($currentDomain){
+          $blockText = ($currentLines -join "`n").Trim()
+          $blocks += [pscustomobject]@{ Domain = $currentDomain; Text = $blockText }
+        }
+        $currentDomain = $domainMatch.Groups[1].Value.Trim()
+        $currentLines = @()
+      } else {
+        $currentLines += $line
+      }
+    }
+    if ($currentDomain){
+      $blockText = ($currentLines -join "`n").Trim()
+      $blocks += [pscustomobject]@{ Domain = $currentDomain; Text = $blockText }
+    }
+
+    if ($blocks.Count -gt 0){
+      $autoResults = @()
+      foreach($block in $blocks){
+        $domainValue = $block.Domain
+        if (-not $domainValue){ continue }
+        $text = if ($block.Text) { $block.Text.Trim() } else { '' }
+        $status = 'Unknown'
+        if ($text -match '(?i)Resolve-DnsName failed'){
+          $status = 'Failed'
+        } elseif ($text -match '(?i)No CNAME records returned'){
+          $status = 'Empty'
+        }
+        $target = $null
+        $cnameMatch = [regex]::Match($text,'(?im)^\s*autodiscover\.[^\s]+\s+CNAME\s+(?<target>[^\s]+)\s*$')
+        if ($cnameMatch.Success){
+          $target = $cnameMatch.Groups['target'].Value.Trim()
+        }
+        if (-not $target){
+          $nameHostMatch = [regex]::Match($text,'(?im)^\s*NameHost\s*:\s*(?<target>[^\s]+)')
+          if ($nameHostMatch.Success){
+            $target = $nameHostMatch.Groups['target'].Value.Trim()
+          }
+        }
+        if ($target){
+          $target = $target.TrimEnd('.')
+          $targetLower = $target.ToLowerInvariant()
+          if ($targetLower -eq 'autodiscover.outlook.com'){
+            $status = 'Outlook'
+          } else {
+            $status = 'Other'
+          }
+        }
+        $autoResults += [pscustomobject]@{
+          Domain   = $domainValue
+          Status   = $status
+          Target   = if ($target) { $target } else { $null }
+          Evidence = $text
+        }
+      }
+
+      if ($autoResults.Count -gt 0){
+        $likelyExo = $false
+        if ($summary.AzureAdTenantId -or $summary.AzureAdTenantDomain){
+          $likelyExo = $true
+        } elseif ($summary.DomainJoined -eq $false){
+          $likelyExo = $true
+        } elseif ($autoResults | Where-Object { $_.Status -eq 'Outlook' }){
+          $likelyExo = $true
+        } elseif ($outlookConnectivityResult -eq $true -and $summary.DomainJoined -ne $true){
+          $likelyExo = $true
+        }
+
+        if (-not $likelyExo -and $outlookOstDomains -and $outlookOstDomains.Count -gt 0){
+          $publicOstDomains = @($outlookOstDomains | Where-Object { $_ -match '\.' -and $_ -notmatch '\.(local|lan|corp|internal)$' })
+          if ($publicOstDomains.Count -gt 0){
+            $likelyExo = $true
+          }
+        }
+
+        foreach($result in $autoResults){
+          $domainValue = $result.Domain
+          if (-not $domainValue){ continue }
+          $domainTrimmed = $domainValue.Trim()
+          if (-not $domainTrimmed){ continue }
+          $domainLower = $domainTrimmed.ToLowerInvariant()
+          $isInternalDomain = ($domainLower -notmatch '\.') -or ($domainLower -match '\.(local|lan|corp|internal)$')
+          $evidenceLines = if ($result.Evidence) { @($result.Evidence -split '\r?\n' | Select-Object -First 12) } else { @() }
+          $evidenceText = if ($evidenceLines -and $evidenceLines.Count -gt 0) { $evidenceLines -join "`n" } else { $autoText }
+
+          switch ($result.Status) {
+            'Outlook' {
+              Add-Normal "Outlook/Autodiscover" ("autodiscover.{0} CNAME → autodiscover.outlook.com" -f $domainTrimmed) $evidenceText
+            }
+            'Other' {
+              $targetDisplay = if ($result.Target) { $result.Target } else { 'unknown target' }
+              if ($likelyExo -and -not $isInternalDomain){
+                Add-Issue "medium" "Outlook/Autodiscover" ("autodiscover.{0} CNAME points to {1} (expected autodiscover.outlook.com)." -f $domainTrimmed, $targetDisplay) $evidenceText
+              } elseif (-not $isInternalDomain){
+                Add-Issue "info" "Outlook/Autodiscover" ("autodiscover.{0} CNAME points to {1}. Verify Exchange Online onboarding." -f $domainTrimmed, $targetDisplay) $evidenceText
+              }
+            }
+            'Failed' {
+              if ($likelyExo -and -not $isInternalDomain){
+                Add-Issue "medium" "Outlook/Autodiscover" ("Autodiscover lookup failed for {0}." -f $domainTrimmed) $evidenceText
+              } elseif (-not $isInternalDomain){
+                Add-Issue "info" "Outlook/Autodiscover" ("Autodiscover lookup failed for {0}." -f $domainTrimmed) $evidenceText
+              }
+            }
+            'Empty' {
+              if ($likelyExo -and -not $isInternalDomain){
+                Add-Issue "medium" "Outlook/Autodiscover" ("No CNAME records returned for autodiscover.{0}." -f $domainTrimmed) $evidenceText
+              } elseif (-not $isInternalDomain){
+                Add-Issue "info" "Outlook/Autodiscover" ("No CNAME records returned for autodiscover.{0}." -f $domainTrimmed) $evidenceText
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# autodiscover SCP discovery
+if ($raw['outlook_scp']){
+  $scpText = $raw['outlook_scp']
+  $scpEvidenceLines = @([regex]::Split($scpText,'\r?\n') | Select-Object -First 20)
+  $scpEvidence = $scpEvidenceLines -join "`n"
+  if ($scpText -match 'Autodiscover SCP lookup failed'){
+    Add-Issue "info" "Outlook/SCP" "Autodiscover SCP lookup failed (machine may not be domain joined or AD unreachable)." $scpEvidence
+  } elseif ($scpText -match 'configurationNamingContext not available'){
+    Add-Issue "info" "Outlook/SCP" "configurationNamingContext unavailable; device likely not joined to Active Directory." $scpEvidence
+  } else {
+    $bindingMatches = [regex]::Matches($scpText,'(?im)^ServiceBindingInformation\s*:\s*(.+)$')
+    if ($bindingMatches.Count -gt 0){
+      $count = $bindingMatches.Count
+      $sampleCount = [Math]::Min($bindingMatches.Count,3)
+      $bindingSamples = @($bindingMatches | Select-Object -First $sampleCount | ForEach-Object { $_.Groups[1].Value.Trim() } | Where-Object { $_ })
+      $bindingEvidence = if ($bindingSamples -and $bindingSamples.Count -gt 0) { $bindingSamples -join "`n" } else { $scpEvidence }
+      $entryLabel = if ($count -eq 1) { 'entry' } else { 'entries' }
+      Add-Normal "Outlook/SCP" ("Autodiscover SCP present in Active Directory ({0} {1})." -f $count, $entryLabel) $bindingEvidence
+    } else {
+      $domainJoined = $summary.DomainJoined
+      $severity = if ($domainJoined -eq $true) { 'low' } else { 'info' }
+      $message = if ($domainJoined -eq $true) {
+        'Domain-joined device missing Autodiscover SCP registration.'
+      } else {
+        'Autodiscover SCP not found (expected for workgroup or Exchange Online-only scenarios).'
+      }
+      Add-Issue $severity "Outlook/SCP" $message $scpEvidence
+    }
+  }
 }
 
 # defender

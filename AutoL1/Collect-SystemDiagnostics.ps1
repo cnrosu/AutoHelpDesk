@@ -56,6 +56,125 @@ $capturePlan = @(
   @{ Name = "nslookup_google"; Description = "DNS resolution test for google.com"; Action = { nslookup google.com } },
   @{ Name = "tracert_google"; Description = "Traceroute to 8.8.8.8"; Action = { tracert -d -h 10 8.8.8.8 } },
   @{ Name = "ping_google"; Description = "Ping test to 8.8.8.8"; Action = { ping -n 4 8.8.8.8 } },
+  @{ Name = "TestNetConnection_Outlook443"; Description = "Test HTTPS connectivity to outlook.office365.com"; Action = {
+      $testNetCmd = Get-Command Test-NetConnection -ErrorAction SilentlyContinue
+      if (-not $testNetCmd) {
+        "Test-NetConnection cmdlet not available on this system."
+      } else {
+        Test-NetConnection outlook.office365.com -Port 443 -WarningAction SilentlyContinue |
+          Format-List * |
+          Out-String
+      }
+    } },
+  @{ Name = "Outlook_OST"; Description = "Outlook OST cache inventory"; Action = {
+      $ostRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\\Outlook'
+      if (-not (Test-Path $ostRoot)) {
+        "Outlook OST root not found: $ostRoot"
+      } else {
+        $ostFiles = Get-ChildItem -Path $ostRoot -Filter *.ost -Recurse -ErrorAction SilentlyContinue
+        if (-not $ostFiles) {
+          "No OST files found under $ostRoot"
+        } else {
+          $ostFiles |
+            Sort-Object Length -Descending |
+            Select-Object FullName, Length, LastWriteTime |
+            Format-List * |
+            Out-String
+        }
+      }
+    } },
+  @{ Name = "Autodiscover_DNS"; Description = "Autodiscover DNS lookups"; Action = {
+      $domains = @()
+      if ($env:USERDNSDOMAIN) { $domains += $env:USERDNSDOMAIN }
+      try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        if ($cs.Domain) { $domains += $cs.Domain }
+      } catch {}
+
+      $ostRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\\Outlook'
+      if (Test-Path $ostRoot) {
+        Get-ChildItem -Path $ostRoot -Filter *.ost -Recurse -ErrorAction SilentlyContinue |
+          ForEach-Object {
+            $base = $_.BaseName
+            if ($base -match '@(?<domain>[A-Za-z0-9\.-]+\.[A-Za-z]{2,})') {
+              $domains += $matches['domain']
+            }
+          }
+      }
+
+      $domains = $domains |
+        Where-Object { $_ } |
+        ForEach-Object { $_.Trim().ToLowerInvariant() } |
+        Where-Object { $_ } |
+        Sort-Object -Unique
+
+      if (-not $domains -or $domains.Count -eq 0) {
+        "No domain candidates identified for autodiscover lookup."
+      } else {
+        $resolveCmd = Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
+        if (-not $resolveCmd) {
+          "Resolve-DnsName cmdlet not available."
+        } else {
+          foreach ($domain in $domains) {
+            Write-Output ("### Domain: {0}" -f $domain)
+            $fqdn = "autodiscover.$domain"
+            try {
+              $results = Resolve-DnsName -Name $fqdn -Type CNAME -ErrorAction Stop |
+                Select-Object Name, Type, NameHost |
+                Format-Table -AutoSize |
+                Out-String -Width 200
+              if ($results) {
+                Write-Output ($results.TrimEnd())
+              } else {
+                Write-Output "No CNAME records returned."
+              }
+            } catch {
+              Write-Output ("Resolve-DnsName failed for {0}: {1}" -f $fqdn, $_)
+            }
+            Write-Output ""
+          }
+        }
+      }
+    } },
+  @{ Name = "Outlook_SCP"; Description = "Autodiscover SCP search (Active Directory)"; Action = {
+      try {
+        $root = [ADSI]"LDAP://RootDSE"
+        $configNc = $root.configurationNamingContext
+        if (-not $configNc) {
+          "configurationNamingContext not available on this system."
+        } else {
+          $searcher = New-Object System.DirectoryServices.DirectorySearcher
+          $searcher.SearchRoot = [ADSI]("LDAP://$configNc")
+          $searcher.Filter = "(&(objectClass=serviceConnectionPoint)(|(keywords=77378F46-2C66-4AA9-A6A6-3E5E921F0A02)(keywords=77378F46-2C66-4AA9-A6A6-3E5E921F0A03)))"
+          $searcher.PageSize = 1000
+          [void]$searcher.PropertiesToLoad.Add('name')
+          [void]$searcher.PropertiesToLoad.Add('serviceBindingInformation')
+          [void]$searcher.PropertiesToLoad.Add('keywords')
+          [void]$searcher.PropertiesToLoad.Add('distinguishedName')
+          [void]$searcher.PropertiesToLoad.Add('whenChanged')
+          $results = $searcher.FindAll()
+          if (-not $results -or $results.Count -eq 0) {
+            "No Autodiscover SCPs found."
+          } else {
+            foreach ($result in $results) {
+              $name = ($result.Properties['name'] | Select-Object -First 1)
+              $binding = $result.Properties['servicebindinginformation']
+              $keywords = $result.Properties['keywords']
+              $dn = ($result.Properties['distinguishedname'] | Select-Object -First 1)
+              $changed = ($result.Properties['whenchanged'] | Select-Object -First 1)
+              if ($name) { Write-Output ("Name : {0}" -f $name) }
+              if ($dn) { Write-Output ("DistinguishedName : {0}" -f $dn) }
+              if ($binding) { Write-Output ("ServiceBindingInformation : {0}" -f ($binding -join '; ')) }
+              if ($keywords) { Write-Output ("Keywords : {0}" -f ($keywords -join '; ')) }
+              if ($changed) { Write-Output ("WhenChanged : {0}" -f $changed) }
+              Write-Output ""
+            }
+          }
+        }
+      } catch {
+        "Autodiscover SCP lookup failed: $_"
+      }
+    } },
   @{ Name = "systeminfo"; Description = "General system information"; Action = { systeminfo } },
   @{ Name = "OS_CIM"; Description = "Operating system CIM inventory"; Action = { Get-CimInstance Win32_OperatingSystem | Format-List * } },
   @{ Name = "ComputerInfo"; Description = "ComputerInfo snapshot"; Action = { Get-ComputerInfo | Select-Object CsName, WindowsVersion, WindowsBuildLabEx, OsName, OsArchitecture, WindowsProductName, OsHardwareAbstractionLayer, Bios* | Format-List * } },
