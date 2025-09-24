@@ -282,3 +282,100 @@
   border-color: var(--color-state-critical-border);
   color: var(--color-state-critical-text);
 }
+
+.services-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.services-report__summary {
+  font-size: 0.95rem;
+  color: var(--color-text-note);
+}
+
+.services-report__card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.services-report__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.services-report__table thead th {
+  position: relative;
+  padding: var(--space-xs) var(--space-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  background-color: var(--color-surface-muted);
+  cursor: pointer;
+}
+
+.services-report__table thead th::after {
+  content: '\2195';
+  font-size: 0.7rem;
+  color: var(--color-text-note);
+  margin-left: var(--space-xxs);
+}
+
+.services-report__table tbody td {
+  padding: var(--space-xs) var(--space-md);
+}
+
+.services-report__table tbody tr:nth-child(even) td {
+  background-color: var(--color-surface-muted);
+}
+
+.services-report__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-xxs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.services-report__tag.good,
+.services-report__tag--good {
+  background-color: var(--color-state-good-bg);
+  border-color: var(--color-state-good-border);
+  color: var(--color-state-good-text);
+}
+
+.services-report__tag.warning,
+.services-report__tag--warning {
+  background-color: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
+  color: var(--color-state-warning-text);
+}
+
+.services-report__tag.bad,
+.services-report__tag--bad {
+  background-color: var(--color-state-bad-bg);
+  border-color: var(--color-state-bad-border);
+  color: var(--color-state-bad-text);
+}
+
+.services-report__tag.critical,
+.services-report__tag--critical {
+  background-color: var(--color-state-critical-bg);
+  border-color: var(--color-state-critical-border);
+  color: var(--color-state-critical-text);
+}
+
+.services-report__tag.info,
+.services-report__tag--info {
+  background-color: var(--color-state-ok-bg);
+  border-color: var(--color-state-ok-border);
+  color: var(--color-state-ok-text);
+}
+
+.services-report__nodata {
+  padding: var(--space-md) var(--space-md);
+  text-align: center;
+  font-style: italic;
+  color: var(--color-text-note);
+}
