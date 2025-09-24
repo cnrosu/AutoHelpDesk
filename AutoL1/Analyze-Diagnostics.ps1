@@ -1527,56 +1527,79 @@ $deviceNameHtml = Encode-Html $deviceNameValue
 
 $domainNameValue = if ($summary.Domain) { $summary.Domain.Trim() } else { '' }
 $domainNameUpper = if ($domainNameValue) { $domainNameValue.ToUpperInvariant() } else { '' }
-$adDetails = @()
-if ($summary.DomainJoined -eq $true) {
-  if ($domainNameValue -and $domainNameUpper -ne 'WORKGROUP') {
-    $adDetails += "Joined to $domainNameValue"
-  } else {
-    $adDetails += 'Domain joined'
-    if ($domainNameValue) { $adDetails += "Reported domain: $domainNameValue" }
-  }
-} elseif ($summary.DomainJoined -eq $false) {
-  if ($domainNameUpper -eq 'WORKGROUP') {
-    $adDetails += 'Workgroup / not domain joined'
-  } elseif ($domainNameValue) {
-    $adDetails += "Not domain joined (reported: $domainNameValue)"
-  } else {
-    $adDetails += 'Not domain joined'
-  }
-} else {
-  if ($domainNameValue) {
-    if ($domainNameUpper -eq 'WORKGROUP') {
-      $adDetails += 'Workgroup / not domain joined'
-    } else {
-      $adDetails += "Join status unknown (reported: $domainNameValue)"
-    }
-  } else {
-    $adDetails += 'Join status unknown'
-  }
+$formatJoinStatus = {
+  param($value)
+  if ($value -eq $true) { 'Yes' }
+  elseif ($value -eq $false) { 'No' }
+  else { 'Unknown' }
 }
-if ($summary.DomainRole) { $adDetails += "Role: $($summary.DomainRole)" }
-if ($summary.LogonServer) { $adDetails += "Logon Server: $($summary.LogonServer)" }
-$adSummaryHtml = if ($adDetails.Count -gt 0) { ($adDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
 
-$hybridNote = if ($summary.DomainJoined -eq $true -and $summary.AzureAdJoined -eq $true) { 'Hybrid joined (AD + Azure AD)' } else { $null }
-$azureDetails = @()
-if ($summary.AzureAdJoined -eq $true) {
-  $azureDetails += 'Azure AD join: Yes'
-} elseif ($summary.AzureAdJoined -eq $false) {
-  $azureDetails += 'Azure AD join: No'
-} else {
-  $azureDetails += 'Azure AD join: Unknown'
+$deviceStateDefinitions = @(
+  @{ Name = 'Microsoft Entra joined'; AzureAdJoined = $true; EnterpriseJoined = $false; DomainJoined = $false },
+  @{ Name = 'Microsoft Entra hybrid joined'; AzureAdJoined = $true; EnterpriseJoined = $false; DomainJoined = $true },
+  @{ Name = 'Domain joined'; AzureAdJoined = $false; EnterpriseJoined = $false; DomainJoined = $true },
+  @{ Name = 'On-premises DRS joined'; AzureAdJoined = $false; EnterpriseJoined = $true; DomainJoined = $true },
+  @{ Name = 'Not domain joined'; AzureAdJoined = $false; EnterpriseJoined = $false; DomainJoined = $false }
+)
+
+$deviceStateLabel = $null
+foreach ($definition in $deviceStateDefinitions) {
+  $matches = $true
+  foreach ($key in @('AzureAdJoined','EnterpriseJoined','DomainJoined')) {
+    $expected = $definition[$key]
+    if ($expected -ne $null) {
+      $actual = $summary[$key]
+      if ($actual -eq $null) {
+        if ($expected -ne $false) {
+          $matches = $false
+          break
+        }
+      } elseif ($actual -ne $expected) {
+        $matches = $false
+        break
+      }
+    }
+  }
+  if ($matches) {
+    $deviceStateLabel = $definition.Name
+    break
+  }
 }
-if ($hybridNote) { $azureDetails += $hybridNote }
-if ($summary.AzureAdTenantName) { $azureDetails += "Tenant: $($summary.AzureAdTenantName)" }
-if ($summary.AzureAdTenantDomain) { $azureDetails += "Tenant Domain: $($summary.AzureAdTenantDomain)" }
-if ($summary.AzureAdTenantId) { $azureDetails += "Tenant ID: $($summary.AzureAdTenantId)" }
-if ($summary.AzureAdDeviceId) { $azureDetails += "Device ID: $($summary.AzureAdDeviceId)" }
-if ($summary.EnterpriseJoined -eq $true) { $azureDetails += 'Enterprise join: Yes' }
-elseif ($summary.EnterpriseJoined -eq $false) { $azureDetails += 'Enterprise join: No' }
-if ($summary.WorkplaceJoined -eq $true) { $azureDetails += 'Workplace join: Yes' }
-elseif ($summary.WorkplaceJoined -eq $false) { $azureDetails += 'Workplace join: No' }
-$azureSummaryHtml = if ($azureDetails.Count -gt 0) { ($azureDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
+
+$deviceStateDetails = @()
+if ($deviceStateLabel) {
+  $deviceStateDetails += $deviceStateLabel
+} else {
+  $aadStatus = & $formatJoinStatus $summary.AzureAdJoined
+  $entStatus = & $formatJoinStatus $summary.EnterpriseJoined
+  $domainStatus = & $formatJoinStatus $summary.DomainJoined
+  $deviceStateDetails += "State unknown (Azure AD joined: $aadStatus, Enterprise joined: $entStatus, Domain joined: $domainStatus)"
+}
+
+if ($domainNameValue) {
+  if ($summary.DomainJoined -eq $true) {
+    $deviceStateDetails += "Domain: $domainNameValue"
+  } elseif ($domainNameUpper -eq 'WORKGROUP') {
+    $deviceStateDetails += 'Domain: WORKGROUP (not domain joined)'
+  } else {
+    $deviceStateDetails += "Domain (reported): $domainNameValue"
+  }
+} else {
+  $deviceStateDetails += 'Domain: Unknown'
+}
+
+if ($summary.LogonServer -and ($summary.DomainJoined -eq $true -or ($domainNameUpper -and $domainNameUpper -ne 'WORKGROUP'))) {
+  $deviceStateDetails += "Logon Server: $($summary.LogonServer)"
+}
+
+if ($summary.DomainRole) { $deviceStateDetails += "Role: $($summary.DomainRole)" }
+if ($summary.AzureAdTenantName) { $deviceStateDetails += "Tenant: $($summary.AzureAdTenantName)" }
+if ($summary.AzureAdTenantDomain) { $deviceStateDetails += "Tenant Domain: $($summary.AzureAdTenantDomain)" }
+if ($summary.AzureAdTenantId) { $deviceStateDetails += "Tenant ID: $($summary.AzureAdTenantId)" }
+if ($summary.AzureAdDeviceId) { $deviceStateDetails += "Device ID: $($summary.AzureAdDeviceId)" }
+if ($summary.WorkplaceJoined -eq $true) { $deviceStateDetails += 'Workplace join: Yes' }
+
+$deviceStateHtml = if ($deviceStateDetails.Count -gt 0) { ($deviceStateDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
 
 $folderHtml = Encode-Html $summary.Folder
 $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
@@ -1598,8 +1621,7 @@ $sumTable = @"
   </div>
   <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
     <tr><td>Device Name</td><td>$deviceNameHtml</td></tr>
-    <tr><td>Active Directory</td><td>$adSummaryHtml</td></tr>
-    <tr><td>Azure AD / Entra</td><td>$azureSummaryHtml</td></tr>
+    <tr><td>Device State</td><td>$deviceStateHtml</td></tr>
     <tr><td>Folder</td><td>$folderHtml</td></tr>
     <tr><td>OS</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
