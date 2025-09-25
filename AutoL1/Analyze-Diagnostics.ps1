@@ -427,9 +427,9 @@ function Copy-Styles {
 
   $repoRoot = Split-Path $PSScriptRoot -Parent
   $cssSources = @(
-    Join-Path $repoRoot 'styles/base.css',
-    Join-Path $repoRoot 'styles/layout.css',
-    Join-Path $PSScriptRoot 'styles/device-health-report.css'
+    (Join-Path $repoRoot 'styles/base.css')
+    (Join-Path $repoRoot 'styles/layout.css')
+    (Join-Path $PSScriptRoot 'styles/device-health-report.css')
   )
 
   foreach ($source in $cssSources) {
