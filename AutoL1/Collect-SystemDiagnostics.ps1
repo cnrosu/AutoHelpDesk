@@ -48,6 +48,18 @@ function Save-Output {
   return $file
 }
 
+$collectorModuleRoot = Join-Path $PSScriptRoot 'Collectors'
+$adCollectorRoot = Join-Path $collectorModuleRoot 'ActiveDirectory'
+if (Test-Path $adCollectorRoot) {
+  $adCommonPath = Join-Path $adCollectorRoot 'Common.ps1'
+  if (Test-Path $adCommonPath) { . $adCommonPath }
+
+  Get-ChildItem -Path $adCollectorRoot -Filter '*.ps1' -File |
+    Where-Object { $_.FullName -ne $adCommonPath } |
+    Sort-Object Name |
+    ForEach-Object { . $_.FullName }
+}
+
 $capturePlan = @(
   @{ Name = "ipconfig_all"; Description = "Detailed IP configuration (ipconfig /all)"; Action = { ipconfig /all } },
   @{ Name = "route_print"; Description = "Routing table (route print)"; Action = { route print } },
@@ -419,6 +431,22 @@ $capturePlan = @(
   @{ Name = "NetShares"; Description = "File shares (net share)"; Action = { net share } },
   @{ Name = "ScheduledTasks"; Description = "Scheduled task inventory"; Action = { schtasks /query /fo LIST /v } },
   @{ Name = "dsregcmd_status"; Description = "Azure AD registration status (dsregcmd /status)"; Action = { dsregcmd /status } },
+    @{ Name = "AD_DomainStatus"; Description = "Active Directory domain status"; Action = { Invoke-ADDomainStatusCollection } },
+
+    @{ Name = "AD_DCDiscovery"; Description = "Active Directory DC discovery (nltest & DNS SRV)"; Action = { Invoke-ADDomainControllerDiscovery } },
+
+    @{ Name = "AD_DCPortTests"; Description = "Active Directory domain controller port checks"; Action = { Invoke-ADDomainControllerPortTests } },
+
+    @{ Name = "AD_SYSVOL"; Description = "Active Directory SYSVOL/NETLOGON access"; Action = { Invoke-ADSysvolCollection } },
+
+    @{ Name = "AD_Time"; Description = "Time service status"; Action = { Invoke-ADTimeCollection } },
+
+    @{ Name = "AD_Kerberos"; Description = "Kerberos ticket status and recent failures"; Action = { Invoke-ADKerberosCollection } },
+
+    @{ Name = "AD_SecureChannel"; Description = "Machine secure channel verification"; Action = { Invoke-ADSecureChannelCollection } },
+
+    @{ Name = "AD_GPO"; Description = "Group Policy results and recent errors"; Action = { Invoke-ADGpoCollection } },
+
   @{ Name = "Whoami"; Description = "Current user context"; Action = { whoami /all } },
   @{ Name = "Uptime"; Description = "Last boot time"; Action = { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime } },
   @{ Name = "TopCPU"; Description = "Top CPU processes"; Action = { Get-Process | Sort-Object CPU -Descending | Select-Object -First 25 | Format-Table -AutoSize } },

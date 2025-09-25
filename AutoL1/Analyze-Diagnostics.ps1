@@ -74,6 +74,18 @@ function Read-Text($path) {
 
 $allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt 2>$null
 
+
+$analyzerModuleRoot = Join-Path $PSScriptRoot 'Analyzers'
+$adAnalyzerRoot = Join-Path $analyzerModuleRoot 'ActiveDirectory'
+if (Test-Path $adAnalyzerRoot) {
+  $adCommonPath = Join-Path $adAnalyzerRoot 'Common.ps1'
+  if (Test-Path $adCommonPath) { . $adCommonPath }
+
+  Get-ChildItem -Path $adAnalyzerRoot -Filter '*.ps1' -File |
+    Where-Object { $_.FullName -ne $adCommonPath } |
+    Sort-Object Name |
+    ForEach-Object { . $_.FullName }
+}
 function Find-ByContent([string[]]$nameHints, [string[]]$needles) {
   if ($nameHints) {
     $byName = $allTxt | Where-Object {
@@ -137,6 +149,17 @@ function ConvertTo-NullableInt {
   }
 
   return $null
+}
+
+function Get-FirstLines {
+  param(
+    [string]$Text,
+    [int]$Count = 40
+  )
+
+  if (-not $Text) { return '' }
+  $lines = [regex]::Split($Text,'\r?\n')
+  return ($lines | Select-Object -First $Count) -join "`n"
 }
 
 function Parse-KeyValueBlock {
@@ -588,6 +611,14 @@ $files = [ordered]@{
   shares         = Find-ByContent @('NetShares')                 @('Share name|Resource')
   tasks          = Find-ByContent @('ScheduledTasks','tasks')    @('(?im)^Folder:\s','(?im)^TaskName:\s','(?im)^HostName:\s')
   whoami         = Find-ByContent @('Whoami')                    @('USER INFORMATION|GROUP INFORMATION')
+  ad_domain      = Find-ByContent @('AD_DomainStatus')          @('PartOfDomain\s*:','DomainCandidates')
+  ad_dc          = Find-ByContent @('AD_DCDiscovery')           @('DiscoveredDC','NLTEST\.DSGETDC','SRVLookup')
+  ad_ports       = Find-ByContent @('AD_DCPortTests')           @('PortResult','CandidateDCs')
+  ad_sysvol      = Find-ByContent @('AD_SYSVOL')                @('SharePath','ShareExists')
+  ad_time        = Find-ByContent @('AD_Time')                  @('w32tm','PhaseOffsetSeconds','TimeSource')
+  ad_kerberos    = Find-ByContent @('AD_Kerberos')              @('klist','KerberosEvent')
+  ad_secure      = Find-ByContent @('AD_SecureChannel')         @('SecureChannelResult','nltest /sc_query')
+  ad_gpo         = Find-ByContent @('AD_GPO')                   @('gpresult','GPOEvent')
   dsreg          = Find-ByContent @('dsregcmd_status','dsregcmd','dsreg_status','dsreg') @('AzureAdJoined','Device State','TenantName','dsregcmd')
   uptime         = Find-ByContent @('Uptime')                    @('\d{4}-\d{2}-\d{2}')
   topcpu         = Find-ByContent @('TopCPU')                    @('ProcessName|CPU')
@@ -1438,6 +1469,10 @@ if ($raw['tracert'] -and ($raw['tracert'] -match "over a maximum of" -and $raw['
   Add-Issue "low" "Network" "Traceroute didn’t complete within hop limit (may be normal if ICMP filtered)." $raw['tracert']
 }
 
+
+Invoke-ActiveDirectoryHeuristics -Raw $raw -Summary $summary
+
+# outlook connectivity (HTTPS to EXO)
 # outlook connectivity (HTTPS to EXO)
 if ($raw['testnet_outlook443']){
   if ($raw['testnet_outlook443'] -match 'Test-NetConnection cmdlet not available'){
