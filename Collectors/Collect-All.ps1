@@ -8,7 +8,10 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputRoot = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath 'output')
+    [string]$OutputRoot = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath 'output'),
+
+    [Parameter()]
+    [int]$ThrottleLimit = [math]::Max([System.Environment]::ProcessorCount, 1)
 )
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'CollectorCommon.ps1')
@@ -20,35 +23,6 @@ function Get-CollectorScripts {
         Sort-Object DirectoryName, Name
 }
 
-function Invoke-CollectorScript {
-    param(
-        [Parameter(Mandatory)]
-        [System.IO.FileInfo]$Script,
-
-        [Parameter(Mandatory)]
-        [string]$OutputDirectory
-    )
-
-    Write-Verbose "Running collector: $($Script.FullName)"
-    try {
-        $result = & $Script.FullName -OutputDirectory $OutputDirectory -ErrorAction Stop
-        return [PSCustomObject]@{
-            Script      = $Script.FullName
-            Output      = $result
-            Success     = $true
-            Error       = $null
-        }
-    } catch {
-        Write-Warning "Collector failed: $($Script.FullName) - $($_.Exception.Message)"
-        return [PSCustomObject]@{
-            Script  = $Script.FullName
-            Output  = $null
-            Success = $false
-            Error   = $_.Exception.Message
-        }
-    }
-}
-
 function Invoke-AllCollectors {
     $resolvedOutputRoot = Resolve-CollectorOutputDirectory -RequestedPath $OutputRoot
     $collectors = Get-CollectorScripts -Root $PSScriptRoot
@@ -58,33 +32,146 @@ function Invoke-AllCollectors {
         return
     }
 
-    $results = @()
-    $totalCollectors = $collectors.Count
-    $currentIndex = 0
-
-    foreach ($collector in $collectors) {
-        $currentIndex++
-        $statusMessage = "[{0}/{1}] {2}" -f $currentIndex, $totalCollectors, $collector.FullName
-        $percentComplete = [int]((($currentIndex - 1) / $totalCollectors) * 100)
-
-        Write-Progress -Activity 'Running collector scripts' -Status $statusMessage -PercentComplete $percentComplete
-        Write-Host $statusMessage
-
-        $areaName = Split-Path -Path $collector.DirectoryName -Leaf
-        if ($areaName -eq 'Collectors') {
-            $areaName = 'Misc'
-        }
-        $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
-        $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
-        $results += Invoke-CollectorScript -Script $collector -OutputDirectory $areaOutput
+    if ($ThrottleLimit -lt 1) {
+        $ThrottleLimit = [math]::Max([System.Environment]::ProcessorCount, 1)
     }
 
-    Write-Progress -Activity 'Running collector scripts' -Completed
+    $totalCollectors = $collectors.Count
+    $effectiveThrottle = [math]::Max([math]::Min($ThrottleLimit, $totalCollectors), 1)
+
+    $collectorScript = @'
+param($scriptPath, $outputDirectory)
+$ErrorActionPreference = "Stop"
+try {
+    $result = & $scriptPath -OutputDirectory $outputDirectory -ErrorAction Stop
+    [pscustomobject]@{
+        Script  = $scriptPath
+        Output  = $result
+        Success = $true
+        Error   = $null
+    }
+} catch {
+    Write-Warning ("Collector failed: {0} - {1}" -f $scriptPath, $_.Exception.Message)
+    [pscustomobject]@{
+        Script  = $scriptPath
+        Output  = $null
+        Success = $false
+        Error   = $_.Exception.Message
+    }
+}
+'@
+
+    $initialSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    $runspacePool = $null
+    $results = @()
+
+    try {
+        $runspacePool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $effectiveThrottle, $initialSessionState, $Host)
+        $runspacePool.Open()
+
+        $pending = [System.Collections.Generic.List[object]]::new()
+
+        foreach ($collector in $collectors) {
+            $areaName = Split-Path -Path $collector.DirectoryName -Leaf
+            if ($areaName -eq 'Collectors') {
+                $areaName = 'Misc'
+            }
+
+            $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
+            $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
+
+            $psInstance = [System.Management.Automation.PowerShell]::Create()
+            $psInstance.RunspacePool = $runspacePool
+            $null = $psInstance.AddScript($collectorScript, $true).AddArgument($collector.FullName).AddArgument($areaOutput)
+
+            $asyncResult = $psInstance.BeginInvoke()
+            $pending.Add([pscustomobject]@{
+                PowerShell  = $psInstance
+                AsyncResult = $asyncResult
+                Collector   = $collector
+            })
+        }
+
+        $resultsList = [System.Collections.Generic.List[object]]::new()
+        $completed = 0
+        $activity = 'Running collector scripts'
+
+        while ($pending.Count -gt 0) {
+            for ($index = $pending.Count - 1; $index -ge 0; $index--) {
+                $entry = $pending[$index]
+                if (-not $entry.AsyncResult.IsCompleted) {
+                    continue
+                }
+
+                try {
+                    $output = $entry.PowerShell.EndInvoke($entry.AsyncResult)
+                } finally {
+                    $entry.PowerShell.Dispose()
+                }
+
+                foreach ($item in $output) {
+                    $resultsList.Add($item)
+                }
+
+                $pending.RemoveAt($index)
+                $completed++
+
+                $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
+                $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
+                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                Write-Host $statusMessage
+            }
+
+            if ($pending.Count -gt 0) {
+                Start-Sleep -Milliseconds 100
+            }
+        }
+
+        Write-Progress -Activity $activity -Completed
+
+        $results = $resultsList.ToArray()
+
+    } finally {
+        if ($runspacePool) {
+            $runspacePool.Close()
+            $runspacePool.Dispose()
+        }
+    }
+
+    $analyzerResult = $null
+    $analyzerScriptPath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Analyzers/Analyze-Diagnostics.ps1'
+
+    if (Test-Path -Path $analyzerScriptPath) {
+        try {
+            Write-Host "Starting analyzer orchestrator: $analyzerScriptPath"
+            $analyzerResult = & $analyzerScriptPath -InputFolder $resolvedOutputRoot -ErrorAction Stop
+            if ($analyzerResult -and $analyzerResult.HtmlPath) {
+                Write-Host "Analyzer complete. Report written to $($analyzerResult.HtmlPath)"
+            } else {
+                Write-Host 'Analyzer complete.'
+            }
+        } catch {
+            Write-Warning "Analyzer orchestrator failed: $($_.Exception.Message)"
+            $analyzerResult = [pscustomobject]@{
+                HtmlPath = $null
+                Issues   = @()
+                Normals  = @()
+                Checks   = @()
+                Error    = $_.Exception.Message
+            }
+        }
+    } else {
+        Write-Warning "Analyzer orchestrator not found at $analyzerScriptPath"
+    }
 
     $summary = [ordered]@{
         CollectedAt = (Get-Date).ToString('o')
         OutputRoot  = $resolvedOutputRoot
         Results     = $results
+    }
+
+    if ($analyzerResult) {
+        $summary['Analyzer'] = $analyzerResult
     }
 
     $summaryPath = Export-CollectorResult -OutputDirectory $resolvedOutputRoot -FileName 'collection-summary.json' -Data $summary -Depth 6
