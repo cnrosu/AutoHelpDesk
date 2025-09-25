@@ -4519,7 +4519,7 @@ if ($dhcpApipaGatewayClusters -and $dhcpApipaGatewayClusters.Count -gt 0) {
   foreach ($cluster in $dhcpApipaGatewayClusters) {
     if (-not $cluster) { continue }
     $gatewayLabel = if ($cluster.Gateway) { $cluster.Gateway } else { '(gateway unknown)' }
-    $clusterLines.Add("Gateway $gatewayLabel:")
+    $clusterLines.Add("Gateway ${gatewayLabel}:")
     if ($cluster.Adapters) {
       foreach ($adapter in $cluster.Adapters) {
         if (-not $adapter) { continue }
