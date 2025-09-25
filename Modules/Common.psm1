@@ -1,4 +1,17 @@
 # Common helper functions shared across analyzer scripts
+
+# Ensure ordered dictionaries support ContainsKey like hashtables for compatibility.
+if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Where-Object { $_.Name -eq 'ContainsKey' })) {
+  try {
+    Update-TypeData -TypeName System.Collections.Specialized.OrderedDictionary -MemberType ScriptMethod -MemberName ContainsKey -Value {
+      param($Key)
+      return $this.Contains($Key)
+    } -ErrorAction Stop
+  } catch {
+    # If type data registration fails, continue without interrupting import.
+  }
+}
+
 $script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
 function Normalize-Severity {
