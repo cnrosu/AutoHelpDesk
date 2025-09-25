@@ -57,13 +57,13 @@ function Analyze-Printing {
   $checks = New-Object System.Collections.Generic.List[object]
 
   if ($Data.Spooler -and $Data.Spooler -match 'Stopped') {
-    $cards.Add( New-IssueCard -Area $AreaName -Severity 'medium' -Message 'Print Spooler service is stopped' -Evidence ($Data.Spooler.Trim()) )
-    $checks.Add( New-Check -Area $AreaName -Name 'Spooler running' -Status 'fail' -Weight 1.0 -Evidence ($Data.Spooler.Trim()) )
+    $cards.Add( (New-IssueCard -Area $AreaName -Severity 'medium' -Message 'Print Spooler service is stopped' -Evidence ($Data.Spooler.Trim())) )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Spooler running' -Status 'fail' -Weight 1.0 -Evidence ($Data.Spooler.Trim())) )
   }
 
   if ($cards.Count -eq 0 -and $checks.Count -eq 0) {
-    $cards.Add( New-GoodCard -Area $AreaName -Message 'Printing: No issues detected by baseline heuristics.' )
-    $checks.Add( New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1 )
+    $cards.Add( (New-GoodCard -Area $AreaName -Message 'Printing: No issues detected by baseline heuristics.') )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1) )
   }
 
   [pscustomobject]@{

@@ -61,18 +61,18 @@ function Analyze-Hardware {
     if ($diskList -match 'Status\s*:\s*([A-Za-z]+)') {
       $status = $Matches[1]
       if ($status -notin @('OK','Healthy','Good')) {
-        $cards.Add( New-IssueCard -Area $AreaName -Severity 'high' -Message ("Disk SMART status indicates: {0}" -f $status) -Evidence ($diskList.Trim()) )
-        $checks.Add( New-Check -Area $AreaName -Name 'Disk health' -Status 'fail' -Weight 1.5 -Evidence ($diskList.Trim()) )
+        $cards.Add( (New-IssueCard -Area $AreaName -Severity 'high' -Message ("Disk SMART status indicates: {0}" -f $status) -Evidence ($diskList.Trim())) )
+        $checks.Add( (New-Check -Area $AreaName -Name 'Disk health' -Status 'fail' -Weight 1.5 -Evidence ($diskList.Trim())) )
       } else {
-        $cards.Add( New-GoodCard -Area $AreaName -Message 'Disk health appears OK' -Evidence ($diskList.Trim()) )
-        $checks.Add( New-Check -Area $AreaName -Name 'Disk health' -Status 'pass' -Weight 1.0 -Evidence ($diskList.Trim()) )
+        $cards.Add( (New-GoodCard -Area $AreaName -Message 'Disk health appears OK' -Evidence ($diskList.Trim())) )
+        $checks.Add( (New-Check -Area $AreaName -Name 'Disk health' -Status 'pass' -Weight 1.0 -Evidence ($diskList.Trim())) )
       }
     }
   }
 
   if ($cards.Count -eq 0 -and $checks.Count -eq 0) {
-    $cards.Add( New-GoodCard -Area $AreaName -Message 'Hardware: No issues detected by baseline heuristics.' )
-    $checks.Add( New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1 )
+    $cards.Add( (New-GoodCard -Area $AreaName -Message 'Hardware: No issues detected by baseline heuristics.') )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1) )
   }
 
   [pscustomobject]@{

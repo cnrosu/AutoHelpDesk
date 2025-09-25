@@ -63,19 +63,19 @@ function Analyze-System {
     if ($uptimeText -match '(\d+)\s*day') {
       $days = [int]$Matches[1]
       if ($days -gt 14) {
-        $cards.Add( New-IssueCard -Area $AreaName -Severity 'medium' -Message ("Uptime is {0} days (consider rebooting)" -f $days) -Evidence $uptimeText )
-        $checks.Add( New-Check -Area $AreaName -Name 'Uptime < 14 days' -Status 'fail' -Weight 1 -Evidence $uptimeText )
+        $cards.Add( (New-IssueCard -Area $AreaName -Severity 'medium' -Message ("Uptime is {0} days (consider rebooting)" -f $days) -Evidence $uptimeText) )
+        $checks.Add( (New-Check -Area $AreaName -Name 'Uptime < 14 days' -Status 'fail' -Weight 1 -Evidence $uptimeText) )
       } else {
-        $cards.Add( New-GoodCard -Area $AreaName -Message ("Healthy uptime ({0} days)" -f $days) -Evidence $uptimeText )
-        $checks.Add( New-Check -Area $AreaName -Name 'Uptime < 14 days' -Status 'pass' -Weight 1 -Evidence $uptimeText )
+        $cards.Add( (New-GoodCard -Area $AreaName -Message ("Healthy uptime ({0} days)" -f $days) -Evidence $uptimeText) )
+        $checks.Add( (New-Check -Area $AreaName -Name 'Uptime < 14 days' -Status 'pass' -Weight 1 -Evidence $uptimeText) )
       }
     }
   }
 
   # Example baseline: if we produced nothing, surface a neutral check so scoring doesn't divide by zero
   if ($cards.Count -eq 0 -and $checks.Count -eq 0) {
-    $cards.Add( New-GoodCard -Area $AreaName -Message 'System: No issues detected by baseline heuristics.' )
-    $checks.Add( New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1 )
+    $cards.Add( (New-GoodCard -Area $AreaName -Message 'System: No issues detected by baseline heuristics.') )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1) )
   }
 
   [pscustomobject]@{
