@@ -59,6 +59,7 @@ This document lists the analysis functions and issue card heuristics grouped by 
 ## Services & Events Heuristics
 - **Services** – Issues adopt the per-service severity computed earlier (e.g., medium/high/critical for critical service failures) and explicitly raise high severity when legacy essentials like Dhcp or WinDefend are stopped.
 - **Events** – Adds informational issues for logs showing five or more errors and low-severity issues for logs with at least ten warnings in the sampled data.
+- **Printing** – Flags high severity when the Spooler service is stopped/disabled or when print hosts are unreachable, raises medium/high issues for offline queues and long-running jobs, warns on WSD ports, SNMP "public" communities, and legacy drivers, enforces Point-and-Print hardening posture, surfaces PrintService event storms and recurring driver crashes, and records GOOD findings for healthy spooler state, reachable printer ports, packaged drivers, and quiet event logs.
 
 ## Hardware Heuristics
 - **Hardware/Removable Media – Autorun/Autoplay** – Flags medium severity when Autorun or Autoplay remains enabled by checking `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF` (or equivalent policy) and `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoAutoRun = 1`.

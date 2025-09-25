@@ -590,6 +590,8 @@ $files = [ordered]@{
   processes      = Find-ByContent @('Processes','tasklist')      @('Image Name\s+PID|====')
   drivers        = Find-ByContent @('Drivers','driverquery')     @('Driver Name|Display Name')
 
+  printing       = Find-ByContent @('printing.json','Printing.json','PrintService_PrinterInventory') @('"Spooler"','"Printers"','"PointAndPrint"')
+
   event_system   = Find-ByContent @('Event_System')              @('(?im)^\s*Log Name\s*[:=]\s*System','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
   event_app      = Find-ByContent @('Event_Application')         @('(?im)^\s*Log Name\s*[:=]\s*Application','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
 
@@ -3536,6 +3538,450 @@ if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
   }
   if ($legacyRunning.Count -gt 0) {
     Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
+  }
+}
+
+# printing heuristics
+$printingJson = ConvertFrom-JsonSafe $raw['printing']
+$printingPayload = $null
+if ($printingJson) {
+  if ($printingJson.PSObject.Properties['Payload']) {
+    $printingPayload = $printingJson.Payload
+  } else {
+    $printingPayload = $printingJson
+  }
+}
+
+if ($printingPayload) {
+  $spoolerInfo = $null
+  if ($printingPayload.PSObject.Properties['Spooler']) { $spoolerInfo = $printingPayload.Spooler }
+  $spoolerStatus = ''
+  $spoolerStart = ''
+  if ($spoolerInfo) {
+    if ($spoolerInfo.PSObject.Properties['Status']) { $spoolerStatus = [string]$spoolerInfo.Status }
+    if ($spoolerInfo.PSObject.Properties['StartType']) { $spoolerStart = [string]$spoolerInfo.StartType }
+    elseif ($spoolerInfo.PSObject.Properties['StartMode']) { $spoolerStart = [string]$spoolerInfo.StartMode }
+  }
+  $spoolerNormalizedStatus = if ($spoolerStatus) { Normalize-ServiceStatus $spoolerStatus } else { 'unknown' }
+  $spoolerNormalizedStart = if ($spoolerStart) { Normalize-ServiceStartType $spoolerStart } else { 'unknown' }
+  $spoolerEvidenceLines = @()
+  if ($spoolerStatus) { $spoolerEvidenceLines += "Status: $spoolerStatus" }
+  if ($spoolerStart) { $spoolerEvidenceLines += "Start Type: $spoolerStart" }
+  if ($spoolerInfo -and $spoolerInfo.PSObject.Properties['Error'] -and $spoolerInfo.Error) { $spoolerEvidenceLines += "Error: $($spoolerInfo.Error)" }
+  $spoolerEvidence = $spoolerEvidenceLines -join "`n"
+  if ($spoolerNormalizedStatus -ne 'running' -or $spoolerNormalizedStart -eq 'disabled') {
+    $statusDisplay = if ($spoolerStatus) { $spoolerStatus } else { 'Unknown' }
+    $startDisplay = if ($spoolerStart) { $spoolerStart } else { 'Unknown' }
+    Add-Issue 'high' 'Printing/Spooler' ("Print Spooler service not running (Status: {0}, StartType: {1})." -f $statusDisplay, $startDisplay) $spoolerEvidence
+  } elseif ($spoolerNormalizedStatus -eq 'running' -and ($spoolerNormalizedStart -eq 'automatic' -or $spoolerNormalizedStart -eq 'automatic-delayed')) {
+    Add-Normal 'Printing/Spooler' 'GOOD Printing/Spooler Running (Automatic)' $spoolerEvidence
+  }
+
+  $printersList = @()
+  if ($printingPayload.PSObject.Properties['Printers']) {
+    $printerValue = $printingPayload.Printers
+    if ($printerValue -is [System.Collections.IEnumerable] -and -not ($printerValue -is [string])) {
+      foreach ($p in $printerValue) { if ($p) { $printersList += $p } }
+    } elseif ($printerValue) {
+      $printersList = @($printerValue)
+    }
+  }
+
+  $defaultPrinterName = ''
+  if ($printingPayload.PSObject.Properties['DefaultPrinter']) { $defaultPrinterName = [string]$printingPayload.DefaultPrinter }
+  $defaultPrinter = $null
+  if ($defaultPrinterName) {
+    foreach ($printer in $printersList) {
+      if ($printer.PSObject.Properties['Name'] -and ([string]$printer.Name).Trim().ToLowerInvariant() -eq $defaultPrinterName.Trim().ToLowerInvariant()) {
+        $defaultPrinter = $printer
+        break
+      }
+    }
+  }
+  if (-not $defaultPrinter) {
+    foreach ($printer in $printersList) {
+      if (-not $printer) { continue }
+      $isDefault = $null
+      if ($printer.PSObject.Properties['Default']) { $isDefault = ConvertTo-NullableBool $printer.Default }
+      if ($isDefault -eq $true) { $defaultPrinter = $printer; break }
+    }
+  }
+
+  $offlinePrinters = @()
+  foreach ($printer in $printersList) {
+    if (-not $printer) { continue }
+    $printerName = if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' }
+    $workOffline = $null
+    if ($printer.PSObject.Properties['WorkOffline']) { $workOffline = ConvertTo-NullableBool $printer.WorkOffline }
+    $queueStatus = if ($printer.PSObject.Properties['QueueStatus']) { [string]$printer.QueueStatus } else { '' }
+    $printerStatus = if ($printer.PSObject.Properties['PrinterStatus']) { [string]$printer.PrinterStatus } else { '' }
+    $isOffline = $false
+    if ($workOffline -eq $true) { $isOffline = $true }
+    if ($queueStatus -match '(?i)offline') { $isOffline = $true }
+    if ($printerStatus -match '(?i)offline') { $isOffline = $true }
+    if ($isOffline) {
+      $offlinePrinters += [pscustomobject]@{
+        Name          = $printerName
+        QueueStatus   = $queueStatus
+        PrinterStatus = $printerStatus
+        WorkOffline   = $workOffline
+      }
+    }
+  }
+  if ($offlinePrinters.Count -gt 0) {
+    $offlineEvidenceLines = @()
+    foreach ($entry in $offlinePrinters) {
+      $offlineEvidenceLines += ("{0} => Status={1}; QueueStatus={2}; WorkOffline={3}" -f $entry.Name, (if ($entry.PrinterStatus) { $entry.PrinterStatus } else { 'Unknown' }), (if ($entry.QueueStatus) { $entry.QueueStatus } else { 'Unknown' }), (if ($entry.WorkOffline -eq $true) { 'True' } else { 'False' }))
+    }
+    $offlineEvidence = $offlineEvidenceLines -join "`n"
+    if ($offlinePrinters.Count -gt 1) {
+      Add-Issue 'high' 'Printing/Queues' ('Multiple print queues are offline: {0}' -f (($offlinePrinters | ForEach-Object { $_.Name }) -join ', ')) $offlineEvidence
+    } else {
+      Add-Issue 'medium' 'Printing/Queues' ('Print queue offline: {0}' -f $offlinePrinters[0].Name) $offlineEvidence
+    }
+  }
+
+  if ($defaultPrinterName -and -not $defaultPrinter -and $printersList.Count -gt 0) {
+    Add-Issue 'low' 'Printing/Queues' ("Default printer '{0}' not present in inventory." -f $defaultPrinterName) ''
+  } elseif (-not $defaultPrinterName -and $printersList.Count -gt 0) {
+    Add-Issue 'low' 'Printing/Queues' 'Default printer not configured.' ''
+  }
+
+  if ($defaultPrinter) {
+    $defaultName = if ($defaultPrinter.PSObject.Properties['Name']) { [string]$defaultPrinter.Name } else { '(unknown)' }
+    $defaultOffline = $offlinePrinters | Where-Object { $_.Name -eq $defaultName }
+    if ($defaultOffline) {
+      Add-Issue 'low' 'Printing/Queues' ("Default printer '{0}' is offline." -f $defaultName) (($defaultOffline | ForEach-Object { $_.Name + ' => ' + $_.PrinterStatus }) -join "`n")
+    }
+  }
+
+  $stuckJobs = @()
+  foreach ($printer in $printersList) {
+    if (-not $printer) { continue }
+    $printerName = if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' }
+    $jobsValue = $null
+    if ($printer.PSObject.Properties['Jobs']) { $jobsValue = $printer.Jobs }
+    if (-not $jobsValue) { continue }
+    $jobsList = @()
+    if ($jobsValue -is [System.Collections.IEnumerable] -and -not ($jobsValue -is [string])) {
+      foreach ($job in $jobsValue) { if ($job) { $jobsList += $job } }
+    } elseif ($jobsValue) {
+      $jobsList = @($jobsValue)
+    }
+    foreach ($job in $jobsList) {
+      $ageMinutes = $null
+      if ($job.PSObject.Properties['AgeMinutes'] -and $job.AgeMinutes -ne $null) {
+        if ($job.AgeMinutes -is [double] -or $job.AgeMinutes -is [decimal]) {
+          $ageMinutes = [double]$job.AgeMinutes
+        } else {
+          $parsed = 0.0
+          if ([double]::TryParse([string]$job.AgeMinutes, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            $ageMinutes = $parsed
+          }
+        }
+      }
+      if ($ageMinutes -ne $null -and $ageMinutes -ge 15) {
+        $statusText = if ($job.PSObject.Properties['JobStatus']) { [string]$job.JobStatus } else { '' }
+        $documentName = if ($job.PSObject.Properties['DocumentName']) { [string]$job.DocumentName } else { '' }
+        $stuckJobs += [pscustomobject]@{
+          Printer = $printerName
+          Age     = $ageMinutes
+          Status  = $statusText
+          Document = $documentName
+        }
+      }
+    }
+  }
+  if ($stuckJobs.Count -gt 0) {
+    $maxAge = ($stuckJobs | Measure-Object -Property Age -Maximum).Maximum
+    $severity = 'medium'
+    if ($stuckJobs.Count -gt 1 -and $maxAge -ge 60) { $severity = 'high' }
+    $stuckEvidence = ($stuckJobs | ForEach-Object { "{0}: {1} min (Status={2}; Doc={3})" -f $_.Printer, [math]::Round($_.Age,2), (if ($_.Status) { $_.Status } else { 'Unknown' }), (if ($_.Document) { $_.Document } else { 'N/A' }) }) -join "`n"
+    Add-Issue $severity 'Printing/Queues' ('Stuck print job(s) detected ({0}).' -f ($stuckJobs.Count)) $stuckEvidence
+  }
+
+  $wsdPrinters = @()
+  foreach ($printer in $printersList) {
+    if (-not $printer) { continue }
+    $connection = $null
+    if ($printer.PSObject.Properties['Connection']) { $connection = $printer.Connection }
+    if ($connection -and $connection.PSObject.Properties['PortMonitor']) {
+      $monitorName = [string]$connection.PortMonitor
+      if ($monitorName -match '(?i)wsd') {
+        $wsdPrinters += if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' }
+      }
+    }
+  }
+  if ($wsdPrinters.Count -gt 0) {
+    Add-Issue 'low' 'Printing/Ports' ('Printer(s) using WSD ports: {0}. Prefer TCP/IP or IPP ports for reliability.' -f ($wsdPrinters -join ', ')) ''
+  }
+
+  $snmpPublicPrinters = @()
+  foreach ($printer in $printersList) {
+    if (-not $printer) { continue }
+    $port = $null
+    if ($printer.PSObject.Properties['Port']) { $port = $printer.Port }
+    if (-not $port) { continue }
+    $snmpEnabled = $null
+    if ($port.PSObject.Properties['SNMPEnabled']) { $snmpEnabled = ConvertTo-NullableBool $port.SNMPEnabled }
+    if ($snmpEnabled -ne $true) { continue }
+    $community = ''
+    if ($port.PSObject.Properties['SNMPCommunity']) { $community = [string]$port.SNMPCommunity }
+    if ($community -and $community.Trim().ToLowerInvariant() -eq 'public') {
+      $snmpPublicPrinters += if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' }
+    }
+  }
+  if ($snmpPublicPrinters.Count -gt 0) {
+    Add-Issue 'low' 'Printing/Ports' ('SNMP community remains set to "public" on: {0}' -f ($snmpPublicPrinters -join ', ')) ''
+  }
+
+  $policies = $null
+  if ($printingPayload.PSObject.Properties['Policies']) { $policies = $printingPayload.Policies }
+  $printersPolicy = $null
+  $pointAndPrintPolicy = $null
+  $driverInstallPolicy = $null
+  if ($policies) {
+    if ($policies.PSObject.Properties['PrintersRoot']) { $printersPolicy = $policies.PrintersRoot }
+    if ($policies.PSObject.Properties['PointAndPrint']) { $pointAndPrintPolicy = $policies.PointAndPrint }
+    if ($policies.PSObject.Properties['DriverInstall']) { $driverInstallPolicy = $policies.DriverInstall }
+  }
+
+  $restrictDriversValue = $null
+  if ($printersPolicy -and $printersPolicy.PSObject.Properties['RestrictDriverInstallationToAdministrators']) {
+    $restrictDriversValue = ConvertTo-NullableInt $printersPolicy.RestrictDriverInstallationToAdministrators
+  } elseif ($driverInstallPolicy -and $driverInstallPolicy.PSObject.Properties['RestrictDriverInstallationToAdministrators']) {
+    $restrictDriversValue = ConvertTo-NullableInt $driverInstallPolicy.RestrictDriverInstallationToAdministrators
+  }
+  $restrictDrivers = ($restrictDriversValue -eq 1)
+
+  $packageOnlyValue = $null
+  if ($printersPolicy -and $printersPolicy.PSObject.Properties['PackagePointAndPrintOnly']) {
+    $packageOnlyValue = ConvertTo-NullableInt $printersPolicy.PackagePointAndPrintOnly
+  }
+  $requireType4 = ($packageOnlyValue -eq 1)
+
+  $noWarningValue = $null
+  $updatePromptValue = $null
+  if ($pointAndPrintPolicy) {
+    if ($pointAndPrintPolicy.PSObject.Properties['NoWarningNoElevationOnInstall']) { $noWarningValue = ConvertTo-NullableInt $pointAndPrintPolicy.NoWarningNoElevationOnInstall }
+    if ($pointAndPrintPolicy.PSObject.Properties['UpdatePromptSettings']) { $updatePromptValue = ConvertTo-NullableInt $pointAndPrintPolicy.UpdatePromptSettings }
+  }
+  $promptsSuppressed = $false
+  if ($noWarningValue -eq 1) { $promptsSuppressed = $true }
+  if ($updatePromptValue -ne $null -and $updatePromptValue -lt 2) { $promptsSuppressed = $true }
+
+  if (-not $restrictDrivers -and $promptsSuppressed) {
+    $policyEvidenceLines = @()
+    $policyEvidenceLines += "RestrictDriverInstallationToAdministrators: $restrictDriversValue"
+    if ($packageOnlyValue -ne $null) { $policyEvidenceLines += "PackagePointAndPrintOnly: $packageOnlyValue" }
+    if ($noWarningValue -ne $null) { $policyEvidenceLines += "NoWarningNoElevationOnInstall: $noWarningValue" }
+    if ($updatePromptValue -ne $null) { $policyEvidenceLines += "UpdatePromptSettings: $updatePromptValue" }
+    $policyEvidence = $policyEvidenceLines -join "`n"
+    Add-Issue 'high' 'Printing/Policies' 'Point-and-Print hardening disabled (install prompts suppressed without driver restrictions).' $policyEvidence
+  }
+
+  $driverMap = @{}
+  foreach ($printer in $printersList) {
+    if (-not $printer) { continue }
+    $driver = $null
+    if ($printer.PSObject.Properties['Driver']) { $driver = $printer.Driver }
+    $driverName = if ($driver -and $driver.PSObject.Properties['Name']) { [string]$driver.Name } elseif ($printer.PSObject.Properties['DriverName']) { [string]$printer.DriverName } else { '' }
+    if (-not $driverName) { continue }
+    if (-not $driverMap.ContainsKey($driverName)) {
+      $driverMap[$driverName] = [ordered]@{
+        Driver   = $driver
+        Printers = New-Object System.Collections.Generic.List[string]
+      }
+    }
+    $driverMap[$driverName].Printers.Add(if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' })
+  }
+
+  $legacyDrivers = @()
+  $allDriversPackaged = $true
+  foreach ($entry in $driverMap.GetEnumerator()) {
+    $driverName = $entry.Key
+    $driverObj = $entry.Value.Driver
+    $isPackaged = $null
+    $driverType = $null
+    $manufacturer = ''
+    if ($driverObj) {
+      if ($driverObj.PSObject.Properties['IsPackaged']) { $isPackaged = ConvertTo-NullableBool $driverObj.IsPackaged }
+      if ($driverObj.PSObject.Properties['Type']) { $driverType = ConvertTo-NullableInt $driverObj.Type }
+      elseif ($driverObj.PSObject.Properties['DriverType']) { $driverType = ConvertTo-NullableInt $driverObj.DriverType }
+      if ($driverObj.PSObject.Properties['Manufacturer']) { $manufacturer = [string]$driverObj.Manufacturer }
+    }
+    if ($isPackaged -ne $true) { $allDriversPackaged = $false }
+    if ($driverType -eq 3) { $allDriversPackaged = $false }
+    $isLegacy = $false
+    if ($driverType -eq 3) { $isLegacy = $true }
+    elseif ($isPackaged -eq $false) { $isLegacy = $true }
+    if ($isLegacy) {
+      $legacyDrivers += [pscustomobject]@{
+        Name         = $driverName
+        Manufacturer = $manufacturer
+        Type         = $driverType
+        IsPackaged   = $isPackaged
+        Printers     = $entry.Value.Printers.ToArray()
+      }
+    }
+  }
+
+  $isDomainJoined = ($summary.DomainJoined -eq $true)
+  if ($isDomainJoined -and $legacyDrivers.Count -gt 0) {
+    $driverEvidenceLines = @()
+    foreach ($legacy in $legacyDrivers) {
+      $driverEvidenceLines += ("{0}: Type={1}; Packaged={2}; Printers={3}" -f $legacy.Name, (if ($legacy.Type -ne $null) { $legacy.Type } else { 'Unknown' }), (if ($legacy.IsPackaged -eq $true) { 'True' } else { 'False' }), ($legacy.Printers -join ', '))
+    }
+    $driverEvidence = $driverEvidenceLines -join "`n"
+    $driverSeverity = if ($requireType4) { 'high' } else { 'medium' }
+    Add-Issue $driverSeverity 'Printing/Drivers' 'Legacy Type 3 or non-packaged print drivers detected on a domain-joined client.' $driverEvidence
+  } elseif ($driverMap.Count -gt 0 -and $allDriversPackaged) {
+    $driverSummary = ($driverMap.Keys | ForEach-Object { $_ }) -join ', '
+    Add-Normal 'Printing/Drivers' 'GOOD Printing/Drivers Packaged' ("Packaged Type 4 drivers in use: {0}" -f $driverSummary)
+  }
+
+  $networkTestsRaw = @()
+  if ($printingPayload.PSObject.Properties['NetworkTests']) {
+    $networkValue = $printingPayload.NetworkTests
+    if ($networkValue -is [System.Collections.IEnumerable] -and -not ($networkValue -is [string])) {
+      foreach ($entry in $networkValue) { if ($entry) { $networkTestsRaw += $entry } }
+    } elseif ($networkValue) {
+      $networkTestsRaw = @($networkValue)
+    }
+  }
+
+  $defaultHosts = @()
+  if ($defaultPrinter -and $defaultPrinter.PSObject.Properties['Connection']) {
+    $defaultConnection = $defaultPrinter.Connection
+    if ($defaultConnection -and $defaultConnection.PSObject.Properties['Hosts']) {
+      $hostsValue = $defaultConnection.Hosts
+      if ($hostsValue -is [System.Collections.IEnumerable] -and -not ($hostsValue -is [string])) {
+        foreach ($host in $hostsValue) { if ($host) { $defaultHosts += [string]$host } }
+      } elseif ($hostsValue) {
+        $defaultHosts = @([string]$hostsValue)
+      }
+    }
+  }
+  $defaultHostsLower = $defaultHosts | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
+
+  $allHostsReachable = $true
+  $networkEvidenceLines = @()
+  foreach ($hostEntry in $networkTestsRaw) {
+    if (-not $hostEntry) { continue }
+    $hostName = if ($hostEntry.PSObject.Properties['Host']) { [string]$hostEntry.Host } else { '' }
+    $kind = if ($hostEntry.PSObject.Properties['Kind']) { [string]$hostEntry.Kind } else { 'Unknown' }
+    $printersForHost = @()
+    if ($hostEntry.PSObject.Properties['Printers']) {
+      $printerSet = $hostEntry.Printers
+      if ($printerSet -is [System.Collections.IEnumerable] -and -not ($printerSet -is [string])) {
+        foreach ($p in $printerSet) { if ($p) { $printersForHost += [string]$p } }
+      } elseif ($printerSet) {
+        $printersForHost = @([string]$printerSet)
+      }
+    }
+    $testsList = @()
+    if ($hostEntry.PSObject.Properties['Tests']) {
+      $testsValue = $hostEntry.Tests
+      if ($testsValue -is [System.Collections.IEnumerable] -and -not ($testsValue -is [string])) {
+        foreach ($t in $testsValue) { if ($t) { $testsList += $t } }
+      } elseif ($testsValue) {
+        $testsList = @($testsValue)
+      }
+    }
+    if ($testsList.Count -eq 0) { continue }
+    $testSummaries = @()
+    $anySuccess = $false
+    foreach ($test in $testsList) {
+      $successValue = $null
+      if ($test.PSObject.Properties['Success']) { $successValue = ConvertTo-NullableBool $test.Success }
+      if ($successValue -eq $true) { $anySuccess = $true }
+      $statusText = if ($successValue -eq $true) { 'OK' } elseif ($successValue -eq $false) { 'Fail' } else { 'Unknown' }
+      $testName = if ($test.PSObject.Properties['Name']) { [string]$test.Name } else { 'Test' }
+      if ($test.PSObject.Properties['Port'] -and $test.Port) { $testSummaries += "$testName:$statusText(port=$($test.Port))" } else { $testSummaries += "$testName:$statusText" }
+    }
+    $networkEvidenceLines += ("{0} ({1}) => {2}" -f (if ($hostName) { $hostName } else { 'Unknown host' }), $kind, ($testSummaries -join ', '))
+    if (-not $anySuccess) {
+      $allHostsReachable = $false
+      $isDefaultHost = $false
+      if ($hostName) {
+        $hostLower = $hostName.ToLowerInvariant()
+        if ($defaultHostsLower -contains $hostLower) { $isDefaultHost = $true }
+      }
+      $severity = if ($kind -eq 'ServerQueue' -or $isDefaultHost) { 'high' } else { 'medium' }
+      $queueSummary = if ($printersForHost.Count -gt 0) { $printersForHost -join ', ' } else { 'Unknown queues' }
+      $evidence = ("Host: {0} ({1})`nQueues: {2}`n{3}" -f (if ($hostName) { $hostName } else { 'Unknown' }), $kind, $queueSummary, ($testSummaries -join ', '))
+      Add-Issue $severity 'Printing/Network' ('Printer host unreachable ({0}): {1}' -f $kind, (if ($hostName) { $hostName } else { 'Unknown host' })) $evidence
+    }
+  }
+  if ($networkTestsRaw.Count -gt 0 -and $allHostsReachable -and $networkEvidenceLines.Count -gt 0) {
+    $networkEvidence = $networkEvidenceLines -join "`n"
+    Add-Normal 'Printing/Network' 'GOOD Printing/Network Reachable (ports)' $networkEvidence
+  }
+
+  $eventsSection = $null
+  if ($printingPayload.PSObject.Properties['Events']) { $eventsSection = $printingPayload.Events }
+  $adminEvents = $null
+  if ($eventsSection -and $eventsSection.PSObject.Properties['Admin']) { $adminEvents = $eventsSection.Admin }
+  if ($adminEvents) {
+    $adminErrorCount = $null
+    if ($adminEvents.PSObject.Properties['ErrorCount']) { $adminErrorCount = ConvertTo-NullableInt $adminEvents.ErrorCount }
+    $adminTotalCount = $null
+    if ($adminEvents.PSObject.Properties['TotalCount']) { $adminTotalCount = ConvertTo-NullableInt $adminEvents.TotalCount }
+    $adminEventObjects = @()
+    if ($adminEvents.PSObject.Properties['Events']) {
+      $adminEventValue = $adminEvents.Events
+      if ($adminEventValue -is [System.Collections.IEnumerable] -and -not ($adminEventValue -is [string])) {
+        foreach ($evt in $adminEventValue) { if ($evt) { $adminEventObjects += $evt } }
+      } elseif ($adminEventValue) {
+        $adminEventObjects = @($adminEventValue)
+      }
+    }
+    $eventSnippets = @()
+    foreach ($evt in ($adminEventObjects | Select-Object -First 6)) {
+      $timeText = if ($evt.PSObject.Properties['TimeCreated'] -and $evt.TimeCreated) { [string]$evt.TimeCreated } else { 'Unknown time' }
+      $idText = if ($evt.PSObject.Properties['Id']) { [string]$evt.Id } else { 'N/A' }
+      $levelText = if ($evt.PSObject.Properties['Level']) { [string]$evt.Level } elseif ($evt.PSObject.Properties['LevelDisplayName']) { [string]$evt.LevelDisplayName } else { '' }
+      $messageText = if ($evt.PSObject.Properties['Message']) { [string]$evt.Message } else { '' }
+      $eventSnippets += ("{0} - ID {1} [{2}] {3}" -f $timeText, $idText, (if ($levelText) { $levelText } else { 'Unknown' }), $messageText)
+    }
+    $eventsEvidence = $eventSnippets -join "`n"
+
+    if ($adminErrorCount -gt 5) {
+      Add-Issue 'medium' 'Printing/Events' ("PrintService/Admin log recorded {0} error events in the last 7 days." -f $adminErrorCount) $eventsEvidence
+    } elseif ($adminErrorCount -eq 0 -and $adminTotalCount -gt 0) {
+      Add-Normal 'Printing/Events' 'GOOD Printing/Events (no recent errors)' $eventsEvidence
+    }
+
+    $crashCounts = @{}
+    if ($adminEvents.PSObject.Properties['DriverCrashCount'] -and $adminEvents.DriverCrashCount) {
+      $crashData = $adminEvents.DriverCrashCount
+      if ($crashData -is [System.Collections.IDictionary]) {
+        foreach ($key in $crashData.Keys) {
+          $crashCounts[$key] = $crashData[$key]
+        }
+      } else {
+        foreach ($prop in $crashData.PSObject.Properties) {
+          $crashCounts[$prop.Name] = $prop.Value
+        }
+      }
+    }
+    $recurringCrashes = @()
+    foreach ($key in $crashCounts.Keys) {
+      $countValue = $crashCounts[$key]
+      $countInt = $null
+      if ($countValue -is [int]) { $countInt = [int]$countValue }
+      elseif ($countValue -ne $null) {
+        $parsed = 0
+        if ([int]::TryParse([string]$countValue, [ref]$parsed)) { $countInt = $parsed }
+      }
+      if ($countInt -ge 2) {
+        $recurringCrashes += [pscustomobject]@{ Id = $key; Count = $countInt }
+      }
+    }
+    if ($recurringCrashes.Count -gt 0) {
+      $crashSummary = ($recurringCrashes | ForEach-Object { "ID $($_.Id) ($($_.Count)x)" }) -join '; '
+      Add-Issue 'high' 'Printing/Events' ("Recurring print driver crash events detected: {0}." -f $crashSummary) $eventsEvidence
+    }
   }
 }
 
