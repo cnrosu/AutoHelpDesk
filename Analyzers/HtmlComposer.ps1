@@ -116,8 +116,7 @@ function Build-SummaryCardHtml {
     $osParts = @()
     if ($Summary.OperatingSystem) { $osParts += $Summary.OperatingSystem }
     if ($Summary.OSVersion) { $osParts += $Summary.OSVersion }
-    if ($Summary.OSBuild) { $osParts += ("Build {0}" -f $Summary.OSBuild) }
-    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
+    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
 
     $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
@@ -140,7 +139,8 @@ function Build-SummaryCardHtml {
             @{ Key = 'info';     Label = 'INFO';     Class = 'info' }
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
-        $null = $sb.AppendLine("    <span class='report-badge report-badge--{0}'><span class='report-badge__label'>{1}</span><span class='report-badge__value'>{2}</span></span>" -f $badge.Class, $badge.Label, $count)
+        $labelHtml = Encode-Html $badge.Label
+        $null = $sb.AppendLine("    <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
     $null = $sb.AppendLine('  </div>')
 
@@ -201,13 +201,13 @@ function Build-GoodSection {
         $slug = [regex]::Replace($category.ToLowerInvariant(), '[^a-z0-9]+', '-')
         $slug = [regex]::Replace($slug, '^-+|-+$', '')
         if (-not $slug) { $slug = "cat$index" }
-        $tabId = "{0}-{1}" -f $tabName, $slug
+        $tabId = "$tabName-$slug"
         $checkedAttr = if ($category -eq $firstNonEmpty) { " checked='checked'" } else { '' }
-        $labelText = Encode-Html ("{0} ({1})" -f $category, $count)
+        $labelText = Encode-Html "$category ($count)"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
-        $tabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
-        $tabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelText
+        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
+        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
         $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
         $index++
     }
@@ -285,17 +285,17 @@ function Build-IssueSection {
         $slug = [regex]::Replace($slug, '^-+|-+$', '')
         if (-not $slug) { $slug = "severity$index" }
 
-        $tabId = "{0}-{1}" -f $tabName, $slug
+        $tabId = "$tabName-$slug"
         $checkedAttr = if ($keyValue.ToLowerInvariant() -eq $firstKey.ToLowerInvariant()) { " checked='checked'" } else { '' }
 
         $labelText = if ($definition.Label) { [string]$definition.Label } else { $keyValue }
         $badgeLabel = Encode-Html ($labelText.ToUpperInvariant())
-        $countLabel = Encode-Html ("({0})" -f $count)
-        $labelInner = "<span class='report-badge report-badge--{0} report-tabs__label-badge'>{1}</span><span class='report-tabs__label-count'>{2}</span>" -f $definition.BadgeClass, $badgeLabel, $countLabel
+        $countLabel = Encode-Html "($count)"
+        $labelInner = "<span class='report-badge report-badge--$($definition.BadgeClass) report-tabs__label-badge'>$badgeLabel</span><span class='report-tabs__label-count'>$countLabel</span>"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
 
-        $tabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
-        $tabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelInner
+        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
+        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelInner</label>"
         $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
         $index++
     }
@@ -315,16 +315,16 @@ function Build-DebugSection {
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines += "{0}: (no entries)" -f $key
+            $lines += "$key: (no entries)"
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines += "{0}: {1} file(s); first = {2}" -f $key, $count, $firstPath
+            $lines += "$key: $count file(s); first = $firstPath"
         } else {
-            $lines += "{0}: {1}" -f $key, $entries.Path
+            $lines += "$key: $($entries.Path)"
         }
     }
 
@@ -362,8 +362,8 @@ function New-AnalyzerHtml {
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
-    $goodHtml = New-ReportSection -Title ("What Looks Good ({0})" -f $normals.Count) -ContentHtml (Build-GoodSection -Normals $normals) -Open
-    $issuesHtml = New-ReportSection -Title ("Detected Issues ({0})" -f $issues.Count) -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
+    $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedHtml = New-ReportSection -Title 'Failed Reports (0)' -ContentHtml "<div class='report-card'><i>No failed collector outputs were reported by the modular pipeline.</i></div>"
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml "<div class='report-card'><i>Raw excerpts are not currently generated by the modular analyzer workflow.</i></div>"
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
