@@ -4712,19 +4712,6 @@ $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
 $ipv4Html = Encode-Html ($summary.IPv4)
 $gatewayHtml = Encode-Html ($summary.Gateway)
 $dnsHtml = Encode-Html ($summary.DNS)
-$fastStartupDisplay = if ($summary.ContainsKey('FastStartupEnabled') -and $summary.FastStartupEnabled -ne $null) {
-  if ($summary.FastStartupEnabled) { 'Enabled' } else { 'Disabled' }
-} else {
-  'Unknown'
-}
-$fastStartupHtml = Encode-Html $fastStartupDisplay
-$autorunsDisplay = if ($summary.ContainsKey('AutorunsNonMicrosoft') -and $summary.ContainsKey('AutorunsTotal')) {
-  "{0} non-Microsoft / {1} total" -f $summary.AutorunsNonMicrosoft, $summary.AutorunsTotal
-} else {
-  'Unknown'
-}
-$autorunsHtml = Encode-Html $autorunsDisplay
-
 $sumTable = @"
 <h1>Device Health Report</h1>
 <div class='report-card'>
@@ -4741,8 +4728,6 @@ $sumTable = @"
     <tr><td>Device State</td><td>$deviceStateHtml</td></tr>
     <tr><td>System</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
-    <tr><td>Fast Startup (Fast Boot)</td><td>$fastStartupHtml</td></tr>
-    <tr><td>Startup autoruns</td><td>$autorunsHtml</td></tr>
     <tr><td>IPv4</td><td>$ipv4Html</td></tr>
     <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
     <tr><td>DNS</td><td>$dnsHtml</td></tr>
