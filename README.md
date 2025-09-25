@@ -1,6 +1,51 @@
-# AutoHelpDesk Analysis Heuristics
+# AutoHelpDesk Diagnostics Platform
 
-This document lists the analysis functions and issue card heuristics grouped by their respective categories. Each heuristic summarizes the conditions that raise issues and the severity levels applied.
+AutoHelpDesk is a modular PowerShell toolkit that collects Windows device telemetry, normalizes it into JSON, and runs heuristic analyzers to produce human-friendly diagnostic reports. The project is organized around three building blocks:
+
+- **Collectors** – lightweight scripts that gather raw data and emit structured JSON with timestamps and payload metadata.
+- **Analyzers** – parsing and rules engines that load the JSON artifacts, evaluate health heuristics, and generate HTML summaries.
+- **Reports** – HTML and CSS assets that surface the analyzer results for technicians and customers.
+
+This README documents how the system fits together and enumerates the available heuristics so you can understand what the analyzer looks for out of the box.
+
+## Repository layout
+
+| Path | Description |
+| --- | --- |
+| `/Collectors` | Stand-alone data gathering scripts grouped by domain (Network, Security, System, etc.). Each script exports a JSON file to its domain subfolder. |
+| `/Analyzers` | Shared analyzer helpers, heuristic modules, and the orchestrator that renders HTML. |
+| `/AutoL1` | Turn-key “Device Health Diagnostics Toolkit” that wraps the collectors and analyzers for L1 support workflows. |
+| `/Reports` | Static HTML/CSS prototypes and assets for presenting analyzer output. |
+| `/Modules` | Cross-cutting PowerShell modules that can be imported by collectors, analyzers, or orchestration scripts. |
+
+### Artifact format
+
+All collector scripts use `CollectorCommon.ps1` helpers to enforce a consistent JSON envelope:
+
+```json
+{
+  "CollectedAt": "2024-03-01T15:23:45.1234567Z",
+  "Payload": {
+    "<CollectorSpecificData>": "..."
+  }
+}
+```
+
+- `CollectedAt` is always an ISO-8601 timestamp recorded on the device running the collector.
+- `Payload` contains a collector-specific object. Most payload properties map to native command output (`ipconfig`, `Get-CimInstance`, `wevtutil`, etc.).
+- Optional fields (for example, command failures) are represented as nested objects with `Source`/`Error` properties so analyzers can highlight gaps.
+
+`Collect-All.ps1` aggregates the JSON artifacts into an output root (default: `Collectors/output/<Area>`). A `collection-summary.json` file tracks which collectors were executed, their success flags, and the on-disk path of each artifact.
+
+### Analyzer expectations
+
+`Analyze-Diagnostics.ps1` looks for `*.json` files beneath an input folder. Artifact names are matched by base filename (e.g., `network.json`, `defender.json`) and normalized to lowercase keys. Analyzer modules retrieve payloads with `Get-AnalyzerArtifact` and `Get-ArtifactPayload`, so keeping filenames descriptive and unique is crucial when adding new collectors.
+
+HTML is produced by `HtmlComposer.ps1`, which receives category results from each heuristic module. The analyzer also returns flattened issue, normal, and check collections for programmatic consumption.
+
+## Heuristic catalogue
+
+The following sections list the analysis functions and issue card heuristics grouped by their respective categories. Each heuristic summarizes the conditions that raise issues and the severity levels applied.
 
 ## System Heuristics
 - **System/Firmware** – Raises a medium issue when firmware is still in legacy BIOS mode and a low issue when the analyzer cannot determine firmware mode from `Get-ComputerInfo`.
