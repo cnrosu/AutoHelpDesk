@@ -805,15 +805,15 @@ function Add-Issue(
     if ([string]::IsNullOrEmpty($Evidence)) { $Evidence = 'No additional details captured.' }
     $evShort = if ($Evidence.Length -gt 1500) { $Evidence.Substring(0,1500) } else { $Evidence }
 
-    $badgeText = 'ISSUE'
-    $cssClass  = 'ok'
+    $badgeText = if ([string]::IsNullOrWhiteSpace($sevKey)) { 'INFO' } else { $sevKey.ToUpperInvariant() }
+    $cssClass  = 'info'
     switch ($sevKey) {
         'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
-        'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
-        'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
-        'low'      { $badgeText = 'LOW';       $cssClass = 'ok' }
-        'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
-        default    { $badgeText = $sevKey.ToUpperInvariant(); $cssClass = 'ok' }
+        'high'     { $badgeText = 'HIGH';     $cssClass = 'high' }
+        'medium'   { $badgeText = 'MEDIUM';   $cssClass = 'medium' }
+        'low'      { $badgeText = 'LOW';      $cssClass = 'low' }
+        'info'     { $badgeText = 'INFO';     $cssClass = 'info' }
+        default    { if ([string]::IsNullOrWhiteSpace($badgeText)) { $badgeText = 'INFO' } }
     }
 
     # Add to cards
@@ -4542,10 +4542,10 @@ if ($issues.Count -eq 0){
 
   $severityDefinitions = @(
     @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
-    @{ Key = 'high';     Label = 'High';     BadgeClass = 'bad' },
-    @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'warning' },
-    @{ Key = 'low';      Label = 'Low';      BadgeClass = 'ok' },
-    @{ Key = 'info';     Label = 'Info';     BadgeClass = 'good' }
+    @{ Key = 'high';     Label = 'High';     BadgeClass = 'high' },
+    @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'medium' },
+    @{ Key = 'low';      Label = 'Low';      BadgeClass = 'low' },
+    @{ Key = 'info';     Label = 'Info';     BadgeClass = 'info' }
   )
 
   $groupedIssues = [ordered]@{}
@@ -4572,7 +4572,7 @@ if ($issues.Count -eq 0){
   }
   if ($otherIssues.Count -gt 0) {
     $groupedIssues['other'] = $otherIssues
-    $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'ok' }
+    $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' }
   }
 
   if ($activeDefinitions.Count -eq 0) {
