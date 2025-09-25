@@ -1156,10 +1156,82 @@ if (Test-Path $lapsCollectorScript) {
 $printingCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Services/Collect-Printing.ps1'
 if (Test-Path $printingCollectorScript) {
   Write-Host "Running printing subsystem collector..."
+  $printingOutputPath = $null
+  $printingErrorMessage = $null
   try {
-    & $printingCollectorScript -OutputDirectory $reportDir
+    $printingOutputPath = & $printingCollectorScript -OutputDirectory $reportDir
   } catch {
+    $printingErrorMessage = $_.Exception.Message
     Write-Warning ("Printing collector failed: {0}" -f $_)
+  }
+
+  $expectedPrintingPath = Join-Path $reportDir 'printing.json'
+  if ($printingOutputPath -and (Test-Path -LiteralPath $printingOutputPath) -and ($printingOutputPath -ne $expectedPrintingPath)) {
+    try {
+      Copy-Item -LiteralPath $printingOutputPath -Destination $expectedPrintingPath -Force
+    } catch {
+      $copyMessage = "Failed to normalize printing collector output: $($_.Exception.Message)"
+      if ($printingErrorMessage) {
+        $printingErrorMessage = "$printingErrorMessage; $copyMessage"
+      } else {
+        $printingErrorMessage = $copyMessage
+      }
+      Write-Warning $copyMessage
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $expectedPrintingPath)) {
+    $errorMessages = @()
+    if ($printingErrorMessage) {
+      $errorMessages += "Collector execution failed: $printingErrorMessage"
+    } else {
+      $errorMessages += 'Printing collector not available or produced no data.'
+    }
+
+    $placeholderPayload = [ordered]@{
+      Spooler        = $null
+      Printers       = @()
+      DefaultPrinter = $null
+      Policies       = $null
+      Events         = @()
+      NetworkTests   = @()
+      Errors         = $errorMessages
+    }
+    $placeholder = [ordered]@{
+      CollectedAt = (Get-Date).ToString('o')
+      Payload     = $placeholderPayload
+    }
+
+    try {
+      $placeholder | ConvertTo-Json -Depth 6 | Out-File -FilePath $expectedPrintingPath -Encoding UTF8
+      Write-Warning "Printing collector output missing; wrote placeholder printing.json instead."
+    } catch {
+      Write-Warning ("Failed to create placeholder printing.json: {0}" -f $_)
+    }
+  }
+} else {
+  $expectedPrintingPath = Join-Path $reportDir 'printing.json'
+  if (-not (Test-Path -LiteralPath $expectedPrintingPath)) {
+    $placeholderPayload = [ordered]@{
+      Spooler        = $null
+      Printers       = @()
+      DefaultPrinter = $null
+      Policies       = $null
+      Events         = @()
+      NetworkTests   = @()
+      Errors         = @('Printing collector script not found on this system.')
+    }
+    $placeholder = [ordered]@{
+      CollectedAt = (Get-Date).ToString('o')
+      Payload     = $placeholderPayload
+    }
+
+    try {
+      $placeholder | ConvertTo-Json -Depth 6 | Out-File -FilePath $expectedPrintingPath -Encoding UTF8
+      Write-Warning "Printing collector unavailable; wrote placeholder printing.json instead."
+    } catch {
+      Write-Warning ("Failed to create placeholder printing.json: {0}" -f $_)
+    }
   }
 }
 
