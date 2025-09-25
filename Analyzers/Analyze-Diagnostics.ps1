@@ -32,6 +32,7 @@ if (Test-Path -Path $commonModulePath) {
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Events.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Services.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Printing.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
 $context = New-AnalyzerContext -InputFolder $InputFolder
@@ -48,8 +49,9 @@ $categories += Invoke-ServicesHeuristics -Context $context
 $categories += Invoke-PrintingHeuristics -Context $context
 
 $merged = Merge-AnalyzerResults -Categories $categories
+$summary = Get-AnalyzerSummary -Context $context
 
-$html = New-AnalyzerHtml -Categories $categories
+$html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path -Path $InputFolder -ChildPath 'diagnostics-report.html'
@@ -58,6 +60,33 @@ if (-not $OutputPath) {
 $directory = Split-Path -Path $OutputPath -Parent
 if (-not (Test-Path -Path $directory)) {
     $null = New-Item -Path $directory -ItemType Directory -Force
+}
+
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$autoL1Path = Join-Path -Path $repoRoot -ChildPath 'AutoL1'
+
+$cssSources = @(
+    Join-Path -Path $repoRoot -ChildPath 'styles/base.css'
+    Join-Path -Path $repoRoot -ChildPath 'styles/layout.css'
+    Join-Path -Path $autoL1Path -ChildPath 'styles/device-health-report.css'
+)
+
+$resolvedCss = @()
+foreach ($source in $cssSources) {
+    if (Test-Path -LiteralPath $source) {
+        $resolvedCss += (Resolve-Path -LiteralPath $source).ProviderPath
+    }
+}
+
+if ($resolvedCss.Count -gt 0) {
+    $cssOutputDir = Join-Path -Path $directory -ChildPath 'styles'
+    if (-not (Test-Path -LiteralPath $cssOutputDir)) {
+        $null = New-Item -Path $cssOutputDir -ItemType Directory -Force
+    }
+
+    $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
+    $cssContent = $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
+    Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
 }
 
 $html | Out-File -FilePath $OutputPath -Encoding UTF8

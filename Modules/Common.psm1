@@ -429,22 +429,22 @@ function New-IssueCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
-  $cardHtml = "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+  $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
 
   $bodyParts = @()
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
     $explanationHtml = Encode-Html $Entry.Explanation
-    $bodyParts += "<p class='report-card__explanation'>{0}</p>" -f $explanationHtml
+    $bodyParts += "<p class='report-card__explanation'>$explanationHtml</p>"
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    $bodyParts += "<pre class='report-pre'>{0}</pre>" -f $evidenceHtml
+    $bodyParts += "<pre class='report-pre'>$evidenceHtml</pre>"
   }
 
   if ($bodyParts.Count -gt 0) {
-    $cardHtml += "<div class='report-card__body'>{0}</div>" -f ($bodyParts -join '')
+    $cardHtml += "<div class='report-card__body'>$($bodyParts -join '')</div>"
   }
 
   $cardHtml += "</details>"
@@ -465,11 +465,11 @@ function New-GoodCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
-  $cardHtml = "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
+  $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>{0}</pre></div>" -f $evidenceHtml
+    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>"
   }
 
   $cardHtml += "</details>"
