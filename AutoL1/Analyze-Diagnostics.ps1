@@ -4127,7 +4127,7 @@ if ($normals.Count -eq 0){
 
   foreach ($entry in $normals){
     $category = Get-NormalCategory -Area $entry.Area
-    if (-not $categorized.Contains($category)) {
+    if (-not $categorized.ContainsKey($category)) {
       $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
     $categorized[$category].Add((New-GoodCardHtml -Entry $entry))
@@ -4135,7 +4135,7 @@ if ($normals.Count -eq 0){
 
   $firstNonEmpty = $null
   foreach ($category in $categoryOrder) {
-    if ($categorized.Contains($category) -and $categorized[$category].Count -gt 0) {
+    if ($categorized.ContainsKey($category) -and $categorized[$category].Count -gt 0) {
       $firstNonEmpty = $category
       break
     }
@@ -4147,7 +4147,7 @@ if ($normals.Count -eq 0){
   $index = 0
 
   foreach ($category in $categoryOrder) {
-    if (-not $categorized.Contains($category)) { continue }
+    if (-not $categorized.ContainsKey($category)) { continue }
 
     $cardsList = $categorized[$category]
     $count = $cardsList.Count
@@ -4193,7 +4193,7 @@ if ($issues.Count -eq 0){
   foreach ($entry in $issues) {
     $cardHtml = New-IssueCardHtml -Entry $entry
     $severityKey = if ($entry.Severity) { $entry.Severity.ToLowerInvariant() } else { '' }
-    if ($severityKey -and $groupedIssues.Contains($severityKey)) {
+    if ($severityKey -and $groupedIssues.ContainsKey($severityKey)) {
       $groupedIssues[$severityKey].Add($cardHtml)
     } else {
       $otherIssues.Add($cardHtml)
@@ -4222,7 +4222,7 @@ if ($issues.Count -eq 0){
 
     foreach ($definition in $activeDefinitions) {
       $keyValue = if ($definition.Key) { [string]$definition.Key } else { "severity$index" }
-      if (-not $groupedIssues.Contains($keyValue)) { continue }
+      if (-not $groupedIssues.ContainsKey($keyValue)) { continue }
       $cardsList = $groupedIssues[$keyValue]
       $count = $cardsList.Count
       $slug = [regex]::Replace($keyValue.ToLowerInvariant(), '[^a-z0-9]+', '-')
