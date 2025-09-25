@@ -72,7 +72,7 @@ function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
 }
 
-$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt 2>$null
+$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt,*.log,*.csv,*.tsv 2>$null
 
 function Find-ByContent([string[]]$nameHints, [string[]]$needles) {
   if ($nameHints) {
@@ -189,6 +189,220 @@ function ConvertTo-IntArray {
   }
 
   return @()
+}
+
+function Test-IsMicrosoftPublisher {
+  param(
+    [string[]]$Values
+  )
+
+  if (-not $Values) { return $false }
+
+  foreach ($value in $Values) {
+    if (-not $value) { continue }
+    $text = ''
+    try {
+      $text = $value.ToLowerInvariant()
+    } catch {
+      $text = ([string]$value).ToLowerInvariant()
+    }
+
+    if ($text -match 'microsoft' -or $text -match 'windows defender' -or $text -match 'windows component' -or $text -match 'sysinternals') {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Parse-AutorunsEntries {
+  param([string]$Text)
+
+  $result = New-Object psobject -Property @{
+    Entries     = New-Object System.Collections.Generic.List[pscustomobject]
+    HeaderFound = $false
+  }
+
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $result }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  if (-not $lines -or $lines.Count -eq 0) { return $result }
+
+  $headerIndex = -1
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $candidate = $lines[$i]
+    if (-not $candidate) { continue }
+    if ($candidate -match '(?i)\bentry\b' -and ($candidate -match '(?i)\bpublisher\b' -or $candidate -match '(?i)\bcompany\b')) {
+      $headerIndex = $i
+      break
+    }
+  }
+
+  if ($headerIndex -lt 0) { return $result }
+
+  $result.HeaderFound = $true
+  $headerLine = $lines[$headerIndex]
+  $delimiter = $null
+  if ($headerLine -match "`t") {
+    $delimiter = "`t"
+  } elseif ($headerLine -match ';') {
+    $delimiter = ';'
+  } elseif ($headerLine -match ',') {
+    $delimiter = ','
+  }
+
+  $rows = @()
+  if ($delimiter) {
+    $dataLines = @()
+    for ($j = $headerIndex; $j -lt $lines.Count; $j++) {
+      $line = $lines[$j]
+      if ($line -match '^\s*$') { continue }
+      $dataLines += $line.TrimEnd()
+    }
+    $dataBlock = ($dataLines -join "`n").Trim()
+    if ($dataBlock) {
+      try {
+        $rows = $dataBlock | ConvertFrom-Csv -Delimiter $delimiter
+      } catch {
+        $rows = @()
+      }
+    }
+  } else {
+    for ($j = $headerIndex + 1; $j -lt $lines.Count; $j++) {
+      $line = $lines[$j]
+      if (-not $line) { continue }
+      $trimmed = $line.Trim()
+      if (-not $trimmed) { continue }
+      $parts = [regex]::Split($trimmed,'\s{2,}')
+      if ($parts.Length -lt 2) { continue }
+      $obj = [ordered]@{ Entry = $parts[0] }
+      if ($parts.Length -gt 1) { $obj['Description'] = $parts[1] }
+      if ($parts.Length -gt 2) { $obj['Publisher']   = $parts[2] }
+      if ($parts.Length -gt 3) { $obj['Image Path']  = $parts[3] }
+      if ($parts.Length -gt 4) { $obj['Entry Location'] = $parts[4] }
+      $rows += New-Object psobject -Property $obj
+    }
+  }
+
+  foreach ($row in $rows) {
+    if (-not $row) { continue }
+    $entryName = ''
+    if ($row.PSObject.Properties['Entry']) { $entryName = [string]$row.Entry }
+    if (-not $entryName) { continue }
+    $entryName = $entryName.Trim()
+    if (-not $entryName) { continue }
+    if ($entryName -match '^(?i)entry$') { continue }
+
+    $description = ''
+    foreach ($propName in @('Description','Product')) {
+      if ($row.PSObject.Properties[$propName]) {
+        $value = [string]$row.$propName
+        if ($value) {
+          $valueTrimmed = $value.Trim()
+          if ($valueTrimmed) { $description = $valueTrimmed; break }
+        }
+      }
+    }
+
+    $publisherFields = New-Object System.Collections.Generic.List[string]
+    foreach ($propName in @('Publisher','Company','Signer','Verified','Signed By','Signer Company')) {
+      if ($row.PSObject.Properties[$propName]) {
+        $value = [string]$row.$propName
+        if ($value) {
+          $valueTrimmed = $value.Trim()
+          if ($valueTrimmed) { [void]$publisherFields.Add($valueTrimmed) }
+        }
+      }
+    }
+
+    $imagePath = ''
+    foreach ($propName in @('ImagePath','Image Path','Path','Command','Image','Binary','Launch','Location')) {
+      if ($row.PSObject.Properties[$propName]) {
+        $value = [string]$row.$propName
+        if ($value) {
+          $valueTrimmed = $value.Trim()
+          if ($valueTrimmed) { $imagePath = $valueTrimmed; break }
+        }
+      }
+    }
+
+    $entryLocation = ''
+    foreach ($propName in @('Entry Location','Location','Launch String','Registry Location','Source','EntryLocation')) {
+      if ($row.PSObject.Properties[$propName]) {
+        $value = [string]$row.$propName
+        if ($value) {
+          $valueTrimmed = $value.Trim()
+          if ($valueTrimmed) { $entryLocation = $valueTrimmed; break }
+        }
+      }
+    }
+
+    $category = ''
+    foreach ($propName in @('Category','Section')) {
+      if ($row.PSObject.Properties[$propName]) {
+        $value = [string]$row.$propName
+        if ($value) {
+          $valueTrimmed = $value.Trim()
+          if ($valueTrimmed) { $category = $valueTrimmed; break }
+        }
+      }
+    }
+
+    $profile = ''
+    if ($row.PSObject.Properties['Profile']) {
+      $profileValue = [string]$row.Profile
+      if ($profileValue) { $profile = $profileValue.Trim() }
+    }
+
+    $enabled = $true
+    foreach ($propName in @('Enabled','Active','Disabled')) {
+      if (-not $row.PSObject.Properties[$propName]) { continue }
+      $value = [string]$row.$propName
+      if (-not $value) { continue }
+      $lower = $value.Trim().ToLowerInvariant()
+      switch ($propName) {
+        'Enabled' {
+          if ($lower -match '^(no|false|disabled|0)$') { $enabled = $false }
+          elseif ($lower -match '^(yes|true|enabled|1)$') { $enabled = $true }
+        }
+        'Active' {
+          if ($lower -match '^(no|false|0)$') { $enabled = $false }
+          elseif ($lower -match '^(yes|true|1)$') { $enabled = $true }
+        }
+        'Disabled' {
+          if ($lower -match '^(yes|true|1)$' -or $lower -match 'disabled') { $enabled = $false }
+        }
+      }
+    }
+
+    $publisherSummary = ($publisherFields | Where-Object { $_ }) -join '; '
+    $isMicrosoft = Test-IsMicrosoftPublisher $publisherFields.ToArray()
+    if (-not $isMicrosoft -and $row.PSObject.Properties['Verified']) {
+      $verifiedValue = [string]$row.Verified
+      if ($verifiedValue) {
+        $isMicrosoft = Test-IsMicrosoftPublisher @($verifiedValue)
+      }
+    }
+    if (-not $isMicrosoft -and $imagePath) {
+      $pathLower = $imagePath.ToLowerInvariant()
+      if ($pathLower -match '\\microsoft\\') { $isMicrosoft = $true }
+    }
+
+    $result.Entries.Add([pscustomobject]@{
+      Entry           = $entryName
+      Description     = $description
+      Publisher       = $publisherSummary
+      PublisherFields = $publisherFields.ToArray()
+      ImagePath       = $imagePath
+      Location        = $entryLocation
+      Category        = $category
+      Profile         = $profile
+      Enabled         = $enabled
+      IsMicrosoft     = $isMicrosoft
+    })
+  }
+
+  return $result
 }
 
 function Get-TopLines {
@@ -664,6 +878,8 @@ $files = [ordered]@{
   programs       = Find-ByContent @('Programs_Reg')              @('DisplayName\s+DisplayVersion')
   programs32     = Find-ByContent @('Programs_Reg_32')           @('DisplayName\s+DisplayVersion')
 
+  autoruns       = Find-ByContent @('Autoruns','Autorunsc','StartupPrograms','StartupItems') @('Entry,Description,Publisher','Autoruns', 'Entry Location')
+
   services       = Find-ByContent @('Services')                  @('Status\s+Name|SERVICE_NAME')
   processes      = Find-ByContent @('Processes','tasklist')      @('Image Name\s+PID|====')
   drivers        = Find-ByContent @('Drivers','driverquery')     @('Driver Name|Display Name')
@@ -744,7 +960,11 @@ function Get-IssueExplanation {
   }
 
   if ($areaLower -match 'system/fast startup') {
-    return "Fast Startup keeps parts of Windows in hibernation, so the machine never truly power-cycles. That can hide driver issues and stop updates from applying cleanly until you disable it for troubleshooting." 
+    return "Fast Startup keeps parts of Windows in hibernation, so the machine never truly power-cycles. That can hide driver issues and stop updates from applying cleanly until you disable it for troubleshooting."
+  }
+
+  if ($areaLower -match 'system/startup') {
+    return "Many auto-starting programs keep Windows busy right after sign-in. Trimming unnecessary autoruns speeds boot time and reduces the risk of unwanted software launching silently."
   }
 
   if ($areaLower -match 'system/bitlocker') {
@@ -1305,6 +1525,67 @@ if ($fastStartupState -eq $true) {
   if ($fastStartupEvidence) {
     Add-Issue "low" "System/Fast Startup" "Unable to determine Fast Startup (Fast Boot) state from available data." $fastStartupEvidence
   }
+}
+
+$summary.AutorunsStatus = 'Not captured'
+
+$autorunsText = $raw['autoruns']
+if (-not [string]::IsNullOrWhiteSpace($autorunsText)) {
+  $autorunsParse = Parse-AutorunsEntries $autorunsText
+  $autorunEntries = $autorunsParse.Entries
+  if (-not $autorunsParse.HeaderFound) {
+    $autorunsEvidence = Get-TopLines $autorunsText 20
+    $summary.AutorunsStatus = 'Format not recognized'
+    Add-Issue 'low' 'System/Startup Programs' 'Autoruns output detected but format not recognized for automated analysis. Review manually for startup bloat.' $autorunsEvidence
+  } else {
+    $enabledEntries = @($autorunEntries | Where-Object { $_.Enabled -ne $false })
+    $totalAutoruns = $enabledEntries.Count
+    $nonMicrosoftEntries = @($enabledEntries | Where-Object { $_.IsMicrosoft -ne $true })
+    $nonMicrosoftCount = $nonMicrosoftEntries.Count
+    $summary.AutorunsTotal = $totalAutoruns
+    $summary.AutorunsNonMicrosoft = $nonMicrosoftCount
+    $summary.AutorunsStatus = 'Analyzed'
+
+    if ($totalAutoruns -eq 0) {
+      Add-Normal 'System/Startup Programs' 'Autoruns captured: no enabled startup entries detected.' '' 'INFO'
+    } else {
+      $evidenceParts = New-Object System.Collections.Generic.List[string]
+      [void]$evidenceParts.Add("Total autorun entries evaluated: $totalAutoruns")
+      [void]$evidenceParts.Add("Non-Microsoft autorun entries: $nonMicrosoftCount")
+      $topEntries = @($nonMicrosoftEntries | Select-Object -First 8)
+      foreach ($entry in $topEntries) {
+        $linePieces = @()
+        $linePieces += $entry.Entry
+        if ($entry.Description) { $linePieces += $entry.Description }
+        if ($entry.Publisher) { $linePieces += ("Publisher: {0}" -f $entry.Publisher) }
+        else { $linePieces += 'Publisher: (unknown)' }
+        if ($entry.Location) { $linePieces += ("Location: {0}" -f $entry.Location) }
+        elseif ($entry.ImagePath) { $linePieces += ("Path: {0}" -f $entry.ImagePath) }
+        $lineText = ($linePieces -join ' | ')
+        if ($lineText) { [void]$evidenceParts.Add($lineText) }
+      }
+      $remaining = $nonMicrosoftCount - $topEntries.Count
+      if ($remaining -gt 0) {
+        [void]$evidenceParts.Add("(+{0} additional non-Microsoft autorun entries)" -f $remaining)
+      }
+      $autorunsEvidence = $evidenceParts -join "`n"
+
+      if ($nonMicrosoftCount -gt 10) {
+        $message = "Startup autoruns bloat: {0} non-Microsoft entries detected. Review and trim startup apps to reduce login delay." -f $nonMicrosoftCount
+        Add-Issue 'medium' 'System/Startup Programs' $message $autorunsEvidence
+      } elseif ($nonMicrosoftCount -gt 5) {
+        $message = "Startup autoruns trending high: {0} non-Microsoft entries detected. Consider pruning unnecessary startup items." -f $nonMicrosoftCount
+        Add-Issue 'low' 'System/Startup Programs' $message $autorunsEvidence
+      } else {
+        Add-Normal 'System/Startup Programs' ("Startup autoruns manageable ({0} non-Microsoft entries out of {1})." -f $nonMicrosoftCount, $totalAutoruns) '' 'INFO'
+      }
+    }
+  }
+} elseif ($files['autoruns']) {
+  $summary.AutorunsStatus = 'Captured but empty'
+  Add-Issue 'low' 'System/Startup Programs' 'Autoruns file present but empty.' ''
+} else {
+  Add-Issue 'info' 'System/Startup Programs' 'Autoruns output missing from diagnostics. Capture Autorunsc /accepteula output to review startup apps.' ''
 }
 
 if ($raw['dsreg']){
@@ -4004,6 +4285,14 @@ $fastStartupDisplay = if ($summary.ContainsKey('FastStartupEnabled') -and $summa
   'Unknown'
 }
 $fastStartupHtml = Encode-Html $fastStartupDisplay
+$autorunsDisplay = if ($summary.ContainsKey('AutorunsNonMicrosoft') -and $summary.ContainsKey('AutorunsTotal')) {
+  "{0} non-Microsoft / {1} total" -f $summary.AutorunsNonMicrosoft, $summary.AutorunsTotal
+} elseif ($summary.ContainsKey('AutorunsStatus') -and $summary.AutorunsStatus) {
+  $summary.AutorunsStatus
+} else {
+  'Not captured'
+}
+$autorunsHtml = Encode-Html $autorunsDisplay
 
 $sumTable = @"
 <h1>Device Health Report</h1>
@@ -4022,6 +4311,7 @@ $sumTable = @"
     <tr><td>System</td><td>$osHtml</td></tr>
     <tr><td>Windows Server</td><td>$serverDisplayHtml</td></tr>
     <tr><td>Fast Startup (Fast Boot)</td><td>$fastStartupHtml</td></tr>
+    <tr><td>Startup autoruns</td><td>$autorunsHtml</td></tr>
     <tr><td>IPv4</td><td>$ipv4Html</td></tr>
     <tr><td>Gateway</td><td>$gatewayHtml</td></tr>
     <tr><td>DNS</td><td>$dnsHtml</td></tr>
