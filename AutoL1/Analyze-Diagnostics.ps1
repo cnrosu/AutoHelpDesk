@@ -775,8 +775,9 @@ function Get-IssueExplanation {
     return "Broken Autodiscover SCP records keep domain-joined PCs from finding the right Exchange endpoints. Outlook may connect to the wrong place or fail to sign in on the internal network." 
   }
 
-  $severityWord = if ($Severity) { $Severity.ToLowerInvariant() } else { 'issue' }
-  return "This $severityWord points to something outside the normal health baseline. Reviewing the evidence and correcting it will help keep the device stable and secure." 
+  $severityWord = Normalize-Severity $Severity
+  if (-not $severityWord) { $severityWord = 'issue' }
+  return "This $severityWord points to something outside the normal health baseline. Reviewing the evidence and correcting it will help keep the device stable and secure."
 }
 
 function Add-Issue(
@@ -796,7 +797,7 @@ function Add-Issue(
     }
 
     # normalize
-    $sevKey = if ($null -ne $Severity) { $Severity.Trim().ToLowerInvariant() } else { "" }
+    $sevKey = Normalize-Severity $Severity
     switch -regex ($sevKey){
         '^(crit(ical)?)$' { $sevKey = 'critical' }
         '^(hi(gh)?)$'     { $sevKey = 'high' }
@@ -4564,7 +4565,7 @@ if ($issues.Count -eq 0){
 
   foreach ($entry in $sortedIssues) {
     $cardHtml = New-IssueCardHtml -Entry $entry
-    $severityKey = if ($entry.Severity) { $entry.Severity.ToLowerInvariant() } else { '' }
+    $severityKey = Normalize-Severity $entry.Severity
     if ($severityKey -and $groupedIssues.ContainsKey($severityKey)) {
       $groupedIssues[$severityKey].Add($cardHtml)
     } else {
