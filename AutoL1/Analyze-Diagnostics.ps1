@@ -795,6 +795,7 @@ function Add-Issue(
     switch -regex ($sevKey){
         '^(crit(ical)?)$' { $sevKey = 'critical' }
         '^(hi(gh)?)$'     { $sevKey = 'high' }
+        '^(warn(ing)?)$'{ $sevKey = 'warning' }
         '^(med(iu[mn])?)$'{ $sevKey = 'medium' }
         '^(lo(w)?)$'      { $sevKey = 'low' }
         '^(info|informational|information)$' { $sevKey = 'info' }
@@ -810,6 +811,7 @@ function Add-Issue(
     switch ($sevKey) {
         'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
         'high'     { $badgeText = 'HIGH';     $cssClass = 'high' }
+        'warning'  { $badgeText = 'WARNING';  $cssClass = 'warning' }
         'medium'   { $badgeText = 'MEDIUM';   $cssClass = 'medium' }
         'low'      { $badgeText = 'LOW';      $cssClass = 'low' }
         'info'     { $badgeText = 'INFO';     $cssClass = 'info' }
@@ -847,8 +849,8 @@ function Add-Issue(
             $c['Attempted'] = $true
             if ($NA) { $c['NA'] = $true }
             $c['Outcome'] = 'Issue'
-            # severity order: critical > high > medium > low > info
-            $rank = @{ critical=5; high=4; medium=3; low=2; info=1 }
+            # severity order: critical > high > medium > warning > low > info
+            $rank = @{ critical=6; high=5; medium=4; warning=3; low=2; info=1 }
             $prev = $c['WorstSeverity']; if (-not $prev) { $prev = 'info' }
             if ($rank[$sevKey] -ge $rank[$prev]) { $c['WorstSeverity'] = $sevKey }
             $script:Checks[$CheckId] = $c
@@ -1010,7 +1012,7 @@ function Add-SecurityHeuristic {
     }
     'warning' {
       if (-not $SkipIssue) {
-        Add-Issue 'medium' $areaLabel $messageText $combinedEvidence
+        Add-Issue 'warning' $areaLabel $messageText $combinedEvidence
       }
     }
     'bad' {
@@ -1247,7 +1249,7 @@ if ($fastStartupState -ne $null) {
 if ($fastStartupState -eq $true) {
   $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
   if (-not $fastStartupEvidence) { $fastStartupEvidence = 'HiberbootEnabled value indicates Fast Startup enabled.' }
-  Add-Issue "low" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
+  Add-Issue "warning" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
 } elseif ($fastStartupState -eq $false) {
   $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
   if ($fastStartupEvidence) {
@@ -1256,7 +1258,7 @@ if ($fastStartupState -eq $true) {
 } elseif ($raw['power_settings']) {
   $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
   if ($fastStartupEvidence) {
-    Add-Issue "low" "System/Fast Startup" "Unable to determine Fast Startup (Fast Boot) state from available data." $fastStartupEvidence
+    Add-Issue "warning" "System/Fast Startup" "Unable to determine Fast Startup (Fast Boot) state from available data." $fastStartupEvidence
   }
 }
 
@@ -4223,7 +4225,7 @@ if ($raw['volumes']){
 }
 
 # ---------- scoring ----------
-$weights = @{ critical=10; high=6; medium=3; low=1; info=0 }
+$weights = @{ critical=10; high=6; medium=3; warning=2; low=1; info=0 }
 $penalty = 0
 foreach($i in $issues){ $penalty += ($weights[$i.Severity]) }
 $score = [Math]::Max(0, 100 - [Math]::Min($penalty,80))
@@ -4269,6 +4271,7 @@ $serverDisplayHtml = Encode-Html $serverDisplayValue
 
 $criticalCount = @($issues | Where-Object { $_.Severity -eq 'critical' }).Count
 $highCount = @($issues | Where-Object { $_.Severity -eq 'high' }).Count
+$warningCount = @($issues | Where-Object { $_.Severity -eq 'warning' }).Count
 $mediumCount = @($issues | Where-Object { $_.Severity -eq 'medium' }).Count
 $lowCount = @($issues | Where-Object { $_.Severity -eq 'low' }).Count
 $infoCount = @($issues | Where-Object { $_.Severity -eq 'info' }).Count
@@ -4366,7 +4369,8 @@ $sumTable = @"
     <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>
     <span class='report-badge report-badge--critical'><span class='report-badge__label'>CRITICAL</span><span class='report-badge__value'>$criticalCount</span></span>
     <span class='report-badge report-badge--bad'><span class='report-badge__label'>HIGH</span><span class='report-badge__value'>$highCount</span></span>
-    <span class='report-badge report-badge--warning'><span class='report-badge__label'>MEDIUM</span><span class='report-badge__value'>$mediumCount</span></span>
+    <span class='report-badge report-badge--warning'><span class='report-badge__label'>WARNING</span><span class='report-badge__value'>$warningCount</span></span>
+    <span class='report-badge report-badge--medium'><span class='report-badge__label'>MEDIUM</span><span class='report-badge__value'>$mediumCount</span></span>
     <span class='report-badge report-badge--ok'><span class='report-badge__label'>LOW</span><span class='report-badge__value'>$lowCount</span></span>
     <span class='report-badge report-badge--good'><span class='report-badge__label'>INFO</span><span class='report-badge__value'>$infoCount</span></span>
   </div>
@@ -4532,9 +4536,10 @@ if ($issues.Count -eq 0){
   $severitySortOrder = @{
     'critical' = 0
     'high'     = 1
-    'medium'   = 2
-    'low'      = 3
-    'info'     = 4
+    'warning'  = 2
+    'medium'   = 3
+    'low'      = 4
+    'info'     = 5
   }
 
   $sortedIssues = $issues | Sort-Object -Stable -Property @(
@@ -4546,6 +4551,7 @@ if ($issues.Count -eq 0){
   $severityDefinitions = @(
     @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
     @{ Key = 'high';     Label = 'High';     BadgeClass = 'high' },
+    @{ Key = 'warning';  Label = 'Warning';  BadgeClass = 'warning' },
     @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'medium' },
     @{ Key = 'low';      Label = 'Low';      BadgeClass = 'low' },
     @{ Key = 'info';     Label = 'Info';     BadgeClass = 'info' }

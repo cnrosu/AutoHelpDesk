@@ -42,7 +42,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Outputs**:
   - `DeviceHealth_Report_<YYYYMMDD_HHMMSS>.html` saved in the same folder.
 - **Scoring Model**:
-  - Severity weights: Critical = 10, High = 6, Medium = 3, Low = 1, Info = 0.
+  - Severity weights: Critical = 10, High = 6, Medium = 3, Warning = 2, Low = 1, Info = 0.
   - Penalties subtract from 100 with caps to avoid bottoming out unnecessarily.
 - **Sample Heuristics**:
   - **Network**: Missing IPv4, APIPA addresses, absent default routes, failed pings or DNS lookups, inappropriate public DNS for corporate networks.
