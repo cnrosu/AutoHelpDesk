@@ -1,7 +1,23 @@
 <#
-Collect-SystemDiagnostics.ps1
-Collect a broad snapshot of a Windows machine and build a simple HTML report.
-Run as Administrator.
+.SYNOPSIS
+  Collects a broad diagnostic snapshot of a Windows device and optionally builds an HTML report.
+.DESCRIPTION
+  Creates a timestamped output folder, captures a curated set of networking, Outlook, and system diagnostics, and writes
+  the raw command output to text files. When HTML generation is enabled, the script stitches results into a technician-
+  friendly summary.
+.PARAMETER OutRoot
+  Specifies the root folder where timestamped diagnostic collections are stored. Defaults to the desktop DiagReports
+  folder for the current user.
+.PARAMETER NoHtml
+  Skips HTML report generation when supplied, leaving only the raw text outputs.
+.EXAMPLE
+  PS C:\> .\Collect-SystemDiagnostics.ps1
+
+  Captures diagnostics into a new timestamped folder under the default DiagReports directory and builds an HTML summary.
+.EXAMPLE
+  PS C:\> .\Collect-SystemDiagnostics.ps1 -OutRoot 'C:\Temp\Diag' -NoHtml
+
+  Writes the diagnostic text files to C:\Temp\Diag without producing an HTML report.
 #>
 
 [CmdletBinding()]
@@ -11,6 +27,15 @@ param(
 )
 
 # Ensure Admin
+<#
+.SYNOPSIS
+  Ensures the script is running with administrator privileges and stops execution when it is not.
+.DESCRIPTION
+  Checks the current security principal for membership in the local Administrators group and terminates the script with
+  an error message when elevation is missing.
+.OUTPUTS
+  None. Throws a terminating error when the session is not elevated.
+#>
 function Assert-Admin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p = New-Object Security.Principal.WindowsPrincipal($id)
@@ -30,6 +55,19 @@ Write-Host "Starting diagnostics collection..."
 Write-Host "Output folder: $reportDir"
 
 # Simple helper to run a command and write output
+<#
+.SYNOPSIS
+  Executes a diagnostic action and saves the output to a timestamped text file.
+.DESCRIPTION
+  Creates or appends to a text file beneath the current report directory, capturing command output and wrapping it in a
+  dated header for easy review. Errors are surfaced to both the log file and the console.
+.PARAMETER Name
+  Friendly name used for the output file and header text.
+.PARAMETER Action
+  Script block that, when invoked, produces the diagnostic output to capture.
+.OUTPUTS
+  System.String. Returns the full path to the file containing the captured output.
+#>
 function Save-Output {
   param(
     [Parameter(Mandatory)] [string]$Name,
@@ -197,6 +235,14 @@ $kernelDmaHelperPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors\
 if (Test-Path $kernelDmaHelperPath) {
   . $kernelDmaHelperPath
 } elseif (-not (Get-Command Get-KernelDmaStatusData -ErrorAction SilentlyContinue)) {
+  <#
+  .SYNOPSIS
+    Provides a fallback Kernel DMA status object when the dedicated helper cannot be loaded.
+  .PARAMETER MsInfoTimeoutSeconds
+    Specifies the timeout used when collecting MSINFO data. Present for interface compatibility only.
+  .OUTPUTS
+    PSCustomObject. Returns placeholder Device Guard, registry, and MSINFO details indicating the helper was unavailable.
+  #>
   function Get-KernelDmaStatusData {
     param([int]$MsInfoTimeoutSeconds = 4)
 

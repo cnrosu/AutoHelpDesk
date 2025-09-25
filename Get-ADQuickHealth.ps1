@@ -4,8 +4,14 @@
 .DESCRIPTION
   - Lists FSMO roles, DCs, GC status, replication summary, time source, and basic DFSR SYSVOL health.
   - Requires: RSAT AD PowerShell, repadmin, dcdiag present on the machine running it.
+.PARAMETER SaveReport
+  Saves the collected output to a timestamped text report beneath the local Reports directory when specified.
 .OUTPUTS
-  Writes to screen and saves a timestamped TXT under .\Reports\
+  System.String. Writes results to the console and optionally saves a timestamped TXT under .\Reports\.
+.EXAMPLE
+  PS C:\> .\Get-ADQuickHealth.ps1 -SaveReport
+
+  Runs the health snapshot and saves the output to the Reports folder alongside the script.
 #>
 [CmdletBinding()]
 param(
@@ -17,6 +23,17 @@ $reportDir = Join-Path -Path $PSScriptRoot -ChildPath "Reports"
 if ($SaveReport -and -not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir | Out-Null }
 $sb = New-Object System.Text.StringBuilder
 
+<#
+.SYNOPSIS
+  Adds a formatted line to the in-memory report buffer and returns the same text for display.
+.DESCRIPTION
+  Appends the supplied text to the script-scoped StringBuilder so it can be emitted to the console and, if requested,
+  written to a report file without duplicating logic.
+.PARAMETER txt
+  The text to append to the report buffer.
+.OUTPUTS
+  System.String. Returns the same string that was added to the buffer.
+#>
 function Add-Line($txt){[void]$sb.AppendLine($txt); $txt}
 
 Add-Line "=== AD QUICK HEALTH $(Get-Date) ==="

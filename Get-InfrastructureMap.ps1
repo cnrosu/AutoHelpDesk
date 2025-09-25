@@ -1,9 +1,17 @@
 <#
 .SYNOPSIS
-  Generates a Markdown summary and Graphviz .dot of AD/DNS/DHCP/Sites. Optional Hyper-V inventory if present.
-.OUTPUT
-  .\Reports\Infrastructure_Report.md
-  .\Reports\Infrastructure_Map.dot
+  Generates a Markdown summary and Graphviz .dot of AD/DNS/DHCP/Sites with optional Hyper-V inventory.
+.DESCRIPTION
+  Collects directory services, DNS, DHCP, and AD Sites metadata to produce a Markdown report and a Graphviz DOT map inside
+  the Reports folder. When requested, Hyper-V host and VM information is also appended.
+.PARAMETER IncludeHyperV
+  Adds Hyper-V inventory details to the Markdown report when the Hyper-V module is available.
+.OUTPUTS
+  System.String. Writes the generated report and DOT file paths to the console.
+.EXAMPLE
+  PS C:\> .\Get-InfrastructureMap.ps1 -IncludeHyperV
+
+  Creates infrastructure report and map files including Hyper-V host and VM inventory.
 #>
 [CmdletBinding()]
 param(

@@ -1,6 +1,8 @@
 <#!
 .SYNOPSIS
     Analyzes Kernel DMA protection collector output and classifies policy health.
+.PARAMETER InputFolder
+    Specifies the folder containing collector artifacts for Kernel DMA analysis.
 #>
 [CmdletBinding()]
 param(

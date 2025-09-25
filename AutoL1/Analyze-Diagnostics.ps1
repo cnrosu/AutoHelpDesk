@@ -1,11 +1,15 @@
 <#
-Analyze-Diagnostics.ps1  (fixed)
-- Robust file detection (by name or content)
-- Bracket indexing for hashtables ($raw['key'])
-- Issues are [pscustomobject]
-- CSS via literal here-string; summary via expanding here-string
-USAGE:
-  .\Analyze-Diagnostics.ps1 -InputFolder "C:\Path\To\DiagReports\20250924_181518"
+.SYNOPSIS
+  Analyzes collected AutoHelpDesk diagnostics and produces an HTML device health report.
+.DESCRIPTION
+  Loads collector output from the specified folder, normalizes artifacts, evaluates a wide array of heuristic modules,
+  and renders HTML along with structured issue and check collections for downstream automation.
+.PARAMETER InputFolder
+  Specifies the folder containing collector artifacts (JSON, text, and CSV files) to analyze.
+.EXAMPLE
+  PS C:\> .\Analyze-Diagnostics.ps1 -InputFolder "C:\Path\To\DiagReports\20250924_181518"
+
+  Generates an HTML diagnostic report for the specified collection folder.
 #>
 
 [CmdletBinding()]

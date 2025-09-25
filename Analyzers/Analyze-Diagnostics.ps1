@@ -1,6 +1,10 @@
 <#!
 .SYNOPSIS
     Analyzer orchestrator that loads JSON artifacts, runs heuristic modules, and generates an HTML report.
+.PARAMETER InputFolder
+    Specifies the folder containing collector artifacts to be analyzed.
+.PARAMETER OutputPath
+    Optional path for the generated HTML report. When omitted, the report is written next to the input folder.
 #>
 [CmdletBinding()]
 param(
