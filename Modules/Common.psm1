@@ -379,7 +379,7 @@ function New-IssueCardHtml {
     [pscustomobject]$Entry
   )
 
-  $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'ok' }
+  $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'info' }
   $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } elseif ($Entry.Severity) { $Entry.Severity.ToUpperInvariant() } else { 'ISSUE' }
   $badgeHtml = Encode-Html $badgeText
   $areaHtml = Encode-Html $Entry.Area

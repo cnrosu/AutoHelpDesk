@@ -314,10 +314,23 @@ details.report-card[open] > summary {
   color: var(--color-state-good-text);
 }
 
+.report-badge--info {
+  background-color: var(--color-state-info-bg);
+  border-color: var(--color-state-info-border);
+  color: var(--color-state-info-text);
+}
+
+.report-badge--low,
 .report-badge--ok {
   background-color: var(--color-state-ok-bg);
   border-color: var(--color-state-ok-border);
   color: var(--color-state-ok-text);
+}
+
+.report-badge--medium {
+  background-color: var(--color-state-medium-bg);
+  border-color: var(--color-state-medium-border);
+  color: var(--color-state-medium-text);
 }
 
 .report-badge--warning {
@@ -326,6 +339,7 @@ details.report-card[open] > summary {
   color: var(--color-state-warning-text);
 }
 
+.report-badge--high,
 .report-badge--bad {
   background-color: var(--color-state-bad-bg);
   border-color: var(--color-state-bad-border);
@@ -367,9 +381,21 @@ details.report-card[open] > summary {
   background-color: var(--color-state-good-bg);
 }
 
+.report-card--info {
+  border-color: var(--color-state-info-border);
+  background-color: var(--color-state-info-bg);
+  color: var(--color-state-info-text);
+}
+
+.report-card--low,
 .report-card--ok {
   border-color: var(--color-state-ok-border);
   background-color: var(--color-state-ok-bg);
+}
+
+.report-card--medium {
+  border-color: var(--color-state-medium-border);
+  background-color: var(--color-state-medium-bg);
 }
 
 .report-card--warning {
@@ -377,6 +403,7 @@ details.report-card[open] > summary {
   background-color: var(--color-state-warning-bg);
 }
 
+.report-card--high,
 .report-card--bad {
   border-color: var(--color-state-bad-border);
   background-color: var(--color-state-bad-bg);

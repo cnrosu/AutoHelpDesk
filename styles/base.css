@@ -30,13 +30,21 @@
   --color-state-good-border: #43a047;
   --color-state-good-text: #1b5e20;
 
-  --color-state-ok-bg: #e3f2fd;
-  --color-state-ok-border: #1e88e5;
-  --color-state-ok-text: #0d47a1;
+  --color-state-ok-bg: #fff9c4;
+  --color-state-ok-border: #fbc02d;
+  --color-state-ok-text: #7f6000;
 
-  --color-state-warning-bg: #fff3e0;
-  --color-state-warning-border: #ef6c00;
-  --color-state-warning-text: #8c6d1f;
+  --color-state-warning-bg: #e3f2fd;
+  --color-state-warning-border: #1e88e5;
+  --color-state-warning-text: #0d47a1;
+
+  --color-state-medium-bg: #fff3e0;
+  --color-state-medium-border: #ef6c00;
+  --color-state-medium-text: #8c6d1f;
+
+  --color-state-info-bg: #ffffff;
+  --color-state-info-border: #cfd8dc;
+  --color-state-info-text: #1f2933;
 
   --color-state-bad-bg: #ffebee;
   --color-state-bad-border: #d32f2f;
