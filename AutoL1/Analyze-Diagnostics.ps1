@@ -1588,7 +1588,7 @@ if ($fastStartupState -ne $null) {
 if ($fastStartupState -eq $true) {
   $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
   if (-not $fastStartupEvidence) { $fastStartupEvidence = 'HiberbootEnabled value indicates Fast Startup enabled.' }
-  Add-Issue "medium" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
+  Add-Issue "low" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
 } elseif ($fastStartupState -eq $false) {
   $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
   if ($fastStartupEvidence) {
@@ -2849,7 +2849,7 @@ if ($raw['bitlocker']) {
           $mountList = ($unprotected | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($unprotected | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Issue "high" "Security/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
+          Add-Issue "critical" "Security/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($partial.Count -gt 0) {
           $mountList = ($partial | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
@@ -2940,7 +2940,7 @@ if ($tpmText) {
   } else {
     $details = if ($specVersion) { "SpecVersion (reported): $specVersion" } else { 'No TPM detected.' }
     $health = if ($isModernClientProfile) { 'bad' } else { 'warning' }
-    $issueSeverity = if ($isModernClientProfile) { 'high' } else { 'medium' }
+    $issueSeverity = 'high'
     Add-SecurityHeuristic 'TPM' 'Not detected' $health $details $tpmEvidence -SkipIssue
     Add-Issue $issueSeverity 'Security/TPM' 'No TPM detected. Modern Windows devices require TPM 2.0 for security assurances.' $tpmEvidence
   }
@@ -2966,6 +2966,7 @@ if ($hvciRunning) {
   Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not supported' 'info' 'Device Guard reports HVCI not available.' $dgEvidence
 } else {
   Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not captured' 'warning' 'Device Guard status unavailable.' ''
+  Add-Issue 'medium' 'Security/HVCI' 'Memory integrity (HVCI) not captured. Collect Device Guard diagnostics.' ''
 }
 
 # 3. Credential Guard / LSA isolation
@@ -2981,7 +2982,7 @@ if ($credentialGuardRunning -and $runAsPpl -eq 1) {
   Add-SecurityHeuristic 'Credential Guard (LSA isolation)' 'Enabled' 'good' 'Credential Guard running with LSA protection.' $lsaEvidence
 } else {
   Add-SecurityHeuristic 'Credential Guard (LSA isolation)' 'Disabled' 'warning' 'Credential Guard or LSA RunAsPPL not enforced.' $lsaEvidence -SkipIssue
-  Add-Issue 'medium' 'Security/Credential Guard' 'Credential Guard or LSA protection is not enforced. Enable RunAsPPL and Credential Guard.' $lsaEvidence
+  Add-Issue 'high' 'Security/Credential Guard' 'Credential Guard or LSA protection is not enforced. Enable RunAsPPL and Credential Guard.' $lsaEvidence
 }
 
 # 4. Kernel DMA protection
@@ -3002,6 +3003,7 @@ if ($dmaText) {
     }
   } else {
     Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence
+    Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' $dmaEvidence
   }
 } else {
   Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'msinfo32 output missing.' ''
@@ -3016,6 +3018,7 @@ if ($securityFirewallSummary) {
   }
 } else {
   Add-SecurityHeuristic 'Windows Firewall' 'Not captured' 'warning' 'Firewall status output missing.' ''
+  Add-Issue 'high' 'Security/Firewall' 'Windows Firewall not captured. Collect firewall profile configuration.' ''
 }
 
 # 6. RDP exposure
@@ -3150,7 +3153,7 @@ foreach ($set in $requiredAsrSets) {
     }
     $evidence = $evidenceLines -join "`n"
     Add-SecurityHeuristic ("ASR: {0}" -f $label) 'Not blocking' 'warning' $detailText $evidence -SkipIssue
-    Add-Issue 'medium' 'Security/ASR' ("ASR rule not enforced: {0}. Configure to Block (1)." -f $label) $evidence
+    Add-Issue 'high' 'Security/ASR' ("ASR rule not enforced: {0}. Configure to Block (1)." -f $label) $evidence
   }
 }
 
@@ -3190,6 +3193,7 @@ if ($cfgEnabled -and $depEnabled -and $aslrEnabled) {
   Add-Issue 'medium' 'Security/ExploitProtection' ('Exploit protection mitigations not fully enabled ({0}).' -f $detailText) $exploitEvidence
 } else {
   Add-SecurityHeuristic 'Exploit protection (system)' 'Not captured' 'warning' 'Get-ProcessMitigation output unavailable.' ''
+  Add-Issue 'medium' 'Security/ExploitProtection' 'Exploit Protection not captured. Collect Get-ProcessMitigation output.' ''
 }
 
 # 11. WDAC / Smart App Control
@@ -3295,6 +3299,7 @@ if ($lapsEnabled) {
   Add-SecurityHeuristic 'LAPS/PLAP' 'Policy detected' 'good' '' $lapsEvidence
 } else {
   Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence
+  Add-Issue 'high' 'Security/LAPS' 'LAPS/PLAP not detected. Enforce password management policy.' $lapsEvidence
 }
 
 # 13. UAC
@@ -3311,7 +3316,7 @@ if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -a
   if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $uacFindings += 'PromptOnSecureDesktop=0' }
   $detail = if ($uacFindings.Count -gt 0) { $uacFindings -join '; ' } else { 'UAC configuration unclear.' }
   Add-SecurityHeuristic 'UAC' 'Weakened' 'warning' $detail $uacEvidence -SkipIssue
-  Add-Issue 'medium' 'Security/UAC' ('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail) $uacEvidence
+  Add-Issue 'high' 'Security/UAC' ('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail) $uacEvidence
 }
 
 # 14. PowerShell logging & AMSI
@@ -3425,8 +3430,11 @@ if ($macroSecurityStatus.Count -gt 0) {
   Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence -Area 'Security/Office'
 } else {
   Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-Issue 'medium' 'Security/Office' 'Office MOTW macro blocking - no data. Confirm macro policies.' ''
   Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-Issue 'low' 'Security/Office' 'Office macro notifications - no data. Collect policy details.' ''
   Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-Issue 'low' 'Security/Office' 'Office Protected View - no data. Verify Protected View policies.' ''
 }
 
 # 20. BitLocker recovery key escrow
@@ -3439,7 +3447,7 @@ if ($bitlockerText) {
     Add-SecurityHeuristic 'BitLocker recovery key' ('Recovery passwords present (' + $recoveryCount + ')') 'good' '' $bitlockerEvidence
   } else {
     Add-SecurityHeuristic 'BitLocker recovery key' 'Recovery password not detected' 'warning' 'Ensure recovery keys are escrowed to AD/Azure AD.' $bitlockerEvidence -SkipIssue
-    Add-Issue 'medium' 'Security/BitLocker' 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' $bitlockerEvidence
+    Add-Issue 'high' 'Security/BitLocker' 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' $bitlockerEvidence
   }
 } else {
   Add-SecurityHeuristic 'BitLocker recovery key' 'Not captured' 'warning' 'BitLocker output missing.' ''
@@ -4214,7 +4222,7 @@ function Add-EventStats($txt,$name){
       $evidenceParts += "Sample contained $err entries with 'Error'."
     }
     $evidenceText = $evidenceParts -join "`n`n"
-    Add-Issue "medium" "Events" "$name log shows many errors ($err in recent sample)." $evidenceText
+    Add-Issue "info" "Events" "$name log shows many errors ($err in recent sample)." $evidenceText
   }
   elseif ($warn -ge 10){
     $highlights = Get-EventHighlights -Text $txt -TargetLevels @('Warning') -Max 3
