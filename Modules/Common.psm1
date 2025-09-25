@@ -58,9 +58,31 @@ function ConvertTo-NullableBool {
   $trimmed = $stringValue.Trim()
   if (-not $trimmed) { return $null }
 
-  if ($trimmed -match '^(?i)(true|yes|y|1)$') { return $true }
-  if ($trimmed -match '^(?i)(false|no|n|0)$') { return $false }
-  return $null
+  try {
+    $lower = $trimmed.ToLowerInvariant()
+  } catch {
+    $lower = $trimmed
+    if ($lower) { $lower = $lower.ToLowerInvariant() }
+  }
+
+  switch ($lower) {
+    'true' { return $true }
+    'false' { return $false }
+    't' { return $true }
+    'f' { return $false }
+    'yes' { return $true }
+    'no' { return $false }
+    'y' { return $true }
+    'n' { return $false }
+    'enabled' { return $true }
+    'disabled' { return $false }
+    'on' { return $true }
+    'off' { return $false }
+    default {
+      if ($lower -match '^[01]$') { return ($lower -eq '1') }
+      return $null
+    }
+  }
 }
 
 function ConvertTo-NullableInt {
@@ -133,33 +155,6 @@ function ConvertTo-IntArray {
   }
 
   return @()
-}
-
-function Test-IsEnabledValue {
-  param($Value)
-
-  if ($null -eq $Value) { return $false }
-
-  try {
-    $text = [string]$Value
-  } catch {
-    $text = [string]$Value
-  }
-
-  if (-not $text) { return $false }
-  $trimmed = $text.Trim()
-  if (-not $trimmed) { return $false }
-
-  try {
-    $lower = $trimmed.ToLowerInvariant()
-  } catch {
-    $lower = $trimmed
-    if ($lower) { $lower = $lower.ToLowerInvariant() }
-  }
-
-  if ($lower -match '^(on|true|enabled|1)$') { return $true }
-  if ($lower -match 'yes') { return $true }
-  return $false
 }
 
 function Get-TopLines {
@@ -472,34 +467,6 @@ function Get-HealthScores {
   }
   $scores.Overall.Percent = if ($scores.Overall.Max -eq 0) { $null } else { [math]::Round(100.0 * $scores.Overall.Achieved / $scores.Overall.Max, 1) }
   return $scores
-}
-
-function Get-BoolFromString {
-  param(
-    [string]$Value
-  )
-
-  if ($null -eq $Value) { return $null }
-  $trimmed = $Value.Trim()
-  if (-not $trimmed) { return $null }
-
-  $lower = $trimmed.ToLowerInvariant()
-  switch ($lower) {
-    'true' { return $true }
-    'false' { return $false }
-    'yes' { return $true }
-    'no' { return $false }
-    'enabled' { return $true }
-    'disabled' { return $false }
-    'on' { return $true }
-    'off' { return $false }
-    default {
-      if ($lower -match '^[01]$') {
-        return ($lower -eq '1')
-      }
-      return $null
-    }
-  }
 }
 
 function Get-CategoryFromArea {
