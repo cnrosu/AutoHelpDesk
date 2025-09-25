@@ -644,6 +644,16 @@ $files = [ordered]@{
   outlook_ost    = Find-ByContent @('Outlook_OST')               @('FullName\s*:.*\.ost','No OST files found','Outlook OST root')
   outlook_autodiscover = Find-ByContent @('Autodiscover_DNS')    @('### Domain','autodiscover')
   outlook_scp    = Find-ByContent @('Outlook_SCP')               @('Autodiscover','serviceBindingInformation','SCP lookup')
+  ad_domain_status = Find-ByContent @('AD_DomainStatus')         @('PartOfDomain','Domain','Forest')
+  ad_dc_discovery  = Find-ByContent @('AD_DCDiscovery')          @('DomainJoined','SrvLookups','nltest')
+  ad_dc_reach      = Find-ByContent @('AD_DCReachability')       @('Domain controller port reachability','Targets','Ports')
+  ad_sysvol        = Find-ByContent @('AD_SysvolAccess')         @('SYSVOL','NETLOGON','Results')
+  ad_time_status   = Find-ByContent @('AD_TimeStatus')           @('w32tm','Clock')
+  ad_klist         = Find-ByContent @('AD_KerberosTickets')      @('Ticket cache','krbtgt','klist')
+  ad_secure        = Find-ByContent @('AD_SecureChannel')        @('Test-ComputerSecureChannel','nltest /sc_query')
+  ad_gpo_result    = Find-ByContent @('AD_GPOResult')            @('Group Policy','COMPUTER SETTINGS','gpresult')
+  ad_gpo_events    = Find-ByContent @('AD_GPOEvents')            @('Event ID: 1058','Event ID: 1030','wevtutil')
+  ad_domain_trusts = Find-ByContent @('AD_DomainTrusts')         @('nltest /domain_trusts','Trusted DC')
   office_security = Find-ByContent @('Office_SecurityPolicies')  @('BlockContentExecutionFromInternet','VBAWarnings','ProtectedView')
 
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
@@ -825,6 +835,34 @@ function Get-IssueExplanation {
 
   if ($areaLower -match 'outlook/scp') {
     return "Broken Autodiscover SCP records keep domain-joined PCs from finding the right Exchange endpoints. Outlook may connect to the wrong place or fail to sign in on the internal network." 
+  }
+
+  if ($areaLower -match 'active directory/time') {
+    return "Active Directory depends on clocks staying within five minutes. When the workstation drifts, Kerberos refuses logons and every domain authentication immediately fails until time is corrected."
+  }
+
+  if ($areaLower -match 'active directory/secure channel') {
+    return "A broken machine secure channel means the PC no longer trusts the domain. Windows cannot refresh policy or let domain users sign in until the secure channel is reset."
+  }
+
+  if ($areaLower -match 'active directory/reachability') {
+    return "Without contact to a domain controller the device cannot refresh credentials, apply Group Policy, or validate logins. Access to shares and domain resources breaks until connectivity is restored."
+  }
+
+  if ($areaLower -match 'active directory/dns') {
+    return "Active Directory uses special DNS SRV records to locate domain controllers. When those lookups fail, nothing else in the domain works—logons, shares, and policy all break."
+  }
+
+  if ($areaLower -match 'active directory/kerberos') {
+    return "Kerberos tickets are proof of identity in the domain. If the machine has no TGT it cannot access file shares, printers, or other AD resources until it reconnects and reauthenticates."
+  }
+
+  if ($areaLower -match 'active directory/gpo') {
+    return "Group Policy errors mean the workstation is missing the security baselines, drive mappings, and configuration the organization relies on. Leaving them unfixed keeps policies stale."
+  }
+
+  if ($mainArea -eq 'active directory' -or $areaLower -match 'active directory') {
+    return "Active Directory health problems stop the device from authenticating with the domain. Users will see logon failures and missing policies until the directory connection is fixed."
   }
 
   $severityWord = if ($Severity) { $Severity.ToLowerInvariant() } else { 'issue' }
@@ -2134,6 +2172,471 @@ if ($raw['outlook_scp']){
     } elseif ($bindingUrl) {
       Add-Normal "Outlook/SCP" ("GOOD Outlook/SCP: Autodiscover SCP published: {0}" -f $bindingUrl) $scpEvidence
     }
+  }
+}
+
+# Active Directory heuristics
+$adDomainStatusObj = ConvertFrom-JsonSafe $raw['ad_domain_status']
+$adDomainJoined = $null
+$adDomainName = $null
+$adForestName = $null
+$adSiteName = $null
+$adStatusNotes = New-Object System.Collections.Generic.List[string]
+
+if ($adDomainStatusObj) {
+  if ($adDomainStatusObj.PSObject.Properties['PartOfDomain']) {
+    $partValue = $adDomainStatusObj.PartOfDomain
+    if ($partValue -is [bool]) {
+      $adDomainJoined = [bool]$partValue
+    } else {
+      $partBool = Get-BoolFromString $partValue
+      if ($null -ne $partBool) { $adDomainJoined = [bool]$partBool }
+    }
+  }
+  if ($adDomainStatusObj.PSObject.Properties['Domain']) {
+    $domainValue = [string]$adDomainStatusObj.Domain
+    if ($domainValue) { $adDomainName = $domainValue.Trim() }
+  }
+  if ($adDomainStatusObj.PSObject.Properties['Forest']) {
+    $forestValue = [string]$adDomainStatusObj.Forest
+    if ($forestValue) { $adForestName = $forestValue.Trim() }
+  }
+  if ($adDomainStatusObj.PSObject.Properties['SiteName']) {
+    $siteValue = [string]$adDomainStatusObj.SiteName
+    if ($siteValue) { $adSiteName = $siteValue.Trim() }
+  }
+  if ($adDomainStatusObj.PSObject.Properties['Errors']) {
+    foreach ($note in $adDomainStatusObj.Errors) {
+      if ($note) { $adStatusNotes.Add([string]$note) | Out-Null }
+    }
+  }
+}
+
+if (-not $adDomainJoined -and $summary.DomainJoined -ne $null) { $adDomainJoined = [bool]$summary.DomainJoined }
+if (-not $adDomainName -and $summary.Domain) { $adDomainName = $summary.Domain }
+if (-not $adForestName -and $summary.Forest) { $adForestName = $summary.Forest }
+if (-not $adSiteName -and $summary.ContainsKey('DomainSite') -and $summary.DomainSite) { $adSiteName = $summary.DomainSite }
+
+if ($null -ne $adDomainJoined) { $summary.DomainJoined = $adDomainJoined }
+if ($adDomainName) { $summary.Domain = $adDomainName }
+if ($adForestName) { $summary.Forest = $adForestName }
+if ($adSiteName) { $summary.DomainSite = $adSiteName }
+
+$adDomainJoinedResolved = if ($null -ne $adDomainJoined) { $adDomainJoined } elseif ($summary.DomainJoined -ne $null) { $summary.DomainJoined } else { $null }
+
+if ($adDomainJoinedResolved -ne $true) {
+  Add-Normal "Active Directory" "AD not applicable" "Device not joined to an Active Directory domain."
+} else {
+  $adDiscovery = ConvertFrom-JsonSafe $raw['ad_dc_discovery']
+  $adDnsSrvAttempted = 0
+  $adDnsSrvSuccess = 0
+  $adDnsSrvErrors = New-Object System.Collections.Generic.List[string]
+  $adSrvSuccessRecords = New-Object System.Collections.Generic.List[string]
+  $adNltestAttempted = 0
+  $adNltestSuccess = 0
+  $adNltestEvidence = New-Object System.Collections.Generic.List[string]
+  $adDiscoveryNotes = New-Object System.Collections.Generic.List[string]
+  $adCandidates = @()
+
+  if ($adDiscovery) {
+    if ($adDiscovery.PSObject.Properties['SrvLookups']) {
+      foreach ($lookup in $adDiscovery.SrvLookups) {
+        if (-not $lookup) { continue }
+        $adDnsSrvAttempted++
+        $succeeded = $null
+        if ($lookup.PSObject.Properties['Succeeded']) {
+          if ($lookup.Succeeded -is [bool]) {
+            $succeeded = [bool]$lookup.Succeeded
+          } else {
+            $succeeded = Get-BoolFromString $lookup.Succeeded
+          }
+        }
+        $records = @()
+        if ($lookup.PSObject.Properties['Records'] -and $lookup.Records) { $records = @($lookup.Records) }
+        if ($succeeded -eq $true -and $records.Count -gt 0) {
+          $adDnsSrvSuccess++
+          foreach ($record in $records) {
+            $targetValue = ''
+            if ($record.PSObject.Properties['Target']) {
+              $targetValue = [string]$record.Target
+            } elseif ($record.PSObject.Properties['NameTarget']) {
+              $targetValue = [string]$record.NameTarget
+            }
+            if ($targetValue) {
+              $portValue = $null
+              if ($record.PSObject.Properties['Port']) {
+                try { $portValue = [int]$record.Port } catch { $portValue = $record.Port }
+              }
+              if ($portValue) {
+                $adSrvSuccessRecords.Add("$targetValue:$portValue") | Out-Null
+              } else {
+                $adSrvSuccessRecords.Add($targetValue) | Out-Null
+              }
+            }
+          }
+        } elseif ($lookup.PSObject.Properties['Error'] -and $lookup.Error) {
+          $adDnsSrvErrors.Add([string]$lookup.Error) | Out-Null
+        }
+      }
+    }
+    if ($adDiscovery.PSObject.Properties['Commands']) {
+      foreach ($command in $adDiscovery.Commands) {
+        if (-not $command) { continue }
+        $adNltestAttempted++
+        $exitCode = $null
+        if ($command.PSObject.Properties['ExitCode']) {
+          try { $exitCode = [int]$command.ExitCode } catch { $exitCode = $command.ExitCode }
+        }
+        if ($exitCode -eq 0) { $adNltestSuccess++ }
+        $nameValue = if ($command.PSObject.Properties['Name']) { [string]$command.Name } else { 'nltest' }
+        $outputLines = @()
+        if ($command.PSObject.Properties['Output'] -and $command.Output) {
+          $outputLines = @($command.Output | Select-Object -First 8)
+        }
+        $outputText = if ($outputLines.Count -gt 0) { ($outputLines -join "`n").Trim() } else { '' }
+        $evidenceLine = if ($outputText) {
+          "{0} (Exit {1})`n{2}" -f $nameValue, (if ($exitCode -ne $null) { $exitCode } else { 'unknown' }), $outputText
+        } else {
+          "{0} (Exit {1})" -f $nameValue, (if ($exitCode -ne $null) { $exitCode } else { 'unknown' })
+        }
+        $adNltestEvidence.Add($evidenceLine) | Out-Null
+      }
+    }
+    if ($adDiscovery.PSObject.Properties['Candidates'] -and $adDiscovery.Candidates) {
+      $adCandidates = @($adDiscovery.Candidates)
+    }
+    if ($adDiscovery.PSObject.Properties['Notes']) {
+      foreach ($note in $adDiscovery.Notes) {
+        if ($note) { $adDiscoveryNotes.Add([string]$note) | Out-Null }
+      }
+    }
+  }
+
+  $dnsSrvFailure = ($adDnsSrvAttempted -gt 0 -and $adDnsSrvSuccess -eq 0)
+  $nltestFailure = ($adNltestAttempted -gt 0 -and $adNltestSuccess -eq 0)
+  $srvSuccessEvidence = if ($adSrvSuccessRecords.Count -gt 0) { ($adSrvSuccessRecords | Select-Object -First 6 | Sort-Object -Unique) -join "`n" } else { '' }
+  $srvErrorEvidence = if ($adDnsSrvErrors.Count -gt 0) { ($adDnsSrvErrors | Select-Object -First 4) -join "`n" } else { '' }
+  $nltestEvidenceText = if ($adNltestEvidence.Count -gt 0) { ($adNltestEvidence | Select-Object -First 2) -join "`n`n" } else { '' }
+
+  if ($dnsSrvFailure -and $nltestFailure) {
+    $evidenceParts = @()
+    if ($srvErrorEvidence) { $evidenceParts += $srvErrorEvidence }
+    if ($nltestEvidenceText) { $evidenceParts += $nltestEvidenceText }
+    if ($adDiscoveryNotes.Count -gt 0) { $evidenceParts += ($adDiscoveryNotes | Select-Object -First 3) }
+    $combined = if ($evidenceParts.Count -gt 0) { ($evidenceParts -join "`n`n") } else { 'No domain controllers found by nltest/SRV.' }
+    Add-Issue 'high' 'Active Directory/DNS' 'No DC discovered.' $combined
+  } elseif ($dnsSrvFailure) {
+    $evidenceParts = @()
+    if ($srvErrorEvidence) { $evidenceParts += $srvErrorEvidence }
+    if ($nltestEvidenceText) { $evidenceParts += $nltestEvidenceText }
+    $combined = if ($evidenceParts.Count -gt 0) { ($evidenceParts -join "`n`n") } else { 'SRV lookups for domain controllers returned no records.' }
+    Add-Issue 'high' 'Active Directory/DNS' 'AD SRV records not resolvable.' $combined
+  } elseif ($adDnsSrvSuccess -gt 0) {
+    $evidence = if ($srvSuccessEvidence) { $srvSuccessEvidence } else { 'SRV lookups for _ldap._tcp.dc._msdcs returned records.' }
+    Add-Normal 'Active Directory/DNS' 'GOOD AD/DNS (SRV resolves)' $evidence
+  }
+
+  $adReach = ConvertFrom-JsonSafe $raw['ad_dc_reach']
+  $requiredPorts = @(88,389,445,135)
+  if ($adReach -and $adReach.PSObject.Properties['Ports'] -and $adReach.Ports) {
+    $portList = @()
+    foreach ($p in $adReach.Ports) {
+      $parsed = ConvertTo-NullableInt $p
+      if ($null -ne $parsed) { $portList += $parsed }
+    }
+    if ($portList.Count -gt 0) { $requiredPorts = $portList }
+  }
+
+  $reachTargets = @()
+  if ($adReach -and $adReach.PSObject.Properties['Targets'] -and $adReach.Targets) {
+    $reachTargets = @($adReach.Targets)
+  }
+
+  $portEvidenceLines = New-Object System.Collections.Generic.List[string]
+  $anyTargetAllPorts = $false
+  $anyPortSuccess = $false
+
+  foreach ($target in $reachTargets) {
+    if (-not $target) { continue }
+    $targetName = if ($target.PSObject.Properties['Target'] -and $target.Target) { [string]$target.Target } else { 'DomainController' }
+    $portEntries = @()
+    if ($target.PSObject.Properties['Ports'] -and $target.Ports) { $portEntries = @($target.Ports) }
+    if ($portEntries.Count -eq 0) { continue }
+
+    $portSummaryParts = @()
+    $portsCovered = @{}
+    $targetAllOk = $true
+
+    foreach ($portEntry in $portEntries) {
+      if (-not $portEntry) { continue }
+      $portNumber = $null
+      if ($portEntry.PSObject.Properties['Port']) { $portNumber = ConvertTo-NullableInt $portEntry.Port }
+      if ($null -eq $portNumber) { continue }
+      $successValue = $false
+      if ($portEntry.PSObject.Properties['Success']) {
+        if ($portEntry.Success -is [bool]) {
+          $successValue = [bool]$portEntry.Success
+        } else {
+          $boolVal = Get-BoolFromString $portEntry.Success
+          if ($null -ne $boolVal) { $successValue = [bool]$boolVal }
+        }
+      }
+      if ($successValue) { $anyPortSuccess = $true }
+      if ($requiredPorts -contains $portNumber) {
+        $portsCovered[$portNumber] = $successValue
+        if (-not $successValue) { $targetAllOk = $false }
+      }
+      $statusLabel = if ($successValue) { 'OK' } else { 'FAIL' }
+      $errorText = ''
+      if (-not $successValue -and $portEntry.PSObject.Properties['Error'] -and $portEntry.Error) {
+        $errString = [string]$portEntry.Error
+        if ($errString) { $errorText = " ($errString)" }
+      }
+      $portSummaryParts += ("{0}:{1}{2}" -f $portNumber, $statusLabel, $errorText)
+    }
+
+    foreach ($req in $requiredPorts) {
+      if (-not $portsCovered.ContainsKey($req) -or -not $portsCovered[$req]) {
+        $targetAllOk = $false
+        break
+      }
+    }
+
+    if ($targetAllOk) { $anyTargetAllPorts = $true }
+    $portEvidenceLines.Add(("{0}: {1}" -f $targetName, ($portSummaryParts -join ', '))) | Out-Null
+  }
+
+  $sysvolJson = ConvertFrom-JsonSafe $raw['ad_sysvol']
+  $sysvolSuccess = $null
+  $netlogonSuccess = $null
+  $sysvolFailureEvidence = New-Object System.Collections.Generic.List[string]
+  $sysvolSuccessEvidence = New-Object System.Collections.Generic.List[string]
+
+  if ($sysvolJson -and $sysvolJson.PSObject.Properties['Results'] -and $sysvolJson.Results) {
+    foreach ($entry in $sysvolJson.Results) {
+      if (-not $entry) { continue }
+      $pathValue = if ($entry.PSObject.Properties['Path']) { [string]$entry.Path } else { '' }
+      $successValue = $null
+      if ($entry.PSObject.Properties['Success']) {
+        if ($entry.Success -is [bool]) {
+          $successValue = [bool]$entry.Success
+        } else {
+          $successValue = Get-BoolFromString $entry.Success
+        }
+      }
+      if ($pathValue -match '(?i)\\SYSVOL') { if ($null -ne $successValue) { $sysvolSuccess = $successValue } }
+      if ($pathValue -match '(?i)\\NETLOGON') { if ($null -ne $successValue) { $netlogonSuccess = $successValue } }
+      if ($successValue -eq $true) {
+        if ($entry.PSObject.Properties['Items'] -and $entry.Items) {
+          $items = @($entry.Items)
+          $names = @()
+          foreach ($item in $items | Select-Object -First 3) {
+            if ($item -and $item.PSObject.Properties['Name']) { $names += [string]$item.Name }
+          }
+          if ($names.Count -gt 0) {
+            $sysvolSuccessEvidence.Add(("{0}: {1}" -f $pathValue, ($names -join ', '))) | Out-Null
+          } else {
+            $sysvolSuccessEvidence.Add(("{0}: accessible" -f $pathValue)) | Out-Null
+          }
+        } else {
+          $sysvolSuccessEvidence.Add(("{0}: accessible" -f $pathValue)) | Out-Null
+        }
+      } elseif ($successValue -eq $false) {
+        $errorText = ''
+        if ($entry.PSObject.Properties['Error'] -and $entry.Error) { $errorText = [string]$entry.Error }
+        if ($errorText) {
+          $sysvolFailureEvidence.Add(("{0}: {1}" -f $pathValue, $errorText)) | Out-Null
+        } else {
+          $sysvolFailureEvidence.Add(("{0}: access failed" -f $pathValue)) | Out-Null
+        }
+      }
+    }
+  }
+
+  $timeStatusText = $raw['ad_time_status']
+  $timeSource = $null
+  $timeSkewSeconds = $null
+  $timeUnsynced = $false
+  if ($timeStatusText) {
+    $sourceMatch = [regex]::Match($timeStatusText,'(?im)^Source\s*:\s*(.+)$')
+    if ($sourceMatch.Success) {
+      $timeSource = $sourceMatch.Groups[1].Value.Trim()
+      if ($timeSource -match '(?i)local cmos clock|free-running|local clock') { $timeUnsynced = $true }
+    }
+    $skewMatch = [regex]::Match($timeStatusText,'(?im)^(?:Clock\s*Skew|ClockSkew|Phase Offset)\s*:\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*s')
+    if ($skewMatch.Success) {
+      try { $timeSkewSeconds = [math]::Abs([double]$skewMatch.Groups[1].Value) } catch {}
+    } else {
+      $altSkewMatch = [regex]::Match($timeStatusText,'(?im)Offset\s*:\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*s')
+      if ($altSkewMatch.Success) {
+        try { $timeSkewSeconds = [math]::Abs([double]$altSkewMatch.Groups[1].Value) } catch {}
+      }
+    }
+  }
+
+  $klistText = $raw['ad_klist']
+  $kerberosHasTgt = $null
+  $kerberosSkewDetected = $false
+  if ($klistText) {
+    if ($klistText -match '(?im)Ticket cache is empty|no tickets') {
+      $kerberosHasTgt = $false
+    } elseif ($klistText -match '(?im)krbtgt/([A-Z0-9\.\-@]+)') {
+      $kerberosHasTgt = $true
+    } elseif ($klistText -match '(?im)Default principal:\s*krbtgt') {
+      $kerberosHasTgt = $true
+    }
+    if ($klistText -match '(?i)KRB_AP_ERR_SKEW') { $kerberosSkewDetected = $true }
+  }
+
+  $secureText = $raw['ad_secure']
+  $secureChannelOk = $null
+  $secureChannelEvidence = @()
+  if ($secureText) {
+    $resultMatch = [regex]::Match($secureText,'(?im)^Result\s*:\s*(.+)$')
+    if ($resultMatch.Success) {
+      $resultValue = $resultMatch.Groups[1].Value.Trim()
+      if ($resultValue -is [bool]) {
+        $secureChannelOk = [bool]$resultValue
+      } else {
+        $secureBool = Get-BoolFromString $resultValue
+        if ($null -ne $secureBool) {
+          $secureChannelOk = [bool]$secureBool
+        } elseif ($resultValue -match '(?i)error') {
+          $secureChannelOk = $false
+        }
+      }
+    }
+    if ($secureText -match '(?i)NO_LOGON_SERVERS|TRUST_FAILURE|I_NetLogonControl failed') { $secureChannelOk = $false }
+    $secureChannelEvidence = @($secureText -split '\r?\n' | Select-Object -First 10)
+  }
+
+  $gpoText = $raw['ad_gpo_result']
+  $gpoApplied = $false
+  $gpoAppliedFrom = $null
+  $gpoLastApplied = $null
+  $gpoHasErrors = $false
+  $gpoErrorLines = @()
+  if ($gpoText) {
+    $appliedMatch = [regex]::Match($gpoText,'(?im)^\s*Group Policy was applied from:\s*(.+)$')
+    if ($appliedMatch.Success) { $gpoAppliedFrom = $appliedMatch.Groups[1].Value.Trim(); $gpoApplied = $true }
+    $lastAppliedMatch = [regex]::Match($gpoText,'(?im)^\s*Last time Group Policy was applied:\s*(.+)$')
+    if ($lastAppliedMatch.Success) { $gpoLastApplied = $lastAppliedMatch.Groups[1].Value.Trim(); $gpoApplied = $true }
+    $failureMatches = [regex]::Matches($gpoText,'(?im)(The processing of Group Policy failed|Group Policy infrastructure failed|An error occurred while processing|ERROR:)')
+    if ($failureMatches.Count -gt 0) {
+      $gpoHasErrors = $true
+      $gpoErrorLines = ($gpoText -split '\r?\n' | Where-Object { $_ -match '(?i)(failed|error)' } | Select-Object -First 8)
+    }
+  }
+
+  $gpoEventsText = $raw['ad_gpo_events']
+  $gpoEventsCount = 0
+  $gpoEventsEvidence = @()
+  if ($gpoEventsText) {
+    $eventMatches = [regex]::Matches($gpoEventsText,'(?im)^\s*Event ID:\s*(1058|1030)\b')
+    $gpoEventsCount = $eventMatches.Count
+    if ($gpoEventsCount -gt 0) {
+      $lines = [regex]::Split($gpoEventsText,'\r?\n')
+      for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match 'Event ID:\s*(1058|1030)') {
+          $endIndex = [math]::Min($lines.Count - 1, $i + 5)
+          $snippet = ($lines[$i..$endIndex] -join "`n").Trim()
+          if ($snippet) { $gpoEventsEvidence += $snippet }
+          if ($gpoEventsEvidence.Count -ge 2) { break }
+        }
+      }
+    }
+  }
+
+  $timeEvidenceParts = New-Object System.Collections.Generic.List[string]
+  if ($timeSource) { $timeEvidenceParts.Add("Source: $timeSource") | Out-Null }
+  if ($timeSkewSeconds -ne $null) {
+    $timeEvidenceParts.Add(("Clock skew: {0:F3}s" -f $timeSkewSeconds)) | Out-Null
+  }
+  if ($kerberosSkewDetected) {
+    $timeEvidenceParts.Add('KRB_AP_ERR_SKEW observed in Kerberos cache.') | Out-Null
+  }
+  if ($adStatusNotes.Count -gt 0) {
+    foreach ($note in $adStatusNotes | Select-Object -First 3) { $timeEvidenceParts.Add($note) | Out-Null }
+  }
+
+  $timeSkewHigh = $false
+  if ($timeSkewSeconds -ne $null -and $timeSkewSeconds -gt 300) {
+    $timeSkewHigh = $true
+    $evidence = ($timeEvidenceParts | Select-Object -First 5) -join "`n"
+    if (-not $evidence) { $evidence = 'Clock skew exceeds 5 minutes.' }
+    Add-Issue 'high' 'Active Directory/Time' 'Kerberos time skew.' $evidence
+  } elseif ($timeUnsynced -or ($timeSource -and $timeSource -match '(?i)local cmos clock|free-running|local clock')) {
+    $timeSkewHigh = $true
+    $evidence = ($timeEvidenceParts | Select-Object -First 5) -join "`n"
+    if (-not $evidence) { $evidence = 'Time service reports unsynchronized source.' }
+    Add-Issue 'high' 'Active Directory/Time' 'Kerberos time skew.' $evidence
+  } elseif ($timeSkewSeconds -ne $null -and $timeSkewSeconds -le 300) {
+    $evidence = ($timeEvidenceParts | Select-Object -First 5) -join "`n"
+    if (-not $evidence) { $evidence = 'Clock skew within acceptable range.' }
+    Add-Normal 'Active Directory/Time' 'GOOD Time (skew ≤5m)' $evidence
+  }
+
+  if ($reachTargets.Count -gt 0 -and -not $anyTargetAllPorts) {
+    $evidence = if ($portEvidenceLines.Count -gt 0) { ($portEvidenceLines | Select-Object -First 6) -join "`n" } else { 'Port probes to discovered domain controllers failed.' }
+    Add-Issue 'high' 'Active Directory/Reachability' 'Cannot reach any DC on required ports.' $evidence
+  }
+
+  if ($anyTargetAllPorts -and $sysvolSuccess -eq $true) {
+    $goodEvidenceParts = @()
+    if ($portEvidenceLines.Count -gt 0) { $goodEvidenceParts += ($portEvidenceLines[0]) }
+    if ($sysvolSuccessEvidence.Count -gt 0) { $goodEvidenceParts += ($sysvolSuccessEvidence | Select-Object -First 1) }
+    $goodEvidence = if ($goodEvidenceParts.Count -gt 0) { ($goodEvidenceParts -join "`n") } else { 'Domain controller ports reachable and SYSVOL accessible.' }
+    Add-Normal 'Active Directory/Reachability' 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' $goodEvidence
+  }
+
+  if ($anyTargetAllPorts -and (($sysvolSuccess -eq $false) -or ($netlogonSuccess -eq $false))) {
+    $evidenceParts = @()
+    if ($sysvolFailureEvidence.Count -gt 0) { $evidenceParts += ($sysvolFailureEvidence | Select-Object -First 4) }
+    elseif ($sysvolSuccessEvidence.Count -gt 0) { $evidenceParts += ($sysvolSuccessEvidence | Select-Object -First 2) }
+    $evidence = if ($evidenceParts.Count -gt 0) { ($evidenceParts -join "`n") } else { 'SYSVOL/NETLOGON access did not succeed despite port connectivity.' }
+    Add-Issue 'medium' 'Active Directory/Reachability' 'Domain shares unreachable (DFS/DNS/auth).' $evidence
+  }
+
+  if ($secureChannelOk -eq $false -or ($secureText -and $secureText -match '(?i)NO_LOGON_SERVERS|TRUST_FAILURE')) {
+    $evidence = if ($secureChannelEvidence.Count -gt 0) { ($secureChannelEvidence | Select-Object -First 8) -join "`n" } else { 'Secure channel validation failed.' }
+    Add-Issue 'high' 'Active Directory/Secure Channel' 'Broken machine secure channel.' $evidence
+  } elseif ($secureChannelOk -eq $true) {
+    $evidence = if ($secureChannelEvidence.Count -gt 0) { ($secureChannelEvidence | Select-Object -First 6) -join "`n" } else { 'Secure channel validated with Test-ComputerSecureChannel.' }
+    Add-Normal 'Active Directory/Secure Channel' 'GOOD SecureChannel (verified)' $evidence
+  }
+
+  if ($kerberosHasTgt -eq $false) {
+    $kerbEvidence = if ($klistText) { ($klistText -split '\r?\n' | Select-Object -First 12) -join "`n" } else { 'klist output not captured.' }
+    Add-Issue 'medium' 'Active Directory/Kerberos' 'No Kerberos TGT present (likely offline or auth failure).' $kerbEvidence
+  }
+
+  if ($timeSkewHigh -and $kerberosSkewDetected -and -not ($timeEvidenceParts | Where-Object { $_ -match 'KRB_AP_ERR_SKEW' })) {
+    $timeEvidenceParts.Add('Kerberos reported KRB_AP_ERR_SKEW.') | Out-Null
+  }
+
+  if ($gpoHasErrors -and $gpoErrorLines.Count -gt 0) {
+    $message = 'Group Policy processing reported errors.'
+    if ($timeSkewHigh) { $message += ' (related to time skew)' }
+    Add-Issue 'medium' 'Active Directory/GPO' $message (($gpoErrorLines -join "`n"))
+  }
+
+  if ($gpoEventsCount -gt 0) {
+    $gpoSeverity = 'medium'
+    if ($gpoEventsCount -ge 3 -and ($sysvolSuccess -eq $false -or $netlogonSuccess -eq $false)) {
+      $gpoSeverity = 'high'
+    }
+    $message = 'GPO processing errors detected (Event IDs 1058/1030).'
+    if ($timeSkewHigh) { $message += ' (related to time skew)' }
+    $evidence = if ($gpoEventsEvidence.Count -gt 0) { ($gpoEventsEvidence -join "`n`n") } else { 'Recent System log includes 1058/1030 events.' }
+    Add-Issue $gpoSeverity 'Active Directory/GPO' $message $evidence
+  }
+
+  if (-not $gpoHasErrors -and $gpoEventsCount -eq 0 -and $gpoApplied) {
+    $evidenceParts = @()
+    if ($gpoAppliedFrom) { $evidenceParts += ("Applied from: $gpoAppliedFrom") }
+    if ($gpoLastApplied) { $evidenceParts += ("Last applied: $gpoLastApplied") }
+    if ($evidenceParts.Count -eq 0) { $evidenceParts += 'Group Policy applied successfully.' }
+    Add-Normal 'Active Directory/GPO' 'GOOD GPO (processed successfully)' ($evidenceParts -join "`n")
   }
 }
 
@@ -4105,6 +4608,7 @@ function Get-NormalCategory {
   switch -Regex ($trimmed) {
     '^(?i)services$'        { return 'Services' }
     '^(?i)(outlook|office)$' { return 'Office' }
+    '^(?i)(active directory|ad)$' { return 'Active Directory' }
     '^(?i)(network|dns)$'    { return 'Network' }
     '^(?i)security$'         { return 'Security' }
     '^(?i)system$'           { return 'System' }
@@ -4180,7 +4684,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Services','Office','Network','System','Hardware','Security')
+  $categoryOrder = @('Services','Office','Active Directory','Network','System','Hardware','Security')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
