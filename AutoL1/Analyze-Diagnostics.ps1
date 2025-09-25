@@ -2632,7 +2632,7 @@ if ($hvciRunning) {
 } elseif ($deviceGuardData) {
   Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not supported' 'info' 'Device Guard reports HVCI not available.' $dgEvidence
 } else {
-  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not captured' 'warning' 'Device Guard status unavailable.' ''
+  Add-SecurityHeuristic 'Memory integrity (HVCI)' 'Not captured' 'warning' 'Device Guard status unavailable.' '' -SkipIssue
   Add-Issue 'medium' 'Security/HVCI' 'Memory integrity (HVCI) not captured. Collect Device Guard diagnostics.' ''
 }
 
@@ -2669,7 +2669,7 @@ if ($dmaText) {
       Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus $health '' $dmaEvidence
     }
   } else {
-    Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence
+    Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence -SkipIssue
     Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' $dmaEvidence
   }
 } else {
@@ -2684,7 +2684,7 @@ if ($securityFirewallSummary) {
     Add-SecurityHeuristic 'Windows Firewall' 'Profile(s) OFF' 'warning' 'One or more firewall profiles disabled.' $securityFirewallSummary.Summary
   }
 } else {
-  Add-SecurityHeuristic 'Windows Firewall' 'Not captured' 'warning' 'Firewall status output missing.' ''
+  Add-SecurityHeuristic 'Windows Firewall' 'Not captured' 'warning' 'Firewall status output missing.' '' -SkipIssue
   Add-Issue 'high' 'Security/Firewall' 'Windows Firewall not captured. Collect firewall profile configuration.' ''
 }
 
@@ -2859,7 +2859,7 @@ if ($cfgEnabled -and $depEnabled -and $aslrEnabled) {
   Add-SecurityHeuristic 'Exploit protection (system)' 'Relaxed' 'warning' $detailText $exploitEvidence -SkipIssue
   Add-Issue 'medium' 'Security/ExploitProtection' ('Exploit protection mitigations not fully enabled ({0}).' -f $detailText) $exploitEvidence
 } else {
-  Add-SecurityHeuristic 'Exploit protection (system)' 'Not captured' 'warning' 'Get-ProcessMitigation output unavailable.' ''
+  Add-SecurityHeuristic 'Exploit protection (system)' 'Not captured' 'warning' 'Get-ProcessMitigation output unavailable.' '' -SkipIssue
   Add-Issue 'medium' 'Security/ExploitProtection' 'Exploit Protection not captured. Collect Get-ProcessMitigation output.' ''
 }
 
@@ -2965,7 +2965,7 @@ $lapsEvidence = $lapsEvidenceLines -join "`n"
 if ($lapsEnabled) {
   Add-SecurityHeuristic 'LAPS/PLAP' 'Policy detected' 'good' '' $lapsEvidence
 } else {
-  Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence
+  Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence -SkipIssue
   Add-Issue 'high' 'Security/LAPS' 'LAPS/PLAP not detected. Enforce password management policy.' $lapsEvidence
 }
 
@@ -3096,11 +3096,11 @@ if ($macroSecurityStatus.Count -gt 0) {
   Add-SecurityHeuristic 'Office macro notifications' (if ($warnOk) { 'Strict' } else { 'Allows macros' }) (if ($warnOk) { 'good' } else { 'warning' }) '' $warnEvidence -Area 'Security/Office'
   Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence -Area 'Security/Office'
 } else {
-  Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' '' -Area 'Security/Office' -SkipIssue
   Add-Issue 'medium' 'Security/Office' 'Office MOTW macro blocking - no data. Confirm macro policies.' ''
-  Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' '' -Area 'Security/Office' -SkipIssue
   Add-Issue 'low' 'Security/Office' 'Office macro notifications - no data. Collect policy details.' ''
-  Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' '' -Area 'Security/Office' -SkipIssue
   Add-Issue 'low' 'Security/Office' 'Office Protected View - no data. Verify Protected View policies.' ''
 }
 
