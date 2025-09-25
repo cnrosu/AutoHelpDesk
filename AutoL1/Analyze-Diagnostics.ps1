@@ -485,6 +485,528 @@ function Test-IsRFC1918 {
   return $false
 }
 
+function Normalize-IpconfigKey {
+  param([string]$Key)
+
+  if (-not $Key) { return '' }
+
+  $clean = $Key
+  $clean = $clean -replace '\.+', ' '
+  $clean = $clean -replace '\s{2,}', ' '
+  return $clean.Trim()
+}
+
+function Normalize-MacAddress {
+  param([string]$Value)
+
+  if (-not $Value) { return '' }
+
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return '' }
+
+  $normalized = $trimmed -replace '[:\-\.]', ''
+  return $normalized.ToUpperInvariant()
+}
+
+function ConvertTo-DateTimeSafe {
+  param([string]$Text)
+
+  if (-not $Text) { return $null }
+
+  $trimmed = $Text.Trim()
+  if (-not $trimmed) { return $null }
+
+  if ($trimmed -match '^\d{14}\.\d{6}[-+]\d{3}$') {
+    try {
+      return [System.Management.ManagementDateTimeConverter]::ToDateTime($trimmed)
+    } catch {
+    }
+  }
+
+  $cultures = @([System.Globalization.CultureInfo]::CurrentCulture, [System.Globalization.CultureInfo]::InvariantCulture)
+  foreach ($culture in $cultures) {
+    try {
+      return [datetime]::Parse($trimmed, $culture)
+    } catch {
+    }
+  }
+
+  return $null
+}
+
+function Format-TimeSpanFriendly {
+  param([TimeSpan]$Span)
+
+  if ($null -eq $Span) { return '' }
+
+  $seconds = [math]::Abs($Span.TotalSeconds)
+  if ($seconds -ge (86400 * 2)) { return ('{0:N1} days' -f $Span.TotalDays) }
+  if ($seconds -ge 3600) { return ('{0:N1} hours' -f $Span.TotalHours) }
+  return ('{0:N0} minutes' -f $Span.TotalMinutes)
+}
+
+function Parse-FormatListArray {
+  param([string]$Value)
+
+  $results = @()
+  if (-not $Value) { return $results }
+
+  $trimmed = $Value.Trim()
+  if (-not $trimmed) { return $results }
+
+  if ($trimmed.StartsWith('{') -and $trimmed.EndsWith('}')) {
+    $trimmed = $trimmed.Trim('{','}')
+  }
+
+  $parts = [regex]::Split($trimmed,'[,\r\n]+')
+  foreach ($part in $parts) {
+    if (-not $part) { continue }
+    $candidate = $part.Trim()
+    if (-not $candidate) { continue }
+    $results += $candidate
+  }
+
+  return $results
+}
+
+function Parse-IpconfigAdapters {
+  param([string]$Text)
+
+  $adapters = New-Object System.Collections.Generic.List[pscustomobject]
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $adapters }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $currentName = $null
+  $buffer = New-Object System.Collections.Generic.List[string]
+
+  foreach ($line in $lines) {
+    if ($line -match '^\S.*:$') {
+      if ($currentName -and $buffer.Count -gt 0) {
+        $block = ($buffer -join "`n").Trim()
+        if ($block) {
+          $adapters.Add([pscustomobject]@{ Name = $currentName; Block = $block })
+        }
+      }
+      $currentName = $line.TrimEnd(':').Trim()
+      $buffer = New-Object System.Collections.Generic.List[string]
+      continue
+    }
+
+    if ($buffer -and $line -ne $null) { $buffer.Add($line) }
+  }
+
+  if ($currentName -and $buffer.Count -gt 0) {
+    $block = ($buffer -join "`n").Trim()
+    if ($block) {
+      $adapters.Add([pscustomobject]@{ Name = $currentName; Block = $block })
+    }
+  }
+
+  $results = New-Object System.Collections.Generic.List[pscustomobject]
+  foreach ($adapter in $adapters) {
+    if (-not $adapter) { continue }
+    $map = @{}
+    $currentKey = $null
+    $blockLines = [regex]::Split($adapter.Block,'\r?\n')
+    foreach ($rawLine in $blockLines) {
+      if ($null -eq $rawLine) { continue }
+      $match = [regex]::Match($rawLine,'^\s*([^:]+?)\s*:\s*(.*)$')
+      if ($match.Success) {
+        $key = Normalize-IpconfigKey $match.Groups[1].Value
+        $value = $match.Groups[2].Value.Trim()
+        if ($key) {
+          $map[$key] = $value
+          $currentKey = $key
+        }
+        continue
+      }
+
+      if ($currentKey -and $rawLine.Trim()) {
+        $existing = if ($map.ContainsKey($currentKey)) { $map[$currentKey] } else { '' }
+        if ($existing) {
+          $map[$currentKey] = $existing + "`n" + $rawLine.Trim()
+        } else {
+          $map[$currentKey] = $rawLine.Trim()
+        }
+      }
+    }
+
+    $description = if ($map.ContainsKey('Description')) { $map['Description'].Trim() } else { '' }
+    $mac = if ($map.ContainsKey('Physical Address')) { $map['Physical Address'].Trim() } else { '' }
+    $dhcpEnabled = $null
+    if ($map.ContainsKey('DHCP Enabled')) { $dhcpEnabled = ConvertTo-NullableBool $map['DHCP Enabled'] }
+
+    $dhcpServers = @()
+    if ($map.ContainsKey('DHCP Server')) {
+      $dhcpServers = ([regex]::Split($map['DHCP Server'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+
+    $leaseObtainedText = if ($map.ContainsKey('Lease Obtained')) { $map['Lease Obtained'] } else { '' }
+    $leaseExpiresText  = if ($map.ContainsKey('Lease Expires')) { $map['Lease Expires'] } else { '' }
+    $leaseObtained = ConvertTo-DateTimeSafe $leaseObtainedText
+    $leaseExpires  = ConvertTo-DateTimeSafe $leaseExpiresText
+
+    $gatewayList = @()
+    if ($map.ContainsKey('Default Gateway')) {
+      $gatewayList = ([regex]::Split($map['Default Gateway'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+
+    $dnsList = @()
+    if ($map.ContainsKey('DNS Servers')) {
+      $dnsList = ([regex]::Split($map['DNS Servers'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+
+    $ipv4 = New-Object System.Collections.Generic.List[string]
+    foreach ($key in $map.Keys) {
+      if ($key -match 'IPv4 Address' -or $key -match 'Autoconfiguration IPv4 Address') {
+        $raw = $map[$key]
+        if ($raw) {
+          $parts = [regex]::Split($raw,'\r?\n')
+          foreach ($part in $parts) {
+            $candidate = $part.Trim()
+            if (-not $candidate) { continue }
+            $candidate = ($candidate -replace '\(Preferred\)','').Trim()
+            if (-not $candidate) { continue }
+            $ipv4.Add($candidate)
+          }
+        }
+      }
+    }
+
+    $mediaState = if ($map.ContainsKey('Media State')) { $map['Media State'].Trim() } else { '' }
+
+    $results.Add([pscustomobject]@{
+      Name               = $adapter.Name
+      Description        = $description
+      DescriptionKey     = if ($description) { $description.ToLowerInvariant() } else { '' }
+      MacText            = $mac
+      MacNormalized      = Normalize-MacAddress $mac
+      DhcpEnabled        = $dhcpEnabled
+      DhcpServers        = $dhcpServers
+      LeaseObtained      = $leaseObtained
+      LeaseObtainedText  = $leaseObtainedText
+      LeaseExpires       = $leaseExpires
+      LeaseExpiresText   = $leaseExpiresText
+      DefaultGateways    = $gatewayList
+      DnsServers         = $dnsList
+      IPv4Addresses      = $ipv4
+      MediaState         = $mediaState
+      RawBlock           = $adapter.Block
+    })
+  }
+
+  return $results
+}
+
+function Parse-NetworkAdapterConfigs {
+  param([string]$Text)
+
+  $results = New-Object System.Collections.Generic.List[pscustomobject]
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $results }
+
+  $pattern = '(?ms)^\s*Description\s*:.*?(?=^\s*Description\s*:|\z)'
+  $matches = [regex]::Matches($Text, $pattern)
+  foreach ($match in $matches) {
+    if (-not $match) { continue }
+    $block = $match.Value
+    if (-not $block) { continue }
+
+    $props = Parse-KeyValueBlock $block
+    if (-not $props) { continue }
+
+    $description = if ($props.ContainsKey('Description')) { $props['Description'].Trim() } else { '' }
+    $mac = if ($props.ContainsKey('MACAddress')) { $props['MACAddress'].Trim() } else { '' }
+    $index = if ($props.ContainsKey('Index')) { $props['Index'].Trim() } else { '' }
+    $dhcpEnabled = $null
+    if ($props.ContainsKey('DHCPEnabled')) { $dhcpEnabled = ConvertTo-NullableBool $props['DHCPEnabled'] }
+
+    $dhcpServerValue = if ($props.ContainsKey('DHCPServer')) { $props['DHCPServer'].Trim() } else { '' }
+    $dhcpServers = @()
+    if ($dhcpServerValue) { $dhcpServers = Parse-FormatListArray $dhcpServerValue }
+
+    $leaseObtainedRaw = if ($props.ContainsKey('DHCPLeaseObtained')) { $props['DHCPLeaseObtained'] } else { '' }
+    $leaseExpiresRaw  = if ($props.ContainsKey('DHCPLeaseExpires')) { $props['DHCPLeaseExpires'] } else { '' }
+    $leaseObtained = ConvertTo-DateTimeSafe $leaseObtainedRaw
+    $leaseExpires  = ConvertTo-DateTimeSafe $leaseExpiresRaw
+
+    $gatewayList = @()
+    if ($props.ContainsKey('DefaultIPGateway')) { $gatewayList = Parse-FormatListArray $props['DefaultIPGateway'] }
+
+    $dnsList = @()
+    if ($props.ContainsKey('DnsServerSearchOrder')) { $dnsList = Parse-FormatListArray $props['DnsServerSearchOrder'] }
+
+    $ipAddresses = @()
+    if ($props.ContainsKey('IPAddress')) { $ipAddresses = Parse-FormatListArray $props['IPAddress'] }
+
+    $ipEnabled = $null
+    if ($props.ContainsKey('IPEnabled')) { $ipEnabled = ConvertTo-NullableBool $props['IPEnabled'] }
+
+    $uniqueKey = ''
+    if ($index) {
+      $uniqueKey = "INDEX:$index"
+    } elseif ($mac) {
+      $uniqueKey = "MAC:" + (Normalize-MacAddress $mac)
+    } elseif ($description) {
+      $uniqueKey = "DESC:" + $description
+    } else {
+      $uniqueKey = [guid]::NewGuid().ToString()
+    }
+
+    $results.Add([pscustomobject]@{
+      Description        = $description
+      DescriptionKey     = if ($description) { $description.ToLowerInvariant() } else { '' }
+      MacText            = $mac
+      MacNormalized      = Normalize-MacAddress $mac
+      Index              = $index
+      DhcpEnabled        = $dhcpEnabled
+      DhcpServers        = $dhcpServers
+      LeaseObtained      = $leaseObtained
+      LeaseObtainedRaw   = $leaseObtainedRaw
+      LeaseExpires       = $leaseExpires
+      LeaseExpiresRaw    = $leaseExpiresRaw
+      DefaultGateways    = $gatewayList
+      DnsServers         = $dnsList
+      IPAddresses        = $ipAddresses
+      IPEnabled          = $ipEnabled
+      UniqueKey          = $uniqueKey
+      RawBlock           = $block.Trim()
+    })
+  }
+
+  return $results
+}
+
+function Combine-DhcpAdapterData {
+  param(
+    [System.Collections.Generic.List[pscustomobject]]$IpconfigAdapters,
+    [System.Collections.Generic.List[pscustomobject]]$NicConfigs
+  )
+
+  $results = New-Object System.Collections.Generic.List[pscustomobject]
+  if (-not $IpconfigAdapters) { $IpconfigAdapters = New-Object System.Collections.Generic.List[pscustomobject] }
+  if (-not $NicConfigs) { $NicConfigs = New-Object System.Collections.Generic.List[pscustomobject] }
+
+  $nicByMac = @{}
+  $nicByDesc = @{}
+  foreach ($nic in $NicConfigs) {
+    if (-not $nic) { continue }
+    if ($nic.MacNormalized) {
+      if (-not $nicByMac.ContainsKey($nic.MacNormalized)) { $nicByMac[$nic.MacNormalized] = $nic }
+    }
+    if ($nic.DescriptionKey) {
+      if (-not $nicByDesc.ContainsKey($nic.DescriptionKey)) { $nicByDesc[$nic.DescriptionKey] = $nic }
+    }
+  }
+
+  $matchedKeys = New-Object System.Collections.Generic.HashSet[string]
+
+  foreach ($ipAdapter in $IpconfigAdapters) {
+    if (-not $ipAdapter) { continue }
+    $matchedNic = $null
+    if ($ipAdapter.MacNormalized -and $nicByMac.ContainsKey($ipAdapter.MacNormalized)) {
+      $matchedNic = $nicByMac[$ipAdapter.MacNormalized]
+    } elseif ($ipAdapter.DescriptionKey -and $nicByDesc.ContainsKey($ipAdapter.DescriptionKey)) {
+      $matchedNic = $nicByDesc[$ipAdapter.DescriptionKey]
+    }
+
+    if ($matchedNic -and $matchedNic.UniqueKey) {
+      [void]$matchedKeys.Add($matchedNic.UniqueKey)
+    }
+
+    $dhcpEnabled = $ipAdapter.DhcpEnabled
+    if ($null -eq $dhcpEnabled -and $matchedNic) { $dhcpEnabled = $matchedNic.DhcpEnabled }
+
+    $dhcpServers = New-Object System.Collections.Generic.List[string]
+    foreach ($server in $ipAdapter.DhcpServers) { if ($server) { $dhcpServers.Add($server) } }
+    if ($matchedNic -and $matchedNic.DhcpServers) {
+      foreach ($server in $matchedNic.DhcpServers) { if ($server -and -not ($dhcpServers -contains $server)) { $dhcpServers.Add($server) } }
+    }
+
+    $leaseObtained = $ipAdapter.LeaseObtained
+    $leaseObtainedText = $ipAdapter.LeaseObtainedText
+    if (-not $leaseObtained -and $matchedNic -and $matchedNic.LeaseObtained) {
+      $leaseObtained = $matchedNic.LeaseObtained
+      $leaseObtainedText = $matchedNic.LeaseObtainedRaw
+    }
+
+    $leaseExpires = $ipAdapter.LeaseExpires
+    $leaseExpiresText = $ipAdapter.LeaseExpiresText
+    if (-not $leaseExpires -and $matchedNic -and $matchedNic.LeaseExpires) {
+      $leaseExpires = $matchedNic.LeaseExpires
+      $leaseExpiresText = $matchedNic.LeaseExpiresRaw
+    }
+
+    $gateways = New-Object System.Collections.Generic.List[string]
+    foreach ($gw in $ipAdapter.DefaultGateways) { if ($gw) { $gateways.Add($gw) } }
+    if ($matchedNic -and $matchedNic.DefaultGateways) {
+      foreach ($gw in $matchedNic.DefaultGateways) { if ($gw -and -not ($gateways -contains $gw)) { $gateways.Add($gw) } }
+    }
+
+    $dnsServers = New-Object System.Collections.Generic.List[string]
+    foreach ($dns in $ipAdapter.DnsServers) { if ($dns) { $dnsServers.Add($dns) } }
+    if ($matchedNic -and $matchedNic.DnsServers) {
+      foreach ($dns in $matchedNic.DnsServers) { if ($dns -and -not ($dnsServers -contains $dns)) { $dnsServers.Add($dns) } }
+    }
+
+    $ipv4Addresses = New-Object System.Collections.Generic.List[string]
+    foreach ($addr in $ipAdapter.IPv4Addresses) { if ($addr) { $ipv4Addresses.Add($addr) } }
+    if ($ipv4Addresses.Count -eq 0 -and $matchedNic -and $matchedNic.IPAddresses) {
+      foreach ($addr in $matchedNic.IPAddresses) {
+        if (-not $addr) { continue }
+        $trimmedAddr = $addr.Trim()
+        if ($trimmedAddr -match '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') { $ipv4Addresses.Add($trimmedAddr) }
+      }
+    }
+
+    $hasApipa = $false
+    foreach ($addr in $ipv4Addresses) {
+      if ($addr -like '169.254.*') { $hasApipa = $true; break }
+    }
+
+    $macText = if ($ipAdapter.MacText) { $ipAdapter.MacText } elseif ($matchedNic) { $matchedNic.MacText } else { '' }
+    $macNorm = if ($ipAdapter.MacNormalized) { $ipAdapter.MacNormalized } elseif ($matchedNic) { $matchedNic.MacNormalized } else { '' }
+
+    $dnsArray = @($dnsServers.ToArray())
+    $gatewayArray = @($gateways.ToArray())
+    $ipv4Array = @($ipv4Addresses.ToArray())
+    $dhcpArray = @($dhcpServers.ToArray())
+
+    $leaseDuration = $null
+    if ($leaseObtained -and $leaseExpires -and $leaseExpires -gt $leaseObtained) {
+      $leaseDuration = New-TimeSpan -Start $leaseObtained -End $leaseExpires
+    }
+
+    $results.Add([pscustomobject]@{
+      DisplayName          = $ipAdapter.Name
+      Description          = $ipAdapter.Description
+      MacText              = $macText
+      MacNormalized        = $macNorm
+      DhcpEnabled          = $dhcpEnabled
+      DhcpServers          = $dhcpArray
+      LeaseObtained        = $leaseObtained
+      LeaseObtainedRaw     = $leaseObtainedText
+      LeaseExpires         = $leaseExpires
+      LeaseExpiresRaw      = $leaseExpiresText
+      LeaseDuration        = $leaseDuration
+      DefaultGateways      = $gatewayArray
+      DnsServers           = $dnsArray
+      IPv4Addresses        = $ipv4Array
+      HasApipa             = $hasApipa
+      MediaState           = $ipAdapter.MediaState
+      IpconfigRaw          = $ipAdapter.RawBlock
+      NicRaw               = if ($matchedNic) { $matchedNic.RawBlock } else { '' }
+      NicIpEnabled         = if ($matchedNic) { $matchedNic.IPEnabled } else { $null }
+      Source               = if ($matchedNic) { 'ipconfig + Win32_NetworkAdapterConfiguration' } else { 'ipconfig' }
+    })
+  }
+
+  foreach ($nic in $NicConfigs) {
+    if (-not $nic) { continue }
+    if ($matchedKeys.Contains($nic.UniqueKey)) { continue }
+
+    $dhcpServers = @($nic.DhcpServers | Where-Object { $_ })
+    $ipv4Addresses = @()
+    foreach ($addr in $nic.IPAddresses) {
+      if ($addr -match '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') { $ipv4Addresses += $addr.Trim() }
+    }
+
+    $hasApipa = $false
+    foreach ($addr in $ipv4Addresses) {
+      if ($addr -like '169.254.*') { $hasApipa = $true; break }
+    }
+
+    $leaseDuration = $null
+    if ($nic.LeaseObtained -and $nic.LeaseExpires -and $nic.LeaseExpires -gt $nic.LeaseObtained) {
+      $leaseDuration = New-TimeSpan -Start $nic.LeaseObtained -End $nic.LeaseExpires
+    }
+
+    $results.Add([pscustomobject]@{
+      DisplayName          = if ($nic.Description) { $nic.Description } else { "Adapter Index $($nic.Index)" }
+      Description          = $nic.Description
+      MacText              = $nic.MacText
+      MacNormalized        = $nic.MacNormalized
+      DhcpEnabled          = $nic.DhcpEnabled
+      DhcpServers          = $dhcpServers
+      LeaseObtained        = $nic.LeaseObtained
+      LeaseObtainedRaw     = $nic.LeaseObtainedRaw
+      LeaseExpires         = $nic.LeaseExpires
+      LeaseExpiresRaw      = $nic.LeaseExpiresRaw
+      LeaseDuration        = $leaseDuration
+      DefaultGateways      = @($nic.DefaultGateways | Where-Object { $_ })
+      DnsServers           = @($nic.DnsServers | Where-Object { $_ })
+      IPv4Addresses        = $ipv4Addresses
+      HasApipa             = $hasApipa
+      MediaState           = ''
+      IpconfigRaw          = ''
+      NicRaw               = $nic.RawBlock
+      NicIpEnabled         = $nic.IPEnabled
+      Source               = 'Win32_NetworkAdapterConfiguration'
+    })
+  }
+
+  return $results
+}
+
+function Get-DhcpAdapterEvidence {
+  param($Adapter)
+
+  if (-not $Adapter) { return '' }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  if ($Adapter.DisplayName) { $lines.Add("Adapter: $($Adapter.DisplayName)") }
+  if ($Adapter.Description) { $lines.Add("Description: $($Adapter.Description)") }
+  if ($Adapter.MacText) { $lines.Add("MAC: $($Adapter.MacText)") }
+
+  $dhcpEnabledText = 'Unknown'
+  if ($Adapter.DhcpEnabled -eq $true) { $dhcpEnabledText = 'Yes' }
+  elseif ($Adapter.DhcpEnabled -eq $false) { $dhcpEnabledText = 'No' }
+  $lines.Add("DHCP Enabled: $dhcpEnabledText")
+
+  $serverText = if ($Adapter.DhcpServers -and $Adapter.DhcpServers.Count -gt 0) { $Adapter.DhcpServers -join ', ' } else { '(blank)' }
+  $lines.Add("DHCP Server(s): $serverText")
+
+  if ($Adapter.LeaseObtained) {
+    $lines.Add("Lease Obtained: $($Adapter.LeaseObtained.ToString('u'))")
+  } elseif ($Adapter.LeaseObtainedRaw) {
+    $lines.Add("Lease Obtained: $($Adapter.LeaseObtainedRaw)")
+  }
+
+  if ($Adapter.LeaseExpires) {
+    $lines.Add("Lease Expires: $($Adapter.LeaseExpires.ToString('u'))")
+  } elseif ($Adapter.LeaseExpiresRaw) {
+    $lines.Add("Lease Expires: $($Adapter.LeaseExpiresRaw)")
+  }
+
+  if ($Adapter.DefaultGateways -and $Adapter.DefaultGateways.Count -gt 0) {
+    $lines.Add("Default Gateway: " + ($Adapter.DefaultGateways -join ', '))
+  }
+  if ($Adapter.DnsServers -and $Adapter.DnsServers.Count -gt 0) {
+    $lines.Add("DNS Servers: " + ($Adapter.DnsServers -join ', '))
+  }
+  if ($Adapter.IPv4Addresses -and $Adapter.IPv4Addresses.Count -gt 0) {
+    $lines.Add("IPv4: " + ($Adapter.IPv4Addresses -join ', '))
+  }
+  if ($Adapter.MediaState) {
+    $lines.Add("Media State: $($Adapter.MediaState)")
+  }
+
+  if ($Adapter.Source) { $lines.Add("Source: $($Adapter.Source)") }
+
+  if ($Adapter.IpconfigRaw) {
+    $lines.Add('')
+    $lines.Add('ipconfig excerpt:')
+    $lines.Add($Adapter.IpconfigRaw)
+  }
+
+  if ($Adapter.NicRaw) {
+    $lines.Add('')
+    $lines.Add('NetworkAdapterConfiguration excerpt:')
+    $lines.Add($Adapter.NicRaw)
+  }
+
+  return ($lines -join "`n")
+}
+
 function Test-ServerAuthoritative {
   param(
     [string]$Server,
@@ -643,6 +1165,16 @@ foreach($key in $raw.Keys){
     $snippet = $raw[$key].Substring(0,[Math]::Min(80,$raw[$key].Length)).Replace("`r"," ").Replace("`n"," ")
     Write-Verbose ("  {0}: {1}" -f $key, $snippet)
   }
+}
+
+# Preprocess network adapter data for DHCP heuristics
+$ipconfigAdapters = Parse-IpconfigAdapters $raw['ipconfig']
+$nicConfigAdapters = Parse-NetworkAdapterConfigs $raw['nic_configs']
+$dhcpAdapterDiagnostics = Combine-DhcpAdapterData -IpconfigAdapters $ipconfigAdapters -NicConfigs $nicConfigAdapters
+$observedDhcpServers = @()
+ $dhcpApipaGatewayClusters = @()
+if ($dhcpAdapterDiagnostics) {
+  $observedDhcpServers = @($dhcpAdapterDiagnostics | ForEach-Object { $_.DhcpServers } | Where-Object { $_ } | Select-Object -Unique)
 }
 
 # issues list
@@ -1714,6 +2246,120 @@ if ($raw['ipconfig']){
 
   if (-not $dnsContextHandled -and $dnsServers -and $dnsServers.Count -gt 0) {
     Add-Normal "Network/DNS" "DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
+  }
+}
+
+# DHCP adapter health heuristics
+if ($dhcpAdapterDiagnostics -and $dhcpAdapterDiagnostics.Count -gt 0) {
+  $dhcpNow = Get-Date
+  $apipaGatewayMap = @{}
+
+  foreach ($adapter in $dhcpAdapterDiagnostics) {
+    if (-not $adapter) { continue }
+
+    $dhcpEnabled = $adapter.DhcpEnabled
+    $dhcpServers = if ($adapter.DhcpServers) { $adapter.DhcpServers } else { @() }
+    $primaryServer = if ($dhcpServers.Count -gt 0) { $dhcpServers[0] } else { '' }
+    $validServer = $false
+    if ($primaryServer) {
+      if ($primaryServer -notmatch '^(0\.0\.0\.0|::|::0)$') { $validServer = $true }
+    }
+
+    $mediaState = if ($adapter.MediaState) { [string]$adapter.MediaState } else { '' }
+    $isDisconnected = $false
+    if ($mediaState -and $mediaState -match '(?i)disconnected') { $isDisconnected = $true }
+
+    $hasIpv4 = ($adapter.IPv4Addresses -and $adapter.IPv4Addresses.Count -gt 0)
+    $likelyActive = $hasIpv4 -or ($adapter.NicIpEnabled -eq $true)
+
+    $evidence = Get-DhcpAdapterEvidence $adapter
+
+    if ($dhcpEnabled -eq $true -and $likelyActive -and -not $isDisconnected) {
+      if (-not $validServer) {
+        Add-Issue 'high' 'Network/DHCP' ("DHCP enabled on {0} but no server address was reported." -f $adapter.DisplayName) $evidence
+      }
+
+      if ($adapter.LeaseExpires) {
+        $remaining = $adapter.LeaseExpires - $dhcpNow
+        if ($remaining.TotalMinutes -le 0) {
+          Add-Issue 'critical' 'Network/DHCP' ("DHCP lease expired on {0}; client is relying on a stale address." -f $adapter.DisplayName) $evidence
+        } elseif ($remaining.TotalMinutes -le 30) {
+          $window = Format-TimeSpanFriendly $remaining
+          Add-Issue 'high' 'Network/DHCP' ("DHCP lease for {0} expires in {1}; renewals appear to be failing." -f $adapter.DisplayName, $window) $evidence
+        }
+      }
+
+      if ($adapter.LeaseObtained) {
+        $age = $dhcpNow - $adapter.LeaseObtained
+        if ($age.TotalSeconds -ge 0) {
+          $staleThresholdDays = $null
+          if ($adapter.LeaseDuration) {
+            $durationDays = $adapter.LeaseDuration.TotalDays
+            if ($durationDays -le (8.0 / 24.0)) { $staleThresholdDays = 7 }
+            elseif ($durationDays -le 1) { $staleThresholdDays = 10 }
+            elseif ($durationDays -le 3) { $staleThresholdDays = 14 }
+            elseif ($durationDays -le 7) { $staleThresholdDays = 21 }
+            elseif ($durationDays -le 14) { $staleThresholdDays = 30 }
+          } else {
+            $staleThresholdDays = 7
+          }
+
+          if ($staleThresholdDays -ne $null -and $age.TotalDays -ge $staleThresholdDays) {
+            $ageLabel = Format-TimeSpanFriendly $age
+            $leaseLabel = if ($adapter.LeaseDuration) { Format-TimeSpanFriendly $adapter.LeaseDuration } else { 'unknown' }
+            Add-Issue 'medium' 'Network/DHCP' ("DHCP lease on {0} is stale ({1} old; configured lease window {2}). Client may not be reaching the DHCP server." -f $adapter.DisplayName, $ageLabel, $leaseLabel) $evidence
+          }
+        }
+      }
+    }
+
+    if ($dhcpEnabled -eq $false -and $likelyActive -and -not $isDisconnected) {
+      $gatewayCount = 0
+      if ($adapter.DefaultGateways) {
+        foreach ($gw in $adapter.DefaultGateways) {
+          if (-not $gw) { continue }
+          if ($gw -eq '0.0.0.0') { continue }
+          $gatewayCount++
+        }
+      }
+      $dnsCount = 0
+      if ($adapter.DnsServers) {
+        foreach ($dns in $adapter.DnsServers) {
+          if ($dns) { $dnsCount++ }
+        }
+      }
+      if ($gatewayCount -eq 0 -and $dnsCount -eq 0) {
+        Add-Issue 'high' 'Network/DHCP' ("DHCP disabled on {0} but no static gateway or DNS servers are configured." -f $adapter.DisplayName) $evidence
+      }
+    }
+
+    if ($adapter.HasApipa -and $adapter.DefaultGateways -and $adapter.DefaultGateways.Count -gt 0) {
+      $gatewayKey = ($adapter.DefaultGateways | Where-Object { $_ } | Sort-Object) -join ','
+      if ($gatewayKey) {
+        if (-not $apipaGatewayMap.ContainsKey($gatewayKey)) {
+          $apipaGatewayMap[$gatewayKey] = New-Object System.Collections.Generic.List[pscustomobject]
+        }
+        $apipaGatewayMap[$gatewayKey].Add($adapter)
+      }
+    }
+  }
+
+  $dhcpApipaGatewayClusters = @()
+  foreach ($kvp in $apipaGatewayMap.GetEnumerator()) {
+    if ($kvp.Value.Count -ge 2) {
+      $dhcpApipaGatewayClusters += [pscustomobject]@{
+        Gateway  = $kvp.Key
+        Adapters = @($kvp.Value.ToArray())
+      }
+    }
+  }
+}
+
+if ($observedDhcpServers -and $observedDhcpServers.Count -gt 0) {
+  $publicDhcp = @($observedDhcpServers | Where-Object { -not (Test-IsRFC1918 $_) })
+  if ($publicDhcp.Count -gt 0) {
+    $evidence = "Observed DHCP Servers: " + ($observedDhcpServers -join ', ')
+    Add-Issue 'medium' 'Network/DHCP' ("DHCP server addresses outside private ranges detected ({0}). Investigate rogue or mis-scoped DHCP sources." -f ($publicDhcp -join ', ')) $evidence
   }
 }
 
@@ -3152,7 +3798,9 @@ if ($isDomainJoinedProfile) {
 
 # 16. DHCP server ranges
 $dhcpServers = @()
-if ($raw['ipconfig']) {
+if ($observedDhcpServers -and $observedDhcpServers.Count -gt 0) {
+  $dhcpServers = $observedDhcpServers
+} elseif ($raw['ipconfig']) {
   foreach ($line in [regex]::Split($raw['ipconfig'],'\r?\n')) {
     $match = [regex]::Match($line,'(?i)DHCP Server\s*[^:]*:\s*([0-9\.]+)')
     if ($match.Success) {
@@ -3822,6 +4470,72 @@ if ($systemEventBlocks) {
 }
 if ($applicationEventBlocks) {
   foreach ($evt in $applicationEventBlocks) { if ($evt) { $allEventBlocks.Add($evt) } }
+}
+
+# DHCP event analysis
+$dhcpScopeEvidenceParts = New-Object System.Collections.Generic.List[string]
+if ($systemEventBlocks -and $systemEventBlocks.Count -gt 0) {
+  $dhcpEventsToInspect = @(1001,1003,1005,1006,50013,1046)
+  $dhcpClientEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)dhcp-client') -EventIds $dhcpEventsToInspect
+  $eventsById = @{}
+  foreach ($evt in $dhcpClientEvents) {
+    if (-not $evt) { continue }
+    $idValue = if ($evt.EventId -ne $null) { [int]$evt.EventId } else { -1 }
+    if ($idValue -lt 0) { continue }
+    if (-not $eventsById.ContainsKey($idValue)) {
+      $eventsById[$idValue] = New-Object System.Collections.Generic.List[pscustomobject]
+    }
+    $eventsById[$idValue].Add($evt)
+  }
+
+  $dhcpEventSeverity = @{ 1001 = 'high'; 1003 = 'high'; 1005 = 'high'; 1006 = 'high'; 50013 = 'medium' }
+  $dhcpEventMessages = @{
+    1001 = 'DHCP client reported an IP address conflict (Event ID 1001).'
+    1003 = 'DHCP client could not obtain a lease (Event ID 1003).'
+    1005 = 'DHCP client lost contact with the DHCP server (Event ID 1005).'
+    1006 = 'DHCP client failed to renew its lease (Event ID 1006).'
+    50013 = 'DHCP server sent NACK responses to this client (Event ID 50013).'
+  }
+
+  foreach ($key in $dhcpEventSeverity.Keys) {
+    if (-not $eventsById.ContainsKey($key)) { continue }
+    $relatedEvents = $eventsById[$key]
+    if (-not $relatedEvents -or $relatedEvents.Count -eq 0) { continue }
+    $evidence = Get-EventEvidenceText $relatedEvents 2
+    $message = if ($dhcpEventMessages.ContainsKey($key)) { $dhcpEventMessages[$key] } else { "DHCP client issue detected (Event ID $key)." }
+    Add-Issue $dhcpEventSeverity[$key] 'Network/DHCP' $message $evidence
+  }
+
+  if ($eventsById.ContainsKey(1046)) {
+    $scopeEvents = $eventsById[1046]
+    if ($scopeEvents -and $scopeEvents.Count -gt 0) {
+      $dhcpScopeEvidenceParts.Add("Event log evidence:`n" + (Get-EventEvidenceText $scopeEvents 3))
+    }
+  }
+}
+
+if ($dhcpApipaGatewayClusters -and $dhcpApipaGatewayClusters.Count -gt 0) {
+  $clusterLines = New-Object System.Collections.Generic.List[string]
+  foreach ($cluster in $dhcpApipaGatewayClusters) {
+    if (-not $cluster) { continue }
+    $gatewayLabel = if ($cluster.Gateway) { $cluster.Gateway } else { '(gateway unknown)' }
+    $clusterLines.Add("Gateway $gatewayLabel:")
+    if ($cluster.Adapters) {
+      foreach ($adapter in $cluster.Adapters) {
+        if (-not $adapter) { continue }
+        $ipText = if ($adapter.IPv4Addresses -and $adapter.IPv4Addresses.Count -gt 0) { $adapter.IPv4Addresses -join ', ' } else { '169.254.x.x' }
+        $clusterLines.Add("  - {0}: {1}" -f $adapter.DisplayName, $ipText)
+      }
+    }
+  }
+  if ($clusterLines.Count -gt 0) {
+    $dhcpScopeEvidenceParts.Add("APIPA fallback evidence:`n" + ($clusterLines -join "`n"))
+  }
+}
+
+if ($dhcpScopeEvidenceParts.Count -gt 0) {
+  $scopeEvidence = $dhcpScopeEvidenceParts -join "`n`n"
+  Add-Issue 'critical' 'Network/DHCP' 'DHCP scope likely exhausted; clients cannot obtain addresses from the server.' $scopeEvidence
 }
 
 # Active Directory heuristics (client-side)
