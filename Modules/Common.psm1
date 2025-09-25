@@ -1,19 +1,36 @@
 # Common helper functions shared across analyzer scripts
 $script:SeverityOrder = @('low','medium','high','critical')
 
+function Normalize-Severity {
+  param($Severity)
+
+  if ($null -eq $Severity) { return '' }
+
+  try {
+    $text = [string]$Severity
+  } catch {
+    $text = [string]$Severity
+  }
+
+  if (-not $text) { return '' }
+
+  $trimmed = $text.Trim()
+  if (-not $trimmed) { return '' }
+
+  try {
+    return $trimmed.ToLowerInvariant()
+  } catch {
+    return $trimmed.ToLowerInvariant()
+  }
+}
+
 function Get-SeverityIndex {
   param([string]$Severity)
 
   if (-not $Severity) { return -1 }
 
-  try {
-    $normalized = $Severity.ToLowerInvariant()
-  } catch {
-    $normalized = [string]$Severity
-    if ($normalized) {
-      $normalized = $normalized.ToLowerInvariant()
-    }
-  }
+  $normalized = Normalize-Severity $Severity
+  if (-not $normalized) { return -1 }
 
   return $script:SeverityOrder.IndexOf($normalized)
 }
