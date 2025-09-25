@@ -3,7 +3,12 @@
 # - Collect-ActiveDirectoryData: read saved files from a diagnostics folder or run live probes
 # - Analyze-ActiveDirectory: return [cards, checks] for rendering + scoring
 
-using module ./Common.psm1
+$commonModulePath = Join-Path $PSScriptRoot 'Common.psm1'
+if (-not (Get-Command -Name New-IssueCard -ErrorAction SilentlyContinue)) {
+  if (Test-Path -LiteralPath $commonModulePath) {
+    Import-Module -Name $commonModulePath -Scope Local -ErrorAction SilentlyContinue | Out-Null
+  }
+}
 
 $AreaName = 'ActiveDirectory'
 
@@ -57,13 +62,13 @@ function Analyze-ActiveDirectory {
   $checks = New-Object System.Collections.Generic.List[object]
 
   if ($Data.SecureChannel -and $Data.SecureChannel -match 'False') {
-    $cards.Add( New-IssueCard -Area $AreaName -Severity 'high' -Message 'Computer secure channel to domain is broken' -Evidence ($Data.SecureChannel.Trim()) )
-    $checks.Add( New-Check -Area $AreaName -Name 'Secure channel healthy' -Status 'fail' -Weight 1.5 -Evidence ($Data.SecureChannel.Trim()) )
+    $cards.Add( (New-IssueCard -Area $AreaName -Severity 'high' -Message 'Computer secure channel to domain is broken' -Evidence ($Data.SecureChannel.Trim())) )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Secure channel healthy' -Status 'fail' -Weight 1.5 -Evidence ($Data.SecureChannel.Trim())) )
   }
 
   if ($cards.Count -eq 0 -and $checks.Count -eq 0) {
-    $cards.Add( New-GoodCard -Area $AreaName -Message 'ActiveDirectory: No issues detected by baseline heuristics.' )
-    $checks.Add( New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1 )
+    $cards.Add( (New-GoodCard -Area $AreaName -Message 'ActiveDirectory: No issues detected by baseline heuristics.') )
+    $checks.Add( (New-Check -Area $AreaName -Name 'Baseline' -Status 'info' -Weight 0.1) )
   }
 
   [pscustomobject]@{
