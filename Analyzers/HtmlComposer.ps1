@@ -315,16 +315,16 @@ function Build-DebugSection {
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines += "$key: (no entries)"
+            $lines += "${key}: (no entries)"
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines += "$key: $count file(s); first = $firstPath"
+            $lines += "${key}: $count file(s); first = $firstPath"
         } else {
-            $lines += "$key: $($entries.Path)"
+            $lines += "${key}: $($entries.Path)"
         }
     }
 
