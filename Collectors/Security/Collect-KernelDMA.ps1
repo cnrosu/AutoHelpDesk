@@ -1,60 +1,23 @@
 <#!
 .SYNOPSIS
-    Collects Kernel DMA protection configuration.
+    Collects Kernel DMA protection configuration using fast data sources with msinfo32 fallback.
 #>
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\\output')
+    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\output')
 )
 
-. (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
-
-function Get-KernelDMAConfiguration {
-    $paths = @(
-        'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\KernelDMAProtection',
-        'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
-    )
-
-    $result = @()
-    foreach ($path in $paths) {
-        try {
-            $values = Get-ItemProperty -Path $path -ErrorAction Stop | Select-Object * -ExcludeProperty PS*, CIM*, PSEdition
-            $result += [PSCustomObject]@{
-                Path   = $path
-                Values = $values
-            }
-        } catch {
-            $result += [PSCustomObject]@{
-                Path  = $path
-                Error = $_.Exception.Message
-            }
-        }
-    }
-
-    return $result
-}
-
-function Get-MsInfoKernelDmaSection {
-    try {
-        $tempPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid().ToString() + '.txt')
-        $process = Start-Process -FilePath 'msinfo32.exe' -ArgumentList '/report', $tempPath, '/categories', 'Hardware Resources\DMA' -PassThru -WindowStyle Hidden
-        $process.WaitForExit()
-        $content = Get-Content -Path $tempPath -ErrorAction SilentlyContinue
-        Remove-Item -Path $tempPath -ErrorAction SilentlyContinue
-        return $content
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'msinfo32.exe'
-            Error  = $_.Exception.Message
-        }
-    }
-}
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\CollectorCommon.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\System\KernelDMAStatus.ps1')
 
 function Invoke-Main {
+    $status = Get-KernelDmaStatusData -MsInfoTimeoutSeconds 4
+
     $payload = [ordered]@{
-        Registry = Get-KernelDMAConfiguration
-        MsInfo   = Get-MsInfoKernelDmaSection
+        DeviceGuard = $status.DeviceGuard
+        Registry    = $status.Registry
+        MsInfo      = $status.MsInfo
     }
 
     $result = New-CollectorMetadata -Payload $payload
