@@ -2943,11 +2943,11 @@ $uacEvidence = ($uacMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key
 if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -and ($consentPrompt -eq $null -or $consentPrompt -ge 2)) {
   Add-SecurityHeuristic 'UAC' 'Secure' 'good' '' $uacEvidence
 } else {
-  $issues = @()
-  if ($enableLua -ne 1) { $issues += 'EnableLUA=0' }
-  if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $issues += "ConsentPrompt=$consentPrompt" }
-  if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $issues += 'PromptOnSecureDesktop=0' }
-  $detail = if ($issues.Count -gt 0) { $issues -join '; ' } else { 'UAC configuration unclear.' }
+  $uacFindings = @()
+  if ($enableLua -ne 1) { $uacFindings += 'EnableLUA=0' }
+  if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $uacFindings += "ConsentPrompt=$consentPrompt" }
+  if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $uacFindings += 'PromptOnSecureDesktop=0' }
+  $detail = if ($uacFindings.Count -gt 0) { $uacFindings -join '; ' } else { 'UAC configuration unclear.' }
   Add-SecurityHeuristic 'UAC' 'Weakened' 'warning' $detail $uacEvidence -SkipIssue
   Add-Issue 'medium' 'Security/UAC' ('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail) $uacEvidence
 }
