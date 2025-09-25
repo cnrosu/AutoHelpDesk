@@ -44,6 +44,10 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Scoring Model**:
   - Severity weights: Critical = 10, High = 6, Medium = 3, Warning = 2, Low = 1, Info = 0.
   - Penalties subtract from 100 with caps to avoid bottoming out unnecessarily.
+- **Artifact Contract**:
+  - Assumes each collector writes an ISO-8601 `CollectedAt` stamp and a `Payload` object to JSON via `CollectorCommon.ps1`.
+  - Expects artifacts to live directly under the collection folder (any sub-tree) with descriptive names such as `network.json`, `defender.json`, `smart.json`, etc.
+  - Uses the base filename as the lookup key (lowercased). Adding new collectors only requires matching the filename the heuristics expect or updating the relevant analyzer module to read the new name.
 - **Sample Heuristics**:
   - **Network**: Missing IPv4, APIPA addresses, absent default routes, failed pings or DNS lookups, inappropriate public DNS for corporate networks.
   - **Security**: Defender real-time protection disabled or signatures older than seven days.
@@ -65,6 +69,12 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 1. Collector creates `Desktop\DiagReports\<timestamp>\` with all raw outputs.
 2. Analyzer writes `DeviceHealth_Report_<timestamp>.html` into the same folder.
 3. Device-Report opens the Device Health report automatically.
+
+## Relationship to shared collectors/analyzers
+
+- The `/Collectors` folder in the repository stores the reusable JSON collectors that Device-Report invokes when a fresh run is required. You can execute an individual collector (for example, `Collectors/Network/Collect-Network.ps1`) to produce a single artifact for experimentation.
+- The `/Analyzers` folder contains the heuristic modules Device-Report imports. When a new collector is added to `/Collectors`, update or extend the appropriate analyzer module (Network, System, Security, etc.) so it understands the new payload.
+- Device-Report glues the two pieces together, ensuring the collection output folder supplied to the analyzer matches the structure described above.
 
 ## Extensibility
 - **Collector**: Add or remove commands by inserting new `Save-Output "Name" { <command> }` calls.

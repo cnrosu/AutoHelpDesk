@@ -595,6 +595,7 @@ $capturePlan = @(
       }
 
       return $lines
+
     } },
   @{ Name = "Security_RDP"; Description = "Remote Desktop configuration"; Action = {
       $output = New-Object System.Collections.Generic.List[string]
