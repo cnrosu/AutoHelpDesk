@@ -489,24 +489,114 @@ $capturePlan = @(
       }
     } },
   @{ Name = "Security_KernelDMA"; Description = "Kernel DMA protection status"; Action = {
-      $target = Join-Path $reportDir 'msinfo32_dma.txt'
+      $lines = New-Object System.Collections.Generic.List[string]
+      $checks = New-Object System.Collections.Generic.List[pscustomobject]
+      $collectorsDir = Join-Path $reportDir 'collectors'
+      if (-not (Test-Path $collectorsDir)) {
+        New-Item -Path $collectorsDir -ItemType Directory -Force | Out-Null
+      }
+
+      # A) Device Guard snapshot (fast CIM query)
       try {
-        $arguments = "/report `"$target`" /categories +SystemSummary"
-        Start-Process -FilePath msinfo32.exe -ArgumentList $arguments -WindowStyle Hidden -Wait | Out-Null
-        if (Test-Path $target) {
-          $content = Get-Content -Path $target
-          $filtered = $content | Where-Object { $_ -match 'Kernel DMA Protection' -or $_ -match 'Device Encryption Support' -or $_ -match 'Virtualization-based security' }
-          if ($filtered) {
-            $filtered
-          } else {
-            $content | Select-Object -First 60
+        $dg = Get-CimInstance -Namespace 'root/Microsoft/Windows/DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction Stop
+        $dgData = [ordered]@{}
+        foreach ($name in @('SecurityServicesConfigured','SecurityServicesRunning','RequiredSecurityProperties','AvailableSecurityProperties')) {
+          $prop = $dg.PSObject.Properties[$name]
+          if ($null -ne $prop) {
+            $dgData[$name] = $prop.Value
+            $valueText = if ($prop.Value -is [System.Array]) { $prop.Value -join ',' } else { $prop.Value }
+            $lines.Add("DeviceGuard.{0} : {1}" -f $name, $valueText)
           }
+        }
+        $checks.Add([pscustomobject]@{ Id = 'KernelDMA.DeviceGuard'; Status = 'OK'; Data = $dgData; Notes = 'Win32_DeviceGuard snapshot' })
+      } catch {
+        $message = $_.Exception.Message
+        $checks.Add([pscustomobject]@{ Id = 'KernelDMA.DeviceGuard'; Status = 'NA'; Data = @{}; Notes = "DeviceGuard query failed: $message" })
+        $lines.Add("DeviceGuard query failed: $message")
+      }
+
+      # B) Registry policy (only present when explicit DMA policy exists)
+      $dmaKeyPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\DmaSecurity'
+      try {
+        if (Test-Path $dmaKeyPath) {
+          $rk = Get-ItemProperty -Path $dmaKeyPath -ErrorAction Stop
+          $policyData = [ordered]@{}
+          foreach ($name in @('AllowDmaUnderLock','DeviceEnumerationPolicy')) {
+            $prop = $rk.PSObject.Properties[$name]
+            if ($null -ne $prop) {
+              $policyData[$name] = $prop.Value
+              $lines.Add("DmaSecurity.{0} : {1}" -f $name, $prop.Value)
+            }
+          }
+          $checks.Add([pscustomobject]@{ Id = 'KernelDMA.Policy'; Status = 'OK'; Data = $policyData; Notes = 'DmaSecurity registry present' })
         } else {
-          "msinfo32 report file not generated: $target"
+          $checks.Add([pscustomobject]@{ Id = 'KernelDMA.Policy'; Status = 'NA'; Data = @{}; Notes = 'DmaSecurity key not present (no explicit policy)' })
+          $lines.Add('DmaSecurity key not present (no explicit policy).')
         }
       } catch {
-        "msinfo32 /report failed: $_"
+        $message = $_.Exception.Message
+        $checks.Add([pscustomobject]@{ Id = 'KernelDMA.Policy'; Status = 'NA'; Data = @{}; Notes = "DmaSecurity query failed: $message" })
+        $lines.Add("DmaSecurity query failed: $message")
       }
+
+      # C) msinfo32 summary (short timeout, tolerant of colon-less lines)
+      $msinfoTimeoutSec = 8
+      $msSummary = [ordered]@{ State = $null; Vbs = $null; DevEncReasons = $null; RawPath = $null; Error = $null }
+      $msReport = Join-Path $reportDir 'msinfo_kernel_dma.txt'
+      try {
+        if (Test-Path $msReport) { Remove-Item -Path $msReport -Force -ErrorAction SilentlyContinue }
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'msinfo32.exe'
+        $psi.Arguments = "/report `"$msReport`" /categories +SystemSummary"
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $process = [System.Diagnostics.Process]::Start($psi)
+        if (-not $process.WaitForExit($msinfoTimeoutSec * 1000)) {
+          $process.Kill()
+          throw "msinfo32 timeout after ${msinfoTimeoutSec}s"
+        }
+
+        if (-not (Test-Path $msReport)) {
+          throw "msinfo32 report file not generated: $msReport"
+        }
+
+        $msSummary.RawPath = $msReport
+        $kernelMatch = Select-String -Path $msReport -Pattern '^[\s]*Kernel\s+DMA\s+Protection(?:\s*:\s*|\s+)(?<state>\S.+)$' -CaseSensitive:$false -AllMatches
+        $vbsMatch    = Select-String -Path $msReport -Pattern '^[\s]*Virtualization-based\s+security(?:\s*:\s*|\s+)(?<state>.+)$' -CaseSensitive:$false -AllMatches
+        $devMatch    = Select-String -Path $msReport -Pattern '^[\s]*Device\s+Encryption\s+Support\s*(?:\s*:\s*|\s+)(?<text>.+)$' -CaseSensitive:$false -AllMatches
+
+        if ($kernelMatch.Matches.Count -gt 0) { $msSummary.State = $kernelMatch.Matches[0].Groups['state'].Value.Trim() }
+        if ($vbsMatch.Matches.Count -gt 0) { $msSummary.Vbs = $vbsMatch.Matches[0].Groups['state'].Value.Trim() }
+        if ($devMatch.Matches.Count -gt 0) { $msSummary.DevEncReasons = $devMatch.Matches[0].Groups['text'].Value.Trim() }
+
+        $highlights = Select-String -Path $msReport -Pattern 'Kernel\s+DMA\s+Protection|Virtualization-based\s+security|Device\s+Encryption\s+Support' -CaseSensitive:$false
+        if ($highlights) {
+          foreach ($item in $highlights) {
+            if ($item.Line) { $lines.Add($item.Line.TrimEnd()) }
+          }
+        }
+      } catch {
+        $message = $_.Exception.Message
+        $msSummary.Error = $message
+        $lines.Add("msinfo32 summary error: $message")
+      }
+
+      $msStatus = if ($msSummary.State) { 'OK' } else { 'NA' }
+      $checks.Add([pscustomobject]@{ Id = 'KernelDMA.Msinfo'; Status = $msStatus; Data = $msSummary; Notes = "msinfo32 summary (timeout ${msinfoTimeoutSec}s)" })
+
+      # D) Emit structured JSON contract
+      $doc = [pscustomobject]@{
+        SchemaVersion = 1
+        Host         = $env:COMPUTERNAME
+        CollectedAt  = (Get-Date).ToUniversalTime().ToString('o')
+        CheckGroup   = 'KernelDMA'
+        Checks       = $checks
+      }
+      $jsonPath = Join-Path $collectorsDir 'kernel_dma.json'
+      $doc | ConvertTo-Json -Depth 6 | Set-Content -Path $jsonPath -Encoding UTF8
+
+      $lines.Insert(0, "Kernel DMA structured snapshot saved to $jsonPath")
+      $lines
     } },
   @{ Name = "Security_RDP"; Description = "Remote Desktop configuration"; Action = {
       $output = New-Object System.Collections.Generic.List[string]
