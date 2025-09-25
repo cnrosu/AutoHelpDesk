@@ -2953,8 +2953,8 @@ if ($lapsDoc -and $lapsDoc.Checks) {
   $pol  = $lapsDoc.Checks | Where-Object { $_.Id -eq 'LAPS.Policy' } | Select-Object -First 1
   $list = $lapsDoc.Checks | Where-Object { $_.Id -eq 'LocalAdmins.List' } | Select-Object -First 1
   $users = @()
-    if ($list -and $list.Data -and $list.Data.PSObject.Properties['Users']) {
-      $users = @($list.Data.Users | Where-Object { $_ })
+  if ($list -and $list.Data -and $list.Data.PSObject.Properties['Users']) {
+    $users = @($list.Data.Users | Where-Object { $_ })
   }
 
   $lapsPresent = $false
@@ -3000,8 +3000,9 @@ if ($lapsDoc -and $lapsDoc.Checks) {
   $userLines = @()
   foreach ($u in $users) {
     $lastSetText = if ($u.LastPasswordSet) { [string]$u.LastPasswordSet } else { 'null' }
-    $userLines += "User: {0}; Enabled={1}; PasswordNeverExpires={2}; LastPasswordSet={3}; BuiltInAdmin={4}" -f `
-      $u.Name, $u.Enabled, $u.PasswordNeverExpires, $lastSetText, $u.IsBuiltInAdmin
+    $principalSource = if ($u.PSObject.Properties['PrincipalSource']) { [string]$u.PrincipalSource } else { '' }
+    $userLines += "User: {0}; Enabled={1}; PasswordNeverExpires={2}; LastPasswordSet={3}; BuiltInAdmin={4}; PrincipalSource={5}" -f `
+      $u.Name, $u.Enabled, $u.PasswordNeverExpires, $lastSetText, $u.IsBuiltInAdmin, $principalSource
   }
 
   $evidenceLines = @(

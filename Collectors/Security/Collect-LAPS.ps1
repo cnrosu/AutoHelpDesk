@@ -26,7 +26,25 @@ $localUsers  = @(Get-LocalUser -ErrorAction SilentlyContinue)
 $users = @()
 foreach ($m in $localAdmins) {
   if ($m.ObjectClass -ne 'User' -or $m.PrincipalSource -notin @('Local','MicrosoftAccount')) { continue }
-  $u = $localUsers | Where-Object Name -eq $m.Name
+
+  $memberSid = $null
+  if ($m.PSObject.Properties['SID'] -and $m.SID) {
+    try { $memberSid = $m.SID.Value } catch { $memberSid = [string]$m.SID }
+  }
+
+  $u = $null
+  if ($memberSid) {
+    $u = $localUsers |
+      Where-Object { $_.PSObject.Properties['SID'] -and $_.SID -and $_.SID.Value -eq $memberSid } |
+      Select-Object -First 1
+  }
+
+  if (-not $u) {
+    $nameCandidate = $m.Name
+    if ($nameCandidate -match '^[^\\]+\\(.+)$') { $nameCandidate = $matches[1] }
+    $u = $localUsers | Where-Object { $_.Name -eq $nameCandidate } | Select-Object -First 1
+  }
+
   if (-not $u) { continue }
 
   $sid = $u.SID.Value
@@ -37,6 +55,7 @@ foreach ($m in $localAdmins) {
     PasswordNeverExpires = [bool]$u.PasswordNeverExpires
     LastPasswordSet      = if ($u.LastPasswordSet) { $u.LastPasswordSet.ToUniversalTime().ToString('o') } else { $null }
     IsBuiltInAdmin       = ($sid -match '-500$')   # RID 500
+    PrincipalSource      = $m.PrincipalSource
   }
 }
 
