@@ -4066,27 +4066,22 @@ foreach ($svc in $serviceDefinitions) {
         }
       }
       'Spooler' {
-        $normalArea = 'Printing/Spooler'
+        $normalArea = 'Services/Printer Spooler'
         if ($normalizedStatus -eq 'running') {
           if ($isWorkstationProfile) {
             $tag = 'warning'
-            $issueSeverity = 'low'
-            $issueArea = 'Printing/Spooler'
+            $issueSeverity = 'warning'
+            $issueArea = 'Security/Services'
             $issueMessage = 'Print Spooler running — disable if this workstation does not need printing.'
           } else {
             $tag = 'info'
             $isHealthy = $true
           }
-        } elseif ($normalizedStatus -eq 'stopped') {
-          if ($isDisabled -or $isManual) {
-            $tag = 'good'
-          } else {
-            $tag = 'info'
-          }
-          $isHealthy = $true
-        } elseif ($isDisabled -or $isManual) {
-          $tag = 'good'
-          $isHealthy = $true
+        } else {
+          $tag = 'info'
+          $issueSeverity = 'info'
+          $issueArea = 'Services/Printer Spooler'
+          $issueMessage = ('Print Spooler not running (Status: {0}, StartType: {1}).' -f $statusDisplay, $startDisplay)
         }
       }
       'RpcSs' {
@@ -4308,9 +4303,9 @@ if ($printingPayload) {
   if ($spoolerNormalizedStatus -ne 'running' -or $spoolerNormalizedStart -eq 'disabled') {
     $statusDisplay = if ($spoolerStatus) { $spoolerStatus } else { 'Unknown' }
     $startDisplay = if ($spoolerStart) { $spoolerStart } else { 'Unknown' }
-    Add-Issue 'high' 'Printing/Spooler' ("Print Spooler service not running (Status: {0}, StartType: {1})." -f $statusDisplay, $startDisplay) $spoolerEvidence
+    Add-Issue 'info' 'Services/Printer Spooler' ("Print Spooler service not running (Status: {0}, StartType: {1})." -f $statusDisplay, $startDisplay) $spoolerEvidence
   } elseif ($spoolerNormalizedStatus -eq 'running' -and ($spoolerNormalizedStart -eq 'automatic' -or $spoolerNormalizedStart -eq 'automatic-delayed')) {
-    Add-Normal 'Printing/Spooler' 'GOOD Printing/Spooler Running (Automatic)' $spoolerEvidence
+    Add-Normal 'Services/Printer Spooler' 'GOOD Printer Spooler Running (Automatic)' $spoolerEvidence
   }
 
   $printersList = @()

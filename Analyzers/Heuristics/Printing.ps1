@@ -55,7 +55,7 @@ function Invoke-PrintingHeuristics {
             $startMode = if ($spooler.StartMode) { [string]$spooler.StartMode } else { $spooler.StartType }
             Add-CategoryCheck -CategoryResult $result -Name 'Spooler status' -Status $status -Details ("StartMode: {0}" -f $startMode)
             if ($status -notmatch '(?i)running') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode)
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode)
             } elseif ($startMode -and $startMode -notmatch '(?i)auto') {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Spooler start mode not automatic' -Evidence ("Current mode: {0}" -f $startMode)
             }
