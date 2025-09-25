@@ -4375,10 +4375,10 @@ $sumTable = @"
     <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>
     <span class='report-badge report-badge--critical'><span class='report-badge__label'>CRITICAL</span><span class='report-badge__value'>$criticalCount</span></span>
     <span class='report-badge report-badge--bad'><span class='report-badge__label'>HIGH</span><span class='report-badge__value'>$highCount</span></span>
-    <span class='report-badge report-badge--warning'><span class='report-badge__label'>WARNING</span><span class='report-badge__value'>$warningCount</span></span>
     <span class='report-badge report-badge--medium'><span class='report-badge__label'>MEDIUM</span><span class='report-badge__value'>$mediumCount</span></span>
     <span class='report-badge report-badge--ok'><span class='report-badge__label'>LOW</span><span class='report-badge__value'>$lowCount</span></span>
-    <span class='report-badge report-badge--good'><span class='report-badge__label'>INFO</span><span class='report-badge__value'>$infoCount</span></span>
+    <span class='report-badge report-badge--warning'><span class='report-badge__label'>WARNING</span><span class='report-badge__value'>$warningCount</span></span>
+    <span class='report-badge report-badge--info'><span class='report-badge__label'>INFO</span><span class='report-badge__value'>$infoCount</span></span>
   </div>
   <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>
     <tr><td>Device Name</td><td>$deviceNameHtml</td></tr>
