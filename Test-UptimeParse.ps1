@@ -1,8 +1,19 @@
-<#  Save as Test-UptimeParse.ps1 (or run directly in a PS session)
+<#
+.SYNOPSIS
+  Parses Windows boot time strings into DateTime objects and calculates uptime in days.
+.DESCRIPTION
+  Accepts boot time strings from tools such as systeminfo, attempts to interpret WMI and culture-specific formats, and
+  reports the parsed boot time alongside the estimated uptime.
+.PARAMETER BootString
+  Provides the boot time string to parse. When omitted, the script queries systeminfo for the most recent value.
+.EXAMPLE
+  PS C:\> .\Test-UptimeParse.ps1
 
-    .\Test-UptimeParse.ps1
-    .\Test-UptimeParse.ps1 -BootString '20240101120000.000000-300'
-    .\Test-UptimeParse.ps1 -BootString '13.05.2024 08:12:44'  # example localized format
+  Retrieves the boot string from systeminfo, parses it, and prints the approximate uptime.
+.EXAMPLE
+  PS C:\> .\Test-UptimeParse.ps1 -BootString '20240101120000.000000-300'
+
+  Parses the supplied WMI-formatted timestamp and reports the uptime.
 #>
 
 param(

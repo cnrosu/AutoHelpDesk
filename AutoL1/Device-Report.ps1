@@ -1,16 +1,22 @@
-<# 
-Device-Report.ps1
-Parent script: 
-  1) Runs Collect-SystemDiagnostics.ps1 to gather outputs
-  2) Locates the newest collection folder
-  3) Runs Analyze-Diagnostics.ps1 against it
-  4) Opens the resulting HTML report
-USAGE:
-  PowerShell (Admin):
-    Set-ExecutionPolicy -Scope Process Bypass -Force
-    .\Device-Report.ps1
-    # or specify an existing folder to analyze:
-    .\Device-Report.ps1 -InputFolder "C:\Users\Me\Desktop\DiagReports\20250924_181518"
+<#
+.SYNOPSIS
+  Coordinates collection and analysis to produce an AutoHelpDesk device health report.
+.DESCRIPTION
+  Ensures the session is elevated, runs Collect-SystemDiagnostics.ps1 when no existing folder is provided, chooses the
+  most recent collection directory, invokes Analyze-Diagnostics.ps1, and opens the resulting HTML report for review.
+.PARAMETER OutRoot
+  Specifies the root folder where new diagnostic collections should be created. Defaults to the desktop DiagReports
+  directory for the current user.
+.PARAMETER InputFolder
+  Provides the path to an existing diagnostics folder to analyze without running collection.
+.EXAMPLE
+  PS C:\> .\Device-Report.ps1
+
+  Collects diagnostics into the default location, analyzes the results, and opens the generated HTML report.
+.EXAMPLE
+  PS C:\> .\Device-Report.ps1 -InputFolder 'C:\Reports\Diag\20250101_103000'
+
+  Skips new collection and analyzes the specified folder.
 #>
 
 [CmdletBinding()]
@@ -19,6 +25,15 @@ param(
   [string]$InputFolder # optional: analyze an existing folder without collecting
 )
 
+<#
+.SYNOPSIS
+  Ensures the script is running with administrator privileges and stops execution when it is not.
+.DESCRIPTION
+  Checks the current security principal for membership in the local Administrators group and terminates the script with
+  an error message when elevation is missing.
+.OUTPUTS
+  None. Throws a terminating error when the session is not elevated.
+#>
 function Assert-Admin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p = New-Object Security.Principal.WindowsPrincipal($id)
