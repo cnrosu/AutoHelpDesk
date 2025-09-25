@@ -223,20 +223,25 @@ function Parse-AutorunsEntries {
     $enabled = $true
     foreach ($propName in @('Enabled','Active','Disabled')) {
       if (-not $row.PSObject.Properties[$propName]) { continue }
-      $value = [string]$row.$propName
-      if (-not $value) { continue }
-      $lower = $value.Trim().ToLowerInvariant()
+      $rawValue = [string]$row.$propName
+      if (-not $rawValue) { continue }
+      $trimmedValue = $rawValue.Trim()
+      if (-not $trimmedValue) { continue }
+
       switch ($propName) {
         'Enabled' {
-          if ($lower -match '^(no|false|disabled|0)$') { $enabled = $false }
-          elseif ($lower -match '^(yes|true|enabled|1)$') { $enabled = $true }
+          if ($trimmedValue -match '(?i)disabled') { $enabled = $false; continue }
+          $boolValue = To-BoolOrNull $trimmedValue
+          if ($null -ne $boolValue) { $enabled = $boolValue }
         }
         'Active' {
-          if ($lower -match '^(no|false|0)$') { $enabled = $false }
-          elseif ($lower -match '^(yes|true|1)$') { $enabled = $true }
+          $boolValue = To-BoolOrNull $trimmedValue
+          if ($null -ne $boolValue) { $enabled = $boolValue }
         }
         'Disabled' {
-          if ($lower -match '^(yes|true|1)$' -or $lower -match 'disabled') { $enabled = $false }
+          if ($trimmedValue -match '(?i)disabled') { $enabled = $false; continue }
+          $boolValue = To-BoolOrNull $trimmedValue
+          if ($null -ne $boolValue) { $enabled = -not $boolValue }
         }
       }
     }
@@ -385,7 +390,7 @@ function Parse-BitLockerStatus {
 
     $protectionEnabled = $null
     if ($protectionText) {
-      $protectionEnabled = Get-BoolFromString -Value $protectionText
+      $protectionEnabled = To-BoolOrNull -Value $protectionText
     }
 
     $encryptionPercent = $null
@@ -1185,7 +1190,7 @@ if ($secureBootState) {
     $secureBootEvidenceLines += ("Firmware indicator: {0}" -f $uefiIndicator)
   }
   $secureBootEvidenceText = $secureBootEvidenceLines -join "`n"
-  $secureBootValue = Get-BoolFromString -Value $secureBootState
+  $secureBootValue = To-BoolOrNull -Value $secureBootState
   if ($secureBootValue -eq $true) {
     Add-Normal "System/Secure Boot" "Secure Boot enabled" $secureBootEvidenceText
     $summary.SecureBootEnabled = $true
@@ -1213,7 +1218,7 @@ if ($raw['power_settings']) {
   if ($hiberMatch.Success) {
     $hiberValueText = $hiberMatch.Groups[1].Value.Trim()
     if ($hiberValueText) { $fastStartupEvidenceLines += $hiberMatch.Value.Trim() }
-    $fastStartupState = Get-BoolFromString -Value $hiberValueText
+    $fastStartupState = To-BoolOrNull -Value $hiberValueText
     if ($fastStartupState -eq $null) {
       $numericMatch = [regex]::Match($hiberValueText,'0x[0-9a-fA-F]+|\d+')
       if ($numericMatch.Success) {
@@ -1326,19 +1331,19 @@ if ($raw['dsreg']){
   }
 
   if ($dsregMap.ContainsKey('AzureAdJoined')){
-    $aad = Get-BoolFromString $dsregMap['AzureAdJoined']
+    $aad = To-BoolOrNull $dsregMap['AzureAdJoined']
     if ($null -ne $aad){ $summary.AzureAdJoined = $aad }
   }
   if ($dsregMap.ContainsKey('WorkplaceJoined')){
-    $wp = Get-BoolFromString $dsregMap['WorkplaceJoined']
+    $wp = To-BoolOrNull $dsregMap['WorkplaceJoined']
     if ($null -ne $wp){ $summary.WorkplaceJoined = $wp }
   }
   if ($dsregMap.ContainsKey('EnterpriseJoined')){
-    $ent = Get-BoolFromString $dsregMap['EnterpriseJoined']
+    $ent = To-BoolOrNull $dsregMap['EnterpriseJoined']
     if ($null -ne $ent){ $summary.EnterpriseJoined = $ent }
   }
   if ($dsregMap.ContainsKey('DomainJoined')){
-    $dj = Get-BoolFromString $dsregMap['DomainJoined']
+    $dj = To-BoolOrNull $dsregMap['DomainJoined']
     if ($null -ne $dj){ $summary.DomainJoined = $dj }
   }
   foreach($deviceKey in @('Device Name','DeviceName')){
@@ -2090,7 +2095,7 @@ if ($raw['outlook_scp']){
   $partValue = $null
   if ($partMatch) {
     $partRaw = ([regex]::Match($partMatch,'^(?i)PartOfDomain\s*:\s*(.+)$')).Groups[1].Value.Trim()
-    $partBool = Get-BoolFromString $partRaw
+    $partBool = To-BoolOrNull $partRaw
     if ($null -ne $partBool) {
       $partValue = $partBool
     }
@@ -2395,7 +2400,7 @@ if ($raw['defender']){
   $engineStatusFalse = $false
   foreach($m in $engineOutMatches){
     $engineEvidence += $m.Value.Trim()
-    $boolVal = Get-BoolFromString $m.Groups['value'].Value
+    $boolVal = To-BoolOrNull $m.Groups['value'].Value
     if ($null -eq $boolVal){ continue }
     if ($boolVal){ $engineStatusTrue = $true } else { $engineStatusFalse = $true }
   }
@@ -2418,7 +2423,7 @@ if ($raw['defender']){
   $platformStatusFalse = $false
   foreach($m in $platformOutMatches){
     $platformEvidence += $m.Value.Trim()
-    $boolVal = Get-BoolFromString $m.Groups['value'].Value
+    $boolVal = To-BoolOrNull $m.Groups['value'].Value
     if ($null -eq $boolVal){ continue }
     if ($boolVal){ $platformStatusTrue = $true } else { $platformStatusFalse = $true }
   }
@@ -2584,8 +2589,8 @@ $ldapMap = Parse-KeyValueBlock $raw['security_ldap']
 $tpmText = $raw['security_tpm']
 if ($tpmText) {
   $tpmMap = Parse-KeyValueBlock $tpmText
-  $tpmPresent = Get-BoolFromString $tpmMap['TpmPresent']
-  $tpmReady = Get-BoolFromString $tpmMap['TpmReady']
+  $tpmPresent = To-BoolOrNull $tpmMap['TpmPresent']
+  $tpmReady = To-BoolOrNull $tpmMap['TpmReady']
   $specVersion = if ($tpmMap.ContainsKey('SpecVersion')) { $tpmMap['SpecVersion'] } else { '' }
   $tpmEvidence = Get-TopLines $tpmText 12
   if ($tpmPresent -eq $true -and $tpmReady -eq $true) {
@@ -2706,7 +2711,7 @@ if ($rdpMap.Count -eq 0 -and -not $raw['security_rdp']) {
 
 # 7. SMB & legacy protocols
 $smbMap = Parse-KeyValueBlock $raw['security_smb']
-$enableSmb1 = Get-BoolFromString $smbMap['EnableSMB1Protocol']
+$enableSmb1 = To-BoolOrNull $smbMap['EnableSMB1Protocol']
 $smbEvidence = Get-TopLines $raw['security_smb'] 20
 if ($enableSmb1 -eq $true) {
   Add-SecurityHeuristic 'SMB1 protocol' 'Enabled' 'bad' 'SMB1 protocol enabled on server configuration.' $smbEvidence -SkipIssue
@@ -2825,17 +2830,17 @@ $exploitEvidenceLines = @()
 if ($exploitData) {
   if ($exploitData.PSObject.Properties['CFG']) {
     $cfgValue = $exploitData.CFG.Enable
-    $cfgEnabled = Test-IsEnabledValue $cfgValue
+    $cfgEnabled = (To-BoolOrNull $cfgValue) -eq $true
     $exploitEvidenceLines += "CFG.Enable: $cfgValue"
   }
   if ($exploitData.PSObject.Properties['DEP']) {
     $depValue = $exploitData.DEP.Enable
-    $depEnabled = Test-IsEnabledValue $depValue
+    $depEnabled = (To-BoolOrNull $depValue) -eq $true
     $exploitEvidenceLines += "DEP.Enable: $depValue"
   }
   if ($exploitData.PSObject.Properties['ASLR']) {
     $aslrValue = $exploitData.ASLR.Enable
-    $aslrEnabled = Test-IsEnabledValue $aslrValue
+    $aslrEnabled = (To-BoolOrNull $aslrValue) -eq $true
     $exploitEvidenceLines += "ASLR.Enable: $aslrValue"
   }
 }
@@ -3729,28 +3734,28 @@ if ($domainIsJoined) {
     if ($dnsTestsAvailableRaw -is [bool]) {
       $dnsTestsAvailableBool = $dnsTestsAvailableRaw
     } elseif ($dnsTestsAvailableRaw -ne $null) {
-      $dnsTestsAvailableBool = Get-BoolFromString ([string]$dnsTestsAvailableRaw)
+      $dnsTestsAvailableBool = To-BoolOrNull ([string]$dnsTestsAvailableRaw)
     }
 
     $dnsTestsAttemptedRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DnsTestsAttempted'
     if ($dnsTestsAttemptedRaw -is [bool]) {
       $dnsTestsAttemptedBool = $dnsTestsAttemptedRaw
     } elseif ($dnsTestsAttemptedRaw -ne $null) {
-      $dnsTestsAttemptedBool = Get-BoolFromString ([string]$dnsTestsAttemptedRaw)
+      $dnsTestsAttemptedBool = To-BoolOrNull ([string]$dnsTestsAttemptedRaw)
     }
 
     $secureChannelRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'SecureChannelOK'
     if ($secureChannelRaw -is [bool]) {
       $secureChannelState = $secureChannelRaw
     } elseif ($secureChannelRaw -ne $null) {
-      $secureChannelState = Get-BoolFromString ([string]$secureChannelRaw)
+      $secureChannelState = To-BoolOrNull ([string]$secureChannelRaw)
     }
 
     $anycastRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'AnycastOverrideMatched'
     if ($anycastRaw -is [bool]) {
       $anycastOverride = $anycastRaw
     } elseif ($anycastRaw -ne $null) {
-      $anycastOverride = Get-BoolFromString ([string]$anycastRaw)
+      $anycastOverride = To-BoolOrNull ([string]$anycastRaw)
     }
 
     $dcQueryNameValue = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DcQueryName'
