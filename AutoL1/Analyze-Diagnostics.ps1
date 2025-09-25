@@ -72,7 +72,7 @@ function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
 }
 
-$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt 2>$null
+$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt,*.csv 2>$null
 
 function Find-ByContent([string[]]$nameHints, [string[]]$needles) {
   if ($nameHints) {
@@ -137,6 +137,297 @@ function ConvertTo-NullableInt {
   }
 
   return $null
+}
+
+
+function Get-FirstObjectValue {
+  param(
+    [psobject]$Object,
+    [string[]]$Names
+  )
+
+  if (-not $Object) { return $null }
+  if (-not $Names) { return $null }
+
+  foreach ($candidate in $Names) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    $prop = $Object.PSObject.Properties | Where-Object { $_.Name -ieq $candidate } | Select-Object -First 1
+    if (-not $prop) { continue }
+    $value = $prop.Value
+    if ($null -eq $value) { continue }
+    $textValue = [string]$value
+    if ($null -eq $textValue) { continue }
+    $trimmed = $textValue.Trim()
+    if ($trimmed -ne '') { return $trimmed }
+  }
+
+  return $null
+}
+
+function Get-AutorunPrimaryPath {
+  param(
+    [string]$ImagePath,
+    [string]$Command
+  )
+
+  $candidate = if ($ImagePath) { $ImagePath } elseif ($Command) { $Command } else { $null }
+  if (-not $candidate) { return $null }
+
+  $textValue = [string]$candidate
+  if (-not $textValue) { return $null }
+
+  $trimmed = $textValue.Trim()
+  if (-not $trimmed) { return $null }
+
+  $path = $null
+  $doubleMatch = [regex]::Match($trimmed,'^\s*"(?<path>[^"]+)"')
+  if ($doubleMatch.Success) {
+    $path = $doubleMatch.Groups['path'].Value
+  } else {
+    $singleMatch = [regex]::Match($trimmed,"^\s*'(?<path>[^']+)'")
+    if ($singleMatch.Success) {
+      $path = $singleMatch.Groups['path'].Value
+    }
+  }
+
+  if (-not $path) {
+    $tokenMatch = [regex]::Match($trimmed,'^\s*(?<path>[^,\s]+)')
+    if ($tokenMatch.Success) {
+      $path = $tokenMatch.Groups['path'].Value
+    } else {
+      $path = $trimmed
+    }
+  }
+
+  if ($path.StartsWith('\\\\?\')) {
+    $path = $path.Substring(4)
+  }
+
+  return $path
+}
+
+function Parse-AutorunsTable {
+  param(
+    [string]$Text,
+    [string]$SourceLabel = 'autoruns'
+  )
+
+  $entries = New-Object System.Collections.Generic.List[pscustomobject]
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $entries }
+
+  $normalized = ($Text -replace "^\uFEFF", '')
+  $lines = [regex]::Split($normalized,'\r?\n')
+  if (-not $lines -or $lines.Count -eq 0) { return $entries }
+
+  $headerIndex = -1
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $line = $lines[$i]
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $trimmed = $line.Trim()
+    if ($trimmed -like '====*') { continue }
+    if ($trimmed -match '^(?i)win32_startupcommand (?:returned no entries|query failed)') { return $entries }
+    if ($trimmed -match '^(?i)no autoruns captured') { return $entries }
+    $lower = $trimmed.ToLowerInvariant()
+    if (($lower -match 'entry' -and $lower -match 'image') -or ($lower -match 'name' -and $lower -match 'command')) {
+      $headerIndex = $i
+      break
+    }
+  }
+
+  if ($headerIndex -lt 0) { return $entries }
+
+  $bodyLines = New-Object System.Collections.Generic.List[string]
+  for ($j = $headerIndex; $j -lt $lines.Count; $j++) {
+    $lineValue = $lines[$j]
+    if ($null -eq $lineValue) { continue }
+    $trimmedLine = $lineValue.TrimEnd()
+    if ($trimmedLine -like '====*') { continue }
+    $bodyLines.Add($trimmedLine)
+  }
+
+  if ($bodyLines.Count -lt 2) { return $entries }
+
+  $headerLine = $bodyLines[0]
+  $delimiter = ','
+  if ($headerLine -match "`t") {
+    $delimiter = "`t"
+  } elseif ($headerLine -match ';' -and $headerLine -notmatch ',') {
+    $delimiter = ';'
+  }
+
+  $csvText = ($bodyLines -join "`n")
+
+  try {
+    $rows = $csvText | ConvertFrom-Csv -Delimiter $delimiter
+  } catch {
+    return $entries
+  }
+
+  foreach ($row in $rows) {
+    if (-not $row) { continue }
+    $values = $row.PSObject.Properties | ForEach-Object { [string]$_.Value } | Where-Object { $_ -and $_.Trim() }
+    if ($values.Count -eq 0) { continue }
+
+    $entryName   = Get-FirstObjectValue $row @('Entry','Name','Item','Startup Item')
+    $description = Get-FirstObjectValue $row @('Description','Image Description','Product','Comment')
+    $publisher   = Get-FirstObjectValue $row @('Publisher','Signer','Company','Company Name','CompanyName','Vendor')
+    $category    = Get-FirstObjectValue $row @('Category','Launch Item','Section')
+    $location    = Get-FirstObjectValue $row @('Location','Launch String','Entry Location')
+    $profile     = Get-FirstObjectValue $row @('Profile','User','SID')
+    $imagePath   = Get-FirstObjectValue $row @('Image Path','ImagePath','Path')
+    $commandVal  = Get-FirstObjectValue $row @('Command','Command Line','CommandLine')
+    if (-not $imagePath -and $commandVal) { $imagePath = $commandVal }
+
+    $enabledVal = Get-FirstObjectValue $row @('Enabled','Status','Active','Disabled')
+    $enabledState = $null
+    if ($enabledVal) {
+      $enabledState = Get-BoolFromString -Value $enabledVal
+      if ($enabledState -eq $null) {
+        if ($enabledVal -match '^(?i)enabled$') { $enabledState = $true }
+        elseif ($enabledVal -match '^(?i)disabled$') { $enabledState = $false }
+      }
+    }
+    if ($enabledState -eq $null) { $enabledState = $true }
+
+    $entries.Add([pscustomobject]@{
+      Entry       = $entryName
+      Description = $description
+      Publisher   = $publisher
+      Category    = $category
+      Location    = $location
+      Profile     = $profile
+      ImagePath   = $imagePath
+      Command     = $commandVal
+      Enabled     = $enabledState
+      Source      = $SourceLabel
+    })
+  }
+
+  return $entries
+}
+
+function Test-IsMicrosoftAutorun {
+  param(
+    [string]$Publisher,
+    [string]$Description,
+    [string]$Entry,
+    [string]$PrimaryPath
+  )
+
+  $strings = @($Publisher,$Description,$Entry)
+  foreach ($value in $strings) {
+    if ([string]::IsNullOrWhiteSpace($value)) { continue }
+    try {
+      $lower = ([string]$value).ToLowerInvariant()
+    } catch {
+      $lower = $value.ToString().ToLowerInvariant()
+    }
+    if ($lower -match 'microsoft' -or $lower -match 'windows defender' -or $lower -match 'windows security' -or $lower -match 'onedrive' -or $lower -match 'edge update' -or $lower -match 'teams' -or $lower -match 'officeclicktorun' -or $lower -match 'intune' -or $lower -match 'azure ad') {
+      return $true
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($PrimaryPath)) { return $false }
+
+  try {
+    $pathLower = ([string]$PrimaryPath).ToLowerInvariant()
+  } catch {
+    $pathLower = $PrimaryPath.ToString().ToLowerInvariant()
+  }
+
+  $pathLower = $pathLower.Trim().Trim('"','\'')
+  if ($pathLower -match '^\\\\?\') {
+    $pathLower = $pathLower.Substring(4)
+  }
+
+  $isScriptHost = $pathLower -match '(?i)(cmd|powershell|wscript|cscript|mshta)\.exe'
+
+  if ($pathLower -match '\\microsoft\\onedrive' -or $pathLower -match '\\microsoft\\teams' -or $pathLower -match '\\microsoft\\edge' -or $pathLower -match '\\microsoft\\office' -or $pathLower -match '\\windows defender\\') {
+    return $true
+  }
+
+  if (($pathLower -match '\\windows\\' -or $pathLower -match '^%systemroot%') -and -not $isScriptHost) {
+    return $true
+  }
+
+  if ($pathLower -match '\\program files( \(x86\))?\\microsoft' -or $pathLower -match '\\program files( \(x86\))?\\common files\\microsoft') {
+    return $true
+  }
+
+  if ($pathLower -match '\\windowsapps\\' -and -not $isScriptHost) {
+    return $true
+  }
+
+  if ($pathLower -match '\\system32\\rundll32\.exe' -or $pathLower -match '\\system32\\explorer\.exe' -or $pathLower -match '\\system32\\userinit\.exe') {
+    return $true
+  }
+
+  if ($pathLower -match '^(rundll32|explorer|userinit)\.exe$') {
+    return $true
+  }
+
+  return $false
+}
+
+function Get-AutorunRiskFlags {
+  param(
+    [pscustomobject]$Entry
+  )
+
+  $flags = New-Object System.Collections.Generic.List[string]
+
+  if ([string]::IsNullOrWhiteSpace($Entry.Publisher)) {
+    $flags.Add('Unknown publisher')
+  }
+
+  $primaryLower = $null
+  if ($Entry.PrimaryPath) {
+    try {
+      $primaryLower = $Entry.PrimaryPath.ToLowerInvariant()
+    } catch {
+      $primaryLower = [string]$Entry.PrimaryPath
+      if ($primaryLower) { $primaryLower = $primaryLower.ToLowerInvariant() }
+    }
+  }
+
+  if ($primaryLower) {
+    if ($primaryLower -match '\\appdata\\') { $flags.Add('AppData path') }
+    if ($primaryLower -match '\\temp\\') { $flags.Add('Temp directory') }
+    if ($primaryLower -match '\\downloads\\') { $flags.Add('Downloads folder') }
+    if ($primaryLower -match '\\programdata\\[^\\]+\\temp') { $flags.Add('ProgramData temp path') }
+    if ($primaryLower -match '\\users\\[^\\]+\\') { $flags.Add('User profile path') }
+
+    $extension = $null
+    try {
+      $extension = [System.IO.Path]::GetExtension($Entry.PrimaryPath)
+    } catch {
+      $extension = $null
+    }
+    if ($extension) {
+      $extLower = $extension.ToLowerInvariant()
+      if ($extLower -in @('.ps1','.psm1','.vbs','.js','.jse','.wsf','.wsh','.cmd','.bat','.hta')) {
+        $flags.Add('Script file extension')
+      }
+    }
+  }
+
+  $commandLower = if ($Entry.Command) {
+    try { ([string]$Entry.Command).ToLowerInvariant() } catch { $Entry.Command.ToString().ToLowerInvariant() }
+  } else { '' }
+
+  if ($commandLower -match 'powershell\.exe' -or $commandLower -match 'wscript\.exe' -or $commandLower -match 'cscript\.exe' -or $commandLower -match 'mshta\.exe' -or $commandLower -match 'cmd\.exe') {
+    $flags.Add('Launches script host/shell')
+  }
+
+  if ($Entry.Profile -and $Entry.Profile -notmatch '^(?i)(system|local system|localsystem|localservice|networkservice|all users|default user)$') {
+    $flags.Add("Profile: $($Entry.Profile)")
+  }
+
+  if ($flags.Count -gt 0) {
+    return @($flags | Select-Object -Unique)
+  }
+
+  return @()
 }
 
 function Parse-KeyValueBlock {
@@ -554,6 +845,7 @@ $files = [ordered]@{
   outlook_autodiscover = Find-ByContent @('Autodiscover_DNS')    @('### Domain','autodiscover')
   outlook_scp    = Find-ByContent @('Outlook_SCP')               @('Autodiscover','serviceBindingInformation','SCP lookup')
   office_security = Find-ByContent @('Office_SecurityPolicies')  @('BlockContentExecutionFromInternet','VBAWarnings','ProtectedView')
+  autoruns       = Find-ByContent @('Autoruns','Startup_Autoruns','StartupCommands','Autorunsc') @('Entry\s*,\s*Description','"Entry","Description"','"Name","Command"','Win32_StartupCommand')
 
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
@@ -2314,6 +2606,116 @@ if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
   }
   if ($legacyRunning.Count -gt 0) {
     Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
+  }
+}
+
+$autorunEntries = New-Object System.Collections.Generic.List[pscustomobject]
+$autorunSeen = [System.Collections.Generic.HashSet[string]]::new()
+
+foreach ($key in @('autoruns')) {
+  $textValue = $raw[$key]
+  if (-not $textValue) { continue }
+  $parsedEntries = Parse-AutorunsTable -Text $textValue -SourceLabel $key
+  foreach ($entry in $parsedEntries) {
+    if (-not $entry) { continue }
+    $entryKeyPart = if ($entry.Entry) { ([string]$entry.Entry).ToLowerInvariant() } else { '' }
+    $commandKeyPart = ''
+    if ($entry.Command) {
+      $commandKeyPart = ([string]$entry.Command).ToLowerInvariant()
+    } elseif ($entry.ImagePath) {
+      $commandKeyPart = ([string]$entry.ImagePath).ToLowerInvariant()
+    }
+    $locationKeyPart = ''
+    if ($entry.Location) {
+      $locationKeyPart = ([string]$entry.Location).ToLowerInvariant()
+    } elseif ($entry.Category) {
+      $locationKeyPart = ([string]$entry.Category).ToLowerInvariant()
+    }
+    $dedupeKey = '{0}|{1}|{2}' -f $entryKeyPart, $commandKeyPart, $locationKeyPart
+    if ($autorunSeen.Add($dedupeKey)) {
+      [void]$autorunEntries.Add($entry)
+    }
+  }
+}
+
+if ($autorunEntries.Count -gt 0) {
+  foreach ($entry in $autorunEntries) {
+    $primaryPath = Get-AutorunPrimaryPath -ImagePath $entry.ImagePath -Command $entry.Command
+    $entry | Add-Member -NotePropertyName 'PrimaryPath' -NotePropertyValue $primaryPath -Force
+    $isMicrosoft = Test-IsMicrosoftAutorun -Publisher $entry.Publisher -Description $entry.Description -Entry $entry.Entry -PrimaryPath $primaryPath
+    $entry | Add-Member -NotePropertyName 'IsMicrosoft' -NotePropertyValue $isMicrosoft -Force
+    $riskFlags = Get-AutorunRiskFlags -Entry $entry
+    $entry | Add-Member -NotePropertyName 'RiskFlags' -NotePropertyValue $riskFlags -Force
+    $riskScore = if ($riskFlags) { $riskFlags.Count } else { 0 }
+    $entry | Add-Member -NotePropertyName 'RiskScore' -NotePropertyValue $riskScore -Force
+  }
+
+  $enabledAutoruns = $autorunEntries | Where-Object { $_.Enabled -ne $false }
+  if ($enabledAutoruns.Count -gt 0) {
+    $thirdPartyAutoruns = $enabledAutoruns | Where-Object { $_.IsMicrosoft -ne $true }
+    $thirdPartyCount = $thirdPartyAutoruns.Count
+    $totalAutoruns = $enabledAutoruns.Count
+    $microsoftCount = $totalAutoruns - $thirdPartyCount
+
+    if ($totalAutoruns -gt 0) {
+      $summary.Autoruns = [pscustomobject]@{
+        Total      = $totalAutoruns
+        ThirdParty = $thirdPartyCount
+        Microsoft  = $microsoftCount
+      }
+    }
+
+    $sortedThirdParty = $thirdPartyAutoruns | Sort-Object -Property @{ Expression = { $_.RiskScore }; Descending = $true }, @{ Expression = { $_.Entry } }
+
+    $evidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in ($sortedThirdParty | Select-Object -First 8)) {
+      $displayName = if ($entry.Entry) { $entry.Entry } elseif ($entry.Description) { $entry.Description } elseif ($entry.ImagePath) { $entry.ImagePath } else { 'Unnamed autorun' }
+      $publisherDisplay = if ($entry.Publisher) { $entry.Publisher } else { 'Unknown publisher' }
+      $locationDisplay = if ($entry.Location) { $entry.Location } elseif ($entry.Category) { $entry.Category } else { '' }
+      $commandDisplay = if ($entry.Command) { $entry.Command } elseif ($entry.ImagePath) { $entry.ImagePath } else { '' }
+      $detailParts = New-Object System.Collections.Generic.List[string]
+      [void]$detailParts.Add("Publisher: $publisherDisplay")
+      if ($locationDisplay) { [void]$detailParts.Add("Location: $locationDisplay") }
+      if ($entry.Profile) { [void]$detailParts.Add("Profile: $($entry.Profile)") }
+      if ($commandDisplay) { [void]$detailParts.Add("Command: $commandDisplay") }
+      if ($entry.RiskFlags -and $entry.RiskFlags.Count -gt 0) {
+        [void]$detailParts.Add("Flags: " + ($entry.RiskFlags -join '; '))
+      }
+      $detailsText = $detailParts -join "`n  "
+      [void]$evidenceLines.Add(("{0}`n  {1}" -f $displayName, $detailsText))
+    }
+
+    if ($thirdPartyCount -gt $evidenceLines.Count) {
+      $remaining = $thirdPartyCount - $evidenceLines.Count
+      if ($remaining -gt 0) {
+        [void]$evidenceLines.Add("(+{0} additional third-party autoruns not shown)" -f $remaining)
+      }
+    }
+
+    $evidenceText = if ($evidenceLines.Count -gt 0) { $evidenceLines -join "`n`n" } else { '' }
+
+    $severity = $null
+    if ($thirdPartyCount -gt 10) {
+      $severity = 'medium'
+    } elseif ($thirdPartyCount -gt 5) {
+      $severity = 'low'
+    }
+
+    if ($severity) {
+      $message = "Startup bloat: {0} non-Microsoft autoruns detected (out of {1}; Microsoft {2})." -f $thirdPartyCount, $totalAutoruns, $microsoftCount
+      Add-Issue $severity 'System/Startup' $message $evidenceText
+    } else {
+      if ($thirdPartyCount -eq 0) {
+        $message = "Startup autoruns lean — all {0} captured entries are Microsoft-signed." -f $totalAutoruns
+        Add-Normal 'System/Startup' $message '' 'GOOD'
+      } else {
+        $message = "Startup autoruns manageable ({0} third-party / {1} Microsoft; {2} total)." -f $thirdPartyCount, $microsoftCount, $totalAutoruns
+        $normalEvidence = if ($evidenceLines.Count -gt 0) { $evidenceText } else { '' }
+        Add-Normal 'System/Startup' $message $normalEvidence 'INFO'
+      }
+    }
+  } else {
+    Add-Normal 'System/Startup' 'Startup autorun inventory captured (no enabled entries found).' '' 'INFO'
   }
 }
 

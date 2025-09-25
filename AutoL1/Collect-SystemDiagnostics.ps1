@@ -246,6 +246,24 @@ $capturePlan = @(
   @{ Name = "Hotfixes"; Description = "Recent hotfixes"; Action = { Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 50 | Format-List * } },
   @{ Name = "Programs_Reg"; Description = "Installed programs (64-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
   @{ Name = "Programs_Reg_32"; Description = "Installed programs (32-bit registry)"; Action = { Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select DisplayName,DisplayVersion,Publisher,InstallDate | Format-Table -AutoSize } },
+  @{ Name = "Startup_Autoruns"; Description = "Startup autoruns inventory (Win32_StartupCommand)"; Action = {
+      try {
+        $startupItems = Get-CimInstance Win32_StartupCommand -ErrorAction Stop
+      } catch {
+        "Win32_StartupCommand query failed: $_"
+        return
+      }
+
+      if (-not $startupItems) {
+        "Win32_StartupCommand returned no entries."
+        return
+      }
+
+      $startupItems |
+        Sort-Object Location, Name |
+        Select-Object Name, Command, Location, User, Caption, Description |
+        ConvertTo-Csv -NoTypeInformation
+    } },
   @{ Name = "Services"; Description = "Service state overview"; Action = {
       $services = $null
       try {
