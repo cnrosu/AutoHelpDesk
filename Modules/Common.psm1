@@ -46,7 +46,7 @@ function Promote-Severity {
   return $script:SeverityOrder[$target]
 }
 
-function To-BoolOrNull {
+function ConvertTo-NullableBool {
   param($Value)
 
   if ($Value -is [bool]) { return [bool]$Value }
@@ -229,10 +229,10 @@ function Convert-DiskBlock {
     FriendlyName      = if ($props.ContainsKey('FriendlyName')) { $props['FriendlyName'] } else { '' }
     OperationalStatus = $operStatuses
     HealthStatus      = $healthStatuses
-    IsBoot            = if ($props.ContainsKey('IsBoot')) { To-BoolOrNull $props['IsBoot'] } else { $null }
-    IsSystem          = if ($props.ContainsKey('IsSystem')) { To-BoolOrNull $props['IsSystem'] } else { $null }
-    IsOffline         = if ($props.ContainsKey('IsOffline')) { To-BoolOrNull $props['IsOffline'] } else { $null }
-    IsReadOnly        = if ($props.ContainsKey('IsReadOnly')) { To-BoolOrNull $props['IsReadOnly'] } else { $null }
+    IsBoot            = if ($props.ContainsKey('IsBoot')) { ConvertTo-NullableBool $props['IsBoot'] } else { $null }
+    IsSystem          = if ($props.ContainsKey('IsSystem')) { ConvertTo-NullableBool $props['IsSystem'] } else { $null }
+    IsOffline         = if ($props.ContainsKey('IsOffline')) { ConvertTo-NullableBool $props['IsOffline'] } else { $null }
+    IsReadOnly        = if ($props.ContainsKey('IsReadOnly')) { ConvertTo-NullableBool $props['IsReadOnly'] } else { $null }
     Raw               = $BlockText
   }
 }
