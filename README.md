@@ -60,6 +60,11 @@ This document lists the analysis functions and issue card heuristics grouped by 
 - **Services** – Issues adopt the per-service severity computed earlier (e.g., medium/high/critical for critical service failures) and explicitly raise high severity when legacy essentials like Dhcp or WinDefend are stopped.
 - **Events** – Adds informational issues for logs showing five or more errors and low-severity issues for logs with at least ten warnings in the sampled data.
 
+## Hardware Heuristics
+- **Hardware/Removable Media – Autorun/Autoplay** – Flags medium severity when Autorun or Autoplay remains enabled by checking `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF` (or equivalent policy) and `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoAutoRun = 1`.
+- **Hardware/Removable Storage Control** – Raises medium-to-high severity when removable storage controls (such as deny write/allow read policies or BitLocker To Go requirements) are not enforced in environments where policy forbids unrestricted removable storage.
+- **Hardware/Bluetooth & Wireless Sharing** – Emits low-severity findings when Bluetooth, Wi-Fi sharing, or Nearby sharing features deviate from the required baseline on laptops.
+
 ## Storage Heuristics
 - **Storage/SMART** – Critical when SMART output contains failure keywords (Pred Fail, Bad, Caution, etc.).
 - **Storage/Disks** – Aggregates disk health problems (offline, read-only, non-OK operational/health status) and raises an issue at the worst severity observed across affected disks.

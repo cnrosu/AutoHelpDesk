@@ -236,6 +236,151 @@ $capturePlan = @(
         Write-Output "powercfg.exe not available."
       }
     } },
+  @{ Name = "Hardware_Policies"; Description = "Removable media and sharing policy snapshot"; Action = {
+      function Write-PolicyLine {
+        param(
+          [string]$Name,
+          $Value
+        )
+
+        if (-not $Name) { return }
+
+        $text = $null
+        if ($null -eq $Value) {
+          $text = '(value not present)'
+        } elseif ($Value -is [System.Array]) {
+          $text = ($Value | ForEach-Object { $_ }) -join ', '
+        } else {
+          $text = [string]$Value
+        }
+
+        Write-Output ("{0} : {1}" -f $Name, $text)
+      }
+
+      $explorerPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer'
+      Write-Output 'Section : Explorer'
+      if (Test-Path $explorerPath) {
+        try {
+          $explorer = Get-ItemProperty -Path $explorerPath -ErrorAction Stop
+          foreach ($name in @('NoDriveTypeAutoRun','NoAutoRun','NoDriveAutoRun','HonorAutorunSetting')) {
+            if ($explorer.PSObject.Properties[$name]) {
+              Write-PolicyLine -Name ("Explorer.{0}" -f $name) -Value $explorer.$name
+            } else {
+              Write-PolicyLine -Name ("Explorer.{0}" -f $name) -Value $null
+            }
+          }
+        } catch {
+          Write-PolicyLine -Name 'Explorer.Error' -Value $_
+        }
+      } else {
+        Write-PolicyLine -Name 'Explorer.KeyPresent' -Value $false
+      }
+
+      Write-Output ''
+      Write-Output 'Section : RemovableStorage'
+      $removablePath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\RemovableStorageDevices'
+      if (Test-Path $removablePath) {
+        Write-PolicyLine -Name 'RemovableStorage.KeyPresent' -Value $true
+        try {
+          $rootProps = Get-ItemProperty -Path $removablePath -ErrorAction Stop
+          foreach ($prop in $rootProps.PSObject.Properties) {
+            if (@('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') -contains $prop.Name) { continue }
+            Write-PolicyLine -Name ("RemovableStorage.Root.{0}" -f $prop.Name) -Value $prop.Value
+          }
+        } catch {
+          Write-PolicyLine -Name 'RemovableStorage.RootError' -Value $_
+        }
+
+        try {
+          $subKeys = Get-ChildItem -Path $removablePath -ErrorAction Stop
+          foreach ($subKey in $subKeys) {
+            $name = $subKey.PSChildName
+            try {
+              $subProps = Get-ItemProperty -Path $subKey.PSPath -ErrorAction Stop
+              foreach ($prop in $subProps.PSObject.Properties) {
+                if (@('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') -contains $prop.Name) { continue }
+                Write-PolicyLine -Name ("RemovableStorage.{0}.{1}" -f $name, $prop.Name) -Value $prop.Value
+              }
+            } catch {
+              Write-PolicyLine -Name ("RemovableStorage.{0}.Error" -f $name) -Value $_
+            }
+          }
+        } catch {
+          Write-PolicyLine -Name 'RemovableStorage.EnumerateError' -Value $_
+        }
+      } else {
+        Write-PolicyLine -Name 'RemovableStorage.KeyPresent' -Value $false
+      }
+
+      Write-Output ''
+      Write-Output 'Section : BitLockerToGo'
+      $fvePath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE'
+      if (Test-Path $fvePath) {
+        Write-PolicyLine -Name 'BitLocker.KeyPresent' -Value $true
+        try {
+          $fveProps = Get-ItemProperty -Path $fvePath -ErrorAction Stop
+          foreach ($prop in $fveProps.PSObject.Properties) {
+            if (@('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') -contains $prop.Name) { continue }
+            Write-PolicyLine -Name ("BitLocker.{0}" -f $prop.Name) -Value $prop.Value
+          }
+        } catch {
+          Write-PolicyLine -Name 'BitLocker.Error' -Value $_
+        }
+      } else {
+        Write-PolicyLine -Name 'BitLocker.KeyPresent' -Value $false
+      }
+
+      Write-Output ''
+      Write-Output 'Section : Sharing'
+      $connectPath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Connect'
+      if (Test-Path $connectPath) {
+        Write-PolicyLine -Name 'Sharing.ConnectKeyPresent' -Value $true
+        try {
+          $connectProps = Get-ItemProperty -Path $connectPath -ErrorAction Stop
+          foreach ($prop in $connectProps.PSObject.Properties) {
+            if (@('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') -contains $prop.Name) { continue }
+            Write-PolicyLine -Name ("Sharing.{0}" -f $prop.Name) -Value $prop.Value
+          }
+        } catch {
+          Write-PolicyLine -Name 'Sharing.ConnectError' -Value $_
+        }
+      } else {
+        Write-PolicyLine -Name 'Sharing.ConnectKeyPresent' -Value $false
+      }
+
+      $systemPolicyPath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System'
+      if (Test-Path $systemPolicyPath) {
+        try {
+          $systemProps = Get-ItemProperty -Path $systemPolicyPath -ErrorAction Stop
+          foreach ($prop in $systemProps.PSObject.Properties) {
+            if (@('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') -contains $prop.Name) { continue }
+            Write-PolicyLine -Name ("Sharing.System.{0}" -f $prop.Name) -Value $prop.Value
+          }
+        } catch {
+          Write-PolicyLine -Name 'Sharing.SystemError' -Value $_
+        }
+      }
+
+      foreach ($serviceInfo in @(
+          @{ Name = 'BthServ'; Key = 'Sharing.BluetoothServiceStart' },
+          @{ Name = 'WFDSConMgrSvc'; Key = 'Sharing.WiFiDirectServiceStart' }
+        )) {
+        $servicePath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\$($serviceInfo.Name)"
+        if (Test-Path $servicePath) {
+          try {
+            $serviceProps = Get-ItemProperty -Path $servicePath -Name Start -ErrorAction Stop
+            Write-PolicyLine -Name $serviceInfo.Key -Value $serviceProps.Start
+          } catch {
+            Write-PolicyLine -Name ("{0}.Error" -f $serviceInfo.Key) -Value $_
+          }
+        }
+        try {
+          $svc = Get-Service -Name $serviceInfo.Name -ErrorAction Stop
+          Write-PolicyLine -Name ("{0}Status" -f $serviceInfo.Key) -Value $svc.Status
+          Write-PolicyLine -Name ("{0}StartType" -f $serviceInfo.Key) -Value $svc.StartType
+        } catch {}
+      }
+    } },
   @{ Name = "NetworkAdapterConfigs"; Description = "Network adapter configuration details"; Action = { Get-CimInstance Win32_NetworkAdapterConfiguration | Select-Object Description,Index,MACAddress,IPAddress,DefaultIPGateway,DHCPEnabled,DHCPServer,DnsServerSearchOrder | Format-List * } },
   @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
   @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },

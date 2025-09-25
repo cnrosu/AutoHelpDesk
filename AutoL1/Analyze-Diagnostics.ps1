@@ -570,6 +570,7 @@ $files = [ordered]@{
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
   computerinfo   = Find-ByContent @('ComputerInfo')              @('CsName\s*:','WindowsBuildLabEx\s*:')
   power_settings = Find-ByContent @('Power_Settings','PowerSettings','PowerCfg') @('HiberbootEnabled','Fast Startup','powercfg /a')
+  hardware_policies = Find-ByContent @('Hardware_Policies')      @('Section : Explorer','RemovableStorage.KeyPresent','BitLocker.KeyPresent')
 
   nic_configs    = Find-ByContent @('NetworkAdapterConfigs')     @('Win32_NetworkAdapterConfiguration')
   netip          = Find-ByContent @('NetIPAddresses','NetIP')    @('IPAddress','InterfaceIndex')
@@ -1833,11 +1834,198 @@ $isModernClient = $false
 if ($isWorkstationProfile -and $osVersionMajor -ge 10) {
   $isModernClient = $true
 }
-$summary.IsModernClient = $isModernClient
+  $summary.IsModernClient = $isModernClient
+
+$hardwarePoliciesText = $raw['hardware_policies']
+$hardwarePolicyMap = @{}
+if ($hardwarePoliciesText) {
+    $hardwarePolicyMap = Parse-KeyValueBlock $hardwarePoliciesText
+}
+
+function Get-HardwarePolicyValue {
+    param(
+      [System.Collections.IDictionary]$Map,
+      [string]$Key
+    )
+
+    if (-not $Map -or -not $Key) { return $null }
+    if ($Map.Contains($Key)) { return $Map[$Key] }
+    if ($Map.ContainsKey($Key)) { return $Map[$Key] }
+    return $null
+}
+
+function Test-HardwarePolicyKey {
+    param(
+      [System.Collections.IDictionary]$Map,
+      [string]$Key
+    )
+
+    if (-not $Map -or -not $Key) { return $false }
+    if ($Map.Contains($Key)) { return $true }
+    try {
+      if ($Map.ContainsKey($Key)) { return $true }
+    } catch {}
+    return $false
+}
+
+function Get-HardwareEvidenceLines {
+    param(
+      [System.Collections.IDictionary]$Map,
+      [string[]]$Keys
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    if ($Map -and $Keys) {
+      foreach ($name in $Keys) {
+        if (-not $name) { continue }
+        $value = Get-HardwarePolicyValue -Map $Map -Key $name
+        if ($null -ne $value) {
+          $lines.Add("$name : $value")
+        } else {
+          $lines.Add("$name : (not captured)")
+        }
+      }
+    }
+    return $lines
+}
+
+# Hardware/Removable Media – Autorun/Autoplay
+$autorunCheckId = 'hardware_autorun'
+$autorunEvidenceLines = Get-HardwareEvidenceLines -Map $hardwarePolicyMap -Keys @('Explorer.NoDriveTypeAutoRun','Explorer.NoAutoRun')
+$autorunEvidence = $autorunEvidenceLines -join "`n"
+if ($hardwarePolicyMap.Count -eq 0 -and -not $hardwarePoliciesText) {
+    Add-Issue 'medium' 'Hardware/Removable Media – Autorun/Autoplay' 'Autorun policy data not captured.' 'Hardware_Policies output not found.' $autorunCheckId
+} else {
+    $noDriveValue = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Explorer.NoDriveTypeAutoRun')
+    $noAutoRunValue = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Explorer.NoAutoRun')
+    $autorunConfigured = ($null -ne $noDriveValue -or $null -ne $noAutoRunValue)
+    $autorunDisabled = ($noDriveValue -eq 255 -or $noDriveValue -eq 65280) -and ($noAutoRunValue -eq 1)
+
+    if ($autorunConfigured -and $autorunDisabled) {
+      Add-Normal 'Hardware/Removable Media – Autorun/Autoplay' 'Autorun and Autoplay disabled (NoDriveTypeAutoRun=0xFF, NoAutoRun=1).' $autorunEvidence $autorunCheckId
+    } elseif ($autorunConfigured) {
+      Add-Issue 'medium' 'Hardware/Removable Media – Autorun/Autoplay' 'Autorun/Autoplay not fully disabled. Set NoDriveTypeAutoRun to 0xFF and NoAutoRun to 1.' $autorunEvidence $autorunCheckId
+    } else {
+      Add-Issue 'medium' 'Hardware/Removable Media – Autorun/Autoplay' 'Autorun policy values missing. Enforce NoDriveTypeAutoRun=0xFF and NoAutoRun=1.' $autorunEvidence $autorunCheckId
+    }
+}
+
+# Hardware/Removable Storage Control
+$removableCheckId = 'hardware_removable_storage'
+$removablePolicyPresent = $null
+$removablePolicyValue = Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'RemovableStorage.KeyPresent'
+if ($removablePolicyValue -ne $null) { $removablePolicyPresent = ConvertTo-NullableBool $removablePolicyValue }
+
+$denyEntries = New-Object System.Collections.Generic.List[string]
+$allowReadEntries = New-Object System.Collections.Generic.List[string]
+$removableEnforced = $false
+foreach ($key in $hardwarePolicyMap.Keys) {
+    if (-not $key -or ($key -notlike 'RemovableStorage.*')) { continue }
+    $valueText = $hardwarePolicyMap[$key]
+    $intValue = ConvertTo-NullableInt $valueText
+    if ($key -match '\.Deny_(Write|All)$' -and $intValue -eq 1) {
+      $denyEntries.Add("$key : $valueText") | Out-Null
+      $removableEnforced = $true
+    }
+    if ($key -match '\.Allow_Read$' -and $intValue -eq 1) {
+      $allowReadEntries.Add("$key : $valueText") | Out-Null
+    }
+}
+
+$bitlockerEnforced = $false
+$bitlockerEvidence = New-Object System.Collections.Generic.List[string]
+foreach ($propName in @('BitLocker.RDVEnforceBDE','BitLocker.RDVDenyWriteAccess','BitLocker.RDVAllowWriteAccessToNonBDE')) {
+    $value = Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key $propName
+    if ($null -eq $value) { continue }
+    $bitlockerEvidence.Add("$propName : $value") | Out-Null
+    $intValue = ConvertTo-NullableInt $value
+    if ($propName -eq 'BitLocker.RDVAllowWriteAccessToNonBDE') {
+      if ($intValue -eq 0) { $bitlockerEnforced = $true }
+    } elseif ($intValue -eq 1) {
+      $bitlockerEnforced = $true
+    }
+}
+
+$removableEvidenceSections = New-Object System.Collections.Generic.List[string]
+if ($denyEntries.Count -gt 0) { $removableEvidenceSections.Add(($denyEntries -join "`n")) | Out-Null }
+if ($bitlockerEvidence.Count -gt 0) { $removableEvidenceSections.Add(($bitlockerEvidence -join "`n")) | Out-Null }
+if ($allowReadEntries.Count -gt 0) { $removableEvidenceSections.Add(('Allow read policies:' + "`n" + ($allowReadEntries -join "`n"))) | Out-Null }
+$removableEvidence = if ($removableEvidenceSections.Count -gt 0) { $removableEvidenceSections -join "`n`n" } else { 'No removable storage enforcement values detected.' }
+
+if ($hardwarePolicyMap.Count -eq 0 -and -not $hardwarePoliciesText) {
+    Add-Issue 'medium' 'Hardware/Removable Storage Control' 'Removable storage policy data not captured.' 'Hardware_Policies output not found.' $removableCheckId
+} elseif ($removableEnforced -or $bitlockerEnforced) {
+    $details = @()
+    if ($removableEnforced) { $details += 'Removable storage write/deny policies enforced.' }
+    if ($bitlockerEnforced) { $details += 'BitLocker To Go enforcement detected.' }
+    $detailText = if ($details.Count -gt 0) { $details -join ' ' } else { 'Removable storage controls detected.' }
+    Add-Normal 'Hardware/Removable Storage Control' $detailText $removableEvidence $removableCheckId
+} elseif ($removablePolicyPresent -eq $false -and -not $bitlockerEnforced) {
+    Add-Issue 'high' 'Hardware/Removable Storage Control' 'Removable storage unrestricted (policy key absent).' $removableEvidence $removableCheckId
+} else {
+    Add-Issue 'high' 'Hardware/Removable Storage Control' 'No deny-write or BitLocker To Go requirement detected. Enforce removable media controls.' $removableEvidence $removableCheckId
+}
+
+# Hardware/Bluetooth & Wireless Sharing
+$sharingCheckId = 'hardware_wireless_sharing'
+if ($summary.IsLaptop -ne $true) {
+    Add-Normal 'Hardware/Bluetooth & Wireless Sharing' 'Desktop/Server profile—wireless sharing baseline not applicable.' '' $sharingCheckId -NA
+} else {
+    $sharingKeys = @()
+    if ($hardwarePolicyMap) {
+      $sharingKeys = $hardwarePolicyMap.Keys | Where-Object { $_ -like 'Sharing*' }
+    }
+    if (-not $sharingKeys -or $sharingKeys.Count -eq 0) {
+      Add-Issue 'info' 'Hardware/Bluetooth & Wireless Sharing' 'Wireless sharing policy output not captured. Collect Hardware_Policies.' '' $sharingCheckId
+    } else {
+      $deviations = New-Object System.Collections.Generic.List[string]
+      $positives = New-Object System.Collections.Generic.List[string]
+      $evidenceLines = New-Object System.Collections.Generic.List[string]
+
+      $btPolicy = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Sharing.AllowBluetooth')
+      if (Test-HardwarePolicyKey -Map $hardwarePolicyMap -Key 'Sharing.AllowBluetooth') { $evidenceLines.Add("Sharing.AllowBluetooth : $($hardwarePolicyMap['Sharing.AllowBluetooth'])") | Out-Null }
+      if ($null -ne $btPolicy) {
+        if ($btPolicy -eq 0) { $positives.Add('Bluetooth disabled by policy') | Out-Null } else { $deviations.Add("Bluetooth policy allows value $btPolicy") | Out-Null }
+      } else {
+        $btStart = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Sharing.BluetoothServiceStart')
+        if (Test-HardwarePolicyKey -Map $hardwarePolicyMap -Key 'Sharing.BluetoothServiceStart') { $evidenceLines.Add("Sharing.BluetoothServiceStart : $($hardwarePolicyMap['Sharing.BluetoothServiceStart'])") | Out-Null }
+        if ($null -ne $btStart) {
+          if ($btStart -eq 4) { $positives.Add('Bluetooth service disabled (Start=4)') | Out-Null } else { $deviations.Add("Bluetooth service Start=$btStart") | Out-Null }
+        }
+      }
+
+      $wifiPolicy = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Sharing.AllowWiFiDirect')
+      if (Test-HardwarePolicyKey -Map $hardwarePolicyMap -Key 'Sharing.AllowWiFiDirect') { $evidenceLines.Add("Sharing.AllowWiFiDirect : $($hardwarePolicyMap['Sharing.AllowWiFiDirect'])") | Out-Null }
+      if ($null -ne $wifiPolicy) {
+        if ($wifiPolicy -eq 0) { $positives.Add('Wi-Fi Direct sharing disabled by policy') | Out-Null } else { $deviations.Add("Wi-Fi Direct policy allows value $wifiPolicy") | Out-Null }
+      } else {
+        $wifiStart = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Sharing.WiFiDirectServiceStart')
+        if (Test-HardwarePolicyKey -Map $hardwarePolicyMap -Key 'Sharing.WiFiDirectServiceStart') { $evidenceLines.Add("Sharing.WiFiDirectServiceStart : $($hardwarePolicyMap['Sharing.WiFiDirectServiceStart'])") | Out-Null }
+        if ($null -ne $wifiStart) {
+          if ($wifiStart -eq 4) { $positives.Add('Wi-Fi Direct service disabled (Start=4)') | Out-Null } else { $deviations.Add("Wi-Fi Direct service Start=$wifiStart") | Out-Null }
+        }
+      }
+
+      $nearbyPolicy = ConvertTo-NullableInt (Get-HardwarePolicyValue -Map $hardwarePolicyMap -Key 'Sharing.System.EnableNearbySharing')
+      if (Test-HardwarePolicyKey -Map $hardwarePolicyMap -Key 'Sharing.System.EnableNearbySharing') { $evidenceLines.Add("Sharing.System.EnableNearbySharing : $($hardwarePolicyMap['Sharing.System.EnableNearbySharing'])") | Out-Null }
+      if ($null -ne $nearbyPolicy) {
+        if ($nearbyPolicy -eq 0) { $positives.Add('Nearby sharing disabled by policy') | Out-Null } else { $deviations.Add("Nearby sharing policy value $nearbyPolicy") | Out-Null }
+      }
+
+      $sharingEvidence = $evidenceLines -join "`n"
+      if ($deviations.Count -eq 0 -and $positives.Count -gt 0) {
+        Add-Normal 'Hardware/Bluetooth & Wireless Sharing' ($positives -join '; ') $sharingEvidence $sharingCheckId
+      } elseif ($deviations.Count -gt 0) {
+        Add-Issue 'low' 'Hardware/Bluetooth & Wireless Sharing' ("Wireless sharing features allowed: {0}." -f ($deviations -join '; ')) $sharingEvidence $sharingCheckId
+      } else {
+        Add-Issue 'info' 'Hardware/Bluetooth & Wireless Sharing' 'Unable to determine wireless sharing baseline from captured values.' $sharingEvidence $sharingCheckId
+      }
+    }
+}
 
 # nslookup / ping / tracert
-if ($raw['nslookup'] -and ($raw['nslookup'] -match "Request timed out|Non-existent domain")){
-  Add-Issue "medium" "DNS" "nslookup shows timeouts or NXDOMAIN." $raw['nslookup']
+  if ($raw['nslookup'] -and ($raw['nslookup'] -match "Request timed out|Non-existent domain")){
+    Add-Issue "medium" "DNS" "nslookup shows timeouts or NXDOMAIN." $raw['nslookup']
 }
 if ($raw['nslookup'] -and $raw['nslookup'] -match "Server:\s*(.+)") {
   Add-Normal "DNS" "DNS resolver responds" (([regex]::Split($raw['nslookup'],'\r?\n') | Select-Object -First 6) -join "`n")

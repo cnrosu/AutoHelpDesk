@@ -115,6 +115,15 @@ function ConvertTo-NullableInt {
   if (-not $trimmed) { return $null }
 
   $parsed = 0
+
+  if ($trimmed -match '^(?i)0x[0-9a-f]+$') {
+    try {
+      return [Convert]::ToInt32($trimmed, 16)
+    } catch {
+      return $null
+    }
+  }
+
   if ([int]::TryParse($trimmed, [ref]$parsed)) {
     return $parsed
   }
