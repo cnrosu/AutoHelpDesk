@@ -6,53 +6,49 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 ## Script Overview
 
 ### Device-Report.ps1 (Orchestrator)
-- **Purpose**: One-button experience that collects diagnostics (when needed), analyzes them, and opens the Device Health report.
+- **Purpose**: One-button experience that runs the shared collectors, executes the analyzer, and opens the Device Health report.
 - **Workflow**:
-  1. If `-InputFolder` is not provided, runs the collector to create a fresh timestamped folder under the chosen output root.
-  2. Passes the newest collection folder to the analyzer.
+  1. If `-InputFolder` is not provided, invokes `Collectors/Collect-All.ps1` to emit JSON artifacts into a fresh timestamped folder under the chosen output root.
+  2. Feeds that folder to `Analyzers/Analyze-Diagnostics.ps1`, which reads every artifact and produces the HTML report.
   3. Opens the generated Device Health HTML report and writes its path to stdout.
 - **Inputs**:
   - `-OutRoot` (optional): base folder for new collections (defaults to `Desktop\DiagReports`).
   - `-InputFolder` (optional): analyze an existing collection without re-running the collector.
-- **Outputs**: Launches `DeviceHealth_Report_<timestamp>.html` in the default browser.
+- **Outputs**: Launches `diagnostics-report.html` in the default browser (and returns its resolved path).
 
-### Collect-SystemDiagnostics.ps1 (Collector)
-- **Purpose**: Run safe, read-only commands to snapshot system state into discrete text files.
+### Collectors/Collect-All.ps1 (Collector orchestrator)
+- **Purpose**: Run every JSON collector under `/Collectors` and write the results into per-area subfolders.
 - **Operation**:
-  - Executes networking, OS, storage, services, security, and event log commands via the `Save-Output` helper.
-  - Writes each command's output to its own `.txt` file inside a timestamped folder.
-  - Generates a lightweight `summary.json` and optional basic `Report.html` for raw viewing.
+  - Discovers `Collect-*.ps1` scripts, ensures the run folder exists, and executes each collector with a shared output contract.
+  - Produces `collection-summary.json` so automations can verify success/failure per script.
 - **Inputs**:
-  - `-OutRoot` (optional): base folder for collection output (defaults to `Desktop\DiagReports`).
-  - `-NoHtml` (optional): skip building the basic HTML viewer.
+  - `-OutputRoot` (optional): folder that will receive the area subfolders (`Network`, `Security`, etc.).
 - **Outputs**:
-  - New folder: `DiagReports\<YYYYMMDD_HHMMSS>\` containing many `.txt` files (e.g., `ipconfig_all.txt`, `route_print.txt`, `Firewall.txt`, etc.), plus `summary.json` and `Report.html`.
-- **Key Tools**: `ipconfig`, `route`, `netstat`, `ping`, `nslookup`, `wevtutil`, `Get-CimInstance`, `Get-Volume`, `Get-Disk`, and similar built-ins.
-- **Why individual files?**: Keeps each data source isolated for resilient parsing and straightforward manual inspection.
+  - Timestamped folder tree created by `Device-Report.ps1` (for example, `DiagReports\<YYYYMMDD_HHMMSS>\Network\network.json`).
+- **Why JSON artifacts?**: Analyzers can deterministically parse payloads without relying on regex heuristics against raw text files.
 
-### Analyze-Diagnostics.ps1 (Analyzer)
-- **Purpose**: Parse the collected artifacts, run heuristics, and build the Device Health HTML report.
+### Collect-SystemDiagnostics.ps1 (Legacy collector)
+- **Purpose**: Original text-file collector retained for backwards compatibility and ad-hoc investigations.
+- **Note**: Device-Report no longer calls this script. Prefer `Collectors/Collect-All.ps1` for end-to-end workflows so the analyzer receives structured JSON.
+
+### Analyzers/Analyze-Diagnostics.ps1 (Analyzer)
+- **Purpose**: Load collector artifacts, run modular heuristics, and build the Device Health HTML report.
 - **Operation**:
-  - Locates required files by filename hints and content signatures using `Find-ByContent`.
-  - Parses IPv4/gateway/DNS, OS details, last boot, connectivity checks, security posture, firewall status, event log samples, and service state via regex-driven extractors.
-  - Applies heuristic rules to flag common L1 issues and assigns penalty-based severities that roll into a health score.
-  - Produces an enriched HTML report with summary, issue table, evidence snippets, and selected raw excerpts.
+  - Imports `AnalyzerCommon.ps1`, loads every JSON payload, and invokes category-specific heuristic modules.
+  - Calculates scores, merges issues/normals/checks, and renders HTML via `HtmlComposer.ps1`.
 - **Inputs**:
-  - `-InputFolder` (required): exact path to a collector output folder.
+  - `-InputFolder` (required): path to the collector output folder created by `Collect-All.ps1`.
+  - `-OutputPath` (optional): override the default `diagnostics-report.html` destination.
 - **Outputs**:
-  - `DeviceHealth_Report_<YYYYMMDD_HHMMSS>.html` saved in the same folder.
-- **Scoring Model**:
-  - Severity weights: Critical = 10, High = 6, Medium = 3, Warning = 2, Low = 1, Info = 0.
-  - Penalties subtract from 100 with caps to avoid bottoming out unnecessarily.
+  - HTML report plus flattened issue/normal/check collections returned to the caller.
 - **Artifact Contract**:
   - Assumes each collector writes an ISO-8601 `CollectedAt` stamp and a `Payload` object to JSON via `CollectorCommon.ps1`.
-  - Expects artifacts to live directly under the collection folder (any sub-tree) with descriptive names such as `network.json`, `defender.json`, `smart.json`, etc.
-  - Uses the base filename as the lookup key (lowercased). Adding new collectors only requires matching the filename the heuristics expect or updating the relevant analyzer module to read the new name.
+  - Uses lowercase base filenames as lookup keys so heuristics can locate data deterministically.
 - **Sample Heuristics**:
   - **Network**: Missing IPv4, APIPA addresses, absent default routes, failed pings or DNS lookups, inappropriate public DNS for corporate networks.
   - **Security**: Defender real-time protection disabled or signatures older than seven days.
-  - **Firewall**: Any profile disabled (especially Public).
-  - **Events & Services**: High error/warning counts or critical services (Dhcp, Dnscache, LanmanWorkstation/Server, WlanSvc, WinDefend) stopped.
+  - **Services**: Flag stopped critical services (Dhcp, Dnscache, LanmanWorkstation/Server, WlanSvc, WinDefend).
+  - **Storage & Events**: Highlight low disk space and noisy event logs.
 
 ## Styling conventions
 - Global foundations live in `styles/base.css` (design tokens/resets) and `styles/layout.css` (reusable layout helpers).
@@ -66,23 +62,23 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 Set-ExecutionPolicy -Scope Process Bypass -Force
 ./Device-Report.ps1
 ```
-1. Collector creates `Desktop\DiagReports\<timestamp>\` with all raw outputs.
-2. Analyzer writes `DeviceHealth_Report_<timestamp>.html` into the same folder.
+1. Collector creates `Desktop\DiagReports\<timestamp>\` with JSON artifacts grouped by area (`Network`, `Security`, etc.).
+2. Analyzer writes `diagnostics-report.html` into the same folder.
 3. Device-Report opens the Device Health report automatically.
 
 ## Relationship to shared collectors/analyzers
 
-- The `/Collectors` folder in the repository stores the reusable JSON collectors that Device-Report invokes when a fresh run is required. You can execute an individual collector (for example, `Collectors/Network/Collect-Network.ps1`) to produce a single artifact for experimentation.
-- The `/Analyzers` folder contains the heuristic modules Device-Report imports. When a new collector is added to `/Collectors`, update or extend the appropriate analyzer module (Network, System, Security, etc.) so it understands the new payload.
+- The `/Collectors` folder stores the reusable JSON collectors that Device-Report invokes when a fresh run is required. You can execute an individual collector (for example, `Collectors/Network/Collect-Network.ps1`) to produce a single artifact for experimentation.
+- The `/Analyzers` folder contains the heuristic modules called by `Analyzers/Analyze-Diagnostics.ps1`. When a new collector is added to `/Collectors`, update or extend the appropriate analyzer module (Network, System, Security, etc.) so it understands the new payload.
 - Device-Report glues the two pieces together, ensuring the collection output folder supplied to the analyzer matches the structure described above.
 
 ## Extensibility
-- **Collector**: Add or remove commands by inserting new `Save-Output "Name" { <command> }` calls.
-- **Analyzer**:
-  - Update `Find-ByContent` needles when file naming conventions change.
-  - Add new parser logic that consumes entries from the `$raw` hashtable and calls `Add-Issue`.
-  - Extend the HTML with additional sections (e.g., disk health, Wi-Fi metrics).
-- **Scoring & Heuristics**: Replace the additive penalty model with category weighting or new rules for disk space, Wi-Fi signal, driver versions, application inventory, etc.
+- **Collectors**: Add or remove collector scripts under `/Collectors/<Area>/`. Each script should import `CollectorCommon.ps1`, gather data, and export JSON with `New-CollectorMetadata` + `Export-CollectorResult`.
+- **Analyzers**:
+  - Extend or create heuristic modules under `/Analyzers/Heuristics/` to parse new payloads.
+  - Update `Analyzers/Analyze-Diagnostics.ps1` to import the module when adding a new category.
+  - Customize `HtmlComposer.ps1` for new presentation needs.
+- **Scoring & Heuristics**: Tweak severity weights or add category-specific scoring inside the heuristic modules.
 
 ## Assumptions & Limitations
 - Designed for Windows 10/11 (Home or Pro); run in elevated PowerShell for fullest data access.
@@ -90,10 +86,10 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - Collector and analyzer rely on built-in tools—no RSAT or external modules required.
 
 ## Artifact Map
-- **Collector Outputs**: `ipconfig_all.txt`, `route_print.txt`, `netstat_ano.txt`, `arp_table.txt`, `nslookup_google.txt`, `tracert_google.txt`, `ping_google.txt`, `OS_CIM.txt`, `ComputerInfo.txt`, `Firewall*.txt`, `DefenderStatus.txt`, event log samples, services/processes/drivers snapshots, disk/volume listings, program inventories, `whoami`, `ScheduledTasks.txt`, `TopCPU.txt`, `Memory.txt`, `summary.json`, `Report.html`.
-- **Analyzer Output**: `DeviceHealth_Report_<timestamp>.html`.
+- **Collector Outputs**: JSON artifacts written under area subfolders (for example, `Network/network.json`, `Security/defender.json`, `System/system.json`) plus `collection-summary.json` at the run root.
+- **Analyzer Output**: `diagnostics-report.html` alongside merged issue/normal/check collections returned to callers.
 
 ## Safe Modification Points
-- Collector command list.
-- Analyzer file needles, parsers, issue logic, HTML formatting.
-- Device-Report defaults (e.g., `-OutRoot`) and newest-folder selection logic.
+- Collector scripts and shared helpers under `/Collectors`.
+- Analyzer heuristic modules, HTML composer, and severity logic under `/Analyzers`.
+- Device-Report defaults (e.g., `-OutRoot`) and collection/orchestration logic.
