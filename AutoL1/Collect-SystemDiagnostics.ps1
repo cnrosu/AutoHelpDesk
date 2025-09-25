@@ -48,6 +48,22 @@ function Save-Output {
   return $file
 }
 
+$kernelDmaHelperPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors\\System\\KernelDMAStatus.ps1'
+if (Test-Path $kernelDmaHelperPath) {
+  . $kernelDmaHelperPath
+} elseif (-not (Get-Command Get-KernelDmaStatusData -ErrorAction SilentlyContinue)) {
+  function Get-KernelDmaStatusData {
+    param([int]$MsInfoTimeoutSeconds = 4)
+
+    return [pscustomobject]@{
+      DeviceGuard = [pscustomobject]@{ Status = 'Error'; Message = 'KernelDMA helper unavailable'; Entries = @(); HasData = $false }
+      Registry    = [pscustomobject]@{ Status = 'Error'; Message = 'KernelDMA helper unavailable'; Path = $null; Values = @{}; HasData = $false }
+      MsInfo      = [pscustomobject]@{ Status = 'Skipped'; Message = 'KernelDMA helper unavailable'; Lines = @() }
+    }
+  }
+}
+
+
 $capturePlan = @(
   @{ Name = "ipconfig_all"; Description = "Detailed IP configuration (ipconfig /all)"; Action = { ipconfig /all } },
   @{ Name = "route_print"; Description = "Routing table (route print)"; Action = { route print } },
@@ -501,24 +517,84 @@ $capturePlan = @(
       }
     } },
   @{ Name = "Security_KernelDMA"; Description = "Kernel DMA protection status"; Action = {
-      $target = Join-Path $reportDir 'msinfo32_dma.txt'
+      $lines = New-Object System.Collections.Generic.List[string]
+      $status = $null
       try {
-        $arguments = "/report `"$target`" /categories +SystemSummary"
-        Start-Process -FilePath msinfo32.exe -ArgumentList $arguments -WindowStyle Hidden -Wait | Out-Null
-        if (Test-Path $target) {
-          $content = Get-Content -Path $target
-          $filtered = $content | Where-Object { $_ -match 'Kernel DMA Protection' -or $_ -match 'Device Encryption Support' -or $_ -match 'Virtualization-based security' }
-          if ($filtered) {
-            $filtered
-          } else {
-            $content | Select-Object -First 60
-          }
-        } else {
-          "msinfo32 report file not generated: $target"
-        }
+        $status = Get-KernelDmaStatusData -MsInfoTimeoutSeconds 4
       } catch {
-        "msinfo32 /report failed: $_"
+        $lines.Add("KernelDMA.Error : $($_.Exception.Message)")
       }
+
+      if ($status) {
+        if ($status.DeviceGuard) {
+          $dg = $status.DeviceGuard
+          $lines.Add(("DeviceGuard.Status : {0}" -f $dg.Status))
+          if ($dg.Message) { $lines.Add(("DeviceGuard.Message : {0}" -f $dg.Message)) }
+          if ($dg.Entries) {
+            $entries = if ($dg.Entries -is [System.Collections.IEnumerable] -and -not ($dg.Entries -is [string])) { $dg.Entries } else { @($dg.Entries) }
+            $index = 0
+            foreach ($entry in $entries) {
+              if (-not $entry) { continue }
+              $prefix = if ($entries.Count -gt 1) { "DeviceGuard[$index]" } else { "DeviceGuard" }
+              foreach ($prop in $entry.PSObject.Properties) {
+                $value = $prop.Value
+                if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                  $items = @()
+                  foreach ($item in $value) { if ($null -ne $item) { $items += [string]$item } }
+                  $value = $items -join ','
+                } elseif ($null -eq $value) {
+                  $value = '<null>'
+                }
+                if ($null -ne $value -and $value -ne '') {
+                  $lines.Add(("{0}.{1} : {2}" -f $prefix, $prop.Name, $value))
+                }
+              }
+              $index++
+            }
+          }
+        }
+
+        if ($status.Registry) {
+          $reg = $status.Registry
+          $lines.Add(("Registry.Status : {0}" -f $reg.Status))
+          if ($reg.Message) { $lines.Add(("Registry.Message : {0}" -f $reg.Message)) }
+          if ($reg.Path) { $lines.Add(("Registry.Path : {0}" -f $reg.Path)) }
+          if ($reg.Values) {
+            foreach ($prop in $reg.Values.PSObject.Properties) {
+              $value = $prop.Value
+              if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                $items = @()
+                foreach ($item in $value) { if ($null -ne $item) { $items += [string]$item } }
+                $value = $items -join ','
+              } elseif ($null -eq $value) {
+                $value = '<null>'
+              }
+              $lines.Add(("Registry.{0} : {1}" -f $prop.Name, $value))
+            }
+          }
+        }
+
+        if ($status.MsInfo) {
+          $ms = $status.MsInfo
+          if ($ms.Status) { $lines.Add(("MsInfo.Status : {0}" -f $ms.Status)) }
+          if ($ms.Message) { $lines.Add(("MsInfo.Message : {0}" -f $ms.Message)) }
+          if ($ms.Lines) {
+            $counter = 0
+            foreach ($line in $ms.Lines) {
+              if ($null -eq $line -or $line -eq '') { continue }
+              $lines.Add(("MsInfo.Line[{0}] : {1}" -f $counter, $line))
+              $counter++
+              if ($counter -ge 20) { break }
+            }
+          }
+        }
+      }
+
+      if ($lines.Count -eq 0) {
+        $lines.Add("KernelDMA.Info : No data collected")
+      }
+
+      return $lines
     } },
   @{ Name = "Security_RDP"; Description = "Remote Desktop configuration"; Action = {
       $output = New-Object System.Collections.Generic.List[string]

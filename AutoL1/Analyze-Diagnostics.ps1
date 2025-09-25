@@ -1122,7 +1122,7 @@ $files = [ordered]@{
   security_deviceguard = Find-ByContent @('Security_DeviceGuard') @('SecurityServicesRunning','DeviceGuard')
   security_computersystem = Find-ByContent @('Security_ComputerSystem') @('PCSystemType','SystemSkuNumber')
   security_systemenclosure = Find-ByContent @('Security_SystemEnclosure') @('ChassisTypes')
-  security_kerneldma = Find-ByContent @('Security_KernelDMA')    @('Kernel DMA Protection')
+  security_kerneldma = Find-ByContent @('Security_KernelDMA')    @('AllowDmaUnderLock','DeviceGuard.Status','KernelDMA')
   security_rdp   = Find-ByContent @('Security_RDP')              @('fDenyTSConnections','RdpTcp')
   security_smb   = Find-ByContent @('Security_SMB')              @('EnableSMB1Protocol')
   security_lsa   = Find-ByContent @('Security_LSA')              @('RunAsPPL','LmCompatibilityLevel')
@@ -3304,25 +3304,49 @@ if ($credentialGuardRunning -and $runAsPpl -eq 1) {
 # 4. Kernel DMA protection
 $dmaText = $raw['security_kerneldma']
 if ($dmaText) {
-  $dmaMatch = [regex]::Match($dmaText,'(?im)^\s*Kernel DMA Protection\s*:\s*(.+)$')
-  $dmaStatus = if ($dmaMatch.Success) { $dmaMatch.Groups[1].Value.Trim() } else { '' }
-  $dmaEvidence = Get-TopLines $dmaText 20
-  if ($dmaStatus) {
-    $lower = $dmaStatus.ToLowerInvariant()
-    $dmaDisabled = ($lower -match 'not available' -or $lower -match 'off' -or $lower -match 'disabled' -or $lower -match 'unsupported')
-    if ($dmaDisabled -and $isLaptopProfile) {
-      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus 'warning' 'Kernel DMA protection not enabled on mobile device.' $dmaEvidence -SkipIssue
-      Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection is disabled or unsupported on this mobile device.' $dmaEvidence
-    } else {
-      $health = if ($dmaDisabled) { 'info' } else { 'good' }
-      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus $health '' $dmaEvidence
+  $dmaMap = Parse-KeyValueBlock $dmaText
+  $allowValue = $null
+  if ($dmaMap.ContainsKey('Registry.AllowDmaUnderLock')) {
+    $allowValue = $dmaMap['Registry.AllowDmaUnderLock']
+  } elseif ($dmaMap.ContainsKey('AllowDmaUnderLock')) {
+    $allowValue = $dmaMap['AllowDmaUnderLock']
+  }
+  $allowInt = ConvertTo-NullableInt $allowValue
+  $deviceGuardStatus = if ($dmaMap.ContainsKey('DeviceGuard.Status')) { $dmaMap['DeviceGuard.Status'] } else { '' }
+  $deviceGuardMessage = if ($dmaMap.ContainsKey('DeviceGuard.Message')) { $dmaMap['DeviceGuard.Message'] } else { '' }
+  $msInfoStatus = if ($dmaMap.ContainsKey('MsInfo.Status')) { $dmaMap['MsInfo.Status'] } else { '' }
+  $msInfoMessage = if ($dmaMap.ContainsKey('MsInfo.Message')) { $dmaMap['MsInfo.Message'] } else { '' }
+  $dmaEvidence = Get-TopLines $dmaText 30
+
+  if ($allowInt -eq 0) {
+    Add-SecurityHeuristic 'Kernel DMA protection' 'AllowDmaUnderLock = 0 (DMA blocked when locked)' 'good' '' $dmaEvidence
+  } elseif ($allowInt -eq 1) {
+    $message = 'AllowDmaUnderLock = 1 (DMA allowed while locked)'
+    Add-SecurityHeuristic 'Kernel DMA protection' $message 'warning' 'Kernel DMA protection not enforced while locked.' $dmaEvidence -SkipIssue:$isLaptopProfile
+    if ($isLaptopProfile) {
+      Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection allows DMA while locked on this mobile device (AllowDmaUnderLock = 1).' $dmaEvidence
     }
   } else {
-    Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence -SkipIssue
-    Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' $dmaEvidence
+    if ($deviceGuardStatus -eq 'Info' -and $deviceGuardMessage -match '(?i)not supported|no data') {
+      $note = if ($deviceGuardMessage) { $deviceGuardMessage } else { 'Device Guard reported no Kernel DMA data.' }
+      Add-SecurityHeuristic 'Kernel DMA protection' 'Not supported / no data' 'info' $note $dmaEvidence
+    } elseif ($deviceGuardStatus -eq 'Error') {
+      $note = if ($deviceGuardMessage) { $deviceGuardMessage } else { 'Win32_DeviceGuard query failed.' }
+      Add-SecurityHeuristic 'Kernel DMA protection' 'Device Guard query failed' 'warning' $note $dmaEvidence -SkipIssue
+      Add-Issue 'medium' 'Security/Kernel DMA' 'Unable to determine Kernel DMA protection due to Device Guard query failure.' $dmaEvidence
+    } else {
+      $noteLines = New-Object System.Collections.Generic.List[string]
+      if ($deviceGuardStatus) { $noteLines.Add("DeviceGuard.Status = $deviceGuardStatus") }
+      if ($deviceGuardMessage) { $noteLines.Add($deviceGuardMessage) }
+      if ($msInfoStatus -and $msInfoStatus -ne 'Skipped') { $noteLines.Add("msinfo32 fallback: $msInfoStatus") }
+      if ($msInfoMessage) { $noteLines.Add($msInfoMessage) }
+      $note = if ($noteLines.Count -gt 0) { $noteLines -join '; ' } else { 'Kernel DMA registry policy value not captured.' }
+      Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' $note $dmaEvidence -SkipIssue
+      Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection status could not be determined. Confirm DMA policy configuration.' $dmaEvidence
+    }
   }
 } else {
-  Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'msinfo32 output missing.' ''
+  Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'Kernel DMA collector output missing.' ''
 }
 
 # 5. Windows Firewall
