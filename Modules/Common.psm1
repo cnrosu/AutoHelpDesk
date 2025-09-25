@@ -1,5 +1,5 @@
 # Common helper functions shared across analyzer scripts
-$script:SeverityOrder = @('low','medium','high','critical')
+$script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
 function Normalize-Severity {
   param($Severity)
@@ -457,7 +457,7 @@ function Get-HealthScores {
   }
   if (-not $Checks) { return $scores }
 
-  $sevScore = @{ critical=0.0; high=0.25; medium=0.5; low=0.75; info=1.0 }
+  $sevScore = @{ critical=0.0; high=0.25; medium=0.5; warning=0.6; low=0.75; info=1.0 }
   foreach($entry in $Checks.GetEnumerator()){
     $c = $entry.Value
     if (-not $c.Attempted) { continue }

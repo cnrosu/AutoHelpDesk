@@ -5,7 +5,7 @@ This document lists the analysis functions and issue card heuristics grouped by 
 ## System Heuristics
 - **System/Firmware** – Raises a medium issue when firmware is still in legacy BIOS mode and a low issue when the analyzer cannot determine firmware mode from `Get-ComputerInfo`.
 - **System/Secure Boot** – Marks Secure Boot as a high-severity issue if it is disabled, unsupported, or reports an unexpected state, and still escalates to high if Secure Boot details are missing even though UEFI is present.
-- **System/Fast Startup** – Emits low-severity findings when Fast Startup is enabled or when its state cannot be determined from power settings; otherwise records a healthy status when it is disabled.
+- **System/Fast Startup** – Emits warning-severity findings when Fast Startup is enabled or when its state cannot be determined from power settings; otherwise records a healthy status when it is disabled.
 - **System/Startup Programs** – Flags low issues when Autoruns output is unrecognized or empty, escalates to medium when non-Microsoft startup items exceed 10, and warns at low severity when the count is between 6 and 10.
 - **System/Uptime** – Uses the uptime classification to emit issues whose severity matches the computed range (for example, medium/high/critical depending on days since reboot) when the device exceeds healthy thresholds.
 
