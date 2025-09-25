@@ -4551,7 +4551,13 @@ if ($printingPayload) {
         Printers = New-Object System.Collections.Generic.List[string]
       }
     }
-    $driverMap[$driverName].Printers.Add(if ($printer.PSObject.Properties['Name']) { [string]$printer.Name } else { '(unknown printer)' })
+    $printerName = if ($printer.PSObject.Properties['Name']) {
+      [string]$printer.Name
+    }
+    else {
+      '(unknown printer)'
+    }
+    $driverMap[$driverName].Printers.Add($printerName)
   }
 
   $legacyDrivers = @()
