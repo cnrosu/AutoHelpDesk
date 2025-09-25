@@ -811,7 +811,7 @@ function Add-Issue(
         'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
         'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
         'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
-        'low'      { $badgeText = 'OK';        $cssClass = 'ok' }
+        'low'      { $badgeText = 'LOW';       $cssClass = 'ok' }
         'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
         default    { $badgeText = $sevKey.ToUpperInvariant(); $cssClass = 'ok' }
     }
