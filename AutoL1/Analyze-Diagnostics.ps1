@@ -4536,9 +4536,9 @@ if ($issues.Count -eq 0){
   $severitySortOrder = @{
     'critical' = 0
     'high'     = 1
-    'warning'  = 2
-    'medium'   = 3
-    'low'      = 4
+    'medium'   = 2
+    'low'      = 3
+    'warning'  = 4
     'info'     = 5
   }
 
@@ -4551,9 +4551,9 @@ if ($issues.Count -eq 0){
   $severityDefinitions = @(
     @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
     @{ Key = 'high';     Label = 'High';     BadgeClass = 'high' },
-    @{ Key = 'warning';  Label = 'Warning';  BadgeClass = 'warning' },
     @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'medium' },
     @{ Key = 'low';      Label = 'Low';      BadgeClass = 'low' },
+    @{ Key = 'warning';  Label = 'Warning';  BadgeClass = 'warning' },
     @{ Key = 'info';     Label = 'Info';     BadgeClass = 'info' }
   )
 

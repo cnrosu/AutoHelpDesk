@@ -1,5 +1,5 @@
 # Common helper functions shared across analyzer scripts
-$script:SeverityOrder = @('info','low','warning','medium','high','critical')
+$script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
 function Get-SeverityIndex {
   param([string]$Severity)
