@@ -4356,8 +4356,11 @@ $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
 $ipv4Html = Encode-Html ($summary.IPv4)
 $gatewayHtml = Encode-Html ($summary.Gateway)
 $dnsHtml = Encode-Html ($summary.DNS)
+$reportGeneratedAt = Get-Date
+$reportGeneratedAtHtml = Encode-Html ($reportGeneratedAt.ToString("dddd, MMMM d, yyyy 'at' h:mm tt"))
 $sumTable = @"
 <h1>Device Health Report</h1>
+<h2 class='report-subtitle'>Generated $reportGeneratedAtHtml</h2>
 <div class='report-card'>
   <div class='report-badge-group'>
     <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>
