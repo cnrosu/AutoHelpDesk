@@ -47,10 +47,31 @@ function Get-WdacRegistrySnapshot {
     return $result
 }
 
+function Get-SmartAppControlState {
+    $path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\SmartAppControl'
+    try {
+        if (-not (Test-Path -Path $path)) {
+            return $null
+        }
+
+        $values = Get-ItemProperty -Path $path -ErrorAction Stop | Select-Object * -ExcludeProperty PS*, CIM*, PSEdition
+        return [ordered]@{
+            Path   = $path
+            Values = $values
+        }
+    } catch {
+        return [ordered]@{
+            Path  = $path
+            Error = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
-        DeviceGuard = Get-DeviceGuardPolicy
-        Registry    = Get-WdacRegistrySnapshot
+        DeviceGuard       = Get-DeviceGuardPolicy
+        Registry          = Get-WdacRegistrySnapshot
+        SmartAppControl   = Get-SmartAppControlState
     }
 
     $result = New-CollectorMetadata -Payload $payload

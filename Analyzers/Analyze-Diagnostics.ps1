@@ -27,6 +27,7 @@ if (Test-Path -Path $commonModulePath) {
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Storage.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Events.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Services.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Printing.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
 $context = New-AnalyzerContext -InputFolder $InputFolder
@@ -40,6 +41,7 @@ $categories += Invoke-OfficeHeuristics   -Context $context
 $categories += Invoke-StorageHeuristics  -Context $context
 $categories += Invoke-EventsHeuristics   -Context $context
 $categories += Invoke-ServicesHeuristics -Context $context
+$categories += Invoke-PrintingHeuristics -Context $context
 
 $merged = Merge-AnalyzerResults -Categories $categories
 

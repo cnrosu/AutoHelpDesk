@@ -13,11 +13,13 @@ param(
 function Get-RecentEvents {
     param(
         [Parameter(Mandatory)]
-        [string]$LogName
+        [string]$LogName,
+
+        [int]$MaxEvents = 100
     )
 
     try {
-        return Get-WinEvent -LogName $LogName -MaxEvents 100 -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, ProviderName, Message
+        return Get-WinEvent -LogName $LogName -MaxEvents $MaxEvents -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, ProviderName, Message
     } catch {
         return [PSCustomObject]@{
             LogName = $LogName
@@ -30,6 +32,7 @@ function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
         Application = Get-RecentEvents -LogName 'Application'
+        GroupPolicy = Get-RecentEvents -LogName 'Microsoft-Windows-GroupPolicy/Operational' -MaxEvents 200
     }
 
     $result = New-CollectorMetadata -Payload $payload

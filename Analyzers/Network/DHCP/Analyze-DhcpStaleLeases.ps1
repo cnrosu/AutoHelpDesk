@@ -36,7 +36,7 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     $leaseDuration = $null
     if ($expires) { $leaseDuration = $expires - $obtained }
 
-    $shouldFlag = $false
+    $severity = $null
     $evidence = [ordered]@{
         Adapter       = Get-AdapterIdentity $adapter
         LeaseObtained = $obtained.ToString('o')
@@ -51,16 +51,22 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
         $evidence['LeaseDurationHours'] = [math]::Round($leaseDuration.TotalHours, 2)
         $evidence['RenewalMultiple'] = [math]::Round($multiple, 2)
 
-        if ($leaseAge.TotalDays -ge 7 -and $multiple -ge 10) {
-            $shouldFlag = $true
+        if ($multiple -ge 20 -and $leaseAge.TotalDays -ge 14) {
+            $severity = 'high'
+        } elseif ($multiple -ge 10 -and $leaseAge.TotalDays -ge 7) {
+            $severity = 'medium'
+        } elseif ($multiple -ge 5 -and $leaseAge.TotalDays -ge 3) {
+            $severity = 'low'
         }
+    } elseif ($leaseAge.TotalDays -ge 30) {
+        $severity = 'high'
     } elseif ($leaseAge.TotalDays -ge 14) {
-        $shouldFlag = $true
+        $severity = 'medium'
     }
 
-    if ($shouldFlag) {
+    if ($severity) {
         $message = "DHCP lease for $(Get-AdapterIdentity $adapter) appears stale; obtained $([math]::Round($leaseAge.TotalDays,2)) days ago."
-        $findings += New-DhcpFinding -Check 'Stale DHCP leases' -Severity 'medium' -Message $message -Evidence $evidence
+        $findings += New-DhcpFinding -Check 'Stale DHCP leases' -Severity $severity -Message $message -Evidence $evidence
     }
 }
 

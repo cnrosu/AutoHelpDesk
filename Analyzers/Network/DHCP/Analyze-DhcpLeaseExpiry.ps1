@@ -33,6 +33,11 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
 
     $obtained = ConvertFrom-Iso8601 $adapter.DHCPLeaseObtained
     $timeRemaining = $expires - $now
+    $leaseDuration = $null
+    if ($obtained) {
+        $leaseDuration = $expires - $obtained
+        if ($leaseDuration.TotalSeconds -lt 0) { $leaseDuration = $null }
+    }
     $evidence = [ordered]@{
         Adapter        = Get-AdapterIdentity $adapter
         LeaseObtained  = if ($obtained) { $obtained.ToString('o') } else { $adapter.DHCPLeaseObtained }
@@ -45,8 +50,24 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
         continue
     }
 
+    $minutesRemaining = [math]::Round($timeRemaining.TotalMinutes,2)
     if ($timeRemaining.TotalMinutes -le 30) {
-        $findings += New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'high' -Message "DHCP lease for $(Get-AdapterIdentity $adapter) expires within $([math]::Round($timeRemaining.TotalMinutes,2)) minutes." -Evidence $evidence
+        $findings += New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'high' -Message "DHCP lease for $(Get-AdapterIdentity $adapter) expires within $minutesRemaining minutes." -Evidence $evidence
+        continue
+    }
+
+    if ($leaseDuration -and $leaseDuration.TotalHours -gt 0) {
+        $percentRemaining = $timeRemaining.TotalSeconds / $leaseDuration.TotalSeconds
+        if ($percentRemaining -le 0.05) {
+            $findings += New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'high' -Message "DHCP lease for $(Get-AdapterIdentity $adapter) is within 5% of expiry ($minutesRemaining minutes remaining)." -Evidence $evidence
+            continue
+        }
+        if ($percentRemaining -le 0.15) {
+            $findings += New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'medium' -Message "DHCP lease for $(Get-AdapterIdentity $adapter) is nearing renewal window ($([math]::Round($percentRemaining*100,1))% remaining)." -Evidence $evidence
+            continue
+        }
+    } elseif ($timeRemaining.TotalHours -le 2) {
+        $findings += New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'medium' -Message "DHCP lease for $(Get-AdapterIdentity $adapter) expires in under two hours ($minutesRemaining minutes)." -Evidence $evidence
     }
 }
 

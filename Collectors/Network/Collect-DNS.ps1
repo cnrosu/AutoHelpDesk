@@ -87,12 +87,36 @@ function Resolve-AutodiscoverRecords {
     return $results
 }
 
+function Get-DnsClientServerInventory {
+    try {
+        return Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction Stop | Select-Object InterfaceAlias, InterfaceIndex, ServerAddresses
+    } catch {
+        return [PSCustomObject]@{
+            Source = 'Get-DnsClientServerAddress'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
+function Get-DnsClientPolicies {
+    try {
+        return Get-DnsClient -ErrorAction Stop | Select-Object InterfaceAlias, InterfaceIndex, ConnectionSpecificSuffix, UseSuffixWhenRegistering, RegisterThisConnectionsAddress
+    } catch {
+        return [PSCustomObject]@{
+            Source = 'Get-DnsClient'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
-        Resolution = Test-DnsResolution
-        Traceroute = Trace-NetworkPath
-        Latency    = Test-Latency
-        Autodiscover = Resolve-AutodiscoverRecords
+        Resolution      = Test-DnsResolution
+        Traceroute      = Trace-NetworkPath
+        Latency         = Test-Latency
+        Autodiscover    = Resolve-AutodiscoverRecords
+        ClientServers   = Get-DnsClientServerInventory
+        ClientPolicies  = Get-DnsClientPolicies
     }
 
     $result = New-CollectorMetadata -Payload $payload
