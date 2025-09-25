@@ -48,6 +48,349 @@ function Save-Output {
   return $file
 }
 
+$script:DomainContextCache = $null
+$script:AdCandidateCache = $null
+
+function Get-DomainContext {
+  if ($script:DomainContextCache) { return $script:DomainContextCache }
+
+  $errors = New-Object System.Collections.Generic.List[string]
+  $context = [ordered]@{
+    Timestamp        = (Get-Date)
+    ComputerName     = $env:COMPUTERNAME
+    PartOfDomain     = $null
+    Domain           = $null
+    Forest           = $null
+    Workgroup        = $null
+    UserDnsDomain    = $env:USERDNSDOMAIN
+    PrimaryDnsSuffix = $null
+    DomainRole       = $null
+    SiteName         = $null
+    Errors           = @()
+  }
+
+  try {
+    $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+    if ($null -ne $cs.PartOfDomain) { $context.PartOfDomain = [bool]$cs.PartOfDomain }
+    if ($cs.Domain) {
+      $context.Domain = $cs.Domain.Trim()
+      if ($context.PartOfDomain -ne $true -and $context.Domain -and $context.Domain.ToUpperInvariant() -ne 'WORKGROUP') {
+        $context.PartOfDomain = $true
+      }
+    }
+    if ($cs.DomainRole -ne $null) { $context.DomainRole = [int]$cs.DomainRole }
+  } catch {
+    $errors.Add("Win32_ComputerSystem query failed: $_") | Out-Null
+  }
+
+  if (-not $context.Domain) {
+    $envDomain = $env:USERDOMAIN
+    if ($envDomain) { $context.Domain = $envDomain.Trim() }
+  }
+
+  if ($context.Domain -and $context.Domain.ToUpperInvariant() -eq 'WORKGROUP') {
+    $context.Workgroup = $context.Domain
+    $context.PartOfDomain = $false
+    $context.Domain = $null
+  }
+
+  try {
+    $si = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    if ($si.Primary) {
+      # no-op, Primary property not widely populated
+    }
+    if ($si.CSName) { $null = $si.CSName }
+    if ($si.PSComputerName) { $null = $si.PSComputerName }
+    if ($si.PSObject.Properties['Primary']) { $null = $si.PSObject.Properties['Primary'] }
+    if ($si.PSObject.Properties['Primary']) { $null = $si.PSObject.Properties['Primary'].Value }
+    if ($si.CSName) { $null = $si.CSName }
+  } catch {}
+
+  try {
+    $osInfo = systeminfo 2>$null
+    if ($osInfo) {
+      foreach ($line in $osInfo) {
+        if ($null -eq $context.PrimaryDnsSuffix) {
+          if ($line -match '^(?i)\s*Primary Dns Suffix\s*:\s*(.+)$') {
+            $suffix = $matches[1].Trim()
+            if ($suffix) { $context.PrimaryDnsSuffix = $suffix }
+          }
+        }
+        if ($null -eq $context.Domain -and $line -match '^(?i)\s*Domain\s*:\s*(.+)$') {
+          $domainValue = $matches[1].Trim()
+          if ($domainValue -and $domainValue.ToUpperInvariant() -ne 'WORKGROUP') {
+            $context.Domain = $domainValue
+          } elseif ($domainValue) {
+            $context.Workgroup = $domainValue
+            $context.PartOfDomain = $false
+          }
+        }
+      }
+    }
+  } catch {
+    $errors.Add("systeminfo query failed: $_") | Out-Null
+  }
+
+  if (-not $context.Forest -and $context.Domain) {
+    try {
+      Add-Type -AssemblyName System.DirectoryServices.ActiveDirectory -ErrorAction Stop
+      $domainObj = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain()
+      if ($domainObj -and $domainObj.Forest -and $domainObj.Forest.Name) {
+        $context.Forest = $domainObj.Forest.Name
+      }
+      if ($domainObj -and $domainObj.Name) {
+        $context.Domain = $domainObj.Name
+      }
+    } catch {
+      $errors.Add("Forest discovery failed: $_") | Out-Null
+    }
+  }
+
+  if (-not $context.Forest -and $context.PrimaryDnsSuffix) { $context.Forest = $context.PrimaryDnsSuffix }
+  if (-not $context.Forest -and $context.Domain) { $context.Forest = $context.Domain }
+
+  if ($context.PartOfDomain -eq $true) {
+    try {
+      $siteOutput = nltest /dsgetsite 2>&1
+      if ($LASTEXITCODE -eq 0 -and $siteOutput) {
+        $siteLine = ($siteOutput | Select-Object -First 1)
+        if ($siteLine -match '^(?i)The site name is\s*:\s*(.+)$') {
+          $context.SiteName = $matches[1].Trim()
+        } elseif ($siteLine -match '^(?i)Site Name:\s*(.+)$') {
+          $context.SiteName = $matches[1].Trim()
+        } elseif ($siteLine -and -not ($siteLine -match '^(?i)The command completed successfully')) {
+          $context.SiteName = $siteLine.Trim()
+        }
+      }
+    } catch {
+      $errors.Add("nltest /dsgetsite failed: $_") | Out-Null
+    }
+  }
+
+  if ($errors.Count -gt 0) { $context.Errors = $errors }
+
+  $script:DomainContextCache = [pscustomobject]$context
+  return $script:DomainContextCache
+}
+
+function Reset-AdDiscoveryCache {
+  $script:AdCandidateCache = $null
+}
+
+function Get-DomainControllerDiscovery {
+  if ($script:AdCandidateCache) { return $script:AdCandidateCache }
+
+  $context = Get-DomainContext
+  $result = [ordered]@{
+    DomainJoined = $context.PartOfDomain
+    Domain       = $context.Domain
+    Forest       = $context.Forest
+    Commands     = @()
+    SrvLookups   = @()
+    Candidates   = @()
+    Notes        = @()
+  }
+
+  $result.Commands = New-Object System.Collections.Generic.List[pscustomobject]
+  $result.SrvLookups = New-Object System.Collections.Generic.List[pscustomobject]
+  $result.Candidates = New-Object System.Collections.Generic.List[pscustomobject]
+  $notes = New-Object System.Collections.Generic.List[string]
+
+  if ($context.PartOfDomain -ne $true -or -not $context.Domain) {
+    if ($context.PartOfDomain -ne $true) { $notes.Add('Device not domain joined.') | Out-Null }
+    $result.Notes = $notes
+    $script:AdCandidateCache = [pscustomobject]$result
+    return $script:AdCandidateCache
+  }
+
+  $domainName = $context.Domain
+  $forestName = if ($context.Forest) { $context.Forest } elseif ($context.Domain) { $context.Domain } else { $null }
+
+  $candidateTable = @{}
+
+  $addCandidate = {
+    param([string]$Host,[string]$Source)
+    if (-not $Host) { return }
+    $trimmed = $Host.Trim()
+    if (-not $trimmed) { return }
+    $trimmed = $trimmed.TrimStart('\')
+    if (-not $trimmed) { return }
+    $key = $trimmed.ToLowerInvariant()
+    if (-not $candidateTable.ContainsKey($key)) {
+      $candidateTable[$key] = @{
+        Host    = $trimmed
+        Sources = New-Object System.Collections.Generic.List[string]
+      }
+    }
+    if ($Source -and -not ($candidateTable[$key].Sources -contains $Source)) {
+      $null = $candidateTable[$key].Sources.Add($Source)
+    }
+  }
+
+  $nltestCommands = @()
+  if ($domainName) {
+    $nltestCommands += @{
+      Name = "nltest /dsgetdc:$domainName"
+      Arguments = @("/dsgetdc:$domainName")
+    }
+    $nltestCommands += @{
+      Name = "nltest /dclist:$domainName"
+      Arguments = @("/dclist:$domainName")
+    }
+  }
+
+  foreach ($cmd in $nltestCommands) {
+    $output = @()
+    $exitCode = $null
+    try {
+      $output = (nltest @($cmd.Arguments) 2>&1)
+      $exitCode = $LASTEXITCODE
+    } catch {
+      $output = @("Command threw exception: $_")
+      $exitCode = $LASTEXITCODE
+    }
+
+    $entry = [ordered]@{
+      Name     = $cmd.Name
+      ExitCode = if ($exitCode -ne $null) { [int]$exitCode } else { $null }
+      Output   = @($output)
+    }
+    $result.Commands.Add([pscustomobject]$entry)
+
+    foreach ($line in $output) {
+      if (-not $line) { continue }
+      if ($line -match '\\\\(?<host>[A-Za-z0-9_.-]+)') {
+        &$addCandidate $matches['host'] $cmd.Name
+      }
+      if ($line -match '(?i)Address:\s*\\\\(?<addr>[A-Za-z0-9_.-]+)') {
+        &$addCandidate $matches['addr'] $cmd.Name
+      }
+      if ($line -match '(?i)Name: (?<name>[A-Za-z0-9_.-]+)') {
+        &$addCandidate $matches['name'] $cmd.Name
+      }
+    }
+  }
+
+  $resolveCmd = Get-Command Resolve-DnsName -ErrorAction SilentlyContinue
+  if (-not $resolveCmd) {
+    $notes.Add('Resolve-DnsName cmdlet unavailable.') | Out-Null
+  }
+
+  $srvQueries = New-Object System.Collections.Generic.List[pscustomobject]
+  if ($forestName) {
+    $srvQueries.Add([pscustomobject]@{ Query = "_ldap._tcp.dc._msdcs.$forestName"; Label = '_ldap_dc_msdc' }) | Out-Null
+  }
+  if ($domainName) {
+    $srvQueries.Add([pscustomobject]@{ Query = "_kerberos._tcp.$domainName"; Label = '_kerberos_tcp' }) | Out-Null
+  }
+
+  foreach ($query in $srvQueries) {
+    $records = @()
+    $error = $null
+    $succeeded = $null
+    if ($resolveCmd) {
+      try {
+        $records = Resolve-DnsName -Name $query.Query -Type SRV -ErrorAction Stop
+        $succeeded = $true
+      } catch {
+        $error = $_.ToString()
+        $succeeded = $false
+        $records = @()
+      }
+    }
+
+    $recordSummaries = @()
+    foreach ($rec in $records) {
+      if ($rec.NameTarget) {
+        $recordSummaries += [ordered]@{
+          Target   = $rec.NameTarget
+          Priority = $rec.Priority
+          Weight   = $rec.Weight
+          Port     = $rec.Port
+        }
+        &$addCandidate $rec.NameTarget "SRV:$($query.Query)"
+      }
+    }
+
+    $result.SrvLookups.Add([pscustomobject]@{
+      Query     = $query.Query
+      Succeeded = $succeeded
+      Records   = $recordSummaries
+      Error     = $error
+    }) | Out-Null
+  }
+
+  foreach ($entry in $candidateTable.GetEnumerator()) {
+    $host = $entry.Value.Host
+    $sources = [string[]]$entry.Value.Sources
+    $ipv4 = @()
+    $ipv6 = @()
+    if ($resolveCmd) {
+      try {
+        $aRecords = Resolve-DnsName -Name $host -Type A -ErrorAction Stop
+        $ipv4 = @($aRecords | ForEach-Object { $_.IPAddress })
+      } catch {}
+      try {
+        $aaaaRecords = Resolve-DnsName -Name $host -Type AAAA -ErrorAction Stop
+        $ipv6 = @($aaaaRecords | ForEach-Object { $_.IPAddress })
+      } catch {}
+    }
+    $result.Candidates.Add([pscustomobject]@{
+      Host    = $host
+      Sources = $sources
+      IPv4    = @($ipv4)
+      IPv6    = @($ipv6)
+    }) | Out-Null
+  }
+
+  $finalNotes = if ($notes.Count -gt 0) { @($notes) } else { @() }
+
+  $script:AdCandidateCache = [pscustomobject]@{
+    Timestamp    = (Get-Date)
+    DomainJoined = $result.DomainJoined
+    Domain       = $result.Domain
+    Forest       = $result.Forest
+    Commands     = @($result.Commands)
+    SrvLookups   = @($result.SrvLookups)
+    Candidates   = @($result.Candidates)
+    Notes        = $finalNotes
+  }
+  return $script:AdCandidateCache
+}
+
+function Test-TcpPortConnection {
+  param(
+    [Parameter(Mandatory)][string]$ComputerName,
+    [Parameter(Mandatory)][int]$Port,
+    [int]$TimeoutMs = 2000
+  )
+
+  $client = $null
+  try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $async = $client.BeginConnect($ComputerName, $Port, $null, $null)
+    if (-not $async.AsyncWaitHandle.WaitOne($TimeoutMs, $false)) {
+      $client.Close()
+      return [pscustomobject]@{
+        Success = $false
+        Error   = 'Timeout'
+      }
+    }
+    $client.EndConnect($async)
+    $client.Close()
+    return [pscustomobject]@{
+      Success = $true
+      Error   = $null
+    }
+  } catch {
+    if ($client) { $client.Close() }
+    return [pscustomobject]@{
+      Success = $false
+      Error   = $_.Exception.Message
+    }
+  }
+}
+
 $capturePlan = @(
   @{ Name = "ipconfig_all"; Description = "Detailed IP configuration (ipconfig /all)"; Action = { ipconfig /all } },
   @{ Name = "route_print"; Description = "Routing table (route print)"; Action = { route print } },
@@ -201,6 +544,225 @@ $capturePlan = @(
       } catch {
         Write-Output "Status : QueryFailed (Exception)"
         Write-Output ("Error : {0}" -f $_)
+      }
+    } },
+  @{ Name = "AD_DomainStatus"; Description = "Active Directory domain status"; Action = {
+      $context = Get-DomainContext
+      if ($context) {
+        ($context | ConvertTo-Json -Depth 6)
+      } else {
+        "Domain context not captured."
+      }
+    } },
+  @{ Name = "AD_DCDiscovery"; Description = "Domain controller discovery"; Action = {
+      Reset-AdDiscoveryCache
+      $discovery = Get-DomainControllerDiscovery
+      if ($discovery) {
+        ($discovery | ConvertTo-Json -Depth 6)
+      } else {
+        "Discovery unavailable."
+      }
+    } },
+  @{ Name = "AD_DCReachability"; Description = "Domain controller port reachability"; Action = {
+      $discovery = Get-DomainControllerDiscovery
+      if (-not $discovery -or $discovery.DomainJoined -ne $true) {
+        (@{
+            Status  = 'Skipped'
+            Reason  = 'NotDomainJoined'
+            Tested  = @()
+            Ports   = @(88,389,445,135)
+            Notes   = if ($discovery -and $discovery.Notes) { $discovery.Notes } else { @() }
+          } | ConvertTo-Json -Depth 6)
+        return
+      }
+
+      $candidates = $discovery.Candidates
+      if (-not $candidates -or $candidates.Count -eq 0) {
+        (@{
+            Status = 'NoCandidates'
+            Ports  = @(88,389,445,135)
+            Notes  = if ($discovery.Notes) { $discovery.Notes } else { @('No domain controllers discovered.') }
+          } | ConvertTo-Json -Depth 6)
+        return
+      }
+
+      $portsToTest = @(88,389,445,135)
+      $targets = New-Object System.Collections.Generic.List[pscustomobject]
+
+      foreach ($candidate in $candidates) {
+        $ports = New-Object System.Collections.Generic.List[pscustomobject]
+        $targetName = $candidate.Host
+        $sources = if ($candidate.Sources) { [string[]]$candidate.Sources } else { @() }
+        $ipv4 = if ($candidate.IPv4) { [string[]]$candidate.IPv4 } else { @() }
+        $ipv6 = if ($candidate.IPv6) { [string[]]$candidate.IPv6 } else { @() }
+
+        foreach ($port in $portsToTest) {
+          $timer = [System.Diagnostics.Stopwatch]::StartNew()
+          $probe = Test-TcpPortConnection -ComputerName $targetName -Port $port -TimeoutMs 2500
+          $timer.Stop()
+          $ports.Add([pscustomobject]@{
+            Port       = $port
+            Success    = [bool]$probe.Success
+            Error      = $probe.Error
+            DurationMs = [math]::Round($timer.Elapsed.TotalMilliseconds,0)
+          }) | Out-Null
+        }
+
+        $targets.Add([pscustomobject]@{
+          Target  = $targetName
+          Sources = $sources
+          IPv4    = $ipv4
+          IPv6    = $ipv6
+          Ports   = @($ports)
+        }) | Out-Null
+      }
+
+      (@{
+          Timestamp = (Get-Date)
+          Status    = 'Completed'
+          Ports     = $portsToTest
+          Targets   = @($targets)
+        } | ConvertTo-Json -Depth 6)
+    } },
+  @{ Name = "AD_SysvolAccess"; Description = "SYSVOL/NETLOGON accessibility"; Action = {
+      $context = Get-DomainContext
+      if ($context.PartOfDomain -ne $true -or -not $context.Domain) {
+        (@{
+            Status = 'Skipped'
+            Reason = 'NotDomainJoined'
+          } | ConvertTo-Json -Depth 4)
+        return
+      }
+
+      $sysvolPath = '\\{0}\SYSVOL' -f $context.Domain
+      $netlogonPath = '\\{0}\NETLOGON' -f $context.Domain
+      $paths = @($sysvolPath, $netlogonPath)
+      $results = New-Object System.Collections.Generic.List[pscustomobject]
+
+      foreach ($path in $paths) {
+        $entry = [ordered]@{
+          Path    = $path
+          Exists  = $null
+          Success = $false
+          Items   = @()
+          Error   = $null
+        }
+
+        try {
+          if (Test-Path -Path $path) {
+            $entry.Exists = $true
+            try {
+              $items = Get-ChildItem -Path $path -ErrorAction Stop | Select-Object -First 5
+              if ($items) {
+                $entry.Success = $true
+                $entry.Items = ($items | Select-Object -Property Name, FullName)
+              } else {
+                $entry.Success = $true
+                $entry.Items = @()
+              }
+            } catch {
+              $entry.Error = $_.ToString()
+            }
+          } else {
+            $entry.Exists = $false
+          }
+        } catch {
+          $entry.Error = $_.ToString()
+        }
+
+        $results.Add([pscustomobject]$entry) | Out-Null
+      }
+
+      (@{
+          Timestamp = (Get-Date)
+          Results   = @($results)
+        } | ConvertTo-Json -Depth 6)
+    } },
+  @{ Name = "AD_TimeStatus"; Description = "Windows Time status"; Action = {
+      $output = New-Object System.Collections.Generic.List[string]
+      $output.Add('### w32tm /query /status') | Out-Null
+      try {
+        $status = w32tm /query /status 2>&1
+        if ($status) { $output.AddRange($status) }
+      } catch {
+        $output.Add("Error: $_") | Out-Null
+      }
+      $output.Add('') | Out-Null
+      $output.Add('### w32tm /query /peers') | Out-Null
+      try {
+        $peers = w32tm /query /peers 2>&1
+        if ($peers) { $output.AddRange($peers) }
+      } catch {
+        $output.Add("PeersError: $_") | Out-Null
+      }
+      ($output -join "`n")
+    } },
+  @{ Name = "AD_KerberosTickets"; Description = "Kerberos ticket cache"; Action = {
+      try {
+        klist 2>&1
+      } catch {
+        "klist failed: $_"
+      }
+    } },
+  @{ Name = "AD_SecureChannel"; Description = "Secure channel verification"; Action = {
+      $context = Get-DomainContext
+      if ($context.PartOfDomain -ne $true -or -not $context.Domain) {
+        "Status : Skipped (NotDomainJoined)"
+        return
+      }
+
+      Write-Output '### Test-ComputerSecureChannel'
+      try {
+        $result = Test-ComputerSecureChannel -ErrorAction Stop
+        Write-Output ("Result : {0}" -f $result)
+      } catch {
+        Write-Output ("Result : Error")
+        Write-Output ("Error : {0}" -f $_)
+      }
+
+      Write-Output ''
+      Write-Output ("### nltest /sc_query:{0}" -f $context.Domain)
+      try {
+        nltest /sc_query:$($context.Domain) 2>&1
+      } catch {
+        "Command failed: $_"
+      }
+    } },
+  @{ Name = "AD_GPOResult"; Description = "Group Policy result (computer)"; Action = {
+      $context = Get-DomainContext
+      if ($context.PartOfDomain -ne $true) {
+        "Status : Skipped (NotDomainJoined)"
+        return
+      }
+      try {
+        gpresult /R /SCOPE COMPUTER /V 2>&1
+      } catch {
+        "gpresult failed: $_"
+      }
+    } },
+  @{ Name = "AD_GPOEvents"; Description = "Recent GPO error events"; Action = {
+      $context = Get-DomainContext
+      if ($context.PartOfDomain -ne $true) {
+        "Status : Skipped (NotDomainJoined)"
+        return
+      }
+      $query = "*[System[(EventID=1058 or EventID=1030) and TimeCreated[timediff(@SystemTime) <= 259200000]]]"
+      try {
+        wevtutil qe System /q:$query /c:100 /f:text /rd:true
+      } catch {
+        "wevtutil failed: $_"
+      }
+    } },
+  @{ Name = "AD_DomainTrusts"; Description = "Domain trusts overview"; Action = {
+      $context = Get-DomainContext
+      if ($context.PartOfDomain -ne $true -or -not $context.Domain) {
+        "Status : Skipped (NotDomainJoined)"
+        return
+      }
+      try {
+        nltest /domain_trusts 2>&1
+      } catch {
+        "nltest /domain_trusts failed: $_"
       }
     } },
   @{ Name = "systeminfo"; Description = "General system information"; Action = { systeminfo } },
