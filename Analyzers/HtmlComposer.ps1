@@ -116,8 +116,7 @@ function Build-SummaryCardHtml {
     $osParts = @()
     if ($Summary.OperatingSystem) { $osParts += $Summary.OperatingSystem }
     if ($Summary.OSVersion) { $osParts += $Summary.OSVersion }
-    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }
-    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
+    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
 
     $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
