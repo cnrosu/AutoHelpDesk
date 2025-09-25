@@ -4661,7 +4661,11 @@ if ($printingPayload) {
       if ($successValue -eq $true) { $anySuccess = $true }
       $statusText = if ($successValue -eq $true) { 'OK' } elseif ($successValue -eq $false) { 'Fail' } else { 'Unknown' }
       $testName = if ($test.PSObject.Properties['Name']) { [string]$test.Name } else { 'Test' }
-      if ($test.PSObject.Properties['Port'] -and $test.Port) { $testSummaries += "$testName:$statusText(port=$($test.Port))" } else { $testSummaries += "$testName:$statusText" }
+      if ($test.PSObject.Properties['Port'] -and $test.Port) {
+        $testSummaries += "${testName}:${statusText}(port=$($test.Port))"
+      } else {
+        $testSummaries += "${testName}:${statusText}"
+      }
     }
     $networkEvidenceLines += ("{0} ({1}) => {2}" -f (if ($hostName) { $hostName } else { 'Unknown host' }), $kind, ($testSummaries -join ', '))
     if (-not $anySuccess) {
