@@ -575,6 +575,7 @@ $files = [ordered]@{
   netip          = Find-ByContent @('NetIPAddresses','NetIP')    @('IPAddress','InterfaceIndex')
   netadapters    = Find-ByContent @('NetAdapters')               @('Name\s*:.*Status','LinkSpeed|Speed')
   winhttp_proxy  = Find-ByContent @('WinHttpProxy','winhttp_proxy') @('Current WinHTTP proxy settings','Direct access \(no proxy server\)')
+  time_status    = Find-ByContent @('Time_W32tmStatus','w32tm_status','TimeStatus') @('Leap Indicator','Stratum','w32tm /query /status','ClockSkew')
 
   diskdrives     = Find-ByContent @('Disk_Drives')               @('Model\s+Serial|Model\s+SerialNumber','Status')
   volumes        = Find-ByContent @('Volumes')                   @('DriveLetter|FileSystem|HealthStatus')
@@ -3220,6 +3221,7 @@ $serviceDefinitions = @(
   [pscustomobject]@{ Name='Dnscache';          Display='DNS Client (Dnscache)';                             Note='DNS resolution/cache for all apps.' },
   [pscustomobject]@{ Name='NlaSvc';            Display='Network Location Awareness (NlaSvc)';               Note='network profile changes; VPN/proxy awareness.' },
   [pscustomobject]@{ Name='LanmanWorkstation'; Display='Workstation (LanmanWorkstation)';                   Note='SMB client for shares/printers.' },
+  [pscustomobject]@{ Name='Spooler';           Display='Print Spooler (Spooler)';                        Note='Disable when not required to reduce PrintNightmare exposure.' },
   [pscustomobject]@{ Name='RpcSs';             Display='Remote Procedure Call (RPC) (RpcSs)';               Note='core RPC runtime (do not disable).' },
   [pscustomobject]@{ Name='RpcEptMapper';      Display='RPC Endpoint Mapper (RpcEptMapper)';                Note='RPC endpoint directory.' },
   [pscustomobject]@{ Name='WinHttpAutoProxySvc'; Display='WinHTTP Auto Proxy (WinHttpAutoProxySvc)';        Note='WPAD/PAC for system services.' },
@@ -3237,6 +3239,8 @@ foreach ($svc in $serviceDefinitions) {
   $isHealthy = $false
   $issueSeverity = $null
   $issueMessage = $null
+  $issueArea = 'Services'
+  $normalArea = 'Services'
   $tag = 'info'
   $statusDisplay = 'Not captured'
   $startDisplay = 'Unknown'
@@ -3353,6 +3357,30 @@ foreach ($svc in $serviceDefinitions) {
           } else {
             $issueMessage = 'LanmanWorkstation stopped — SMB shares/mapped drives broken.'
           }
+        }
+      }
+      'Spooler' {
+        $normalArea = 'Printing/Spooler'
+        if ($normalizedStatus -eq 'running') {
+          if ($isWorkstationProfile) {
+            $tag = 'warning'
+            $issueSeverity = 'low'
+            $issueArea = 'Printing/Spooler'
+            $issueMessage = 'Print Spooler running — disable if this workstation does not need printing.'
+          } else {
+            $tag = 'info'
+            $isHealthy = $true
+          }
+        } elseif ($normalizedStatus -eq 'stopped') {
+          if ($isDisabled -or $isManual) {
+            $tag = 'good'
+          } else {
+            $tag = 'info'
+          }
+          $isHealthy = $true
+        } elseif ($isDisabled -or $isManual) {
+          $tag = 'good'
+          $isHealthy = $true
         }
       }
       'RpcSs' {
@@ -3478,11 +3506,15 @@ foreach ($svc in $serviceDefinitions) {
         }
       }
     }
-  }
+    }
 
-  if ($svc.Name -eq 'WinHttpAutoProxySvc' -and $tag -eq 'good' -and $normalizedStatus -ne 'running' -and $statusDisplay -and $statusDisplay -notmatch '(?i)trigger') {
-    $statusDisplay = "$statusDisplay (Trigger Start)"
-  }
+    if ($svc.Name -eq 'Spooler' -and $isWorkstationProfile) {
+      $noteParts += 'Workstations without printers can disable Spooler to shrink the attack surface.'
+    }
+
+    if ($svc.Name -eq 'WinHttpAutoProxySvc' -and $tag -eq 'good' -and $normalizedStatus -ne 'running' -and $statusDisplay -and $statusDisplay -notmatch '(?i)trigger') {
+      $statusDisplay = "$statusDisplay (Trigger Start)"
+    }
 
   $combinedNotes = if ($noteParts.Count -gt 0) { ($noteParts -join ' ') } else { '' }
   $noteForOutput = if (-not [string]::IsNullOrWhiteSpace($combinedNotes)) { $combinedNotes } else { 'None recorded.' }
@@ -3506,9 +3538,9 @@ foreach ($svc in $serviceDefinitions) {
   $serviceDetailsBlock = $detailLines -join "`n"
 
   if ($isHealthy) {
-    Add-Normal 'Services' $svc.Display $serviceDetailsBlock
+    Add-Normal $normalArea $svc.Display $serviceDetailsBlock
   } elseif ($issueSeverity -and $issueMessage) {
-    Add-Issue $issueSeverity 'Services' $issueMessage $serviceDetailsBlock
+    Add-Issue $issueSeverity $issueArea $issueMessage $serviceDetailsBlock
   }
 
   $serviceEvaluations.Add([pscustomobject]@{
@@ -3893,6 +3925,77 @@ if ($domainIsJoined) {
     if ($dnsEvidence) { $secureEvidenceParts.Add($dnsEvidence) }
     $secureEvidence = ($secureEvidenceParts -join "`n`n")
     Add-Issue 'critical' 'Active Directory/Secure Channel' 'Machine secure channel to the domain is broken. Reset the computer account or rejoin the domain.' $secureEvidence
+  }
+
+  $timeStatusText = $raw['time_status']
+  if (-not [string]::IsNullOrWhiteSpace($timeStatusText)) {
+    $timeStatusEvidence = Get-TopLines $timeStatusText 18
+    $offsetSeconds = $null
+    $timeSource = $null
+    $timeLastSync = $null
+
+    $sourceMatch = [regex]::Match($timeStatusText,'(?im)^\s*Source\s*:\s*(?<value>[^\r\n]+)')
+    if ($sourceMatch.Success) {
+      $timeSource = $sourceMatch.Groups['value'].Value.Trim()
+    }
+
+    $lastSyncMatch = [regex]::Match($timeStatusText,'(?im)^\s*Last\s+Successful\s+Sync\s+Time\s*:\s*(?<value>[^\r\n]+)')
+    if ($lastSyncMatch.Success) {
+      $rawSync = $lastSyncMatch.Groups['value'].Value.Trim()
+      if ($rawSync) {
+        $parsedSync = [datetime]::MinValue
+        if ([datetime]::TryParse($rawSync, [ref]$parsedSync)) {
+          $timeLastSync = $parsedSync
+        }
+      }
+    }
+
+    $offsetMatch = [regex]::Match($timeStatusText,'(?im)^\s*(?:Phase\s*Offset|ClockSkew)\s*:\s*(?<value>[^\r\n]+)')
+    if ($offsetMatch.Success) {
+      $offsetText = $offsetMatch.Groups['value'].Value.Trim()
+      if ($offsetText) {
+        $hhmmMatch = [regex]::Match($offsetText,'^(?<sign>[+-]?)(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+(?:\.\d+)?)$')
+        if ($hhmmMatch.Success) {
+          $signText = $hhmmMatch.Groups['sign'].Value
+          $sign = if ($signText -eq '-') { -1 } else { 1 }
+          $hoursValue = 0
+          $minutesValue = 0
+          [void][int]::TryParse($hhmmMatch.Groups['hours'].Value, [ref]$hoursValue)
+          [void][int]::TryParse($hhmmMatch.Groups['minutes'].Value, [ref]$minutesValue)
+          $secondsComponent = ConvertTo-NullableDouble $hhmmMatch.Groups['seconds'].Value
+          if ($secondsComponent -eq $null) { $secondsComponent = 0.0 }
+          $offsetSeconds = $sign * ($hoursValue * 3600 + $minutesValue * 60 + $secondsComponent)
+        } else {
+          $offsetSeconds = ConvertTo-NullableDouble $offsetText
+          if ($offsetSeconds -eq $null) {
+            $sanitized = $offsetText -replace '(?i)[^0-9eE\+\-\.,]', ''
+            if ($sanitized) {
+              $offsetSeconds = ConvertTo-NullableDouble $sanitized
+            }
+          }
+        }
+      }
+    }
+
+    if ($offsetSeconds -ne $null) {
+      $absOffset = [math]::Abs($offsetSeconds)
+      $direction = if ($offsetSeconds -gt 0) { 'ahead of' } elseif ($offsetSeconds -lt 0) { 'behind' } else { 'aligned with' }
+      $sourceNote = if ($timeSource) { " Source: $timeSource." } else { '' }
+      $syncNote = if ($timeLastSync) { " Last sync {0:g}." -f $timeLastSync } else { '' }
+
+      if ($absOffset -ge 120) {
+        $issueMessage = "System clock is {0:N1}s {1} the reference time.{2}{3}" -f $absOffset, $direction, $sourceNote, $syncNote
+        Add-Issue 'medium' 'Active Directory/Time Sync' $issueMessage $timeStatusEvidence
+      } else {
+        $detailsParts = New-Object System.Collections.Generic.List[string]
+        $detailsParts.Add(("offset {0:N2}s" -f $offsetSeconds))
+        if ($timeSource) { $detailsParts.Add("source $timeSource") }
+        if ($timeLastSync) { $detailsParts.Add("last sync {0:g}" -f $timeLastSync) }
+        $detailsSummary = $detailsParts -join ', '
+        $normalMessage = "Time synchronization healthy (" + $detailsSummary + ")."
+        Add-Normal 'Active Directory/Time Sync' $normalMessage $timeStatusEvidence
+      }
+    }
   }
 
   $timeEventIds = @(29,30,31,32,34,35,36,47,50,134,138)
