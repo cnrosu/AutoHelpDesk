@@ -276,7 +276,13 @@ function Get-PrinterConnectionInfo {
         if ($normalizedAddress) { $hosts.Add($normalizedAddress) }
     }
 
-    foreach ($candidate in @($portName, if ($Port) { [string]$Port.Name } else { $null })) {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($portName) { $candidates.Add($portName) | Out-Null }
+    if ($Port -and $Port.PSObject.Properties['Name']) {
+        $candidates.Add([string]$Port.Name) | Out-Null
+    }
+
+    foreach ($candidate in $candidates) {
         if (-not $candidate) { continue }
         if ($candidate -like '\\\\*') {
             $normalizedCandidate = Normalize-HostName $candidate

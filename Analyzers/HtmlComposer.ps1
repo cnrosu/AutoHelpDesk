@@ -18,6 +18,29 @@ function Convert-SeverityToColor {
     }
 }
 
+function Convert-EvidenceToHtml {
+    param($Value)
+
+    if ($null -eq $Value) { return '' }
+
+    if ($Value -is [string]) {
+        $text = $Value
+    } elseif ($Value -is [ValueType]) {
+        $text = $Value.ToString()
+    } else {
+        try {
+            $text = ($Value | ConvertTo-Json -Depth 6)
+        } catch {
+            $text = $Value.ToString()
+        }
+    }
+
+    if (-not $text) { return '' }
+
+    $encoded = [System.Web.HttpUtility]::HtmlEncode([string]$text)
+    return ($encoded -replace "(\r\n|\n|\r)", '<br/>')
+}
+
 function New-AnalyzerHtml {
     param(
         [Parameter(Mandatory)]
@@ -44,7 +67,7 @@ function New-AnalyzerHtml {
                 $color = Convert-SeverityToColor -Severity $issue.Severity
                 $badge = "<span class='badge' style='background:$color'>{0}</span>" -f ([System.Web.HttpUtility]::HtmlEncode(($issue.Severity)))
                 $title = [System.Web.HttpUtility]::HtmlEncode($issue.Title)
-                $evidence = [System.Web.HttpUtility]::HtmlEncode($issue.Evidence)
+                $evidence = Convert-EvidenceToHtml $issue.Evidence
                 $null = $sb.AppendLine("<tr><td>$badge</td><td>$title</td><td>$evidence</td></tr>")
             }
             $null = $sb.AppendLine('</tbody></table>')
@@ -56,8 +79,8 @@ function New-AnalyzerHtml {
             $null = $sb.AppendLine('<h3>Healthy signals</h3><ul>')
             foreach ($normal in $category.Normals) {
                 $text = [System.Web.HttpUtility]::HtmlEncode($normal.Title)
-                if ($normal.Evidence) {
-                    $detail = [System.Web.HttpUtility]::HtmlEncode($normal.Evidence)
+                $detail = Convert-EvidenceToHtml $normal.Evidence
+                if ($detail) {
                     $null = $sb.AppendLine("<li><strong>$text</strong><br/><span class='small'>$detail</span></li>")
                 } else {
                     $null = $sb.AppendLine("<li>$text</li>")

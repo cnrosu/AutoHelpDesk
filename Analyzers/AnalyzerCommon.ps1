@@ -92,7 +92,7 @@ function Add-CategoryIssue {
         [Parameter(Mandatory)]
         [string]$Title,
 
-        [string]$Evidence = ''
+        [object]$Evidence = $null
     )
 
     $CategoryResult.Issues.Add([pscustomobject]@{
@@ -110,7 +110,7 @@ function Add-CategoryNormal {
         [Parameter(Mandatory)]
         [string]$Title,
 
-        [string]$Evidence = ''
+        [object]$Evidence = $null
     )
 
     $CategoryResult.Normals.Add([pscustomobject]@{
