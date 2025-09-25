@@ -29,7 +29,7 @@ function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
 }
 
-$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt,*.log,*.csv,*.tsv 2>$null
+$allTxt = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt,*.log,*.csv,*.tsv,*.json 2>$null
 
 function Find-ByContent([string[]]$nameHints, [string[]]$needles) {
   if ($nameHints) {
@@ -1123,6 +1123,7 @@ $files = [ordered]@{
   security_computersystem = Find-ByContent @('Security_ComputerSystem') @('PCSystemType','SystemSkuNumber')
   security_systemenclosure = Find-ByContent @('Security_SystemEnclosure') @('ChassisTypes')
   security_kerneldma = Find-ByContent @('Security_KernelDMA')    @('Kernel DMA Protection')
+  security_kerneldma_json = Find-ByContent @('kernel_dma.json','kernel_dma') @('"CheckGroup"\s*:\s*"KernelDMA"','KernelDMA')
   security_rdp   = Find-ByContent @('Security_RDP')              @('fDenyTSConnections','RdpTcp')
   security_smb   = Find-ByContent @('Security_SMB')              @('EnableSMB1Protocol')
   security_lsa   = Find-ByContent @('Security_LSA')              @('RunAsPPL','LmCompatibilityLevel')
@@ -3212,6 +3213,7 @@ $isLaptopProfile = ($summary.IsLaptop -eq $true)
 $isModernClientProfile = ($summary.IsModernClient -eq $true)
 $isDomainJoinedProfile = ($summary.DomainJoined -eq $true)
 $deviceGuardData = ConvertFrom-JsonSafe $raw['security_deviceguard']
+$kernelDmaStructured = ConvertFrom-JsonSafe $raw['security_kerneldma_json']
 $securityServicesRunning = @()
 $securityServicesConfigured = @()
 $availableSecurityProperties = @()
@@ -3303,26 +3305,102 @@ if ($credentialGuardRunning -and $runAsPpl -eq 1) {
 
 # 4. Kernel DMA protection
 $dmaText = $raw['security_kerneldma']
-if ($dmaText) {
-  $dmaMatch = [regex]::Match($dmaText,'(?im)^\s*Kernel DMA Protection\s*:\s*(.+)$')
-  $dmaStatus = if ($dmaMatch.Success) { $dmaMatch.Groups[1].Value.Trim() } else { '' }
-  $dmaEvidence = Get-TopLines $dmaText 20
-  if ($dmaStatus) {
-    $lower = $dmaStatus.ToLowerInvariant()
-    $dmaDisabled = ($lower -match 'not available' -or $lower -match 'off' -or $lower -match 'disabled' -or $lower -match 'unsupported')
-    if ($dmaDisabled -and $isLaptopProfile) {
-      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus 'warning' 'Kernel DMA protection not enabled on mobile device.' $dmaEvidence -SkipIssue
-      Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection is disabled or unsupported on this mobile device.' $dmaEvidence
-    } else {
-      $health = if ($dmaDisabled) { 'info' } else { 'good' }
-      Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus $health '' $dmaEvidence
+$dmaStatus = ''
+$dmaEvidenceLines = New-Object System.Collections.Generic.List[string]
+if ($kernelDmaStructured -and $kernelDmaStructured.PSObject.Properties['Checks']) {
+  foreach ($check in @($kernelDmaStructured.Checks)) {
+    if (-not $check) { continue }
+    $id = $check.Id
+    $status = $check.Status
+    $notes = $check.Notes
+    $data = $check.Data
+    switch ($id) {
+      'KernelDMA.DeviceGuard' {
+        if ($status -eq 'OK' -and $data) {
+          foreach ($propName in @('SecurityServicesConfigured','SecurityServicesRunning','RequiredSecurityProperties','AvailableSecurityProperties')) {
+            $prop = $data.PSObject.Properties[$propName]
+            if ($prop -and $null -ne $prop.Value -and $prop.Value -ne '') {
+              $valueText = if ($prop.Value -is [System.Array]) { $prop.Value -join ',' } else { $prop.Value }
+              $dmaEvidenceLines.Add("DeviceGuard.{0}: {1}" -f $propName, $valueText)
+            }
+          }
+        } elseif ($notes) {
+          $dmaEvidenceLines.Add("DeviceGuard: $notes")
+        }
+      }
+      'KernelDMA.Policy' {
+        if ($status -eq 'OK' -and $data) {
+          foreach ($propName in @('AllowDmaUnderLock','DeviceEnumerationPolicy')) {
+            $prop = $data.PSObject.Properties[$propName]
+            if ($prop) {
+              $valueText = if ($null -ne $prop.Value) { $prop.Value } else { '(null)' }
+              $dmaEvidenceLines.Add("DmaSecurity.{0}: {1}" -f $propName, $valueText)
+            }
+          }
+        } elseif ($status -eq 'NA') {
+          if ($notes -and $notes -match 'not present') {
+            $dmaEvidenceLines.Add('DmaSecurity registry key not present (no explicit policy).')
+          } elseif ($notes) {
+            $dmaEvidenceLines.Add("DmaSecurity: $notes")
+          } else {
+            $dmaEvidenceLines.Add('DmaSecurity policy unavailable (status NA).')
+          }
+        } elseif ($notes) {
+          $dmaEvidenceLines.Add("DmaSecurity: $notes")
+        }
+      }
+      'KernelDMA.Msinfo' {
+        if ($data) {
+          $stateProp = $data.PSObject.Properties['State']
+          if ($stateProp -and $stateProp.Value) { $dmaStatus = $stateProp.Value.Trim() }
+          $vbsProp = $data.PSObject.Properties['Vbs']
+          if ($vbsProp -and $vbsProp.Value) { $dmaEvidenceLines.Add("VBS (msinfo): {0}" -f $vbsProp.Value) }
+          $devEncProp = $data.PSObject.Properties['DevEncReasons']
+          if ($devEncProp -and $devEncProp.Value) { $dmaEvidenceLines.Add("Device Encryption Support (msinfo): {0}" -f $devEncProp.Value) }
+          $errorProp = $data.PSObject.Properties['Error']
+          if ($errorProp -and $errorProp.Value) { $dmaEvidenceLines.Add("msinfo32 error: {0}" -f $errorProp.Value) }
+          $rawProp = $data.PSObject.Properties['RawPath']
+          if ($rawProp -and $rawProp.Value) { $dmaEvidenceLines.Add("msinfo32 report: {0}" -f $rawProp.Value) }
+        }
+        if ($notes) { $dmaEvidenceLines.Add("msinfo32: $notes") }
+      }
+      default {
+        if ($notes) { $dmaEvidenceLines.Add("{0}: {1}" -f $id, $notes) }
+      }
     }
-  } else {
-    Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence -SkipIssue
-    Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' $dmaEvidence
   }
+}
+if (-not $dmaStatus -and $dmaText) {
+  $dmaMatch = [regex]::Match($dmaText,'(?im)^\s*Kernel\s+DMA\s+Protection(?:\s*:\s*|\s+)(.+)$')
+  if ($dmaMatch.Success) { $dmaStatus = $dmaMatch.Groups[1].Value.Trim() }
+}
+$dmaEvidence = ''
+if ($dmaEvidenceLines.Count -gt 0) {
+  $dmaEvidence = ($dmaEvidenceLines | Where-Object { $_ }) -join "`n"
+}
+if ($dmaText) {
+  $dmaExcerpt = Get-TopLines $dmaText 20
+  if ($dmaEvidence) {
+    $dmaEvidence = ($dmaEvidence, $dmaExcerpt) -join "`n"
+  } else {
+    $dmaEvidence = $dmaExcerpt
+  }
+}
+if ($dmaStatus) {
+  $lower = $dmaStatus.ToLowerInvariant()
+  $dmaDisabled = ($lower -match 'not available' -or $lower -match 'off' -or $lower -match 'disabled' -or $lower -match 'unsupported')
+  if ($dmaDisabled -and $isLaptopProfile) {
+    Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus 'warning' 'Kernel DMA protection not enabled on mobile device.' $dmaEvidence -SkipIssue
+    Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection is disabled or unsupported on this mobile device.' $dmaEvidence
+  } else {
+    $health = if ($dmaDisabled) { 'info' } else { 'good' }
+    Add-SecurityHeuristic 'Kernel DMA protection' $dmaStatus $health '' $dmaEvidence
+  }
+} elseif ($dmaText) {
+  Add-SecurityHeuristic 'Kernel DMA protection' 'Status unknown' 'warning' 'msinfo32 output did not include Kernel DMA line.' $dmaEvidence -SkipIssue
+  Add-Issue 'medium' 'Security/Kernel DMA' 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' $dmaEvidence
 } else {
-  Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'msinfo32 output missing.' ''
+  Add-SecurityHeuristic 'Kernel DMA protection' 'Not captured' 'warning' 'msinfo32 output missing.' $dmaEvidence
 }
 
 # 5. Windows Firewall
