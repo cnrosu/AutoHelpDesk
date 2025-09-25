@@ -75,7 +75,7 @@ function Get-AllStrings {
             return
         }
 
-        foreach ($prop in 'IPAddress','Address','NextHop','Value','DisplayValue','Name') {
+        foreach ($prop in 'IPAddress','Address','NextHop','Value','DisplayValue','Name','ServerAddresses') {
             if ($InputValue.PSObject.Properties[$prop]) {
                 Add-StringRecursive -InputValue $InputValue.$prop
                 return
@@ -172,8 +172,19 @@ function Get-AnalyzerSummary {
     if ($systemArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
         if ($payload) {
-            if ($payload.SystemInfoText -is [string]) {
-                $summary.DeviceName = Parse-HostNameFromSystemInfo -SystemInfoText $payload.SystemInfoText
+            if ($payload.SystemInfoText) {
+                $systemInfoText = $payload.SystemInfoText
+                if ($systemInfoText -isnot [string]) {
+                    if ($systemInfoText -is [System.Collections.IEnumerable]) {
+                        $systemInfoText = ($systemInfoText -join "`n")
+                    } else {
+                        $systemInfoText = [string]$systemInfoText
+                    }
+                }
+
+                if ($systemInfoText) {
+                    $summary.DeviceName = Parse-HostNameFromSystemInfo -SystemInfoText $systemInfoText
+                }
             }
 
             if ($payload.OperatingSystem -and -not $payload.OperatingSystem.Error) {
@@ -204,9 +215,20 @@ function Get-AnalyzerSummary {
         $hostnameArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
         if ($hostnameArtifact) {
             $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $hostnameArtifact)
-            if ($payload -and $payload.IpConfig -is [string]) {
-                $candidate = Parse-HostNameFromSystemInfo -SystemInfoText $payload.IpConfig
-                if ($candidate) { $summary.DeviceName = $candidate }
+            if ($payload -and $payload.IpConfig) {
+                $ipConfigText = $payload.IpConfig
+                if ($ipConfigText -isnot [string]) {
+                    if ($ipConfigText -is [System.Collections.IEnumerable]) {
+                        $ipConfigText = ($ipConfigText -join "`n")
+                    } else {
+                        $ipConfigText = [string]$ipConfigText
+                    }
+                }
+
+                if ($ipConfigText) {
+                    $candidate = Parse-HostNameFromSystemInfo -SystemInfoText $ipConfigText
+                    if ($candidate) { $summary.DeviceName = $candidate }
+                }
             }
         }
     }
