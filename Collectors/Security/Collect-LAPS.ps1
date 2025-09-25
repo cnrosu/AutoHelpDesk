@@ -1,88 +1,188 @@
-param([string]$ReportRoot)
+<#!
+.SYNOPSIS
+    Collects Local Administrator Password Solution (LAPS) policy footprints
+    and a normalized inventory of members of the local Administrators group.
+.DESCRIPTION
+    - Reads Windows LAPS (2023+) and Legacy LAPS (AdmPwd) registry footprints.
+    - Enumerates Administrators group membership.
+    - For *local user* members, enriches with Enabled/Password policy/SID/LastPasswordSet.
+    - Robust matching uses SID-first, then name (stripping DOMAIN\ prefix).
+    - Falls back to `net localgroup administrators` if modern cmdlets are unavailable.
+    - Emits a single JSON at collectors\laps_localadmin.json via CollectorCommon helpers.
+#>
 
-function Try-GetItemProperty($path) {
-  try { Get-ItemProperty -Path $path -ErrorAction Stop } catch { $null }
-}
-
-if (-not $ReportRoot) {
-  throw "ReportRoot parameter is required."
-}
-
-# Ensure collectors directory exists
-$collectorDir = Join-Path $ReportRoot 'collectors'
-if (-not (Test-Path $collectorDir)) {
-  New-Item -Path $collectorDir -ItemType Directory -Force | Out-Null
-}
-
-# 1) LAPS footprints
-$winLapsPol   = Try-GetItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LAPS'
-$winLapsState = Try-GetItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\LAPS\State'
-$admPwdPolicy = Try-GetItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft Services\AdmPwd'
-
-# 2) Local admins + metadata
-$localAdmins = @(Get-LocalGroupMember -Group 'Administrators' -ErrorAction SilentlyContinue)
-$localUsers  = @(Get-LocalUser -ErrorAction SilentlyContinue)
-
-$users = @()
-foreach ($m in $localAdmins) {
-  if ($m.ObjectClass -ne 'User' -or $m.PrincipalSource -notin @('Local','MicrosoftAccount')) { continue }
-
-  $memberSid = $null
-  if ($m.PSObject.Properties['SID'] -and $m.SID) {
-    try { $memberSid = $m.SID.Value } catch { $memberSid = [string]$m.SID }
-  }
-
-  $u = $null
-  if ($memberSid) {
-    $u = $localUsers |
-      Where-Object { $_.PSObject.Properties['SID'] -and $_.SID -and $_.SID.Value -eq $memberSid } |
-      Select-Object -First 1
-  }
-
-  if (-not $u) {
-    $nameCandidate = $m.Name
-    if ($nameCandidate -match '^[^\\]+\\(.+)$') { $nameCandidate = $matches[1] }
-    $u = $localUsers | Where-Object { $_.Name -eq $nameCandidate } | Select-Object -First 1
-  }
-
-  if (-not $u) { continue }
-
-  $sid = $u.SID.Value
-  $users += [pscustomobject]@{
-    Name                 = $u.Name
-    Sid                  = $sid
-    Enabled              = [bool]$u.Enabled
-    PasswordNeverExpires = [bool]$u.PasswordNeverExpires
-    LastPasswordSet      = if ($u.LastPasswordSet) { $u.LastPasswordSet.ToUniversalTime().ToString('o') } else { $null }
-    IsBuiltInAdmin       = ($sid -match '-500$')   # RID 500
-    PrincipalSource      = $m.PrincipalSource
-  }
-}
-
-# 3) Emit JSON
-$checks = @(
-  [pscustomobject]@{
-    Id='LAPS.Policy'; Status='OK'; Data=@{
-      WindowsLapsPolicy   = $winLapsPol
-      WindowsLapsState    = $winLapsState
-      LegacyAdmPwdPolicy  = $admPwdPolicy
-    }
-    Notes = if ($winLapsPol -or $winLapsState -or $admPwdPolicy) { 'LAPS footprints present' } else { 'No LAPS footprints' }
-  },
-  [pscustomobject]@{
-    Id='LocalAdmins.List'; Status='OK'; Data=@{ Users = $users }
-    Notes = "Count=$($users.Count)"
-  }
+[CmdletBinding()]
+param(
+    [Parameter()]
+    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\output')
 )
 
-$doc = [pscustomobject]@{
-  SchemaVersion = 1
-  Host          = $env:COMPUTERNAME
-  CollectedAt   = (Get-Date).ToUniversalTime().ToString('o')
-  CheckGroup    = 'LAPSLocalAdmin'
-  Checks        = $checks
+# Import common collector helpers (New-CollectorMetadata, Export-CollectorResult, etc.)
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\CollectorCommon.ps1')
+
+# ------------------------
+# Helpers
+# ------------------------
+
+function Get-RegistryObject {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+    try {
+        Get-ItemProperty -Path $Path -ErrorAction Stop |
+            Select-Object * -ExcludeProperty PS*, CIM*, PSEdition
+    } catch {
+        $null
+    }
 }
 
-$path = Join-Path $collectorDir 'laps_localadmin.json'
-$doc  | ConvertTo-Json -Depth 8 | Set-Content -Path $path -Encoding UTF8
-Write-Output "Wrote $path"
+function ConvertTo-IsoUtc {
+    param([object]$Date)
+    if (-not $Date) { return $null }
+    try {
+        ($Date).ToUniversalTime().ToString('o')
+    } catch {
+        try { [DateTime]$Date | ForEach-Object { $_.ToUniversalTime().ToString('o') } } catch { $null }
+    }
+}
+
+function Get-ValueIfPresent {
+    param(
+        [Parameter(Mandatory)] [object]$Object,
+        [Parameter(Mandatory)] [string]$Property
+    )
+    if ($null -eq $Object) { return $null }
+    if ($Object.PSObject.Properties[$Property]) {
+        return $Object.$Property
+    }
+    $null
+}
+
+# ------------------------
+# LAPS footprints
+# ------------------------
+
+function Get-LapsPolicyFootprints {
+    $policy = Get-RegistryObject -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LAPS'
+    $state  = Get-RegistryObject -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\LAPS\State'
+    $legacy = Get-RegistryObject -Path 'HKLM:\SOFTWARE\Policies\Microsoft Services\AdmPwd'
+
+    [ordered]@{
+        WindowsLapsPolicy  = $policy
+        WindowsLapsState   = $state
+        LegacyAdmPwdPolicy = $legacy
+    }
+}
+
+# ------------------------
+# Local admin inventory (merged logic)
+# ------------------------
+
+function Get-LocalAdminInventory {
+    # Try modern cmdlets first
+    try {
+        $members    = @(Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop)
+        $localUsers = @()
+        try {
+            $localUsers = @(Get-LocalUser -ErrorAction Stop)
+        } catch {
+            $localUsers = @()
+        }
+
+        $inventory = @()
+
+        foreach ($member in $members) {
+            # Detect if this Administrators member is a *local* user (not a group/domain account)
+            $isLocalUser = ($member.ObjectClass -eq 'User' -and $member.PrincipalSource -in @('Local','MicrosoftAccount'))
+
+            # Attempt to enrich local user details using SID-first matching, then name
+            $userDetails = $null
+            if ($isLocalUser -and $localUsers.Count -gt 0) {
+                # Try to read a SID from the member object if it exists
+                $memberSid = $null
+                if ($member.PSObject.Properties['SID'] -and $member.SID) {
+                    try { $memberSid = $member.SID.Value } catch { $memberSid = [string]$member.SID }
+                }
+
+                $matched = $null
+                if ($memberSid) {
+                    $matched = $localUsers |
+                        Where-Object { $_.PSObject.Properties['SID'] -and $_.SID -and $_.SID.Value -eq $memberSid } |
+                        Select-Object -First 1
+                }
+
+                if (-not $matched) {
+                    # Fall back to name match; strip DOMAIN\ if present
+                    $nameCandidate = $member.Name
+                    if ($nameCandidate -match '^[^\\]+\\(.+)$') { $nameCandidate = $matches[1] }
+                    $matched = $localUsers | Where-Object { $_.Name -eq $nameCandidate } | Select-Object -First 1
+                }
+
+                if ($matched) {
+                    $lastSetIso = ConvertTo-IsoUtc (Get-ValueIfPresent -Object $matched -Property 'LastPasswordSet')
+                    $sidValue   = (Get-ValueIfPresent -Object $matched -Property 'SID')
+                    if ($sidValue -and $sidValue -is [System.Security.Principal.SecurityIdentifier]) {
+                        $sidValue = $sidValue.Value
+                    }
+
+                    $userDetails = [pscustomobject]@{
+                        Sid                  = $sidValue
+                        Enabled              = [bool](Get-ValueIfPresent -Object $matched -Property 'Enabled')
+                        PasswordNeverExpires = [bool](Get-ValueIfPresent -Object $matched -Property 'PasswordNeverExpires')
+                        LastPasswordSet      = $lastSetIso
+                        IsBuiltInAdmin       = ($sidValue -match '-500$')  # RID 500
+                    }
+                }
+            }
+
+            # Keep the full membership row (local + non-local), with enrichment only for local user members
+            $inventory += [pscustomobject]@{
+                Name             = $member.Name
+                ObjectClass      = $member.ObjectClass
+                PrincipalSource  = $member.PrincipalSource
+                IsLocalUser      = [bool]$isLocalUser
+                LocalUserDetails = $userDetails
+            }
+        }
+
+        return $inventory
+
+    } catch {
+        # Fallback: legacy tool to at least capture membership text
+        try {
+            $output = net.exe localgroup administrators 2>&1
+            return @(
+                [pscustomobject]@{
+                    Source    = 'net localgroup administrators'
+                    RawOutput = ($output -join "`r`n")
+                }
+            )
+        } catch {
+            return @(
+                [pscustomobject]@{
+                    Source = 'LocalAdministrators'
+                    Error  = $_.Exception.Message
+                }
+            )
+        }
+    }
+}
+
+# ------------------------
+# Main
+# ------------------------
+
+function Invoke-Main {
+    $payload = [ordered]@{
+        Host               = $env:COMPUTERNAME
+        LapsPolicies       = Get-LapsPolicyFootprints
+        LocalAdministrators= Get-LocalAdminInventory
+    }
+
+    $result     = New-CollectorMetadata -Payload $payload
+    $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'laps_localadmin.json' -Data $result -Depth 8
+    Write-Output $outputPath
+}
+
+Invoke-Main
