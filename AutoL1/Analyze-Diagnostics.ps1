@@ -100,6 +100,7 @@ function Convert-SizeToGB {
     'MB' { return $Value / 1024 }
     default { return $Value }
   }
+
 }
 
 function ConvertTo-NullableBool {
@@ -510,6 +511,55 @@ function Convert-DiskBlock {
     IsReadOnly        = if ($props.ContainsKey('IsReadOnly')) { ConvertTo-NullableBool $props['IsReadOnly'] } else { $null }
     Raw               = $BlockText
   }
+}
+
+function Get-DictionaryValue {
+  param(
+    [System.Collections.IDictionary]$Dictionary,
+    [string]$Key
+  )
+
+  if (-not $Dictionary -or -not $Key) { return $null }
+
+  try {
+    if ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) {
+      if ($Dictionary.Contains($Key)) { return $Dictionary[$Key] }
+    } elseif ($Dictionary -is [hashtable]) {
+      if ($Dictionary.ContainsKey($Key)) { return $Dictionary[$Key] }
+    } else {
+      if ($Dictionary.ContainsKey($Key)) { return $Dictionary[$Key] }
+    }
+  } catch {
+    try {
+      if ($Dictionary.Contains($Key)) { return $Dictionary[$Key] }
+    } catch {}
+  }
+
+  return $null
+}
+
+function ConvertTo-StringArray {
+  param($Value)
+
+  $list = @()
+  if ($null -eq $Value) { return $list }
+
+  if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+    foreach ($item in $Value) {
+      if ($null -eq $item) { continue }
+      $text = [string]$item
+      if (-not [string]::IsNullOrWhiteSpace($text)) {
+        $list += $text.Trim()
+      }
+    }
+  } else {
+    $text = [string]$Value
+    if (-not [string]::IsNullOrWhiteSpace($text)) {
+      $list += $text.Trim()
+    }
+  }
+
+  return $list | Where-Object { $_ } | Select-Object -Unique
 }
 
 function Parse-DiskList {
@@ -976,7 +1026,31 @@ function Get-IssueExplanation {
   }
 
   if ($areaLower -match 'dns/internal') {
-    return "DNS not configured correctly means the Domain Controller cannot be reached. Therefore you may experience login issues and group policies failing to apply." 
+    return "DNS not configured correctly means the Domain Controller cannot be reached. Therefore you may experience login issues and group policies failing to apply."
+  }
+
+  if ($areaLower -match 'active directory/dc discovery') {
+    return "When a device cannot discover a domain controller it cannot authenticate or refresh policies. Restoring DC discovery is critical to get logons, password changes, and script processing working again."
+  }
+
+  if ($areaLower -match 'active directory/ad dns') {
+    return "Active Directory DNS records are how clients find domain controllers. Fixing DNS ensures the machine can reach the right DCs for sign-in, Kerberos, and policy updates."
+  }
+
+  if ($areaLower -match 'active directory/time') {
+    return "Kerberos requires the workstation clock to be in sync with the domain. Time or Kerberos errors block authentication, so correcting clock drift keeps tickets issuing correctly."
+  }
+
+  if ($areaLower -match 'active directory/secure channel') {
+    return "A broken secure channel means the computer account trust is gone. Until it is reset the machine cannot talk to domain controllers for logons or policy."
+  }
+
+  if ($areaLower -match 'active directory/sysvol') {
+    return "SYSVOL and NETLOGON shares host logon scripts and Group Policy templates. Errors reaching them stop policies from applying and can break scripted logons."
+  }
+
+  if ($areaLower -match 'active directory/gpo') {
+    return "Group Policy processing failures mean security baselines and configuration changes are not taking effect. Fixing GPO errors keeps the device aligned with enterprise policy."
   }
 
   if ($areaLower -match 'dns/order') {
@@ -1778,8 +1852,13 @@ if ($raw['ipconfig']){
       ForestName             = $forestName
       ConfiguredDns          = $dnsServers
       AdCapableDns           = @()
+      DcHosts                = @()
       DcIPs                  = @()
       DcCount                = 0
+      DnsTestsAvailable      = $null
+      DnsTestsAttempted      = $null
+      DcQueryName            = $null
+      PublicDns              = @()
       SecureChannelOK        = $null
       AnycastOverrideMatched = $false
     }
@@ -1827,8 +1906,12 @@ if ($raw['ipconfig']){
       }
       $dcIPs = $dcIPs | Where-Object { $_ } | Select-Object -Unique
       $dcCount = $dcIPs.Count
+      $dnsDebugData.DcHosts = $dcHosts
       $dnsDebugData.DcIPs = $dcIPs
       $dnsDebugData.DcCount = $dcCount
+      $dnsDebugData.DnsTestsAvailable = $dnsTestsAvailable
+      $dnsDebugData.DnsTestsAttempted = $dnsTestsAttempted
+      $dnsDebugData.DcQueryName = if ($forestForQuery) { "_ldap._tcp.dc._msdcs.$forestForQuery" } else { $null }
 
       $dnsEval = @()
       foreach ($server in $dnsServers) {
@@ -1938,8 +2021,12 @@ if ($raw['ipconfig']){
       }
 
       $publicServers = $dnsEval | Where-Object { $_.IsPublic }
-      if (-not $anycastOverrideMatch -and $publicServers) {
+      $pubList = @()
+      if ($publicServers) {
         $pubList = $publicServers | Select-Object -ExpandProperty Server -Unique
+      }
+      $dnsDebugData.PublicDns = $pubList
+      if (-not $anycastOverrideMatch -and $pubList.Count -gt 0) {
         Add-Issue "medium" "DNS/Internal" "Domain-joined: public DNS servers detected ($($pubList -join ', '))." $dnsEvalTable
       }
 
@@ -1952,6 +2039,7 @@ if ($raw['ipconfig']){
       }
 
       $summary.DnsDebug = $dnsDebugData
+      $summary.DnsDebugEvidence = $dnsEvidence
     }
   }
 
@@ -3684,6 +3772,173 @@ if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
 }
 
 # events quick counters
+function Parse-EventLogBlocks {
+  param([string]$Text)
+
+  $events = New-Object System.Collections.Generic.List[pscustomobject]
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $events }
+
+  $pattern = '(?ms)^Event\[\d+\]:.*?(?=^Event\[\d+\]:|\z)'
+  $matches = [regex]::Matches($Text, $pattern)
+  foreach ($match in $matches) {
+    if (-not $match) { continue }
+    $block = $match.Value
+    if ([string]::IsNullOrWhiteSpace($block)) { continue }
+
+    $trimmed = $block.Trim()
+    if (-not $trimmed) { continue }
+
+    $provider = ''
+    $providerMatch = [regex]::Match($trimmed,'(?im)^\s*(Provider Name|Provider|Source)\s*[:=]\s*(?<value>[^\r\n]+)')
+    if ($providerMatch.Success) { $provider = $providerMatch.Groups['value'].Value.Trim() }
+
+    $eventId = $null
+    $eventIdMatch = [regex]::Match($trimmed,'(?im)^\s*(Event ID|EventID)\s*[:=]\s*(?<value>\d+)')
+    if ($eventIdMatch.Success) {
+      $idValue = $eventIdMatch.Groups['value'].Value.Trim()
+      $parsedId = 0
+      if ([int]::TryParse($idValue, [ref]$parsedId)) { $eventId = $parsedId }
+    }
+
+    $level = ''
+    $levelMatch = [regex]::Match($trimmed,'(?im)^\s*Level\s*[:=]\s*(?<value>[^\r\n]+)')
+    if ($levelMatch.Success) { $level = $levelMatch.Groups['value'].Value.Trim() }
+
+    $index = $null
+    $indexMatch = [regex]::Match($trimmed,'(?im)^Event\[(?<index>\d+)\]')
+    if ($indexMatch.Success) {
+      $parsedIndex = 0
+      if ([int]::TryParse($indexMatch.Groups['index'].Value, [ref]$parsedIndex)) { $index = $parsedIndex }
+    }
+
+    $lines = [regex]::Split($trimmed,'\r?\n')
+    $snippetLines = $lines | Where-Object { $_ -and $_.Trim() } | Select-Object -First 8
+    if (-not $snippetLines -or $snippetLines.Count -eq 0) {
+      $snippetLines = $lines | Select-Object -First 8
+    }
+    $snippet = ''
+    if ($snippetLines) {
+      $snippet = ($snippetLines -join "`n").Trim()
+    }
+
+    $events.Add([pscustomobject]@{
+      Index    = $index
+      Provider = $provider
+      EventId  = $eventId
+      Level    = $level
+      Raw      = $trimmed
+      Snippet  = $snippet
+    })
+  }
+
+  return $events
+}
+
+function Select-EventMatches {
+  param(
+    [System.Collections.Generic.List[pscustomobject]]$Events,
+    [string[]]$ProviderPatterns = @(),
+    [int[]]$EventIds = @(),
+    [string[]]$MessagePatterns = @(),
+    [string[]]$LevelFilter = @('Error','Warning')
+  )
+
+  $matches = New-Object System.Collections.Generic.List[pscustomobject]
+  if (-not $Events) { return $matches }
+
+  foreach ($evt in $Events) {
+    if (-not $evt) { continue }
+
+    $include = $true
+
+    if ($ProviderPatterns -and $ProviderPatterns.Count -gt 0) {
+      $include = $false
+      $providerText = if ($evt.Provider) { [string]$evt.Provider } else { '' }
+      foreach ($pattern in $ProviderPatterns) {
+        if (-not $pattern) { continue }
+        if ($providerText -match $pattern) { $include = $true; break }
+      }
+      if (-not $include) { continue }
+    }
+
+    if ($EventIds -and $EventIds.Count -gt 0) {
+      if ($null -eq $evt.EventId) { continue }
+      if (-not ($EventIds -contains $evt.EventId)) { continue }
+    }
+
+    if ($LevelFilter -and $LevelFilter.Count -gt 0) {
+      $levelText = if ($evt.Level) { [string]$evt.Level } else { '' }
+      $levelMatch = $false
+      foreach ($levelPattern in $LevelFilter) {
+        if (-not $levelPattern) { continue }
+        $regexLevel = '(?i)' + [regex]::Escape($levelPattern)
+        if ($levelText -match $regexLevel) { $levelMatch = $true; break }
+      }
+      if (-not $levelMatch) {
+        $rawForLevel = if ($evt.Raw) { [string]$evt.Raw } else { '' }
+        foreach ($levelPattern in $LevelFilter) {
+          if (-not $levelPattern) { continue }
+          if ($rawForLevel -match ('(?i)\b' + [regex]::Escape($levelPattern) + '\b')) { $levelMatch = $true; break }
+        }
+      }
+      if (-not $levelMatch) { continue }
+    }
+
+    if ($MessagePatterns -and $MessagePatterns.Count -gt 0) {
+      $rawText = if ($evt.Raw) { [string]$evt.Raw } else { '' }
+      $messageMatch = $false
+      foreach ($pattern in $MessagePatterns) {
+        if (-not $pattern) { continue }
+        if ($rawText -match $pattern) { $messageMatch = $true; break }
+      }
+      if (-not $messageMatch) { continue }
+    }
+
+    $matches.Add($evt)
+  }
+
+  return $matches
+}
+
+function Get-EventEvidenceText {
+  param(
+    [System.Collections.Generic.List[pscustomobject]]$Events,
+    [int]$Max = 2
+  )
+
+  if (-not $Events -or $Events.Count -eq 0) { return '' }
+
+  $take = [Math]::Min($Max, $Events.Count)
+  $parts = New-Object System.Collections.Generic.List[string]
+
+  for ($i = 0; $i -lt $take; $i++) {
+    $evt = $Events[$i]
+    if (-not $evt) { continue }
+
+    $headerParts = @()
+    if ($evt.Provider) { $headerParts += $evt.Provider }
+    if ($evt.EventId -ne $null) { $headerParts += ("ID {0}" -f $evt.EventId) }
+    if ($evt.Level) { $headerParts += $evt.Level }
+    $header = if ($headerParts.Count -gt 0) { "[{0}]" -f ($headerParts -join ' • ') } else { '' }
+
+    $snippet = if ($evt.Snippet) { [string]$evt.Snippet } else { [string]$evt.Raw }
+    if (-not [string]::IsNullOrWhiteSpace($snippet)) { $snippet = $snippet.Trim() }
+
+    if ($header) {
+      $parts.Add("$header`n$snippet")
+    } else {
+      $parts.Add($snippet)
+    }
+  }
+
+  if ($Events.Count -gt $take) {
+    $remaining = $Events.Count - $take
+    $parts.Add("(+{0} additional related event(s) in sample)" -f $remaining)
+  }
+
+  return ($parts -join "`n`n")
+}
+
 function Get-EventHighlights {
   param(
     [string]$Text,
@@ -3757,6 +4012,342 @@ function Get-EventHighlights {
     Snippets = $snippets
     Matched  = $matched
   }
+}
+
+$systemEventBlocks = Parse-EventLogBlocks $raw['event_system']
+$applicationEventBlocks = Parse-EventLogBlocks $raw['event_app']
+$allEventBlocks = New-Object System.Collections.Generic.List[pscustomobject]
+if ($systemEventBlocks) {
+  foreach ($evt in $systemEventBlocks) { if ($evt) { $allEventBlocks.Add($evt) } }
+}
+if ($applicationEventBlocks) {
+  foreach ($evt in $applicationEventBlocks) { if ($evt) { $allEventBlocks.Add($evt) } }
+}
+
+# Active Directory heuristics (client-side)
+$domainIsJoined = ($summary.DomainJoined -eq $true)
+if ($domainIsJoined) {
+  $haveSystemEvents = ($systemEventBlocks -and $systemEventBlocks.Count -gt 0)
+  $haveAnyEvents = ($allEventBlocks -and $allEventBlocks.Count -gt 0)
+
+  $dcDiscoveryEvaluated = $false
+  $dcDiscoveryHealthy = $false
+  $dcDiscoveryIssue = $false
+  $dcDiscoveryHealthyEvidence = ''
+
+  $adDnsEvaluated = $false
+  $adDnsHealthy = $false
+  $adDnsIssue = $false
+  $adDnsHealthyEvidence = ''
+
+  $secureChannelEvaluated = $false
+  $secureChannelHealthy = $false
+  $secureChannelIssue = $false
+  $secureChannelHealthyEvidence = ''
+
+  $timeKerbEvaluated = $haveSystemEvents -or $haveAnyEvents
+  $timeKerbHealthy = $false
+  $timeKerbIssue = $false
+
+  $sysvolEvaluated = $haveSystemEvents
+  $sysvolHealthy = $false
+  $sysvolIssue = $false
+
+  $gpoEvaluated = $haveSystemEvents
+  $gpoHealthy = $false
+  $gpoIssue = $false
+  $dnsDebug = $null
+  if ($summary.ContainsKey('DnsDebug')) { $dnsDebug = $summary.DnsDebug }
+  $dnsEvidence = ''
+  if ($summary.ContainsKey('DnsDebugEvidence')) { $dnsEvidence = [string]$summary.DnsDebugEvidence }
+
+  $dcCountValue = 0
+  $dcIPsList = @()
+  $dcHostsList = @()
+  $adCapableList = @()
+  $configuredDnsList = @()
+  $publicDnsList = @()
+  $dnsTestsAvailableBool = $null
+  $dnsTestsAttemptedBool = $null
+  $secureChannelState = $null
+  $anycastOverride = $null
+  $dcQueryName = ''
+
+  if ($dnsDebug -is [System.Collections.IDictionary]) {
+    $dcCountRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DcCount'
+    if ($dcCountRaw -is [int]) {
+      $dcCountValue = [int]$dcCountRaw
+    } elseif ($dcCountRaw -ne $null) {
+      $parsedDcCount = 0
+      if ([int]::TryParse(([string]$dcCountRaw).Trim(), [ref]$parsedDcCount)) { $dcCountValue = $parsedDcCount }
+    }
+
+    $dcIPsList = ConvertTo-StringArray (Get-DictionaryValue -Dictionary $dnsDebug -Key 'DcIPs')
+    $dcHostsList = ConvertTo-StringArray (Get-DictionaryValue -Dictionary $dnsDebug -Key 'DcHosts')
+    $adCapableList = ConvertTo-StringArray (Get-DictionaryValue -Dictionary $dnsDebug -Key 'AdCapableDns')
+    $configuredDnsList = ConvertTo-StringArray (Get-DictionaryValue -Dictionary $dnsDebug -Key 'ConfiguredDns')
+    $publicDnsList = ConvertTo-StringArray (Get-DictionaryValue -Dictionary $dnsDebug -Key 'PublicDns')
+
+    $dnsTestsAvailableRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DnsTestsAvailable'
+    if ($dnsTestsAvailableRaw -is [bool]) {
+      $dnsTestsAvailableBool = $dnsTestsAvailableRaw
+    } elseif ($dnsTestsAvailableRaw -ne $null) {
+      $dnsTestsAvailableBool = Get-BoolFromString ([string]$dnsTestsAvailableRaw)
+    }
+
+    $dnsTestsAttemptedRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DnsTestsAttempted'
+    if ($dnsTestsAttemptedRaw -is [bool]) {
+      $dnsTestsAttemptedBool = $dnsTestsAttemptedRaw
+    } elseif ($dnsTestsAttemptedRaw -ne $null) {
+      $dnsTestsAttemptedBool = Get-BoolFromString ([string]$dnsTestsAttemptedRaw)
+    }
+
+    $secureChannelRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'SecureChannelOK'
+    if ($secureChannelRaw -is [bool]) {
+      $secureChannelState = $secureChannelRaw
+    } elseif ($secureChannelRaw -ne $null) {
+      $secureChannelState = Get-BoolFromString ([string]$secureChannelRaw)
+    }
+
+    $anycastRaw = Get-DictionaryValue -Dictionary $dnsDebug -Key 'AnycastOverrideMatched'
+    if ($anycastRaw -is [bool]) {
+      $anycastOverride = $anycastRaw
+    } elseif ($anycastRaw -ne $null) {
+      $anycastOverride = Get-BoolFromString ([string]$anycastRaw)
+    }
+
+    $dcQueryNameValue = Get-DictionaryValue -Dictionary $dnsDebug -Key 'DcQueryName'
+    if ($dcQueryNameValue) { $dcQueryName = [string]$dcQueryNameValue }
+  }
+
+  $canEvaluateDcDiscovery = $true
+  if ($dnsTestsAvailableBool -eq $false) { $canEvaluateDcDiscovery = $false }
+  if ($dnsTestsAttemptedBool -eq $false -and $dcCountValue -eq 0 -and $dcIPsList.Count -eq 0) { $canEvaluateDcDiscovery = $false }
+
+  if ($canEvaluateDcDiscovery) {
+    $dcDiscoveryEvaluated = $true
+    if ($dcCountValue -le 0 -and $dcIPsList.Count -eq 0) {
+      $dcEvidenceParts = New-Object System.Collections.Generic.List[string]
+      if ($dcQueryName) { $dcEvidenceParts.Add("SRV query attempted: $dcQueryName") }
+      if ($configuredDnsList.Count -gt 0) { $dcEvidenceParts.Add("Configured DNS: " + ($configuredDnsList -join ', ')) }
+      if ($dnsEvidence) { $dcEvidenceParts.Add($dnsEvidence) }
+      if ($dcEvidenceParts.Count -eq 0) { $dcEvidenceParts.Add('No domain controllers discovered via DNS SRV query.') }
+      $dcEvidenceText = ($dcEvidenceParts -join "`n`n")
+      Add-Issue 'critical' 'Active Directory/DC Discovery' 'No domain controllers discovered via DNS SRV records. Domain logons and policy refresh will fail.' $dcEvidenceText
+      $dcDiscoveryIssue = $true
+    } else {
+      $dcDiscoveryHealthy = $true
+      $dcHealthyParts = New-Object System.Collections.Generic.List[string]
+      if ($dcCountValue -gt 0) { $dcHealthyParts.Add("Reported DC count: $dcCountValue") }
+      if ($dcHostsList.Count -gt 0) { $dcHealthyParts.Add("Hosts: " + ($dcHostsList -join ', ')) }
+      if ($dcIPsList.Count -gt 0) { $dcHealthyParts.Add("IPs: " + ($dcIPsList -join ', ')) }
+      if ($configuredDnsList.Count -gt 0) { $dcHealthyParts.Add("Configured DNS: " + ($configuredDnsList -join ', ')) }
+      if ($dcHealthyParts.Count -eq 0) { $dcHealthyParts.Add('At least one domain controller was discovered via DNS SRV query.') }
+      $dcDiscoveryHealthyEvidence = ($dcHealthyParts -join "`n")
+    }
+  }
+
+  $adDnsEvaluated = ($adCapableList.Count -gt 0 -or $configuredDnsList.Count -gt 0 -or $publicDnsList.Count -gt 0 -or $dnsEvidence)
+
+  if ($adCapableList.Count -eq 0) {
+    $dnsText = if ($dnsEvidence) { $dnsEvidence } else { "Configured DNS: " + ($configuredDnsList -join ', ') }
+    Add-Issue 'critical' 'Active Directory/AD DNS' 'No AD-capable DNS resolvers detected; client cannot locate domain controllers.' $dnsText
+    $adDnsIssue = $true
+  } elseif ($adCapableList.Count -eq 1 -and -not ($anycastOverride -eq $true)) {
+    $singleDns = $adCapableList[0]
+    $dnsText = if ($dnsEvidence) { $dnsEvidence } else { "AD-capable DNS: $singleDns" }
+    Add-Issue 'high' 'Active Directory/AD DNS' ("Only one AD-capable DNS resolver configured ({0}); there is no failover for domain lookups." -f $singleDns) $dnsText
+    $adDnsIssue = $true
+  }
+
+  if ($publicDnsList.Count -gt 0 -and -not ($anycastOverride -eq $true) -and $adCapableList.Count -gt 0) {
+    $dnsText = if ($dnsEvidence) { $dnsEvidence } else { "Public DNS detected: " + ($publicDnsList -join ', ') }
+    Add-Issue 'medium' 'Active Directory/AD DNS' ("Public DNS servers configured on a domain-joined client: {0}. These can block DC discovery." -f ($publicDnsList -join ', ')) $dnsText
+    $adDnsIssue = $true
+  }
+
+  if ($adDnsEvaluated -and -not $adDnsIssue -and $adCapableList.Count -gt 0) {
+    $adDnsHealthy = $true
+    $adDnsDetails = New-Object System.Collections.Generic.List[string]
+    $adDnsDetails.Add("AD-capable DNS: " + ($adCapableList -join ', '))
+    if ($configuredDnsList.Count -gt 0) { $adDnsDetails.Add("Configured DNS: " + ($configuredDnsList -join ', ')) }
+    if ($anycastOverride -eq $true) { $adDnsDetails.Add('Anycast override matched (single resolver is expected).') }
+    if ($publicDnsList.Count -gt 0) { $adDnsDetails.Add("Public DNS detected: " + ($publicDnsList -join ', ')) }
+    $adDnsHealthyEvidence = ($adDnsDetails -join "`n")
+  }
+
+  $secureChannelEvaluated = ($secureChannelState -ne $null)
+
+  if ($secureChannelState -eq $false) {
+    $secureEvidenceParts = New-Object System.Collections.Generic.List[string]
+    $secureEvidenceParts.Add('Test-ComputerSecureChannel returned False.')
+    if ($dnsEvidence) { $secureEvidenceParts.Add($dnsEvidence) }
+    $secureEvidence = ($secureEvidenceParts -join "`n`n")
+    Add-Issue 'critical' 'Active Directory/Secure Channel' 'Machine secure channel to the domain is broken. Reset the computer account or rejoin the domain.' $secureEvidence
+    $secureChannelIssue = $true
+  } elseif ($secureChannelState -eq $true) {
+    $secureChannelHealthy = $true
+    $secureEvidenceParts = New-Object System.Collections.Generic.List[string]
+    $secureEvidenceParts.Add('Test-ComputerSecureChannel returned True.')
+    if ($dnsEvidence) { $secureEvidenceParts.Add($dnsEvidence) }
+    $secureChannelHealthyEvidence = ($secureEvidenceParts -join "`n`n")
+  }
+
+  $timeEventIds = @(29,30,31,32,34,35,36,47,50,134,138)
+  $timeEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)Time-Service','(?i)W32Time') -EventIds $timeEventIds
+  if ($timeEvents.Count -eq 0) {
+    $timeEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)Time-Service','(?i)W32Time') -MessagePatterns @('(?i)clock skew','(?i)time difference','(?i)time service','(?i)synchronization attempt','(?i)Not synchronize')
+  }
+
+  $kerberosEventIds = @(4,5,6,7,9,11,14,16,18)
+  $kerberosEvents = Select-EventMatches -Events $allEventBlocks -ProviderPatterns @('(?i)Kerberos','(?i)KDC') -EventIds $kerberosEventIds
+  if ($kerberosEvents.Count -eq 0) {
+    $kerberosEvents = Select-EventMatches -Events $allEventBlocks -ProviderPatterns @('(?i)Kerberos','(?i)KDC') -MessagePatterns @('(?i)Kerberos','(?i)KRB_','(?i)clock skew','(?i)pre-authentication','(?i)PAC verification','(?i)0xC000018B','(?i)0xC000006A')
+  }
+
+  $timeKerbEvidenceParts = New-Object System.Collections.Generic.List[string]
+  if ($timeEvents.Count -gt 0) {
+    $timeKerbEvidenceParts.Add("Time synchronization errors:`n" + (Get-EventEvidenceText $timeEvents 2))
+  }
+  if ($kerberosEvents.Count -gt 0) {
+    $timeKerbEvidenceParts.Add("Kerberos authentication errors:`n" + (Get-EventEvidenceText $kerberosEvents 2))
+  }
+  if ($timeKerbEvidenceParts.Count -gt 0) {
+    $timeKerbEvidence = ($timeKerbEvidenceParts -join "`n`n")
+    Add-Issue 'high' 'Active Directory/Time & Kerberos' 'Time synchronization or Kerberos authentication errors detected. Verify clock alignment and domain controller reachability.' $timeKerbEvidence
+    $timeKerbIssue = $true
+  } elseif ($timeKerbEvaluated) {
+    $timeKerbHealthy = $true
+  }
+
+  $netlogonEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)Netlogon') -EventIds @(5719,5722,5805,3210)
+  if ($netlogonEvents.Count -eq 0) {
+    $netlogonEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)Netlogon') -MessagePatterns @('(?i)logon server','(?i)NETLOGON','(?i)trust relationship','(?i)secure channel')
+  }
+  $sysvolPathEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)GroupPolicy','(?i)Microsoft-Windows-GroupPolicy') -MessagePatterns @('(?i)\\[^\r\n]+\\SYSVOL','(?i)\\[^\r\n]+\\NETLOGON','(?i)The network path was not found','(?i)The system cannot find the path specified')
+
+  $combinedSysvol = New-Object System.Collections.Generic.List[pscustomobject]
+  foreach ($evt in $netlogonEvents) { if ($evt) { $combinedSysvol.Add($evt) } }
+  foreach ($evt in $sysvolPathEvents) { if ($evt) { $combinedSysvol.Add($evt) } }
+
+  if ($combinedSysvol.Count -gt 0) {
+    $uniqueSysvol = New-Object System.Collections.Generic.List[pscustomobject]
+    $sysvolSeen = @{}
+    foreach ($evt in $combinedSysvol) {
+      if (-not $evt) { continue }
+      $rawKey = if ($evt.Raw) { [string]$evt.Raw } else { [string]$evt.Snippet }
+      if (-not $rawKey) { $rawKey = [guid]::NewGuid().ToString() }
+      if (-not $sysvolSeen.ContainsKey($rawKey)) {
+        $sysvolSeen[$rawKey] = $true
+        $uniqueSysvol.Add($evt)
+      }
+    }
+    if ($uniqueSysvol.Count -gt 0) {
+      $sysvolEvidence = Get-EventEvidenceText $uniqueSysvol 2
+      Add-Issue 'high' 'Active Directory/SYSVOL/NETLOGON' 'Errors accessing SYSVOL or NETLOGON shares detected. Client cannot read required domain scripts or policies.' $sysvolEvidence
+      $sysvolIssue = $true
+    }
+  }
+  elseif ($sysvolEvaluated) {
+    $sysvolHealthy = $true
+  }
+
+  $gpoEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)GroupPolicy','(?i)Microsoft-Windows-GroupPolicy') -EventIds @(1058,1030,1129,7016,7017)
+  if ($gpoEvents.Count -eq 0) {
+    $gpoEvents = Select-EventMatches -Events $systemEventBlocks -ProviderPatterns @('(?i)GroupPolicy','(?i)Microsoft-Windows-GroupPolicy') -MessagePatterns @('(?i)Group Policy.*failed','(?i)processing of Group Policy','(?i)Failed to connect to a Windows domain controller','(?i)The policy processing failed','(?i)Could not apply policy')
+  }
+  if ($gpoEvents.Count -gt 0) {
+    $filteredGpo = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($evt in $gpoEvents) {
+      if (-not $evt) { continue }
+      $rawText = if ($evt.Raw) { [string]$evt.Raw } else { '' }
+      if ($rawText -match '(?i)\bSYSVOL\b' -or $rawText -match '(?i)\bNETLOGON\b') { continue }
+      $filteredGpo.Add($evt)
+    }
+    if ($filteredGpo.Count -eq 0) { $filteredGpo = $gpoEvents }
+    if ($filteredGpo.Count -gt 0) {
+      $gpoEvidence = Get-EventEvidenceText $filteredGpo 2
+      Add-Issue 'high' 'Active Directory/GPO Processing' 'Group Policy processing errors detected in recent logs.' $gpoEvidence
+      $gpoIssue = $true
+    }
+  }
+  elseif ($gpoEvaluated) {
+    $gpoHealthy = $true
+  }
+
+  if ($dcDiscoveryEvaluated) {
+    if ($dcDiscoveryHealthy -and -not $dcDiscoveryIssue) {
+      $dcEvidenceForNormal = if ($dcDiscoveryHealthyEvidence) { $dcDiscoveryHealthyEvidence } else { 'At least one domain controller was discovered via DNS SRV query.' }
+      Add-Normal 'Active Directory/DC Discovery' 'Domain controllers discovered via DNS SRV query.' $dcEvidenceForNormal
+    }
+  } else {
+    Add-Normal 'Active Directory/DC Discovery' 'DC discovery diagnostics not captured; unable to confirm results.' 'No SRV discovery output was present in diagnostics.' 'INFO'
+  }
+
+  if ($adDnsEvaluated) {
+    if ($adDnsHealthy -and -not $adDnsIssue) {
+      $dnsEvidenceForNormal = if ($adDnsHealthyEvidence) { $adDnsHealthyEvidence } else { 'AD-capable DNS resolvers were detected in the diagnostic output.' }
+      Add-Normal 'Active Directory/AD DNS' 'AD-capable DNS resolvers detected.' $dnsEvidenceForNormal
+    }
+  } else {
+    Add-Normal 'Active Directory/AD DNS' 'DNS diagnostics for Active Directory were not captured in the report.' 'No AD DNS resolver data was present.' 'INFO'
+  }
+
+  if ($secureChannelEvaluated) {
+    if ($secureChannelHealthy -and -not $secureChannelIssue) {
+      $secureEvidenceForNormal = if ($secureChannelHealthyEvidence) { $secureChannelHealthyEvidence } else { 'Test-ComputerSecureChannel reported a healthy secure channel.' }
+      Add-Normal 'Active Directory/Secure Channel' 'Machine secure channel to the domain is healthy.' $secureEvidenceForNormal
+    }
+  } else {
+    Add-Normal 'Active Directory/Secure Channel' 'Secure channel diagnostic output was not included in the report.' 'No Test-ComputerSecureChannel results were captured.' 'INFO'
+  }
+
+  if ($timeKerbEvaluated) {
+    if ($timeKerbHealthy -and -not $timeKerbIssue) {
+      Add-Normal 'Active Directory/Time & Kerberos' 'No time synchronization or Kerberos authentication errors detected.' 'Parsed event logs contained no matching time service or Kerberos errors.'
+    }
+  } else {
+    Add-Normal 'Active Directory/Time & Kerberos' 'Unable to evaluate time and Kerberos health from the provided diagnostics.' 'Relevant event logs were not present in the report.' 'INFO'
+  }
+
+  if ($sysvolEvaluated) {
+    if ($sysvolHealthy -and -not $sysvolIssue) {
+      Add-Normal 'Active Directory/SYSVOL/NETLOGON' 'No SYSVOL or NETLOGON access errors detected in parsed event logs.' 'No matching SYSVOL/NETLOGON failures were found in the provided System logs.'
+    }
+  } else {
+    Add-Normal 'Active Directory/SYSVOL/NETLOGON' 'Unable to assess SYSVOL/NETLOGON access from the provided diagnostics.' 'System event logs with NETLOGON entries were not included in the package.' 'INFO'
+  }
+
+  if ($gpoEvaluated) {
+    if ($gpoHealthy -and -not $gpoIssue) {
+      Add-Normal 'Active Directory/GPO Processing' 'No Group Policy processing errors detected in recent logs.' 'No matching Group Policy failure events were found in the parsed System logs.'
+    }
+  } else {
+    Add-Normal 'Active Directory/GPO Processing' 'Group Policy processing could not be evaluated from the provided diagnostics.' 'System event logs with Group Policy entries were not included in the package.' 'INFO'
+  }
+}
+else {
+  $notJoinedDetails = New-Object System.Collections.Generic.List[string]
+  if ($summary.Domain) {
+    $notJoinedDetails.Add("Reported domain: $($summary.Domain)")
+  } else {
+    $notJoinedDetails.Add('Reported domain: (none)')
+  }
+  if ($summary.LogonServer) { $notJoinedDetails.Add("Logon server: $($summary.LogonServer)") }
+  if ($summary.AzureAdJoined -ne $null) {
+    $notJoinedDetails.Add("Azure AD joined: $($summary.AzureAdJoined)")
+  }
+  if ($summary.EnterpriseJoined -ne $null) {
+    $notJoinedDetails.Add("Enterprise joined: $($summary.EnterpriseJoined)")
+  }
+  $notJoinedEvidence = ($notJoinedDetails -join "`n")
+
+  Add-Normal 'Active Directory/DC Discovery' 'Device is not domain joined; no domain controllers are expected.' $notJoinedEvidence 'INFO'
+  Add-Normal 'Active Directory/AD DNS' 'Device is not domain joined; AD-integrated DNS lookups are not required.' $notJoinedEvidence 'INFO'
+  Add-Normal 'Active Directory/Secure Channel' 'Device is not domain joined; a machine secure channel is not applicable.' $notJoinedEvidence 'INFO'
+  Add-Normal 'Active Directory/Time & Kerberos' 'Device is not domain joined; Kerberos authentication is not expected.' $notJoinedEvidence 'INFO'
+  Add-Normal 'Active Directory/SYSVOL/NETLOGON' 'Device is not domain joined; SYSVOL/NETLOGON access is not applicable.' $notJoinedEvidence 'INFO'
+  Add-Normal 'Active Directory/GPO Processing' 'Device is not domain joined; Group Policy processing is not applicable.' $notJoinedEvidence 'INFO'
 }
 
 function Add-EventStats($txt,$name){
