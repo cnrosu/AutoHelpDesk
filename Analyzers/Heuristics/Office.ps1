@@ -62,5 +62,34 @@ function Invoke-OfficeHeuristics {
         }
     }
 
+    $autodiscoverArtifact = Get-AnalyzerArtifact -Context $Context -Name 'autodiscover-dns'
+    if ($autodiscoverArtifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $autodiscoverArtifact)
+        if ($payload -and $payload.Results) {
+            $results = if ($payload.Results -is [System.Collections.IEnumerable] -and -not ($payload.Results -is [string])) { @($payload.Results) } else { @($payload.Results) }
+            foreach ($domainEntry in $results) {
+                if (-not $domainEntry) { continue }
+                $domain = $domainEntry.Domain
+                $autoRecord = ($domainEntry.Lookups | Where-Object { $_.Label -eq 'Autodiscover' } | Select-Object -First 1)
+                if (-not $autoRecord) { continue }
+
+                $targetsRaw = if ($autoRecord.Targets -is [System.Collections.IEnumerable] -and -not ($autoRecord.Targets -is [string])) { @($autoRecord.Targets) } else { @($autoRecord.Targets) }
+                $targetsClean = $targetsRaw | Where-Object { $_ }
+                if ($autoRecord.Success -eq $true -and $targetsClean.Count -gt 0) {
+                    $targets = $targetsClean
+                    $targetText = $targets -join ', '
+                    if ($targets -match 'autodiscover\.outlook\.com') {
+                        Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover CNAME healthy for {0}" -f $domain) -Evidence $targetText
+                    } else {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Autodiscover for {0} points to {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.'
+                    }
+                } elseif ($autoRecord.Success -eq $false) {
+                    $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence
+                }
+            }
+        }
+    }
+
     return $result
 }

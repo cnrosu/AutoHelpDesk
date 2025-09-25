@@ -352,5 +352,29 @@ function Invoke-ADHeuristics {
         }
     }
 
+    $eventsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
+    if ($eventsArtifact) {
+        $eventsPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $eventsArtifact)
+        if ($eventsPayload -and $eventsPayload.GroupPolicy) {
+            $groupPolicyLog = $eventsPayload.GroupPolicy
+            if ($groupPolicyLog.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read Group Policy event log' -Evidence $groupPolicyLog.Error
+            } else {
+                $entries = if ($groupPolicyLog -is [System.Collections.IEnumerable] -and -not ($groupPolicyLog -is [string])) { @($groupPolicyLog) } else { @($groupPolicyLog) }
+                $sysvolMatches = $entries | Where-Object { $_.Message -match '(?i)\\\\[^\r\n]+\\(SYSVOL|NETLOGON)' -or $_.Message -match '(?i)The network path was not found' -or $_.Message -match '(?i)The system cannot find the path specified' }
+                if ($sysvolMatches.Count -gt 0) {
+                    $evidence = ($sysvolMatches | Select-Object -First 3 | ForEach-Object { "[{0}] {1}" -f $_.Id, $_.Message }) -join "`n"
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Group Policy errors accessing SYSVOL/NETLOGON' -Evidence $evidence
+                }
+
+                $gpoFailures = $entries | Where-Object { $_.Id -in 1058, 1030, 1502, 1503 }
+                if ($gpoFailures.Count -gt 0) {
+                    $evidence = ($gpoFailures | Select-Object -First 3 | ForEach-Object { "[{0}] {1}" -f $_.Id, $_.Message }) -join "`n"
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy processing failures detected' -Evidence $evidence
+                }
+            }
+        }
+    }
+
     return $result
 }

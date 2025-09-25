@@ -13,6 +13,19 @@ function Invoke-SecurityHeuristics {
 
     $result = New-CategoryResult -Name 'Security'
 
+    $operatingSystem = $null
+    $isWindows11 = $false
+    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    if ($systemArtifact) {
+        $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+        if ($systemPayload -and $systemPayload.OperatingSystem -and -not $systemPayload.OperatingSystem.Error) {
+            $operatingSystem = $systemPayload.OperatingSystem
+            if ($operatingSystem.Caption -and $operatingSystem.Caption -match 'Windows\s*11') {
+                $isWindows11 = $true
+            }
+        }
+    }
+
     $defenderArtifact = Get-AnalyzerArtifact -Context $Context -Name 'defender'
     if ($defenderArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $defenderArtifact)
@@ -126,6 +139,73 @@ function Invoke-SecurityHeuristics {
             }
         } elseif ($payload -and $payload.Tpm -and $payload.Tpm.Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query TPM status' -Evidence $payload.Tpm.Error
+        }
+    }
+
+    $wdacArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wdac'
+    if ($wdacArtifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wdacArtifact)
+        $smartAppEvidence = @()
+        $smartAppState = $null
+
+        if ($payload -and $payload.SmartAppControl) {
+            $entry = $payload.SmartAppControl
+            if ($entry.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query Smart App Control state' -Evidence $entry.Error
+            } elseif ($entry.Values) {
+                foreach ($prop in $entry.Values.PSObject.Properties) {
+                    if ($prop.Name -match '^PS') { continue }
+                    $smartAppEvidence += ("{0}: {1}" -f $prop.Name, $prop.Value)
+                    $candidate = $prop.Value
+                    if ($null -ne $candidate) {
+                        $parsed = 0
+                        if ([int]::TryParse($candidate.ToString(), [ref]$parsed)) {
+                            if ($prop.Name -match 'Enabled' -or $prop.Name -match 'State') {
+                                $smartAppState = $parsed
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($null -eq $smartAppState -and $payload -and $payload.Registry) {
+            $registryEntries = @()
+            if ($payload.Registry -is [System.Collections.IEnumerable] -and -not ($payload.Registry -is [string])) {
+                $registryEntries = @($payload.Registry)
+            } else {
+                $registryEntries = @($payload.Registry)
+            }
+
+            $registryMatch = $registryEntries | Where-Object { $_.Path -and $_.Path -match 'SmartAppControl' } | Select-Object -First 1
+            if ($registryMatch -and $registryMatch.Values) {
+                foreach ($prop in $registryMatch.Values.PSObject.Properties) {
+                    if ($prop.Name -match '^PS') { continue }
+                    $smartAppEvidence += ("{0}: {1}" -f $prop.Name, $prop.Value)
+                    $candidate = $prop.Value
+                    if ($null -ne $candidate) {
+                        $parsed = 0
+                        if ([int]::TryParse($candidate.ToString(), [ref]$parsed)) {
+                            if ($prop.Name -match 'Enabled' -or $prop.Name -match 'State') {
+                                $smartAppState = $parsed
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $evidenceText = if ($smartAppEvidence.Count -gt 0) { $smartAppEvidence -join "`n" } else { '' }
+
+        if ($smartAppState -eq 1) {
+            Add-CategoryNormal -CategoryResult $result -Title 'Smart App Control enforced' -Evidence $evidenceText
+        } elseif ($smartAppState -eq 2) {
+            $severity = if ($isWindows11) { 'low' } else { 'info' }
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Smart App Control in evaluation mode' -Evidence $evidenceText
+        } elseif ($isWindows11) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Smart App Control not enabled on Windows 11 device' -Evidence $evidenceText
+        } elseif ($smartAppState -ne $null) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Smart App Control disabled' -Evidence $evidenceText
         }
     }
 
