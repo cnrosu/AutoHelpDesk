@@ -122,6 +122,35 @@ function ConvertTo-NullableInt {
   return $null
 }
 
+function ConvertTo-NullableDouble {
+  param($Value)
+
+  if ($Value -is [double]) { return [double]$Value }
+  if ($Value -is [single]) { return [double]$Value }
+  if ($null -eq $Value) { return $null }
+
+  $stringValue = [string]$Value
+  if (-not $stringValue) { return $null }
+
+  $trimmed = $stringValue.Trim()
+  if (-not $trimmed) { return $null }
+
+  $parsed = 0.0
+  if ([double]::TryParse($trimmed, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+    return $parsed
+  }
+
+  $normalized = ($trimmed -replace '(?i)[^0-9eE\+\-\.,]', '')
+  if ([string]::IsNullOrWhiteSpace($normalized)) { return $null }
+  $normalized = $normalized -replace ',', '.'
+
+  if ([double]::TryParse($normalized, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+    return $parsed
+  }
+
+  return $null
+}
+
 function ConvertFrom-JsonSafe {
   param([string]$Text)
 

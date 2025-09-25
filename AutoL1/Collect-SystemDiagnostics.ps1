@@ -240,6 +240,18 @@ $capturePlan = @(
   @{ Name = "NetIPAddresses"; Description = "Current IP assignments (Get-NetIPAddress)"; Action = { try { Get-NetIPAddress -ErrorAction Stop | Format-List * } catch { "Get-NetIPAddress missing or failed: $_" } } },
   @{ Name = "NetAdapters"; Description = "Network adapter status"; Action = { try { Get-NetAdapter -ErrorAction Stop | Format-List * } catch { Get-CimInstance Win32_NetworkAdapter | Select-Object Name,NetConnectionStatus,MACAddress,Speed | Format-List * } } },
   @{ Name = "WinHttpProxy"; Description = "WinHTTP proxy configuration"; Action = { netsh winhttp show proxy } },
+  @{ Name = "Time_W32tmStatus"; Description = "Time synchronization status"; Action = {
+      $w32tmCmd = Get-Command w32tm -ErrorAction SilentlyContinue
+      if (-not $w32tmCmd) {
+        "w32tm.exe not available."
+      } else {
+        try {
+          w32tm /query /status
+        } catch {
+          Write-Output ("w32tm /query /status failed: {0}" -f $_)
+        }
+      }
+    } },
   @{ Name = "Disk_Drives"; Description = "Physical disk inventory (wmic diskdrive)"; Action = { wmic diskdrive get model,serialNumber,status,size } },
   @{ Name = "Volumes"; Description = "Volume overview (Get-Volume)"; Action = { Get-Volume | Format-Table -AutoSize } },
   @{ Name = "Disks"; Description = "Disk layout (Get-Disk)"; Action = { Get-Disk | Format-List * } },
