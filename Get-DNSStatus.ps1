@@ -1,8 +1,19 @@
 <#
 .SYNOPSIS
-  DNS server configuration snapshot (zones, dynamic updates, forwarders, scavenging).
-.REQUIRES
-  DnsServer module.
+  Captures an at-a-glance snapshot of DNS server configuration and health.
+.DESCRIPTION
+  Reviews forwarders, scavenging posture, and zone metadata (including replication and dynamic update mode). Requires the
+  DnsServer module on the executing host.
+.PARAMETER ComputerName
+  Specifies the DNS server to query. Defaults to the local computer.
+.PARAMETER SaveReport
+  Saves the collected output to a timestamped text report beneath the local Reports directory when specified.
+.OUTPUTS
+  System.String. Writes results to the console and optionally saves a timestamped TXT under .\Reports\.
+.EXAMPLE
+  PS C:\> .\Get-DNSStatus.ps1 -ComputerName DNS01 -SaveReport
+
+  Collects configuration details from DNS01 and saves them to the Reports folder alongside the script.
 #>
 [CmdletBinding()]
 param(
@@ -14,6 +25,14 @@ $stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
 $reportDir = Join-Path -Path $PSScriptRoot -ChildPath "Reports"
 if ($SaveReport -and -not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir | Out-Null }
 $sb = New-Object System.Text.StringBuilder
+<#
+.SYNOPSIS
+  Adds a formatted line to the in-memory report buffer and returns the same text for display.
+.PARAMETER t
+  The text to append to the report buffer.
+.OUTPUTS
+  System.String. Returns the same string that was added to the buffer.
+#>
 function Add-Line($t){[void]$sb.AppendLine($t); $t}
 
 Add-Line "=== DNS STATUS on $ComputerName $(Get-Date) ==="

@@ -1,3 +1,16 @@
+<#
+.SYNOPSIS
+  Tests Autoruns export detection logic against a diagnostics folder.
+.DESCRIPTION
+  Scans the provided input folder for text-based exports, locates the Autoruns output either by filename or signature,
+  and writes the detected file path to the console for validation.
+.PARAMETER InputFolder
+  Specifies the diagnostics folder that should contain an Autoruns export.
+.EXAMPLE
+  PS C:\> .\Test-AutorunsDetection.ps1 -InputFolder 'C:\Temp\Diag\20240101_120000'
+
+  Attempts to detect the Autoruns export inside the specified diagnostics collection.
+#>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)]
@@ -19,6 +32,14 @@ $allTextFiles = Get-ChildItem -Path $InputFolder -Recurse -File -ErrorAction Sil
   Where-Object { $textExtensions -contains $_.Extension.ToLowerInvariant() }
 
 # Helper: find an Autoruns file by name hints or content inspection.
+<#
+.SYNOPSIS
+  Locates the Autoruns export file from a candidate set based on filename patterns or file contents.
+.PARAMETER Files
+  Candidate files to inspect for Autoruns output.
+.OUTPUTS
+  System.IO.FileInfo. Returns the matching file when found; otherwise, returns $null.
+#>
 function Find-AutorunsFile {
   param(
     [System.IO.FileInfo[]]$Files

@@ -1,8 +1,27 @@
 <#
 .SYNOPSIS
-  Creates DHCP failover between two DHCP servers for all or selected scopes.
+  Creates a DHCP failover partnership between two DHCP servers for all or selected scopes.
+.DESCRIPTION
+  Authorizes both servers in Active Directory (when necessary) and configures DHCP failover using either load-balanced or
+  hot-standby modes. All scopes from the primary are included unless specific scope IDs are supplied.
+.PARAMETER Primary
+  Specifies the hostname of the primary DHCP server.
+.PARAMETER Partner
+  Specifies the hostname of the partner DHCP server.
+.PARAMETER Mode
+  Sets the failover mode. Valid values are LoadBalance and HotStandby.
+.PARAMETER BalancePercent
+  When using load balancing, determines the percentage of the address pool serviced by the primary server.
+.PARAMETER MaxClientLeadTimeMinutes
+  Controls the maximum client lead time communicated between partners in minutes.
+.PARAMETER SharedSecret
+  Provides the shared secret used to secure the replication partnership.
+.PARAMETER ScopeIds
+  Limits the configuration to the provided IPv4 scope IDs. When omitted, all scopes on the primary server are included.
 .EXAMPLE
   .\New-DHCPFailoverPair.ps1 -Primary DHCPA -Partner DHCPB -Mode LoadBalance -BalancePercent 50 -SharedSecret 'S3cret!'
+
+  Creates a load-balanced failover partnership using a 50/50 split between DHCPA and DHCPB.
 #>
 [CmdletBinding()]
 param(
