@@ -1,4 +1,4 @@
-Device-Report.ps1
+<#Device-Report.ps1
 Parent script:
   1) Runs Collectors/Collect-All.ps1 to gather JSON artifacts
   2) Locates or creates the collection folder
