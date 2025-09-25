@@ -1,4 +1,3 @@
-<# 
 Device-Report.ps1
 Parent script:
   1) Runs Collectors/Collect-All.ps1 to gather JSON artifacts
@@ -11,6 +10,7 @@ USAGE:
     .\Device-Report.ps1
     # or specify an existing folder to analyze:
     .\Device-Report.ps1 -InputFolder "C:\Users\Me\Desktop\DiagReports\20250924_181518"
+
 #>
 
 [CmdletBinding()]
@@ -19,6 +19,15 @@ param(
   [string]$InputFolder # optional: analyze an existing folder without collecting
 )
 
+<#
+.SYNOPSIS
+  Ensures the script is running with administrator privileges and stops execution when it is not.
+.DESCRIPTION
+  Checks the current security principal for membership in the local Administrators group and terminates the script with
+  an error message when elevation is missing.
+.OUTPUTS
+  None. Throws a terminating error when the session is not elevated.
+#>
 function Assert-Admin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p = New-Object Security.Principal.WindowsPrincipal($id)

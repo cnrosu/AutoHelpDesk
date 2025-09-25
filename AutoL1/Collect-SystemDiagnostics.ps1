@@ -1,7 +1,23 @@
 <#
-Collect-SystemDiagnostics.ps1
-Collect a broad snapshot of a Windows machine and build a simple HTML report.
-Run as Administrator.
+.SYNOPSIS
+  Collects a broad diagnostic snapshot of a Windows device and optionally builds an HTML report.
+.DESCRIPTION
+  Creates a timestamped output folder, captures a curated set of networking, Outlook, and system diagnostics, and writes
+  the raw command output to text files. When HTML generation is enabled, the script stitches results into a technician-
+  friendly summary.
+.PARAMETER OutRoot
+  Specifies the root folder where timestamped diagnostic collections are stored. Defaults to the desktop DiagReports
+  folder for the current user.
+.PARAMETER NoHtml
+  Skips HTML report generation when supplied, leaving only the raw text outputs.
+.EXAMPLE
+  PS C:\> .\Collect-SystemDiagnostics.ps1
+
+  Captures diagnostics into a new timestamped folder under the default DiagReports directory and builds an HTML summary.
+.EXAMPLE
+  PS C:\> .\Collect-SystemDiagnostics.ps1 -OutRoot 'C:\Temp\Diag' -NoHtml
+
+  Writes the diagnostic text files to C:\Temp\Diag without producing an HTML report.
 #>
 
 [CmdletBinding()]
@@ -11,6 +27,15 @@ param(
 )
 
 # Ensure Admin
+<#
+.SYNOPSIS
+  Ensures the script is running with administrator privileges and stops execution when it is not.
+.DESCRIPTION
+  Checks the current security principal for membership in the local Administrators group and terminates the script with
+  an error message when elevation is missing.
+.OUTPUTS
+  None. Throws a terminating error when the session is not elevated.
+#>
 function Assert-Admin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p = New-Object Security.Principal.WindowsPrincipal($id)
@@ -30,6 +55,19 @@ Write-Host "Starting diagnostics collection..."
 Write-Host "Output folder: $reportDir"
 
 # Simple helper to run a command and write output
+<#
+.SYNOPSIS
+  Executes a diagnostic action and saves the output to a timestamped text file.
+.DESCRIPTION
+  Creates or appends to a text file beneath the current report directory, capturing command output and wrapping it in a
+  dated header for easy review. Errors are surfaced to both the log file and the console.
+.PARAMETER Name
+  Friendly name used for the output file and header text.
+.PARAMETER Action
+  Script block that, when invoked, produces the diagnostic output to capture.
+.OUTPUTS
+  System.String. Returns the full path to the file containing the captured output.
+#>
 function Save-Output {
   param(
     [Parameter(Mandatory)] [string]$Name,
@@ -48,10 +86,163 @@ function Save-Output {
   return $file
 }
 
+function Resolve-AutorunsExecutablePath {
+  param([string]$CommandLine)
+
+  if ([string]::IsNullOrWhiteSpace($CommandLine)) { return $null }
+
+  $trimmed = $CommandLine.Trim()
+  if ($trimmed -match '^"([^"`]+)"') {
+    $candidate = $matches[1]
+  } elseif ($trimmed -match '^(?<path>[^\s]+\.exe)') {
+    $candidate = $matches['path']
+  } else {
+    $candidate = $null
+  }
+
+  if (-not $candidate) { return $null }
+
+  try {
+    $expanded = [Environment]::ExpandEnvironmentVariables($candidate)
+  } catch {
+    $expanded = $candidate
+  }
+
+  if ([string]::IsNullOrWhiteSpace($expanded)) { return $null }
+  return $expanded.Trim()
+}
+
+function Export-StartupProgramsReport {
+  param([string]$DestinationFolder)
+
+  $outputPath = Join-Path $DestinationFolder 'Autoruns.csv'
+  Write-Host "Collecting startup autoruns inventory..."
+
+  $startupEntries = @()
+  $collectionErrors = @()
+  try {
+    $startupEntries = Get-CimInstance -ClassName Win32_StartupCommand -ErrorAction Stop
+  } catch {
+    $collectionErrors += $_.Exception.Message
+    try {
+      $startupEntries = Get-WmiObject -Class Win32_StartupCommand -ErrorAction Stop
+    } catch {
+      $collectionErrors += $_.Exception.Message
+      $startupEntries = @()
+    }
+  }
+
+  $rows = New-Object System.Collections.Generic.List[pscustomobject]
+  foreach ($entry in $startupEntries) {
+    if (-not $entry) { continue }
+
+    $entryName = ''
+    foreach ($nameField in @('Name','Caption')) {
+      if ($entry.PSObject.Properties[$nameField]) {
+        $candidateName = [string]$entry.$nameField
+        if ($candidateName) {
+          $entryName = $candidateName.Trim()
+          if ($entryName) { break }
+        }
+      }
+    }
+    if (-not $entryName) { $entryName = 'Unknown' }
+
+    $description = ''
+    if ($entry.PSObject.Properties['Description']) {
+      $description = ([string]$entry.Description).Trim()
+    }
+
+    $commandLine = ''
+    if ($entry.PSObject.Properties['Command']) {
+      $commandLine = ([string]$entry.Command).Trim()
+    }
+
+    $entryLocation = ''
+    if ($entry.PSObject.Properties['Location']) {
+      $entryLocation = ([string]$entry.Location).Trim()
+    }
+
+    $userContext = ''
+    if ($entry.PSObject.Properties['User']) {
+      $userContext = ([string]$entry.User).Trim()
+    }
+
+    $imagePath = Resolve-AutorunsExecutablePath -CommandLine $commandLine
+    if ($imagePath) {
+      $imagePath = $imagePath.Trim('"')
+    }
+
+    $publisher = $null
+    if ($imagePath -and (Test-Path -LiteralPath $imagePath)) {
+      try {
+        $item = Get-Item -LiteralPath $imagePath -ErrorAction Stop
+        if ($item -and $item.VersionInfo -and $item.VersionInfo.CompanyName) {
+          $publisher = $item.VersionInfo.CompanyName.Trim()
+        }
+      } catch {
+        $publisher = $null
+      }
+    }
+
+    if (-not $publisher) { $publisher = '' }
+
+    $rows.Add([pscustomobject]@{
+        Entry           = $entryName
+        Description     = $description
+        Publisher       = $publisher
+        'Image Path'    = $imagePath
+        'Entry Location'= $entryLocation
+        'Command Line'  = $commandLine
+        User            = $userContext
+    })
+  }
+
+  if ($collectionErrors -and $collectionErrors.Count -gt 0 -and $rows.Count -eq 0) {
+    $rows.Add([pscustomobject]@{
+        Entry            = 'CollectionError'
+        Description      = 'Failed to enumerate startup programs'
+        Publisher        = ''
+        'Image Path'     = ''
+        'Entry Location' = ''
+        'Command Line'   = ($collectionErrors -join '; ')
+        User             = ''
+    })
+  }
+
+  try {
+    if ($rows.Count -eq 0) {
+      # Ensure CSV still contains headers for analyzer discovery
+      @([pscustomobject]@{
+          Entry = ''
+          Description = ''
+          Publisher = ''
+          'Image Path' = ''
+          'Entry Location' = ''
+          'Command Line' = ''
+          User = ''
+      }) | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+    } else {
+      $rows | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+    }
+    Write-Host ("Startup inventory saved to {0}" -f $outputPath)
+  } catch {
+    Write-Warning ("Failed to export autoruns CSV: {0}" -f $_)
+  }
+}
+
 $kernelDmaHelperPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors\\System\\KernelDMAStatus.ps1'
 if (Test-Path $kernelDmaHelperPath) {
   . $kernelDmaHelperPath
 } elseif (-not (Get-Command Get-KernelDmaStatusData -ErrorAction SilentlyContinue)) {
+  <#
+  .SYNOPSIS
+    Provides a fallback Kernel DMA status object when the dedicated helper cannot be loaded.
+  .PARAMETER MsInfoTimeoutSeconds
+    Specifies the timeout used when collecting MSINFO data. Present for interface compatibility only.
+  .OUTPUTS
+    PSCustomObject. Returns placeholder Device Guard, registry, and MSINFO details indicating the helper was unavailable.
+  #>
   function Get-KernelDmaStatusData {
     param([int]$MsInfoTimeoutSeconds = 4)
 
@@ -948,6 +1139,9 @@ Write-Progress -Activity $activity -Completed
 # Save copies of the core raw outputs too
 Copy-Item -Path $files -Destination $reportDir -Force -ErrorAction SilentlyContinue
 
+# Capture startup autoruns style inventory
+Export-StartupProgramsReport -DestinationFolder $reportDir
+
 # Run structured collectors (JSON outputs)
 $lapsCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Security/Collect-LAPS.ps1'
 if (Test-Path $lapsCollectorScript) {
@@ -956,6 +1150,88 @@ if (Test-Path $lapsCollectorScript) {
     & $lapsCollectorScript -ReportRoot $reportDir
   } catch {
     Write-Warning ("LAPS collector failed: {0}" -f $_)
+  }
+}
+
+$printingCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Services/Collect-Printing.ps1'
+if (Test-Path $printingCollectorScript) {
+  Write-Host "Running printing subsystem collector..."
+  $printingOutputPath = $null
+  $printingErrorMessage = $null
+  try {
+    $printingOutputPath = & $printingCollectorScript -OutputDirectory $reportDir
+  } catch {
+    $printingErrorMessage = $_.Exception.Message
+    Write-Warning ("Printing collector failed: {0}" -f $_)
+  }
+
+  $expectedPrintingPath = Join-Path $reportDir 'printing.json'
+  if ($printingOutputPath -and (Test-Path -LiteralPath $printingOutputPath) -and ($printingOutputPath -ne $expectedPrintingPath)) {
+    try {
+      Copy-Item -LiteralPath $printingOutputPath -Destination $expectedPrintingPath -Force
+    } catch {
+      $copyMessage = "Failed to normalize printing collector output: $($_.Exception.Message)"
+      if ($printingErrorMessage) {
+        $printingErrorMessage = "$printingErrorMessage; $copyMessage"
+      } else {
+        $printingErrorMessage = $copyMessage
+      }
+      Write-Warning $copyMessage
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $expectedPrintingPath)) {
+    $errorMessages = @()
+    if ($printingErrorMessage) {
+      $errorMessages += "Collector execution failed: $printingErrorMessage"
+    } else {
+      $errorMessages += 'Printing collector not available or produced no data.'
+    }
+
+    $placeholderPayload = [ordered]@{
+      Spooler        = $null
+      Printers       = @()
+      DefaultPrinter = $null
+      Policies       = $null
+      Events         = @()
+      NetworkTests   = @()
+      Errors         = $errorMessages
+    }
+    $placeholder = [ordered]@{
+      CollectedAt = (Get-Date).ToString('o')
+      Payload     = $placeholderPayload
+    }
+
+    try {
+      $placeholder | ConvertTo-Json -Depth 6 | Out-File -FilePath $expectedPrintingPath -Encoding UTF8
+      Write-Warning "Printing collector output missing; wrote placeholder printing.json instead."
+    } catch {
+      Write-Warning ("Failed to create placeholder printing.json: {0}" -f $_)
+    }
+  }
+} else {
+  $expectedPrintingPath = Join-Path $reportDir 'printing.json'
+  if (-not (Test-Path -LiteralPath $expectedPrintingPath)) {
+    $placeholderPayload = [ordered]@{
+      Spooler        = $null
+      Printers       = @()
+      DefaultPrinter = $null
+      Policies       = $null
+      Events         = @()
+      NetworkTests   = @()
+      Errors         = @('Printing collector script not found on this system.')
+    }
+    $placeholder = [ordered]@{
+      CollectedAt = (Get-Date).ToString('o')
+      Payload     = $placeholderPayload
+    }
+
+    try {
+      $placeholder | ConvertTo-Json -Depth 6 | Out-File -FilePath $expectedPrintingPath -Encoding UTF8
+      Write-Warning "Printing collector unavailable; wrote placeholder printing.json instead."
+    } catch {
+      Write-Warning ("Failed to create placeholder printing.json: {0}" -f $_)
+    }
   }
 }
 

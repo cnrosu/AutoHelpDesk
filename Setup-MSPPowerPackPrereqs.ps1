@@ -1,12 +1,18 @@
 <#
 .SYNOPSIS
   Installs the Windows components needed for the MSP PowerPack scripts.
-  Works on Windows Server (Install-WindowsFeature) and Windows 10/11 (Add-WindowsCapability).
 .DESCRIPTION
-  Installs RSAT for AD, DNS, DHCP, DFS tools, and optional Hyper-V PowerShell.
-  Verifies modules/tools: ActiveDirectory, DnsServer, DhcpServer, Hyper-V, repadmin, dcdiag, dfsrdiag, w32tm.
+  Detects the operating system role, installs the required RSAT features or capabilities, optionally enables Hyper-V
+  management tools, and verifies that key modules and diagnostic utilities are available. Supports both Windows Server
+  and Windows client editions.
+.PARAMETER SkipHyperVTools
+  Skips installation and verification of Hyper-V management components when specified.
 .NOTES
   Run in an elevated PowerShell window (Run as administrator).
+.EXAMPLE
+  PS C:\> .\Setup-MSPPowerPackPrereqs.ps1 -SkipHyperVTools
+
+  Installs the required RSAT tools but omits Hyper-V PowerShell features on the local machine.
 #>
 
 [CmdletBinding()]
@@ -14,6 +20,12 @@ param(
   [switch]$SkipHyperVTools
 )
 
+<#
+.SYNOPSIS
+  Determines whether the current PowerShell session is running with administrator privileges.
+.OUTPUTS
+  System.Boolean. Returns $true when the current user context belongs to the local Administrators group.
+#>
 function Test-IsAdmin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p = New-Object Security.Principal.WindowsPrincipal($id)

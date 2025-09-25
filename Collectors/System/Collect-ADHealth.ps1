@@ -1,6 +1,8 @@
 <#!
 .SYNOPSIS
     Collects detailed Active Directory health information, including discovery, reachability, time, Kerberos, and GPO data.
+.PARAMETER OutputDirectory
+    Specifies the folder where the AD health JSON artifact will be written.
 #>
 [CmdletBinding()]
 param(
