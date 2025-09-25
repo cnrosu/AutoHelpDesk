@@ -19,6 +19,13 @@
   color: var(--color-heading);
 }
 
+.report-page .report-subtitle {
+  margin: calc(var(--space-xs)) 0 var(--space-md);
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--color-heading);
+}
+
 .report-card {
   margin-bottom: var(--space-md);
   padding: var(--space-md);
