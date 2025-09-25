@@ -19,6 +19,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 $commonModulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Modules/Common.psm1'
 Import-Module $commonModulePath -Force
 
+$Root = $InputFolder
+
 # DNS heuristics configuration (override in-line as needed)
 [string[]]$AnycastDnsAllow = @()
 
@@ -2939,34 +2941,126 @@ if ($isCurrentUserAdmin) {
   Add-SecurityHeuristic 'Local admin rights' 'Least privilege verified' 'good' $memberSummary ($localAdminEvidence)
 }
 
-$lapsData = ConvertFrom-JsonSafe $raw['security_laps']
-$lapsEnabled = $false
-$lapsEvidenceLines = @()
-if ($lapsData) {
-  if ($lapsData.PSObject.Properties['Legacy']) {
-    $legacy = $lapsData.Legacy
-    if ($legacy -and $legacy.PSObject.Properties['AdmPwdEnabled']) {
-      $legacyEnabled = ConvertTo-NullableInt $legacy.AdmPwdEnabled
-      $lapsEvidenceLines += "Legacy AdmPwdEnabled: $legacyEnabled"
-      if ($legacyEnabled -eq 1) { $lapsEnabled = $true }
-    }
-  }
-  if ($lapsData.PSObject.Properties['WindowsLAPS']) {
-    $modern = $lapsData.WindowsLAPS
-    foreach ($prop in $modern.PSObject.Properties) {
-      $lapsEvidenceLines += "WindowsLAPS {0}: {1}" -f $prop.Name, $prop.Value
-      if ($prop.Name -eq 'BackupDirectory' -and $prop.Value -ne $null) { $lapsEnabled = $true }
-      if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $prop.Value) -eq 1) { $lapsEnabled = $true }
-    }
-  }
-  if ($lapsData.PSObject.Properties['Status']) { $lapsEvidenceLines += $lapsData.Status }
+$lapsDoc = $null
+$lapsCollectorPath = Join-Path $Root 'collectors\laps_localadmin.json'
+if (Test-Path $lapsCollectorPath) {
+  try {
+    $lapsDoc = Get-Content $lapsCollectorPath -Raw | ConvertFrom-Json
+  } catch {}
 }
-$lapsEvidence = $lapsEvidenceLines -join "`n"
-if ($lapsEnabled) {
-  Add-SecurityHeuristic 'LAPS/PLAP' 'Policy detected' 'good' '' $lapsEvidence
+
+if ($lapsDoc -and $lapsDoc.Checks) {
+  $pol  = $lapsDoc.Checks | Where-Object { $_.Id -eq 'LAPS.Policy' } | Select-Object -First 1
+  $list = $lapsDoc.Checks | Where-Object { $_.Id -eq 'LocalAdmins.List' } | Select-Object -First 1
+  $users = @()
+  if ($list -and $list.Data -and $list.Data.PSObject.Properties['Users']) {
+    $users = @($list.Data.Users | Where-Object { $_ })
+  }
+
+  $lapsPresent = $false
+  if ($pol -and $pol.Data) {
+    $lapsPresent = [bool]($pol.Data.WindowsLapsPolicy -or $pol.Data.WindowsLapsState -or $pol.Data.LegacyAdmPwdPolicy)
+  }
+
+  $builtin = @($users | Where-Object { $_.IsBuiltInAdmin })
+  $builtinEnabled = $false
+  if ($builtin.Count -gt 0) {
+    $builtinEnabled = [bool]$builtin[0].Enabled
+  }
+
+  $otherEnabled = @($users | Where-Object { -not $_.IsBuiltInAdmin -and $_.Enabled })
+  $standingLocalAdmin = $builtinEnabled -or ($otherEnabled.Count -gt 0)
+
+  $staleDays = 30
+  $now = (Get-Date).ToUniversalTime()
+  $persistence = $false
+
+  if ($builtinEnabled) {
+    $persistence = $true
+  } else {
+    foreach ($u in $otherEnabled) {
+      if ($u.PasswordNeverExpires) { $persistence = $true; break }
+      if (-not $u.LastPasswordSet) { $persistence = $true; break }
+      $lastSet = $null
+      if ($u.LastPasswordSet) {
+        try {
+          $lastSet = [datetime]::Parse($u.LastPasswordSet).ToUniversalTime()
+        } catch {
+          $lastSet = $null
+        }
+      }
+      if (-not $lastSet) { $persistence = $true; break }
+      if (($now - $lastSet).TotalDays -gt $staleDays) { $persistence = $true; break }
+    }
+  }
+
+  $otherEnabledNames = if ($otherEnabled.Count -gt 0) { $otherEnabled | ForEach-Object { $_.Name } } else { @() }
+  $otherEnabledSummary = if ($otherEnabledNames.Count -gt 0) { $otherEnabledNames -join ', ' } else { 'None' }
+
+  $userLines = @()
+  foreach ($u in $users) {
+    $lastSetText = if ($u.LastPasswordSet) { [string]$u.LastPasswordSet } else { 'null' }
+    $principalSource = if ($u.PSObject.Properties['PrincipalSource']) { [string]$u.PrincipalSource } else { '' }
+    $userLines += "User: {0}; Enabled={1}; PasswordNeverExpires={2}; LastPasswordSet={3}; BuiltInAdmin={4}; PrincipalSource={5}" -f `
+      $u.Name, $u.Enabled, $u.PasswordNeverExpires, $lastSetText, $u.IsBuiltInAdmin, $principalSource
+  }
+
+  $evidenceLines = @(
+    "LAPS footprints present: $lapsPresent",
+    "Built-in Administrator enabled: $builtinEnabled",
+    "Other enabled local admins: $otherEnabledSummary",
+    "Persistence indicators present: $persistence",
+    "Password stale threshold (days): $staleDays"
+  )
+
+  $evidenceLines += $userLines
+  $lapsEvidence = ($evidenceLines | Where-Object { $_ }) -join "`n"
+
+  if (-not $standingLocalAdmin) {
+    Add-SecurityHeuristic 'LAPS coverage' 'No standing local admins' 'good' 'No enabled local admin accounts detected.' $lapsEvidence -Area 'Security/LAPS'
+    Add-Issue 'info' 'Security/LAPS' 'LAPS not deployed – no standing local admins; absence of LAPS is low risk.' $lapsEvidence
+  } elseif (-not $lapsPresent) {
+    if ($persistence) {
+      Add-SecurityHeuristic 'LAPS coverage' 'Standing admin without rotation (persistent password indicators).' 'bad' 'Standing local admin detected; rotation controls absent.' $lapsEvidence -Area 'Security/LAPS' -SkipIssue
+      Add-Issue 'high' 'Security/LAPS' 'Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM and password appears persistent.' $lapsEvidence
+    } else {
+      Add-SecurityHeuristic 'LAPS coverage' 'Standing admin without rotation control.' 'warning' 'Standing local admin detected without LAPS/PAM policy.' $lapsEvidence -Area 'Security/LAPS' -SkipIssue
+      Add-Issue 'medium' 'Security/LAPS' 'Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM but password not stale.' $lapsEvidence
+    }
+  } else {
+    Add-SecurityHeuristic 'LAPS coverage' 'Standing admin with rotation control.' 'good' 'LAPS or equivalent protections detected.' $lapsEvidence -Area 'Security/LAPS'
+    Add-Issue 'low' 'Security/LAPS' 'Local admin present: LAPS/PAM in place. Rotation/escrow control detected (Windows LAPS/AdmPwd or PAM/JIT).' $lapsEvidence
+  }
 } else {
-  Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence -SkipIssue
-  Add-Issue 'high' 'Security/LAPS' 'LAPS/PLAP not detected. Enforce password management policy.' $lapsEvidence
+  $lapsData = ConvertFrom-JsonSafe $raw['security_laps']
+  $lapsEnabled = $false
+  $lapsEvidenceLines = @()
+  if ($lapsData) {
+    if ($lapsData.PSObject.Properties['Legacy']) {
+      $legacy = $lapsData.Legacy
+      if ($legacy -and $legacy.PSObject.Properties['AdmPwdEnabled']) {
+        $legacyEnabled = ConvertTo-NullableInt $legacy.AdmPwdEnabled
+        $lapsEvidenceLines += "Legacy AdmPwdEnabled: $legacyEnabled"
+        if ($legacyEnabled -eq 1) { $lapsEnabled = $true }
+      }
+    }
+    if ($lapsData.PSObject.Properties['WindowsLAPS']) {
+      $modern = $lapsData.WindowsLAPS
+      foreach ($prop in $modern.PSObject.Properties) {
+        $lapsEvidenceLines += "WindowsLAPS {0}: {1}" -f $prop.Name, $prop.Value
+        if ($prop.Name -eq 'BackupDirectory' -and $prop.Value -ne $null) { $lapsEnabled = $true }
+        if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $prop.Value) -eq 1) { $lapsEnabled = $true }
+      }
+    }
+    if ($lapsData.PSObject.Properties['Status']) { $lapsEvidenceLines += $lapsData.Status }
+  }
+  $lapsEvidence = $lapsEvidenceLines -join "`n"
+  if ($lapsEnabled) {
+    Add-SecurityHeuristic 'LAPS/PLAP' 'Policy detected' 'good' '' $lapsEvidence
+  } else {
+    Add-SecurityHeuristic 'LAPS/PLAP' 'Not detected' 'warning' 'No LAPS policy detected.' $lapsEvidence -SkipIssue
+    Add-Issue 'high' 'Security/LAPS' 'LAPS/PLAP not detected. Enforce password management policy.' $lapsEvidence
+  }
 }
 
 # 13. UAC

@@ -859,6 +859,17 @@ Write-Progress -Activity $activity -Completed
 # Save copies of the core raw outputs too
 Copy-Item -Path $files -Destination $reportDir -Force -ErrorAction SilentlyContinue
 
+# Run structured collectors (JSON outputs)
+$lapsCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Security/Collect-LAPS.ps1'
+if (Test-Path $lapsCollectorScript) {
+  Write-Host "Running LAPS/local admin collector..."
+  try {
+    & $lapsCollectorScript -ReportRoot $reportDir
+  } catch {
+    Write-Warning ("LAPS collector failed: {0}" -f $_)
+  }
+}
+
 # Simple parser: extract key fields from ipconfig /all
 Write-Host "Building quick summary from ipconfig_all.txt..."
 $ipOut = Get-Content (Join-Path $reportDir "ipconfig_all.txt") -Raw
