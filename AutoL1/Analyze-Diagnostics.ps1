@@ -996,6 +996,7 @@ function Add-SecurityHeuristic {
     [string]$Health = 'info',
     [string]$Details = '',
     [string]$Evidence = '',
+    [string]$Area = 'Security',
     [switch]$SkipIssue,
     [switch]$SkipNormal
   )
@@ -1013,7 +1014,7 @@ function Add-SecurityHeuristic {
   if (-not [string]::IsNullOrWhiteSpace($detailText)) { $combinedEvidenceParts += $detailText }
   if (-not [string]::IsNullOrWhiteSpace($evidenceTrimmed)) { $combinedEvidenceParts += $evidenceTrimmed }
   $combinedEvidence = if ($combinedEvidenceParts.Count -gt 0) { $combinedEvidenceParts -join "`n" } else { '' }
-  $areaLabel = 'Security'
+  $areaLabel = if (-not [string]::IsNullOrWhiteSpace($Area)) { $Area } else { 'Security' }
   $messageText = if ($statusText) { "{0}: {1}" -f $controlName, $statusText } else { $controlName }
 
   switch ($normalizedHealth) {
@@ -2449,9 +2450,9 @@ if ($raw['firewall']){
 if ($raw['bitlocker']) {
   $bitlockerText = $raw['bitlocker']
   if ($bitlockerText -match '(?i)Get-BitLockerVolume cmdlet not available') {
-    Add-Issue "low" "System/BitLocker" "BitLocker cmdlets unavailable on this system (likely unsupported edition)." (($bitlockerText -split "\r?\n") | Select-Object -First 8) -join "`n"
+    Add-Issue "low" "Security/BitLocker" "BitLocker cmdlets unavailable on this system (likely unsupported edition)." (($bitlockerText -split "\r?\n") | Select-Object -First 8) -join "`n"
   } elseif ($bitlockerText -match '(?i)Get-BitLockerVolume failed') {
-    Add-Issue "low" "System/BitLocker" "Failed to query BitLocker status." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
+    Add-Issue "low" "Security/BitLocker" "Failed to query BitLocker status." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
   } else {
     $bitlockerEntries = Parse-BitLockerStatus $bitlockerText
     if ($bitlockerEntries.Count -gt 0) {
@@ -2487,7 +2488,7 @@ if ($raw['bitlocker']) {
           $mountList = ($unprotected | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($unprotected | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Issue "high" "System/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
+          Add-Issue "high" "Security/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($partial.Count -gt 0) {
           $mountList = ($partial | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
@@ -2496,37 +2497,37 @@ if ($raw['bitlocker']) {
           # Industry guidance such as CIS Controls and Microsoft security baselines
           # call for full BitLocker protection on OS drives; incomplete encryption
           # leaves data at risk and should surface as a high severity issue.
-          Add-Issue "high" "System/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
+          Add-Issue "high" "Security/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($unknown.Count -gt 0) {
           $mountList = ($unknown | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($unknown | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Issue "low" "System/BitLocker" ("BitLocker protection state unclear for system volume(s): {0}." -f ($mountList)) $evidence
+          Add-Issue "low" "Security/BitLocker" ("BitLocker protection state unclear for system volume(s): {0}." -f ($mountList)) $evidence
         } else {
           $evidence = ($osArray | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Normal "System/BitLocker" "BitLocker protection active for system volume(s)." $evidence
+          Add-Normal "Security/BitLocker" "BitLocker protection active for system volume(s)." $evidence
           $summary.BitLockerSystemProtected = $true
         }
       } else {
         $protectedVolumes = @($bitlockerEntries | Where-Object { $_.ProtectionEnabled -eq $true })
         if ($protectedVolumes.Count -gt 0) {
           $evidence = ($protectedVolumes | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
-          Add-Normal "System/BitLocker" "BitLocker enabled on captured volume(s)." $evidence
+          Add-Normal "Security/BitLocker" "BitLocker enabled on captured volume(s)." $evidence
         } else {
           $evidence = ($bitlockerEntries | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
           # Devices without any BitLocker-protected volumes fail baseline controls for
           # data-at-rest protection, so escalate this to a high severity gap.
-          Add-Issue "high" "System/BitLocker" "No BitLocker-protected volumes detected." $evidence
+          Add-Issue "high" "Security/BitLocker" "No BitLocker-protected volumes detected." $evidence
           $summary.BitLockerSystemProtected = $false
         }
       }
     } else {
-      Add-Issue "low" "System/BitLocker" "BitLocker output captured but no volumes parsed." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
+      Add-Issue "low" "Security/BitLocker" "BitLocker output captured but no volumes parsed." (($bitlockerText -split "\r?\n") | Select-Object -First 12) -join "`n"
     }
   }
 } elseif ($files['bitlocker']) {
-  Add-Issue "low" "System/BitLocker" "BitLocker status file present but empty." ""
+  Add-Issue "low" "Security/BitLocker" "BitLocker status file present but empty." ""
 }
 
 # security heuristics evaluation
@@ -3058,13 +3059,13 @@ if ($macroSecurityStatus.Count -gt 0) {
   $blockEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: Block={1}" -f $_.App, $_.BlockEnforced }) -join "`n"
   $warnEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: WarningsStrict={1}" -f $_.App, $_.WarningsStrict }) -join "`n"
   $pvEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: ProtectedViewGood={1}" -f $_.App, $_.ProtectedViewGood }) -join "`n"
-  Add-SecurityHeuristic 'Office MOTW macro blocking' (if ($blockOk) { 'Enforced' } else { 'Gaps detected' }) (if ($blockOk) { 'good' } else { 'warning' }) '' $blockEvidence
-  Add-SecurityHeuristic 'Office macro notifications' (if ($warnOk) { 'Strict' } else { 'Allows macros' }) (if ($warnOk) { 'good' } else { 'warning' }) '' $warnEvidence
-  Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence
+  Add-SecurityHeuristic 'Office MOTW macro blocking' (if ($blockOk) { 'Enforced' } else { 'Gaps detected' }) (if ($blockOk) { 'good' } else { 'warning' }) '' $blockEvidence -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office macro notifications' (if ($warnOk) { 'Strict' } else { 'Allows macros' }) (if ($warnOk) { 'good' } else { 'warning' }) '' $warnEvidence -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence -Area 'Security/Office'
 } else {
-  Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' ''
-  Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' ''
-  Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' ''
+  Add-SecurityHeuristic 'Office MOTW macro blocking' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office macro notifications' 'No data' 'warning' '' '' -Area 'Security/Office'
+  Add-SecurityHeuristic 'Office Protected View' 'No data' 'warning' '' '' -Area 'Security/Office'
 }
 
 # 20. BitLocker recovery key escrow
@@ -3077,7 +3078,7 @@ if ($bitlockerText) {
     Add-SecurityHeuristic 'BitLocker recovery key' ('Recovery passwords present (' + $recoveryCount + ')') 'good' '' $bitlockerEvidence
   } else {
     Add-SecurityHeuristic 'BitLocker recovery key' 'Recovery password not detected' 'warning' 'Ensure recovery keys are escrowed to AD/Azure AD.' $bitlockerEvidence -SkipIssue
-    Add-Issue 'medium' 'Security/BitLockerRecovery' 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' $bitlockerEvidence
+    Add-Issue 'medium' 'Security/BitLocker' 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' $bitlockerEvidence
   }
 } else {
   Add-SecurityHeuristic 'BitLocker recovery key' 'Not captured' 'warning' 'BitLocker output missing.' ''
