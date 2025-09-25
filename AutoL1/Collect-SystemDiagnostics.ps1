@@ -48,6 +48,151 @@ function Save-Output {
   return $file
 }
 
+function Resolve-AutorunsExecutablePath {
+  param([string]$CommandLine)
+
+  if ([string]::IsNullOrWhiteSpace($CommandLine)) { return $null }
+
+  $trimmed = $CommandLine.Trim()
+  if ($trimmed -match '^"([^"`]+)"') {
+    $candidate = $matches[1]
+  } elseif ($trimmed -match '^(?<path>[^\s]+\.exe)') {
+    $candidate = $matches['path']
+  } else {
+    $candidate = $null
+  }
+
+  if (-not $candidate) { return $null }
+
+  try {
+    $expanded = [Environment]::ExpandEnvironmentVariables($candidate)
+  } catch {
+    $expanded = $candidate
+  }
+
+  if ([string]::IsNullOrWhiteSpace($expanded)) { return $null }
+  return $expanded.Trim()
+}
+
+function Export-StartupProgramsReport {
+  param([string]$DestinationFolder)
+
+  $outputPath = Join-Path $DestinationFolder 'Autoruns.csv'
+  Write-Host "Collecting startup autoruns inventory..."
+
+  $startupEntries = @()
+  $collectionErrors = @()
+  try {
+    $startupEntries = Get-CimInstance -ClassName Win32_StartupCommand -ErrorAction Stop
+  } catch {
+    $collectionErrors += $_.Exception.Message
+    try {
+      $startupEntries = Get-WmiObject -Class Win32_StartupCommand -ErrorAction Stop
+    } catch {
+      $collectionErrors += $_.Exception.Message
+      $startupEntries = @()
+    }
+  }
+
+  $rows = New-Object System.Collections.Generic.List[pscustomobject]
+  foreach ($entry in $startupEntries) {
+    if (-not $entry) { continue }
+
+    $entryName = ''
+    foreach ($nameField in @('Name','Caption')) {
+      if ($entry.PSObject.Properties[$nameField]) {
+        $candidateName = [string]$entry.$nameField
+        if ($candidateName) {
+          $entryName = $candidateName.Trim()
+          if ($entryName) { break }
+        }
+      }
+    }
+    if (-not $entryName) { $entryName = 'Unknown' }
+
+    $description = ''
+    if ($entry.PSObject.Properties['Description']) {
+      $description = ([string]$entry.Description).Trim()
+    }
+
+    $commandLine = ''
+    if ($entry.PSObject.Properties['Command']) {
+      $commandLine = ([string]$entry.Command).Trim()
+    }
+
+    $entryLocation = ''
+    if ($entry.PSObject.Properties['Location']) {
+      $entryLocation = ([string]$entry.Location).Trim()
+    }
+
+    $userContext = ''
+    if ($entry.PSObject.Properties['User']) {
+      $userContext = ([string]$entry.User).Trim()
+    }
+
+    $imagePath = Resolve-AutorunsExecutablePath -CommandLine $commandLine
+    if ($imagePath) {
+      $imagePath = $imagePath.Trim('"')
+    }
+
+    $publisher = $null
+    if ($imagePath -and (Test-Path -LiteralPath $imagePath)) {
+      try {
+        $item = Get-Item -LiteralPath $imagePath -ErrorAction Stop
+        if ($item -and $item.VersionInfo -and $item.VersionInfo.CompanyName) {
+          $publisher = $item.VersionInfo.CompanyName.Trim()
+        }
+      } catch {
+        $publisher = $null
+      }
+    }
+
+    if (-not $publisher) { $publisher = '' }
+
+    $rows.Add([pscustomobject]@{
+        Entry           = $entryName
+        Description     = $description
+        Publisher       = $publisher
+        'Image Path'    = $imagePath
+        'Entry Location'= $entryLocation
+        'Command Line'  = $commandLine
+        User            = $userContext
+    })
+  }
+
+  if ($collectionErrors -and $collectionErrors.Count -gt 0 -and $rows.Count -eq 0) {
+    $rows.Add([pscustomobject]@{
+        Entry            = 'CollectionError'
+        Description      = 'Failed to enumerate startup programs'
+        Publisher        = ''
+        'Image Path'     = ''
+        'Entry Location' = ''
+        'Command Line'   = ($collectionErrors -join '; ')
+        User             = ''
+    })
+  }
+
+  try {
+    if ($rows.Count -eq 0) {
+      # Ensure CSV still contains headers for analyzer discovery
+      @([pscustomobject]@{
+          Entry = ''
+          Description = ''
+          Publisher = ''
+          'Image Path' = ''
+          'Entry Location' = ''
+          'Command Line' = ''
+          User = ''
+      }) | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+    } else {
+      $rows | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+    }
+    Write-Host ("Startup inventory saved to {0}" -f $outputPath)
+  } catch {
+    Write-Warning ("Failed to export autoruns CSV: {0}" -f $_)
+  }
+}
+
 $kernelDmaHelperPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors\\System\\KernelDMAStatus.ps1'
 if (Test-Path $kernelDmaHelperPath) {
   . $kernelDmaHelperPath
@@ -948,6 +1093,9 @@ Write-Progress -Activity $activity -Completed
 # Save copies of the core raw outputs too
 Copy-Item -Path $files -Destination $reportDir -Force -ErrorAction SilentlyContinue
 
+# Capture startup autoruns style inventory
+Export-StartupProgramsReport -DestinationFolder $reportDir
+
 # Run structured collectors (JSON outputs)
 $lapsCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Security/Collect-LAPS.ps1'
 if (Test-Path $lapsCollectorScript) {
@@ -956,6 +1104,16 @@ if (Test-Path $lapsCollectorScript) {
     & $lapsCollectorScript -ReportRoot $reportDir
   } catch {
     Write-Warning ("LAPS collector failed: {0}" -f $_)
+  }
+}
+
+$printingCollectorScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'Collectors/Services/Collect-Printing.ps1'
+if (Test-Path $printingCollectorScript) {
+  Write-Host "Running printing subsystem collector..."
+  try {
+    & $printingCollectorScript -OutputDirectory $reportDir
+  } catch {
+    Write-Warning ("Printing collector failed: {0}" -f $_)
   }
 }
 
