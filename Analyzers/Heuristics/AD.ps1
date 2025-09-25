@@ -1,9 +1,32 @@
 <#!
 .SYNOPSIS
-    Active Directory heuristics focused on domain membership and identity posture.
+    Active Directory health heuristics focused on discovery, reachability, secure channel, time, Kerberos, and GPO posture.
 #>
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
+
+function Get-FirstPayloadProperty {
+    param(
+        $Payload,
+        [string]$Name
+    )
+
+    if (-not $Payload) { return $null }
+    if ($Payload.PSObject.Properties[$Name]) { return $Payload.$Name }
+    return $null
+}
+
+function Get-ArtifactPayloadValue {
+    param(
+        $Artifact,
+        [string]$Property
+    )
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $Artifact)
+    if (-not $payload) { return $null }
+    if ($Property) { return Get-FirstPayloadProperty -Payload $payload -Name $Property }
+    return $payload
+}
 
 function Invoke-ADHeuristics {
     param(
@@ -11,47 +34,320 @@ function Invoke-ADHeuristics {
         $Context
     )
 
-    $result = New-CategoryResult -Name 'Active Directory'
+    $result = New-CategoryResult -Name 'Active Directory Health'
 
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    $computerSystem = $null
-    if ($systemArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-        if ($payload -and $payload.ComputerSystem -and -not $payload.ComputerSystem.Error) {
-            $computerSystem = $payload.ComputerSystem
+    $adArtifact = Get-AnalyzerArtifact -Context $Context -Name 'ad-health'
+    $adPayload = Get-ArtifactPayloadValue -Artifact $adArtifact -Property $null
+
+    $domainStatus = $null
+    if ($adPayload) {
+        $domainStatus = Get-FirstPayloadProperty -Payload $adPayload -Name 'DomainStatus'
+    }
+
+    if (-not $domainStatus) {
+        $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+        if ($systemArtifact) {
+            $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+            if ($systemPayload -and $systemPayload.ComputerSystem -and -not $systemPayload.ComputerSystem.Error) {
+                $domainStatus = [pscustomobject]@{
+                    DomainJoined = $systemPayload.ComputerSystem.PartOfDomain
+                    Domain       = $systemPayload.ComputerSystem.Domain
+                    Forest       = $null
+                }
+            }
         }
     }
 
-    if ($computerSystem) {
-        if ($computerSystem.PartOfDomain -eq $true) {
-            Add-CategoryNormal -CategoryResult $result -Title ("Domain joined: {0}" -f $computerSystem.Domain)
+    if (-not $domainStatus) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable'
+        return $result
+    }
+
+    $domainJoined = $false
+    if ($domainStatus.PSObject.Properties['DomainJoined']) {
+        $domainJoined = [bool]$domainStatus.DomainJoined
+    }
+
+    if (-not $domainJoined) {
+        Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable'
+        return $result
+    }
+
+    $domainName = if ($domainStatus.PSObject.Properties['Domain']) { $domainStatus.Domain } else { $null }
+    if ($domainName) {
+        Add-CategoryNormal -CategoryResult $result -Title ("Domain joined: {0}" -f $domainName)
+    }
+
+    $discovery = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Discovery' } else { $null }
+    $reachability = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Reachability' } else { $null }
+    $sysvol = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Sysvol' } else { $null }
+    $timeInfo = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Time' } else { $null }
+    $kerberosInfo = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Kerberos' } else { $null }
+    $secureInfo = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Secure' } else { $null }
+    $gpoInfo = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Gpo' } else { $null }
+
+    $srvLookups = @()
+    $srvSuccess = $false
+    if ($discovery -and $discovery.SrvLookups) {
+        foreach ($prop in $discovery.SrvLookups.PSObject.Properties) {
+            $entry = $prop.Value
+            if ($entry) {
+                $srvLookups += $entry
+                if ($entry.Succeeded -eq $true -and $entry.Records -and $entry.Records.Count -gt 0) {
+                    $srvSuccess = $true
+                }
+            }
+        }
+    }
+
+    $nltestSuccess = $false
+    if ($discovery) {
+        if ($discovery.DsGetDc -and $discovery.DsGetDc.Succeeded) { $nltestSuccess = $true }
+        if ($discovery.DcList -and $discovery.DcList.Succeeded) { $nltestSuccess = $true }
+    }
+
+    if ($srvSuccess) {
+        $dcNames = @()
+        if ($discovery -and $discovery.Candidates) {
+            foreach ($candidate in $discovery.Candidates) {
+                if ($candidate.Hostname) { $dcNames += $candidate.Hostname }
+            }
+        }
+        $dcEvidence = if ($dcNames) { ($dcNames | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
+        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence
+    } else {
+        $srvErrors = $srvLookups | Where-Object { $_ -and $_.Succeeded -ne $true }
+        $evidence = ($srvErrors | ForEach-Object {
+                if ($_.Error) { "{0}: {1}" -f $_.Query, $_.Error } else { "{0}: no records" -f $_.Query }
+            }) -join '; '
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'AD SRV records not resolvable.' -Evidence $evidence
+    }
+
+    if (-not $srvSuccess -and -not $nltestSuccess -and $discovery) {
+        $evidence = @()
+        if ($discovery.DsGetDc) {
+            if ($discovery.DsGetDc.Error) { $evidence += "dsgetdc: $($discovery.DsGetDc.Error)" }
+            elseif ($discovery.DsGetDc.Output) { $evidence += "dsgetdc output: $($discovery.DsGetDc.Output -join ' | ')" }
+        }
+        if ($discovery.DcList) {
+            if ($discovery.DcList.Error) { $evidence += "dclist: $($discovery.DcList.Error)" }
+            elseif ($discovery.DcList.Output) { $evidence += "dclist output: $($discovery.DcList.Output -join ' | ')" }
+        }
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered.' -Evidence ($evidence -join '; ')
+    }
+
+    $candidates = @()
+    if ($discovery -and $discovery.Candidates) {
+        foreach ($candidate in $discovery.Candidates) {
+            if ($candidate.Hostname) { $candidates += $candidate.Hostname.ToLowerInvariant() }
+        }
+    }
+    $candidates = $candidates | Sort-Object -Unique
+
+    $portMap = @{}
+    $reachTests = if ($reachability) { $reachability.Tests } else { $null }
+    if ($reachTests) {
+        foreach ($test in $reachTests) {
+            if (-not $test) { continue }
+            $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
+            if (-not $target) { continue }
+            $key = $target.ToLowerInvariant()
+            if (-not $portMap.ContainsKey($key)) { $portMap[$key] = @{} }
+            if ($test.PSObject.Properties['Port']) {
+                $portMap[$key][$test.Port] = [bool]$test.Success
+            }
+        }
+    }
+
+    $requiredPorts = @(88, 389, 445, 135)
+    $fullyReachableHosts = @()
+    foreach ($entry in $portMap.GetEnumerator()) {
+        $host = $entry.Key
+        $ports = $entry.Value
+        $allOpen = $true
+        foreach ($port in $requiredPorts) {
+            if (-not ($ports.ContainsKey($port) -and $ports[$port])) {
+                $allOpen = $false
+                break
+            }
+        }
+        if ($allOpen) { $fullyReachableHosts += $host }
+    }
+
+    $shareMap = @{}
+    $shareTests = if ($sysvol) { $sysvol.Tests } else { $null }
+    if ($shareTests) {
+        foreach ($test in $shareTests) {
+            if (-not $test) { continue }
+            $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
+            $share = if ($test.PSObject.Properties['Share']) { $test.Share } else { $null }
+            if (-not $target -or -not $share) { continue }
+            $key = $target.ToLowerInvariant()
+            if (-not $shareMap.ContainsKey($key)) { $shareMap[$key] = @{} }
+            $shareMap[$key][$share.ToUpperInvariant()] = [bool]$test.Success
+        }
+    }
+
+    $reachableWithShares = @()
+    foreach ($host in $fullyReachableHosts) {
+        if ($shareMap.ContainsKey($host)) {
+            $values = $shareMap[$host].Values
+            if ($values -and ($values -contains $true)) {
+                $reachableWithShares += $host
+            }
+        }
+    }
+
+    if ($reachableWithShares.Count -gt 0) {
+        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares | Sort-Object -Unique) -join ', ')
+    }
+
+    $testsWithoutErrors = 0
+    if ($reachTests) {
+        foreach ($test in $reachTests) {
+            if ($test -and -not $test.Error) { $testsWithoutErrors++ }
+        }
+    }
+
+    $allPortsTested = $portMap.Count -gt 0
+    if ($candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Cannot reach any DC on required ports.' -Evidence (($portMap.Keys | Sort-Object) -join ', ')
+    }
+
+    $sharesFailingHosts = @()
+    foreach ($host in $fullyReachableHosts) {
+        if (-not $shareMap.ContainsKey($host)) { continue }
+        $shares = $shareMap[$host].Values
+        if (-not ($shares -contains $true)) {
+            $sharesFailingHosts += $host
+        }
+    }
+
+    if ($sharesFailingHosts.Count -gt 0) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth).' -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ')
+    }
+
+    $timeSkewHigh = $false
+    if ($timeInfo) {
+        $parsed = $timeInfo.Parsed
+        $offset = $null
+        if ($parsed -and $parsed.PSObject.Properties['OffsetSeconds']) {
+            $offset = $parsed.OffsetSeconds
+        }
+        $synchronized = $null
+        if ($parsed -and $parsed.PSObject.Properties['Synchronized']) {
+            $synchronized = $parsed.Synchronized
+        }
+
+        if ($offset -ne $null -and [math]::Abs([double]$offset) -gt 300) {
+            $timeSkewHigh = $true
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew.' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2))
+        } elseif ($synchronized -eq $false -or ($timeInfo.Status -and $timeInfo.Status.Succeeded -ne $true)) {
+            $timeSkewHigh = $true
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew.' -Evidence 'Time service not synchronized.'
+        } elseif ($offset -ne $null -and [math]::Abs([double]$offset) -le 300) {
+            Add-CategoryNormal -CategoryResult $result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2))
+        }
+    }
+
+    if ($secureInfo) {
+        $scTest = $secureInfo.TestComputerSecureChannel
+        $scBroken = $false
+        if ($scTest) {
+            if ($scTest.Succeeded -eq $true -and $scTest.IsSecure -eq $false) {
+                $scBroken = $true
+            } elseif ($scTest.Succeeded -eq $true -and $scTest.IsSecure -eq $true) {
+                Add-CategoryNormal -CategoryResult $result -Title 'GOOD SecureChannel (verified)'
+            }
+        }
+        if ($secureInfo.NltestScQuery) {
+            $outputText = $secureInfo.NltestScQuery.Output -join ' '
+            if ($outputText -match 'NO_LOGON_SERVERS' -or $outputText -match 'TRUST_FAILURE' -or $outputText -match 'STATUS=\s*0xC000018D') {
+                $scBroken = $true
+            }
+        }
+        if ($scTest -and $scTest.Succeeded -eq $false -and $scTest.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Secure channel verification failed to run.' -Evidence $scTest.Error
+        }
+        if ($scBroken) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Broken machine secure channel.'
+        }
+    }
+
+    $noDcReachable = $fullyReachableHosts.Count -eq 0
+
+    if ($kerberosInfo) {
+        $kerberosEvents = @()
+        if ($kerberosInfo.Events) {
+            foreach ($event in $kerberosInfo.Events) {
+                if ($event -and -not $event.Error) { $kerberosEvents += $event }
+            }
+        }
+
+        $failureEvents = $kerberosEvents | Where-Object { $_.Id -in 4768, 4771, 4776 }
+        $failureCount = $failureEvents.Count
+        if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
+            $title = 'Kerberos TGT not present'
+            $evidenceParts = @('klist output missing krbtgt ticket')
+            if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
+                $evidenceParts += "Expected realm: $($kerberosInfo.Parsed.TgtRealm)"
+            }
+            if ($noDcReachable) { $evidenceParts += 'likely off network' }
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence ($evidenceParts -join '; ')
+        }
+
+        if ($failureCount -gt 0) {
+            $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
+            if ($noDcReachable -and $severity -eq 'high') { $severity = 'medium' }
+            $message = "Kerberos authentication failures detected ($failureCount)"
+            if ($timeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
+                $message += ' related to time skew'
+            } elseif ($noDcReachable) {
+                $message += '; DC unreachable'
+            }
+            $failureSummary = ($failureEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $message -Evidence $failureSummary
+        }
+    }
+
+    if ($gpoInfo) {
+        $gpResult = $gpoInfo.GpResult
+        $gpoEvents = @()
+        if ($gpoInfo.Events) {
+            foreach ($event in $gpoInfo.Events) {
+                if ($event -and -not $event.Error) { $gpoEvents += $event }
+            }
+        }
+
+        $gpResultSuccess = $false
+        if ($gpResult -and $gpResult.Succeeded -eq $true) { $gpResultSuccess = $true }
+
+        if ($gpResultSuccess -and $gpoEvents.Count -eq 0) {
+            Add-CategoryNormal -CategoryResult $result -Title 'GOOD GPO (processed successfully)'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Device not joined to an Active Directory domain'
+            $severity = 'medium'
+            if ($gpoEvents.Count -ge 5 -and $sharesFailingHosts.Count -gt 0) { $severity = 'high' }
+            $title = 'GPO processing errors'
+            if ($timeSkewHigh) { $title += ' related to time skew' }
+            $evidence = @()
+            if ($gpResult -and $gpResult.Output) { $evidence += (($gpResult.Output | Select-Object -First 3) -join ' | ') }
+            if ($gpResult -and $gpResult.Error) { $evidence += $gpResult.Error }
+            if ($gpoEvents.Count -gt 0) {
+                $eventSummary = ($gpoEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
+                if ($eventSummary) { $evidence += $eventSummary }
+            }
+            if (-not $evidence) { $evidence = @('GPO data unavailable') }
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence ($evidence -join '; ')
         }
     }
 
     $identityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'identity'
     if ($identityArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $identityArtifact)
-        if ($payload -and $payload.DsRegCmd) {
-            $text = if ($payload.DsRegCmd -is [string[]]) { $payload.DsRegCmd -join "`n" } else { [string]$payload.DsRegCmd }
+        $identityPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $identityArtifact)
+        if ($identityPayload -and $identityPayload.DsRegCmd) {
+            $text = if ($identityPayload.DsRegCmd -is [string[]]) { $identityPayload.DsRegCmd -join "`n" } else { [string]$identityPayload.DsRegCmd }
             if ($text -match 'AzureAdJoined\s*:\s*YES') {
                 Add-CategoryNormal -CategoryResult $result -Title 'Azure AD join detected'
-            }
-            if ($text -match 'DomainJoined\s*:\s*NO' -and $computerSystem.PartOfDomain -ne $true) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Device not domain joined per dsregcmd'
-            }
-        }
-    }
-
-    $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
-    if ($dnsArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $dnsArtifact)
-        if ($payload -and $payload.Resolution) {
-            $adLookups = $payload.Resolution | Where-Object { $_.Name -like '*.outlook.com' -or $_.Name -like '*.microsoft.com' }
-            $failures = $adLookups | Where-Object { $_.Success -eq $false }
-            if ($failures.Count -gt 0 -and $computerSystem -and $computerSystem.PartOfDomain -eq $true) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain joined but core DNS lookups failed' -Evidence ($failures | Select-Object -ExpandProperty Name -join ', ')
             }
         }
     }
