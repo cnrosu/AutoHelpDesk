@@ -11,7 +11,12 @@ if (-not (Test-Path -Path $InputFolder -PathType Container)) {
 }
 
 # Discover candidate text files (txt/log/csv/tsv) beneath the input folder.
-$allTextFiles = Get-ChildItem -Path $InputFolder -Recurse -File -Include *.txt,*.log,*.csv,*.tsv -ErrorAction SilentlyContinue
+# NOTE: -Include only works when the -Path has a wildcard, so we gather all
+# files first and then filter them in PowerShell to ensure we don't miss the
+# Autoruns export.
+$textExtensions = '.txt', '.log', '.csv', '.tsv'
+$allTextFiles = Get-ChildItem -Path $InputFolder -Recurse -File -ErrorAction SilentlyContinue |
+  Where-Object { $textExtensions -contains $_.Extension.ToLowerInvariant() }
 
 # Helper: find an Autoruns file by name hints or content inspection.
 function Find-AutorunsFile {
