@@ -1,9 +1,9 @@
 <# 
 Device-Report.ps1
-Parent script: 
-  1) Runs Collect-SystemDiagnostics.ps1 to gather outputs
-  2) Locates the newest collection folder
-  3) Runs Analyze-Diagnostics.ps1 against it
+Parent script:
+  1) Runs Collectors/Collect-All.ps1 to gather JSON artifacts
+  2) Locates or creates the collection folder
+  3) Runs Analyzers/Analyze-Diagnostics.ps1 against it
   4) Opens the resulting HTML report
 USAGE:
   PowerShell (Admin):
@@ -30,11 +30,12 @@ function Assert-Admin {
 Assert-Admin
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$collectScript = Join-Path $here "Collect-SystemDiagnostics.ps1"
-$analyzeScript = Join-Path $here "Analyze-Diagnostics.ps1"
+$repoRoot = Split-Path -Parent $here
+$collectScript = Join-Path $repoRoot "Collectors/Collect-All.ps1"
+$analyzeScript = Join-Path $repoRoot "Analyzers/Analyze-Diagnostics.ps1"
 
 if (-not (Test-Path $analyzeScript)) {
-  Write-Error "Analyze-Diagnostics.ps1 not found next to Device-Report.ps1."
+  Write-Error "Analyzers/Analyze-Diagnostics.ps1 not found."
   exit 1
 }
 
@@ -43,38 +44,57 @@ if ($InputFolder) {
     Write-Error "InputFolder not found: $InputFolder"
     exit 1
   }
-  $target = (Resolve-Path $InputFolder).Path
+  $target = (Resolve-Path $InputFolder).ProviderPath
   Write-Host "Using existing folder: $target"
 } else {
   if (-not (Test-Path $collectScript)) {
-    Write-Error "Collect-SystemDiagnostics.ps1 not found next to Device-Report.ps1."
+    Write-Error "Collectors/Collect-All.ps1 not found."
     exit 1
   }
-
-  Write-Host "=== Running collection..."
-  & $collectScript -OutRoot $OutRoot 2>&1 | Tee-Object -Variable collectLog | Out-Null
 
   if (-not (Test-Path $OutRoot)) {
-    Write-Error "OutRoot not created. Collection may have failed."
+    $null = New-Item -ItemType Directory -Path $OutRoot -Force
+  }
+
+  $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+  $target = Join-Path $OutRoot $timestamp
+
+  Write-Host "=== Running collection..."
+  try {
+    & $collectScript -OutputRoot $target 2>&1 | Tee-Object -Variable collectLog | Out-Null
+  } catch {
+    Write-Error "Collection failed: $_"
     exit 1
   }
 
-  # Pick newest timestamped subfolder
-  $latest = Get-ChildItem -Path $OutRoot -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $latest) {
-    Write-Error "No subfolders found in $OutRoot after collection."
+  if (-not (Test-Path $target)) {
+    Write-Error "Collection output not found: $target"
     exit 1
   }
-  $target = $latest.FullName
+
+  $target = (Resolve-Path $target).ProviderPath
   Write-Host "Collected into: $target"
 }
 
 Write-Host "=== Analyzing $target ..."
-# Output report path captured from analyzer stdout
+# Output report path captured from analyzer return value
 
-# Compute health scores if available
-if ($Checks) { $Scores = Get-HealthScores -Checks $Checks } else { $Scores = @{} }
-$reportPath = & $analyzeScript -InputFolder $target
+$reportOutput = Join-Path $target 'diagnostics-report.html'
+
+try {
+  $analysisResult = & $analyzeScript -InputFolder $target -OutputPath $reportOutput
+} catch {
+  Write-Error "Analyzer failed: $_"
+  exit 1
+}
+
+$reportPath = $null
+if ($analysisResult -is [string]) {
+  $reportPath = $analysisResult
+} elseif ($analysisResult -and $analysisResult.PSObject.Properties['HtmlPath']) {
+  $reportPath = $analysisResult.HtmlPath
+}
+
 if (-not $reportPath -or -not (Test-Path $reportPath)) {
   Write-Warning "Analyzer did not return a valid path. Attempting to locate an HTML in the folder..."
   $fallback = Get-ChildItem -Path $target -Filter *.html -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -82,6 +102,7 @@ if (-not $reportPath -or -not (Test-Path $reportPath)) {
 }
 
 if ($reportPath -and (Test-Path $reportPath)) {
+  $reportPath = (Resolve-Path $reportPath).ProviderPath
   Write-Host "Report: $reportPath"
   try { Start-Process $reportPath } catch { Write-Warning "Could not auto-open report: $_" }
 } else {
