@@ -92,6 +92,7 @@ function Get-LocalAdminInventory {
 
         $inventory = @()
 
+
         foreach ($member in $members) {
             # Detect if this Administrators member is a *local* user (not a group/domain account)
             $isLocalUser = ($member.ObjectClass -eq 'User' -and $member.PrincipalSource -in @('Local','MicrosoftAccount'))
@@ -147,6 +148,7 @@ function Get-LocalAdminInventory {
         }
 
         return $inventory
+
 
     } catch {
         # Fallback: legacy tool to at least capture membership text
