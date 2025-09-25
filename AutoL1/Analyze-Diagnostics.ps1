@@ -3881,7 +3881,7 @@ function Add-EventStats($txt,$name){
       $evidenceParts += "Sample contained $err entries with 'Error'."
     }
     $evidenceText = $evidenceParts -join "`n`n"
-    Add-Issue "info" "Events" "$name log shows many errors ($err in recent sample)." $evidenceText
+    Add-Issue "medium" "Events" "$name log shows many errors ($err in recent sample)." $evidenceText
   }
   elseif ($warn -ge 10){
     $highlights = Get-EventHighlights -Text $txt -TargetLevels @('Warning') -Max 3
