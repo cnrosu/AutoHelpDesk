@@ -71,6 +71,9 @@ if ($InputFolder) {
 
 Write-Host "=== Analyzing $target ..."
 # Output report path captured from analyzer stdout
+
+# Compute health scores if available
+if ($Checks) { $Scores = Get-HealthScores -Checks $Checks } else { $Scores = @{} }
 $reportPath = & $analyzeScript -InputFolder $target
 if (-not $reportPath -or -not (Test-Path $reportPath)) {
   Write-Warning "Analyzer did not return a valid path. Attempting to locate an HTML in the folder..."

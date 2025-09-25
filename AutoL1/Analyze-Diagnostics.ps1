@@ -1124,112 +1124,219 @@ function Get-IssueExplanation {
   return "This $severityWord points to something outside the normal health baseline. Reviewing the evidence and correcting it will help keep the device stable and secure." 
 }
 
-function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence=""){
-  $wasSeverityCoerced = $false
-  $wasAreaDefaulted = $false
-  $wasMessageDefaulted = $false
-
-  $rawSeverity = if ($null -ne $sev) { $sev } else { '' }
-  $trimmedSeverity = $rawSeverity.Trim()
-  $sevKey = if ($trimmedSeverity) { $trimmedSeverity.ToLowerInvariant() } else { '' }
-
-  switch ($sevKey) {
-    'crit' { $sevKey = 'critical'; $wasSeverityCoerced = $true }
-    'critical' { $sevKey = 'critical' }
-    'hi' { $sevKey = 'high'; $wasSeverityCoerced = $true }
-    'high' { $sevKey = 'high' }
-    'med' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
-    'medium' { $sevKey = 'medium' }
-    'warn' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
-    'warning' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
-    'lo' { $sevKey = 'low'; $wasSeverityCoerced = $true }
-    'low' { $sevKey = 'low' }
-    'info' { $sevKey = 'info' }
-    'informational' { $sevKey = 'info'; $wasSeverityCoerced = $true }
-    default {
-      $sevKey = 'info'
-      if ($trimmedSeverity) { $wasSeverityCoerced = $true }
+function Add-Issue(
+    [string]$Severity,
+    [string]$Area,
+    [string]$Message,
+    [string]$Evidence = "",
+    [string]$CheckId = $null,
+    [double]$Weight = 1.0,
+    [switch]$NA
+){
+    if (-not $script:issues) {
+        $script:issues = New-Object System.Collections.Generic.List[pscustomobject]
     }
-  }
-
-  $badgeText = 'GOOD'
-  $cssClass = 'good'
-  switch ($sevKey) {
-    'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
-    'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
-    'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
-    'low'      { $badgeText = 'OK';        $cssClass = 'ok' }
-    'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
-  }
-
-  $areaText = if ($null -ne $area) { $area } else { '' }
-  $areaTrimmed = $areaText.Trim()
-  if (-not $areaTrimmed) {
-    $areaTrimmed = 'General'
-    $wasAreaDefaulted = $true
-  }
-
-  $messageText = if ($null -ne $msg) { $msg } else { '' }
-  $messageTrimmed = $messageText.Trim()
-  if (-not $messageTrimmed) {
-    $messageTrimmed = 'Issue detected'
-    $wasMessageDefaulted = $true
-  }
-
-  $evidenceText = 'No additional details captured.'
-  if ($evidence) {
-    $clampedEvidence = $evidence.Substring(0,[Math]::Min(1500,$evidence.Length))
-    $trimmedEvidence = $clampedEvidence.Trim()
-    if ($trimmedEvidence) {
-      $evidenceText = $trimmedEvidence
+    if (-not $script:Checks) {
+        $script:Checks = @{}
     }
-  }
 
-  $logSeverity = $sevKey.ToUpperInvariant()
-  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $logSeverity, $areaTrimmed, $messageTrimmed)
-  $issues.Add([pscustomobject]@{
-    Severity            = $sevKey
-    Area                = $areaTrimmed
-    Message             = $messageTrimmed
-    Evidence            = $evidenceText
-    CssClass            = $cssClass
-    BadgeText           = $badgeText
-    WasSeverityCoerced  = $wasSeverityCoerced
-    WasAreaDefaulted    = $wasAreaDefaulted
-    WasMessageDefaulted = $wasMessageDefaulted
-  })
+    # normalize
+    $sevKey = if ($null -ne $Severity) { $Severity.Trim().ToLowerInvariant() } else { "" }
+    switch -regex ($sevKey){
+        '^(crit(ical)?)$' { $sevKey = 'critical' }
+        '^(hi(gh)?)$'     { $sevKey = 'high' }
+        '^(med(iu[mn])?)$'{ $sevKey = 'medium' }
+        '^(lo(w)?)$'      { $sevKey = 'low' }
+        '^(info|informational|information)$' { $sevKey = 'info' }
+        default { if ([string]::IsNullOrWhiteSpace($sevKey)) { $sevKey = 'info' } }
+    }
+    $area = if ($null -ne $Area -and $Area.Trim().Length -gt 0) { $Area.Trim() } else { 'General' }
+    $msg  = if ($null -ne $Message -and $Message.Trim().Length -gt 0) { $Message.Trim() } else { 'Issue detected' }
+    if ([string]::IsNullOrEmpty($Evidence)) { $Evidence = 'No additional details captured.' }
+    $evShort = if ($Evidence.Length -gt 1500) { $Evidence.Substring(0,1500) } else { $Evidence }
+
+    $badgeText = 'ISSUE'
+    $cssClass  = 'ok'
+    switch ($sevKey) {
+        'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
+        'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
+        'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
+        'low'      { $badgeText = 'OK';        $cssClass = 'ok' }
+        'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
+        default    { $badgeText = $sevKey.ToUpperInvariant(); $cssClass = 'ok' }
+    }
+
+    # Add to cards
+    $script:issues.Add([pscustomobject]@{
+        Severity  = $sevKey
+        Area      = $area
+        Message   = $msg
+        Evidence  = $evShort
+        CssClass  = $cssClass
+        BadgeText = $badgeText
+    })
+
+    # Update check registry (worst severity wins)
+    if ($CheckId) {
+        # map Area prefix to Category (top-level)
+        function Get-CategoryFromArea([string]$a){
+            if (-not $a) { return 'General' }
+            $p = $a.Split('/')[0]
+            switch -regex ($p) {
+                '^OS|^System|^Startup|^Backup|^Firmware|^BitLocker' { 'System'; break }
+                '^Storage|^SMART|^Disks|^Volumes|^Hardware' { 'Hardware'; break }
+                '^Network|^DNS|^Proxy' { 'Network'; break }
+                '^Security|^Firewall|^RDP|^SMB|^Browser|^OfficeHardening' { 'Security'; break }
+                '^Services' { 'Services'; break }
+                '^Office|^Outlook' { 'Office'; break }
+                '^AD|^GPO|^Kerberos|^SecureChannel' { 'Active Directory'; break }
+                '^Printing|^Spooler' { 'Printing'; break }
+                default { 'General' }
+            }
+        }
+        $cat = Get-CategoryFromArea $area
+
+        if (-not $script:Checks.ContainsKey($CheckId)) {
+            $script:Checks[$CheckId] = @{
+                CheckId       = $CheckId
+                Category      = $cat
+                Weight        = $Weight
+                Attempted     = $true
+                NA            = [bool]$NA
+                Outcome       = 'Issue'
+                WorstSeverity = $sevKey
+                FirstMessage  = $msg
+            }
+        } else {
+            $c = $script:Checks[$CheckId]
+            $c['Attempted'] = $true
+            if ($NA) { $c['NA'] = $true }
+            $c['Outcome'] = 'Issue'
+            # severity order: critical > high > medium > low > info
+            $rank = @{ critical=5; high=4; medium=3; low=2; info=1 }
+            $prev = $c['WorstSeverity']; if (-not $prev) { $prev = 'info' }
+            if ($rank[$sevKey] -ge $rank[$prev]) { $c['WorstSeverity'] = $sevKey }
+            $script:Checks[$CheckId] = $c
+        }
+    }
 }
+
 
 # healthy findings
 $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
-function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){
-  $areaText = if ($null -ne $area) { $area } else { '' }
-  $areaTrimmed = $areaText.Trim()
-  if (-not $areaTrimmed) { $areaTrimmed = 'General' }
-
-  $messageText = if ($null -ne $msg) { $msg } else { '' }
-  $messageTrimmed = $messageText.Trim()
-  if (-not $messageTrimmed) { $messageTrimmed = 'OK' }
-  $normalizedBadge = if ($badgeText) { $badgeText.ToUpperInvariant() } else { 'GOOD' }
-  $normals.Add([pscustomobject]@{
-    Area     = $areaTrimmed
-    Message  = $messageTrimmed
-    Evidence = if($evidence){
-      $clampedEvidence = $evidence.Substring(0,[Math]::Min(800,$evidence.Length))
-      $trimmedEvidence = $clampedEvidence.Trim()
-      if ($trimmedEvidence) {
-        $trimmedEvidence
-      } else {
-        'No additional details captured.'
-      }
-    } else {
-      'No additional details captured.'
+function Add-Normal(
+    [string]$Area,
+    [string]$Message,
+    [string]$Evidence = "",
+    [string]$CheckId = $null,
+    [double]$Weight = 1.0,
+    [switch]$NA
+){
+    if (-not $script:normals) {
+        $script:normals = New-Object System.Collections.Generic.List[pscustomobject]
     }
-    CssClass  = 'good'
-    BadgeText = $normalizedBadge
-  })
+    if (-not $script:Checks) {
+        $script:Checks = @{}
+    }
+
+    $area = if ($null -ne $Area -and $Area.Trim().Length -gt 0) { $Area.Trim() } else { 'General' }
+    $msg  = if ($null -ne $Message -and $Message.Trim().Length -gt 0) { $Message.Trim() } else { 'OK' }
+    if ([string]::IsNullOrEmpty($Evidence)) { $Evidence = '—' }
+    $evShort = if ($Evidence.Length -gt 1500) { $Evidence.Substring(0,1500) } else { $Evidence }
+
+    $script:normals.Add([pscustomobject]@{
+        Severity  = 'good'
+        Area      = $area
+        Message   = $msg
+        Evidence  = $evShort
+        CssClass  = 'good'
+        BadgeText = 'GOOD'
+    })
+
+    if ($CheckId) {
+        function Get-CategoryFromArea([string]$a){
+            if (-not $a) { return 'General' }
+            $p = $a.Split('/')[0]
+            switch -regex ($p) {
+                '^OS|^System|^Startup|^Backup|^Firmware|^BitLocker' { 'System'; break }
+                '^Storage|^SMART|^Disks|^Volumes|^Hardware' { 'Hardware'; break }
+                '^Network|^DNS|^Proxy' { 'Network'; break }
+                '^Security|^Firewall|^RDP|^SMB|^Browser|^OfficeHardening' { 'Security'; break }
+                '^Services' { 'Services'; break }
+                '^Office|^Outlook' { 'Office'; break }
+                '^AD|^GPO|^Kerberos|^SecureChannel' { 'Active Directory'; break }
+                '^Printing|^Spooler' { 'Printing'; break }
+                default { 'General' }
+            }
+        }
+        $cat = Get-CategoryFromArea $area
+
+        if (-not $script:Checks.ContainsKey($CheckId)) {
+            $script:Checks[$CheckId] = @{
+                CheckId       = $CheckId
+                Category      = $cat
+                Weight        = $Weight
+                Attempted     = $true
+                NA            = [bool]$NA
+                Outcome       = 'Good'
+                WorstSeverity = 'info'
+                FirstMessage  = $msg
+            }
+        } else {
+            $c = $script:Checks[$CheckId]
+            $c['Attempted'] = $true
+            if ($NA) { $c['NA'] = $true }
+            # Do not downgrade if earlier marked as Issue
+            if ($c['Outcome'] -ne 'Issue') {
+                $c['Outcome'] = 'Good'
+                $c['WorstSeverity'] = 'info'
+            }
+            $script:Checks[$CheckId] = $c
+        }
+    }
 }
+
+function Get-HealthScores {
+    param(
+        [hashtable]$Checks
+    )
+    $scores = @{
+        Categories = @{}
+        Overall = @{ Achieved = 0.0; Max = 0.0; Percent = $null }
+    }
+    if (-not $Checks) { return $scores }
+
+    $sevScore = @{ critical=0.0; high=0.25; medium=0.5; low=0.75; info=1.0 }
+    foreach($entry in $Checks.GetEnumerator()){
+        $c = $entry.Value
+        if (-not $c.Attempted) { continue }
+        if ($c.NA) { continue }
+        $cat = if ($c.Category) { $c.Category } else { 'General' }
+        if (-not $scores.Categories.ContainsKey($cat)) {
+            $scores.Categories[$cat] = @{ Achieved = 0.0; Max = 0.0; Percent = $null }
+        }
+        $w = [double]$c.Weight
+        $scores.Categories[$cat].Max += $w
+        $scores.Overall.Max += $w
+
+        $sev = if ($c.WorstSeverity) { $c.WorstSeverity } else { 'info' }
+        $val = $sevScore[$sev]
+        if ($null -eq $val) { $val = 1.0 }
+        $scores.Categories[$cat].Achieved += ($w * $val)
+        $scores.Overall.Achieved += ($w * $val)
+    }
+
+    foreach($cat in $scores.Categories.Keys){
+        $ach = $scores.Categories[$cat].Achieved
+        $mx  = $scores.Categories[$cat].Max
+        $scores.Categories[$cat].Percent = if ($mx -eq 0) { $null } else { [math]::Round(100.0 * $ach / $mx, 1) }
+    }
+    $scores.Overall.Percent = if ($scores.Overall.Max -eq 0) { $null } else { [math]::Round(100.0 * $scores.Overall.Achieved / $scores.Overall.Max, 1) }
+    return $scores
+}
+
+
 
 $securityHeuristics = New-Object System.Collections.Generic.List[pscustomobject]
 $securityHealthOrder = @('good','info','warning','bad','critical')
