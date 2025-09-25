@@ -832,46 +832,107 @@ function Get-IssueExplanation {
 }
 
 function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence=""){
-  $logMsg = if ($null -eq $msg) { "" } else { $msg }
-  $sevKey = if ($sev) { $sev.ToLowerInvariant() } else { "" }
-  $badgeText = 'ISSUE'
-  $cssClass = 'ok'
+  $wasSeverityCoerced = $false
+  $wasAreaDefaulted = $false
+  $wasMessageDefaulted = $false
 
+  $rawSeverity = if ($null -ne $sev) { $sev } else { '' }
+  $trimmedSeverity = $rawSeverity.Trim()
+  $sevKey = if ($trimmedSeverity) { $trimmedSeverity.ToLowerInvariant() } else { '' }
+
+  switch ($sevKey) {
+    'crit' { $sevKey = 'critical'; $wasSeverityCoerced = $true }
+    'critical' { $sevKey = 'critical' }
+    'hi' { $sevKey = 'high'; $wasSeverityCoerced = $true }
+    'high' { $sevKey = 'high' }
+    'med' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
+    'medium' { $sevKey = 'medium' }
+    'warn' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
+    'warning' { $sevKey = 'medium'; $wasSeverityCoerced = $true }
+    'lo' { $sevKey = 'low'; $wasSeverityCoerced = $true }
+    'low' { $sevKey = 'low' }
+    'info' { $sevKey = 'info' }
+    'informational' { $sevKey = 'info'; $wasSeverityCoerced = $true }
+    default {
+      $sevKey = 'info'
+      if ($trimmedSeverity) { $wasSeverityCoerced = $true }
+    }
+  }
+
+  $badgeText = 'GOOD'
+  $cssClass = 'good'
   switch ($sevKey) {
     'critical' { $badgeText = 'CRITICAL'; $cssClass = 'critical' }
     'high'     { $badgeText = 'BAD';       $cssClass = 'bad' }
     'medium'   { $badgeText = 'WARNING';   $cssClass = 'warning' }
     'low'      { $badgeText = 'OK';        $cssClass = 'ok' }
     'info'     { $badgeText = 'GOOD';      $cssClass = 'good' }
-    default    {
-      if ($sev) {
-        $badgeText = $sev.ToUpperInvariant()
-      }
+  }
+
+  $areaText = if ($null -ne $area) { $area } else { '' }
+  $areaTrimmed = $areaText.Trim()
+  if (-not $areaTrimmed) {
+    $areaTrimmed = 'General'
+    $wasAreaDefaulted = $true
+  }
+
+  $messageText = if ($null -ne $msg) { $msg } else { '' }
+  $messageTrimmed = $messageText.Trim()
+  if (-not $messageTrimmed) {
+    $messageTrimmed = 'Issue detected'
+    $wasMessageDefaulted = $true
+  }
+
+  $evidenceText = 'No additional details captured.'
+  if ($evidence) {
+    $clampedEvidence = $evidence.Substring(0,[Math]::Min(1500,$evidence.Length))
+    $trimmedEvidence = $clampedEvidence.Trim()
+    if ($trimmedEvidence) {
+      $evidenceText = $trimmedEvidence
     }
   }
 
-  $logSeverity = if ($sev) { $sev.ToUpperInvariant() } else { $badgeText }
-  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $logSeverity, $area, $logMsg)
-  $explanation = Get-IssueExplanation -Area $area -Message $msg -Severity $sev
+  $logSeverity = $sevKey.ToUpperInvariant()
+  Write-Verbose ("Issue added => {0}: {1} - {2}" -f $logSeverity, $areaTrimmed, $messageTrimmed)
   $issues.Add([pscustomobject]@{
-    Severity  = $sev
-    Area      = $area
-    Message   = $msg
-    Evidence  = if($evidence){ $evidence.Substring(0,[Math]::Min(1500,$evidence.Length)) } else { "" }
-    CssClass  = $cssClass
-    BadgeText = $badgeText
-    Explanation = $explanation
+    Severity            = $sevKey
+    Area                = $areaTrimmed
+    Message             = $messageTrimmed
+    Evidence            = $evidenceText
+    CssClass            = $cssClass
+    BadgeText           = $badgeText
+    WasSeverityCoerced  = $wasSeverityCoerced
+    WasAreaDefaulted    = $wasAreaDefaulted
+    WasMessageDefaulted = $wasMessageDefaulted
   })
 }
 
 # healthy findings
 $normals = New-Object System.Collections.Generic.List[pscustomobject]
-function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){ 
+
+function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){
+  $areaText = if ($null -ne $area) { $area } else { '' }
+  $areaTrimmed = $areaText.Trim()
+  if (-not $areaTrimmed) { $areaTrimmed = 'General' }
+
+  $messageText = if ($null -ne $msg) { $msg } else { '' }
+  $messageTrimmed = $messageText.Trim()
+  if (-not $messageTrimmed) { $messageTrimmed = 'OK' }
   $normalizedBadge = if ($badgeText) { $badgeText.ToUpperInvariant() } else { 'GOOD' }
   $normals.Add([pscustomobject]@{
-    Area     = $area
-    Message  = $msg
-    Evidence = if($evidence){ $evidence.Substring(0,[Math]::Min(800,$evidence.Length)) } else { "" }
+    Area     = $areaTrimmed
+    Message  = $messageTrimmed
+    Evidence = if($evidence){
+      $clampedEvidence = $evidence.Substring(0,[Math]::Min(800,$evidence.Length))
+      $trimmedEvidence = $clampedEvidence.Trim()
+      if ($trimmedEvidence) {
+        $trimmedEvidence
+      } else {
+        'No additional details captured.'
+      }
+    } else {
+      'No additional details captured.'
+    }
     CssClass  = 'good'
     BadgeText = $normalizedBadge
   })
