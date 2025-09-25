@@ -4238,6 +4238,20 @@ $issuesTitle = "Detected Issues ({0})" -f $issues.Count
 if ($issues.Count -eq 0){
   $issuesContent = "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
 } else {
+  $severitySortOrder = @{
+    'critical' = 0
+    'high'     = 1
+    'medium'   = 2
+    'low'      = 3
+    'info'     = 4
+  }
+
+  $sortedIssues = $issues | Sort-Object -Stable -Property @(
+    @{ Expression = { if ($severitySortOrder.ContainsKey($_.Severity)) { $severitySortOrder[$_.Severity] } else { [int]::MaxValue } } }
+    @{ Expression = { if ($_.Area) { $_.Area.ToLowerInvariant() } else { '' } } }
+    @{ Expression = { if ($_.Message) { $_.Message.ToLowerInvariant() } else { '' } } }
+  )
+
   $severityDefinitions = @(
     @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
     @{ Key = 'high';     Label = 'High';     BadgeClass = 'bad' },
@@ -4252,7 +4266,7 @@ if ($issues.Count -eq 0){
   }
   $otherIssues = New-Object System.Collections.Generic.List[string]
 
-  foreach ($entry in $issues) {
+  foreach ($entry in $sortedIssues) {
     $cardHtml = New-IssueCardHtml -Entry $entry
     $severityKey = if ($entry.Severity) { $entry.Severity.ToLowerInvariant() } else { '' }
     if ($severityKey -and $groupedIssues.ContainsKey($severityKey)) {
@@ -4274,7 +4288,7 @@ if ($issues.Count -eq 0){
   }
 
   if ($activeDefinitions.Count -eq 0) {
-    $issuesContent = ($issues | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
+    $issuesContent = ($sortedIssues | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
   } else {
     $tabName = 'issue-tabs'
     $issuesTabs = "<div class='report-tabs'><div class='report-tabs__list'>"
