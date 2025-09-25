@@ -271,6 +271,7 @@ function Normalize-ServiceStartType {
   if (-not $trimmed) { return 'unknown' }
 
   $lower = $trimmed.ToLowerInvariant()
+  if ($lower -eq 'auto') { return 'automatic' }
   if ($lower -like 'automatic*') {
     if ($trimmed -match '(?i)delayed') { return 'automatic-delayed' }
     return 'automatic'
@@ -411,6 +412,404 @@ function Parse-BitLockerStatus {
   }
 
   return $entries
+}
+
+function ConvertTo-PrintEventObject {
+  param(
+    [hashtable]$Record,
+    [string]$LogName
+  )
+
+  if (-not $Record) { return $null }
+  if (-not $Record.ContainsKey('EventID')) { return $null }
+
+  $eventId = ConvertTo-NullableInt $Record['EventID']
+
+  $timeValue = $null
+  if ($Record.ContainsKey('TimeCreated')) {
+    $timeText = [string]$Record['TimeCreated']
+    if ($timeText) {
+      try {
+        $timeValue = [datetime]::ParseExact($timeText, 'o', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal)
+      } catch {
+        try { $timeValue = [datetime]::Parse($timeText, [System.Globalization.CultureInfo]::InvariantCulture) } catch { $timeValue = $null }
+      }
+    }
+  }
+
+  $levelInt = $null
+  if ($Record.ContainsKey('Level')) {
+    $levelInt = ConvertTo-NullableInt $Record['Level']
+  }
+
+  $levelName = if ($Record.ContainsKey('LevelDisplayName')) { [string]$Record['LevelDisplayName'] } else { '' }
+  $message = if ($Record.ContainsKey('Message')) { [string]$Record['Message'] } else { '' }
+  $provider = if ($Record.ContainsKey('ProviderName')) { [string]$Record['ProviderName'] } else { '' }
+  $task = if ($Record.ContainsKey('Task')) { [string]$Record['Task'] } else { '' }
+
+  return [pscustomobject]@{
+    LogName          = $LogName
+    EventId          = $eventId
+    TimeCreated      = $timeValue
+    Level            = $levelInt
+    LevelDisplayName = $levelName
+    Message          = $message
+    ProviderName     = $provider
+    Task             = $task
+  }
+}
+
+function Parse-PrintingStatus {
+  param([string]$Text)
+
+  $result = [pscustomobject]@{
+    Spooler        = $null
+    Printers       = @()
+    Ports          = @()
+    Drivers        = @()
+    Configurations = @()
+    Jobs           = @()
+    Policies       = @{}
+    Tests          = @()
+  }
+
+  if (-not $Text) { return $result }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $section = ''
+  $current = $null
+  $spoolerMap = @{}
+  $printersRaw = @()
+  $portsRaw = @()
+  $driversRaw = @()
+  $configsRaw = @()
+  $jobsRaw = @()
+  $policyRaw = @{}
+  $testsRaw = @()
+
+  foreach ($line in $lines) {
+    if ($null -eq $line) { continue }
+    $trimmed = $line.Trim()
+    if (-not $trimmed) {
+      if ($section -in @('printers','ports','drivers','configurations','jobs','networktests')) { $current = $null }
+      continue
+    }
+
+    $sectionMatch = [regex]::Match($trimmed,'^###\s+(.+)$')
+    if ($sectionMatch.Success) {
+      $section = $sectionMatch.Groups[1].Value.Trim().ToLowerInvariant()
+      $current = $null
+      continue
+    }
+
+    $itemMatch = [regex]::Match($trimmed,'^####\s+([^:]+):\s*(.+)$')
+    if ($itemMatch.Success) {
+      $itemType = $itemMatch.Groups[1].Value.Trim().ToLowerInvariant()
+      $itemName = $itemMatch.Groups[2].Value.Trim()
+      switch ($section) {
+        'printers' {
+          $current = @{}
+          $current['Name'] = $itemName
+          $printersRaw += $current
+        }
+        'ports' {
+          $current = @{}
+          $current['Name'] = $itemName
+          $portsRaw += $current
+        }
+        'drivers' {
+          $current = @{}
+          $current['Name'] = $itemName
+          $driversRaw += $current
+        }
+        'configurations' {
+          $current = @{}
+          $current['PrinterName'] = $itemName
+          $configsRaw += $current
+        }
+        'jobs' {
+          $current = @{}
+          $current['PrinterName'] = $itemName
+          $jobsRaw += $current
+        }
+        'networktests' {
+          $current = @{}
+          $current['Target'] = $itemName
+          $testsRaw += $current
+        }
+        default {
+          $current = $null
+        }
+      }
+      continue
+    }
+
+    $kv = [regex]::Match($trimmed,'^([^:]+):\s*(.*)$')
+    if ($kv.Success) {
+      $key = $kv.Groups[1].Value.Trim()
+      $value = $kv.Groups[2].Value.Trim()
+      switch ($section) {
+        'spooler' {
+          $spoolerMap[$key] = $value
+        }
+        'printers' {
+          if ($current) { $current[$key] = $value }
+        }
+        'ports' {
+          if ($current) { $current[$key] = $value }
+        }
+        'drivers' {
+          if ($current) { $current[$key] = $value }
+        }
+        'configurations' {
+          if ($current) { $current[$key] = $value }
+        }
+        'jobs' {
+          if ($current) { $current[$key] = $value }
+        }
+        'policies' {
+          if ($key -like 'Policy.*') {
+            $policyName = $key.Substring(7)
+            if ($policyName) { $policyRaw[$policyName] = $value }
+          } elseif ($key) {
+            $policyRaw[$key] = $value
+          }
+        }
+        'networktests' {
+          if ($current) { $current[$key] = $value }
+        }
+      }
+    }
+  }
+
+  if ($spoolerMap.Count -gt 0) {
+    $result.Spooler = [pscustomobject]@{
+      State           = if ($spoolerMap.ContainsKey('State')) { $spoolerMap['State'] } else { '' }
+      Status          = if ($spoolerMap.ContainsKey('Status')) { $spoolerMap['Status'] } else { '' }
+      StartMode       = if ($spoolerMap.ContainsKey('StartMode')) { $spoolerMap['StartMode'] } else { '' }
+      Started         = if ($spoolerMap.ContainsKey('Started')) { ConvertTo-NullableBool $spoolerMap['Started'] } else { $null }
+      DelayedAutoStart = if ($spoolerMap.ContainsKey('DelayedAutoStart')) { ConvertTo-NullableBool $spoolerMap['DelayedAutoStart'] } else { $null }
+      StartName       = if ($spoolerMap.ContainsKey('StartName')) { $spoolerMap['StartName'] } else { '' }
+    }
+  }
+
+  $printers = @()
+  foreach ($raw in $printersRaw) {
+    $printers += [pscustomobject]@{
+      Name                      = if ($raw.ContainsKey('Name')) { $raw['Name'] } else { '' }
+      Default                   = if ($raw.ContainsKey('Default')) { ConvertTo-NullableBool $raw['Default'] } else { $null }
+      Shared                    = if ($raw.ContainsKey('Shared')) { ConvertTo-NullableBool $raw['Shared'] } else { $null }
+      Network                   = if ($raw.ContainsKey('Network')) { ConvertTo-NullableBool $raw['Network'] } else { $null }
+      Local                     = if ($raw.ContainsKey('Local')) { ConvertTo-NullableBool $raw['Local'] } else { $null }
+      Hidden                    = if ($raw.ContainsKey('Hidden')) { ConvertTo-NullableBool $raw['Hidden'] } else { $null }
+      WorkOffline               = if ($raw.ContainsKey('WorkOffline')) { ConvertTo-NullableBool $raw['WorkOffline'] } else { $null }
+      Published                 = if ($raw.ContainsKey('Published')) { ConvertTo-NullableBool $raw['Published'] } else { $null }
+      PortName                  = if ($raw.ContainsKey('PortName')) { $raw['PortName'] } else { '' }
+      DriverName                = if ($raw.ContainsKey('DriverName')) { $raw['DriverName'] } else { '' }
+      Type                      = if ($raw.ContainsKey('Type')) { ConvertTo-NullableInt $raw['Type'] } else { $null }
+      JobCount                  = if ($raw.ContainsKey('JobCount')) { ConvertTo-NullableInt $raw['JobCount'] } else { $null }
+      JobCountSinceLastReset    = if ($raw.ContainsKey('JobCountSinceLastReset')) { ConvertTo-NullableInt $raw['JobCountSinceLastReset'] } else { $null }
+      QueueStatusRaw            = if ($raw.ContainsKey('QueueStatusRaw')) { ConvertTo-NullableInt $raw['QueueStatusRaw'] } else { $null }
+      QueueStatus               = if ($raw.ContainsKey('QueueStatus')) { $raw['QueueStatus'] } else { '' }
+      PrinterStatusRaw          = if ($raw.ContainsKey('PrinterStatusRaw')) { ConvertTo-NullableInt $raw['PrinterStatusRaw'] } else { $null }
+      PrinterStatus             = if ($raw.ContainsKey('PrinterStatus')) { $raw['PrinterStatus'] } else { '' }
+      ExtendedPrinterStatusRaw  = if ($raw.ContainsKey('ExtendedPrinterStatusRaw')) { ConvertTo-NullableInt $raw['ExtendedPrinterStatusRaw'] } else { $null }
+      ExtendedPrinterStatus     = if ($raw.ContainsKey('ExtendedPrinterStatus')) { $raw['ExtendedPrinterStatus'] } else { '' }
+      DetectedErrorState        = if ($raw.ContainsKey('DetectedErrorState')) { ConvertTo-NullableInt $raw['DetectedErrorState'] } else { $null }
+      DetectedError             = if ($raw.ContainsKey('DetectedError')) { $raw['DetectedError'] } else { '' }
+      ExtendedDetectedErrorState = if ($raw.ContainsKey('ExtendedDetectedErrorState')) { ConvertTo-NullableInt $raw['ExtendedDetectedErrorState'] } else { $null }
+      Availability              = if ($raw.ContainsKey('Availability')) { ConvertTo-NullableInt $raw['Availability'] } else { $null }
+      PrintProcessor            = if ($raw.ContainsKey('PrintProcessor')) { $raw['PrintProcessor'] } else { '' }
+      Attributes                = if ($raw.ContainsKey('Attributes')) { ConvertTo-NullableInt $raw['Attributes'] } else { $null }
+      Comment                   = if ($raw.ContainsKey('Comment')) { $raw['Comment'] } else { '' }
+      Location                  = if ($raw.ContainsKey('Location')) { $raw['Location'] } else { '' }
+    }
+  }
+  $result.Printers = $printers
+
+  $ports = @()
+  foreach ($raw in $portsRaw) {
+    $ports += [pscustomobject]@{
+      Name               = if ($raw.ContainsKey('Name')) { $raw['Name'] } else { '' }
+      PortMonitor        = if ($raw.ContainsKey('PortMonitor')) { $raw['PortMonitor'] } else { '' }
+      PrinterHostAddress = if ($raw.ContainsKey('PrinterHostAddress')) { $raw['PrinterHostAddress'] } else { '' }
+      DeviceURL          = if ($raw.ContainsKey('DeviceURL')) { $raw['DeviceURL'] } else { '' }
+      PortNumber         = if ($raw.ContainsKey('PortNumber')) { ConvertTo-NullableInt $raw['PortNumber'] } else { $null }
+      Protocol           = if ($raw.ContainsKey('Protocol')) { $raw['Protocol'] } else { '' }
+      ProtocolLabel      = if ($raw.ContainsKey('ProtocolLabel')) { $raw['ProtocolLabel'] } else { '' }
+      SNMPEnabled        = if ($raw.ContainsKey('SNMPEnabled')) { ConvertTo-NullableBool $raw['SNMPEnabled'] } else { $null }
+      SNMPCommunity      = if ($raw.ContainsKey('SNMPCommunity')) { $raw['SNMPCommunity'] } else { '' }
+      Host               = if ($raw.ContainsKey('Host')) { $raw['Host'] } else { '' }
+      Role               = if ($raw.ContainsKey('Role')) { $raw['Role'] } else { '' }
+    }
+  }
+  $result.Ports = $ports
+
+  $drivers = @()
+  foreach ($raw in $driversRaw) {
+    $drivers += [pscustomobject]@{
+      Name          = if ($raw.ContainsKey('Name')) { $raw['Name'] } else { '' }
+      Manufacturer  = if ($raw.ContainsKey('Manufacturer')) { $raw['Manufacturer'] } else { '' }
+      Type          = if ($raw.ContainsKey('Type')) { ConvertTo-NullableInt $raw['Type'] } else { $null }
+      TypeLabel     = if ($raw.ContainsKey('TypeLabel')) { $raw['TypeLabel'] } else { '' }
+      IsPackaged    = if ($raw.ContainsKey('IsPackaged')) { ConvertTo-NullableBool $raw['IsPackaged'] } else { $null }
+      MajorVersion  = if ($raw.ContainsKey('MajorVersion')) { ConvertTo-NullableInt $raw['MajorVersion'] } else { $null }
+      MinorVersion  = if ($raw.ContainsKey('MinorVersion')) { ConvertTo-NullableInt $raw['MinorVersion'] } else { $null }
+      DriverVersion = if ($raw.ContainsKey('DriverVersion')) { $raw['DriverVersion'] } else { '' }
+      InfPath       = if ($raw.ContainsKey('InfPath')) { $raw['InfPath'] } else { '' }
+    }
+  }
+  $result.Drivers = $drivers
+
+  $configs = @()
+  foreach ($raw in $configsRaw) {
+    $configs += [pscustomobject]@{
+      PrinterName   = if ($raw.ContainsKey('PrinterName')) { $raw['PrinterName'] } else { '' }
+      DuplexingMode = if ($raw.ContainsKey('DuplexingMode')) { $raw['DuplexingMode'] } else { '' }
+      Collate       = if ($raw.ContainsKey('Collate')) { ConvertTo-NullableBool $raw['Collate'] } else { $null }
+      ColorMode     = if ($raw.ContainsKey('ColorMode')) { $raw['ColorMode'] } else { '' }
+      PaperSize     = if ($raw.ContainsKey('PaperSize')) { $raw['PaperSize'] } else { '' }
+      NUp           = if ($raw.ContainsKey('NUp')) { ConvertTo-NullableInt $raw['NUp'] } else { $null }
+      Quality       = if ($raw.ContainsKey('Quality')) { $raw['Quality'] } else { '' }
+      Orientation   = if ($raw.ContainsKey('Orientation')) { $raw['Orientation'] } else { '' }
+    }
+  }
+  $result.Configurations = $configs
+
+  $jobs = @()
+  foreach ($raw in $jobsRaw) {
+    $jobId = $null
+    if ($raw.ContainsKey('JobId')) { $jobId = ConvertTo-NullableInt $raw['JobId'] }
+    $elapsed = $null
+    if ($raw.ContainsKey('ElapsedMinutes')) { $elapsed = ConvertTo-NullableInt $raw['ElapsedMinutes'] }
+    $sizeBytes = $null
+    if ($raw.ContainsKey('SizeBytes')) {
+      $sizeText = $raw['SizeBytes']
+      if ($sizeText) {
+        $longValue = 0
+        if ([long]::TryParse($sizeText, [ref]$longValue)) { $sizeBytes = $longValue }
+      }
+    }
+    $jobs += [pscustomobject]@{
+      PrinterName   = if ($raw.ContainsKey('PrinterName')) { $raw['PrinterName'] } else { '' }
+      JobId         = $jobId
+      Document      = if ($raw.ContainsKey('Document')) { $raw['Document'] } else { '' }
+      UserName      = if ($raw.ContainsKey('UserName')) { $raw['UserName'] } else { '' }
+      SizeBytes     = $sizeBytes
+      TotalPages    = if ($raw.ContainsKey('TotalPages')) { ConvertTo-NullableInt $raw['TotalPages'] } else { $null }
+      Status        = if ($raw.ContainsKey('Status')) { $raw['Status'] } else { '' }
+      JobStatus     = if ($raw.ContainsKey('JobStatus')) { $raw['JobStatus'] } else { '' }
+      SubmittedTime = if ($raw.ContainsKey('SubmittedTime')) { $raw['SubmittedTime'] } else { '' }
+      ElapsedMinutes = $elapsed
+    }
+  }
+  $result.Jobs = $jobs
+
+  $policies = @{}
+  foreach ($key in $policyRaw.Keys) {
+    $valueText = [string]$policyRaw[$key]
+    if ([string]::IsNullOrWhiteSpace($valueText)) { continue }
+    $trimmedValue = $valueText.Trim()
+    $intValue = 0
+    if ([int]::TryParse($trimmedValue, [ref]$intValue)) {
+      $policies[$key] = [int]$intValue
+      continue
+    }
+    $boolValue = ConvertTo-NullableBool $trimmedValue
+    if ($boolValue -ne $null) {
+      $policies[$key] = $boolValue
+      continue
+    }
+    if ($trimmedValue -like '*,*') {
+      $policies[$key] = ($trimmedValue -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+      continue
+    }
+    $policies[$key] = $trimmedValue
+  }
+  $result.Policies = $policies
+
+  $tests = @()
+  foreach ($raw in $testsRaw) {
+    $printersList = @()
+    if ($raw.ContainsKey('Printers')) {
+      $printersList = ($raw['Printers'] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    }
+    $sourcePorts = @()
+    if ($raw.ContainsKey('SourcePorts')) {
+      $sourcePorts = ($raw['SourcePorts'] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    }
+    $tests += [pscustomobject]@{
+      Target      = if ($raw.ContainsKey('Target')) { $raw['Target'] } else { '' }
+      Role        = if ($raw.ContainsKey('Role')) { $raw['Role'] } else { '' }
+      Port        = if ($raw.ContainsKey('Port')) { ConvertTo-NullableInt $raw['Port'] } else { $null }
+      Printers    = $printersList
+      SourcePorts = $sourcePorts
+      Success     = if ($raw.ContainsKey('Success')) { ConvertTo-NullableBool $raw['Success'] } else { $null }
+      LatencyMs   = if ($raw.ContainsKey('LatencyMs')) { ConvertTo-NullableInt $raw['LatencyMs'] } else { $null }
+      Error       = if ($raw.ContainsKey('Error')) { $raw['Error'] } else { '' }
+    }
+  }
+  $result.Tests = $tests
+
+  return $result
+}
+
+function Parse-PrintServiceEvents {
+  param([string]$Text)
+
+  $events = @()
+  if (-not $Text) { return $events }
+
+  $lines = [regex]::Split($Text,'\r?\n')
+  $currentLog = ''
+  $current = @{}
+
+  $flushEvent = {
+    param([hashtable]$record,[string]$logName)
+    $obj = ConvertTo-PrintEventObject -Record $record -LogName $logName
+    if ($obj) { return ,$obj }
+    return @()
+  }
+
+  foreach ($line in $lines) {
+    if ($null -eq $line) { continue }
+    $trimmed = $line.Trim()
+    if (-not $trimmed) {
+      if ($current.ContainsKey('EventID')) {
+        $events += & $flushEvent $current $currentLog
+      }
+      $current = @{}
+      continue
+    }
+
+    $logMatch = [regex]::Match($trimmed,'^###\s+Log:\s*(.+)$')
+    if ($logMatch.Success) {
+      if ($current.ContainsKey('EventID')) {
+        $events += & $flushEvent $current $currentLog
+      }
+      $currentLog = $logMatch.Groups[1].Value.Trim()
+      $current = @{}
+      continue
+    }
+
+    $kv = [regex]::Match($trimmed,'^([^:]+):\s*(.*)$')
+    if ($kv.Success) {
+      $key = $kv.Groups[1].Value.Trim()
+      $value = $kv.Groups[2].Value.Trim()
+      if ($key -eq 'EventID' -and $current.ContainsKey('EventID')) {
+        $events += & $flushEvent $current $currentLog
+        $current = @{}
+      }
+      if (-not $current) { $current = @{} }
+      $current[$key] = $value
+    }
+  }
+
+  if ($current.ContainsKey('EventID')) {
+    $events += & $flushEvent $current $currentLog
+  }
+
+  return $events
 }
 
 $script:ResolveDnsAvailable = $null
@@ -576,6 +975,8 @@ $files = [ordered]@{
   services       = Find-ByContent @('Services')                  @('Status\s+Name|SERVICE_NAME')
   processes      = Find-ByContent @('Processes','tasklist')      @('Image Name\s+PID|====')
   drivers        = Find-ByContent @('Drivers','driverquery')     @('Driver Name|Display Name')
+  printing_status = Find-ByContent @('Printing_Status','PrintingStatus') @('### Spooler','### Printers')
+  printservice_events = Find-ByContent @('PrintService_Events','PrintingEvents') @('### Log: Microsoft-Windows-PrintService')
 
   event_system   = Find-ByContent @('Event_System')              @('(?im)^\s*Log Name\s*[:=]\s*System','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
   event_app      = Find-ByContent @('Event_Application')         @('(?im)^\s*Log Name\s*[:=]\s*Application','(?im)^\s*Provider(?: Name)?\s*[:=]','(?im)^Event\[','(?i)TimeCreated','(?i)EventID')
@@ -612,6 +1013,9 @@ foreach($key in $raw.Keys){
     Write-Verbose ("  {0}: {1}" -f $key, $snippet)
   }
 }
+
+$printingStatus = Parse-PrintingStatus $raw['printing_status']
+$printingEventRecords = Parse-PrintServiceEvents $raw['printservice_events']
 
 # issues list
 $issues = New-Object System.Collections.Generic.List[pscustomobject]
@@ -2312,10 +2716,344 @@ if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
       $legacyRunning += $legacyName
     }
   }
-  if ($legacyRunning.Count -gt 0) {
-    Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
+    if ($legacyRunning.Count -gt 0) {
+      Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
+    }
+  }
+
+# ---------- printing ----------
+$portIndex = @{}
+if ($printingStatus.Ports) {
+  foreach ($port in $printingStatus.Ports) {
+    if (-not $port -or -not $port.Name) { continue }
+    $key = $port.Name.ToLowerInvariant()
+    $portIndex[$key] = $port
   }
 }
+
+$printersByPort = @{}
+if ($printingStatus.Printers) {
+  foreach ($printer in $printingStatus.Printers) {
+    if (-not $printer -or -not $printer.PortName) { continue }
+    $portKey = $printer.PortName.ToLowerInvariant()
+    if (-not $printersByPort.ContainsKey($portKey)) { $printersByPort[$portKey] = @() }
+    $printersByPort[$portKey] += $printer.Name
+  }
+}
+
+if ($printingStatus.Spooler) {
+  $spooler = $printingStatus.Spooler
+  $spoolerEvidence = @()
+  if ($spooler.State) { $spoolerEvidence += "State: $($spooler.State)" }
+  if ($spooler.Status) { $spoolerEvidence += "Status: $($spooler.Status)" }
+  if ($null -ne $spooler.Started) { $spoolerEvidence += "Started: $($spooler.Started)" }
+  if ($spooler.StartMode) { $spoolerEvidence += "StartMode: $($spooler.StartMode)" }
+  if ($null -ne $spooler.DelayedAutoStart) { $spoolerEvidence += "DelayedAutoStart: $($spooler.DelayedAutoStart)" }
+  if ($spooler.StartName) { $spoolerEvidence += "StartName: $($spooler.StartName)" }
+  $spoolerEvidenceText = $spoolerEvidence -join "`n"
+
+  $spoolerRunning = ($spooler.Started -eq $true)
+  if (-not $spoolerRunning -and $spooler.State) {
+    if ($spooler.State -match '(?i)running') { $spoolerRunning = $true }
+  }
+
+  $spoolerStartNormalized = $null
+  if ($spooler.StartMode) { $spoolerStartNormalized = Normalize-ServiceStartType $spooler.StartMode }
+
+  if (-not $spoolerRunning) {
+    Add-Issue 'high' 'Printing/Spooler' 'Print Spooler service is not running.' $spoolerEvidenceText
+  } elseif ($spoolerStartNormalized -in @('automatic','automatic-delayed')) {
+    Add-Normal 'Printing/Spooler' 'GOOD Printing/Spooler Running (Automatic)' $spoolerEvidenceText
+  }
+
+  if ($spoolerStartNormalized -eq 'disabled') {
+    Add-Issue 'high' 'Printing/Spooler' 'Print Spooler service startup type is Disabled.' $spoolerEvidenceText
+  }
+}
+
+$offlineInfo = @{}
+$offlineDetails = @()
+if ($printingStatus.Printers) {
+  foreach ($printer in $printingStatus.Printers) {
+    if (-not $printer.Name) { continue }
+    $reasons = @()
+    if ($printer.WorkOffline -eq $true) { $reasons += 'WorkOffline=True' }
+    if ($printer.QueueStatus -and $printer.QueueStatus -match '(?i)offline') { $reasons += "QueueStatus=$($printer.QueueStatus)" }
+    elseif ($printer.QueueStatusRaw -eq 1) { $reasons += 'QueueStatus=Offline' }
+    if ($printer.PrinterStatus -and $printer.PrinterStatus -match '(?i)offline') { $reasons += "PrinterStatus=$($printer.PrinterStatus)" }
+    elseif ($printer.PrinterStatusRaw -eq 7) { $reasons += 'PrinterStatus=Offline' }
+    if ($printer.ExtendedPrinterStatus -and $printer.ExtendedPrinterStatus -match '(?i)offline') { $reasons += "ExtendedStatus=$($printer.ExtendedPrinterStatus)" }
+    elseif ($printer.ExtendedPrinterStatusRaw -eq 7) { $reasons += 'ExtendedStatus=Offline' }
+    if ($printer.DetectedError -and $printer.DetectedError -match '(?i)offline') { $reasons += "DetectedError=$($printer.DetectedError)" }
+    elseif ($printer.DetectedErrorState -eq 9) { $reasons += 'DetectedError=Offline' }
+    if ($printer.Availability -eq 7) { $reasons += 'Availability=7' }
+
+    if ($reasons.Count -gt 0) {
+      $offlineInfo[$printer.Name] = $reasons
+      $offlineDetails += ("{0} ({1})" -f $printer.Name, ($reasons -join '; '))
+    }
+  }
+}
+
+if ($offlineDetails.Count -gt 0) {
+  $queueSeverity = if ($offlineDetails.Count -gt 1) { 'high' } else { 'medium' }
+  $offlineEvidence = $offlineDetails -join "`n"
+  Add-Issue $queueSeverity 'Printing/Queues' ("Printer queue offline: {0}." -f ($offlineDetails -join '; ')) $offlineEvidence
+}
+
+$defaultPrinters = @($printingStatus.Printers | Where-Object { $_.Default -eq $true })
+if ($printingStatus.Printers -and $defaultPrinters.Count -eq 0) {
+  Add-Issue 'low' 'Printing/Default' 'Default printer not configured.' ''
+} else {
+  foreach ($dp in $defaultPrinters) {
+    if ($dp -and $offlineInfo.ContainsKey($dp.Name)) {
+      $reasonText = ($offlineInfo[$dp.Name] -join '; ')
+      Add-Issue 'low' 'Printing/Default' ("Default printer {0} offline ({1})." -f $dp.Name, $reasonText) $reasonText
+    }
+  }
+}
+
+$jobsOver15 = @()
+$jobsOver60 = @()
+if ($printingStatus.Jobs) {
+  foreach ($job in $printingStatus.Jobs) {
+    if ($null -eq $job.ElapsedMinutes) { continue }
+    if ($job.ElapsedMinutes -ge 15) { $jobsOver15 += $job }
+    if ($job.ElapsedMinutes -ge 60) { $jobsOver60 += $job }
+  }
+}
+
+if ($jobsOver60.Count -ge 2) {
+  $evidence = $jobsOver60 | ForEach-Object {
+    $parts = @()
+    if ($_.JobId -ne $null) { $parts += "JobId=$($_.JobId)" }
+    $parts += "Age=$($_.ElapsedMinutes) min"
+    if ($_.Status) { $parts += "Status=$($_.Status)" }
+    elseif ($_.JobStatus) { $parts += "Status=$($_.JobStatus)" }
+    if ($_.Document) { $parts += "Doc=$($_.Document)" }
+    "{0} ({1})" -f $_.PrinterName, ($parts -join ', ')
+  }
+  Add-Issue 'high' 'Printing/Jobs' 'Multiple print jobs older than 60 minutes detected.' ($evidence -join "`n")
+} elseif ($jobsOver15.Count -gt 0) {
+  $evidence = $jobsOver15 | ForEach-Object {
+    $parts = @()
+    if ($_.JobId -ne $null) { $parts += "JobId=$($_.JobId)" }
+    $parts += "Age=$($_.ElapsedMinutes) min"
+    if ($_.Status) { $parts += "Status=$($_.Status)" }
+    elseif ($_.JobStatus) { $parts += "Status=$($_.JobStatus)" }
+    if ($_.Document) { $parts += "Doc=$($_.Document)" }
+    "{0} ({1})" -f $_.PrinterName, ($parts -join ', ')
+  }
+  Add-Issue 'medium' 'Printing/Jobs' 'Print jobs have been queued longer than 15 minutes.' ($evidence -join "`n")
+}
+
+$wsdPrinters = @()
+if ($printingStatus.Printers) {
+  foreach ($printer in $printingStatus.Printers) {
+    if (-not $printer.PortName) { continue }
+    $portKey = $printer.PortName.ToLowerInvariant()
+    if (-not $portIndex.ContainsKey($portKey)) { continue }
+    $port = $portIndex[$portKey]
+    if ($port.Role -and $port.Role -match '(?i)wsd') {
+      $wsdPrinters += ("{0} (Port {1})" -f $printer.Name, $port.Name)
+    } elseif ($port.PortMonitor -and $port.PortMonitor -match '(?i)wsd') {
+      $wsdPrinters += ("{0} (Port {1})" -f $printer.Name, $port.Name)
+    }
+  }
+}
+if ($wsdPrinters.Count -gt 0) {
+  Add-Issue 'low' 'Printing/Ports' 'Printers using WSD ports detected—prefer TCP/IP/IPP ports.' ($wsdPrinters -join "`n")
+}
+
+$snmpPublic = @()
+if ($printingStatus.Ports) {
+  foreach ($port in $printingStatus.Ports) {
+    if (-not $port.Name) { continue }
+    if ($port.SNMPEnabled -ne $true) { continue }
+    if (-not $port.SNMPCommunity) { continue }
+    if ($port.SNMPCommunity.ToString().Trim().ToLowerInvariant() -ne 'public') { continue }
+    $portKey = $port.Name.ToLowerInvariant()
+    $printerNames = if ($printersByPort.ContainsKey($portKey)) { $printersByPort[$portKey] } else { @() }
+    if ($printerNames.Count -gt 0) {
+      $snmpPublic += ("{0} (Printers: {1})" -f $port.Name, ($printerNames -join ', '))
+    } else {
+      $snmpPublic += $port.Name
+    }
+  }
+}
+if ($snmpPublic.Count -gt 0) {
+  Add-Issue 'low' 'Printing/Ports' 'SNMP community set to "public" on printer ports.' ($snmpPublic -join "`n")
+}
+
+$tests = @($printingStatus.Tests | Where-Object { $_ })
+$serverFailures = @()
+$directFailures = @()
+$anyTestFailures = $false
+if ($tests.Count -gt 0) {
+  $groupedTests = $tests | Group-Object {
+    $targetText = [string]$_.Target
+    $targetKey = if (-not [string]::IsNullOrWhiteSpace($targetText)) { $targetText.ToLowerInvariant() } else { '' }
+    $roleText = [string]$_.Role
+    $roleKey = if (-not [string]::IsNullOrWhiteSpace($roleText)) { $roleText.ToLowerInvariant() } else { '' }
+    '{0}|{1}' -f $targetKey, $roleKey
+  }
+  foreach ($group in $groupedTests) {
+    $sample = $group.Group | Select-Object -First 1
+    $host = if (-not [string]::IsNullOrWhiteSpace([string]$sample.Target)) { $sample.Target } else { '(unknown)' }
+    $role = if (-not [string]::IsNullOrWhiteSpace([string]$sample.Role)) { $sample.Role } else { '' }
+    $failures = $group.Group | Where-Object { $_.Success -ne $true }
+    if ($failures.Count -eq 0) { continue }
+    $anyTestFailures = $true
+    $printerSet = @()
+    foreach ($entry in $group.Group) {
+      if ($entry.Printers) { $printerSet += $entry.Printers }
+    }
+    $printerSet = $printerSet | Where-Object { $_ } | Sort-Object -Unique
+    $portSummaries = $failures | ForEach-Object {
+      $portLabel = if ($null -ne $_.Port) { $_.Port } else { '(port)' }
+      if ($_.Error) { "{0} ({1})" -f $portLabel, $_.Error }
+      else { "{0} (no response)" -f $portLabel }
+    }
+    $detail = "{0}: {1}" -f $host, ($portSummaries -join ', ')
+    if ($printerSet.Count -gt 0) { $detail += "; Printers: $($printerSet -join ', ')" }
+    $roleKey = if ($role) { ([string]$role).ToLowerInvariant() } else { '' }
+    switch ($roleKey) {
+      'serverqueue' { $serverFailures += $detail }
+      'directip' { $directFailures += $detail }
+      'ipp' { $directFailures += $detail }
+      default { $directFailures += $detail }
+    }
+  }
+
+  if ($serverFailures.Count -gt 0) {
+    Add-Issue 'high' 'Printing/Connectivity' ("Print server connectivity failures: {0}." -f ($serverFailures -join '; ')) ($serverFailures -join "`n")
+  }
+  if ($directFailures.Count -gt 0) {
+    Add-Issue 'medium' 'Printing/Connectivity' ("Direct printer connectivity failures: {0}." -f ($directFailures -join '; ')) ($directFailures -join "`n")
+  }
+
+  if (-not $anyTestFailures) {
+    $hostsTested = $tests | Select-Object -ExpandProperty Target -Unique | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object
+    if ($hostsTested.Count -gt 0) {
+      Add-Normal 'Printing/Connectivity' 'GOOD Printing/Network Reachable (ports)' ("Hosts tested: {0}" -f ($hostsTested -join ', '))
+    }
+  }
+}
+
+$driverIndex = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($driver in $printingStatus.Drivers) {
+  if (-not $driver -or -not $driver.Name) { continue }
+  if ($driverIndex.ContainsKey($driver.Name)) { $driverIndex[$driver.Name] = $driver }
+  else { $driverIndex.Add($driver.Name, $driver) }
+}
+
+$nonPackagedType3 = @()
+$networkRoles = @('directip','ipp','serverqueue','wsd')
+foreach ($printer in $printingStatus.Printers) {
+  if (-not $printer.Name) { continue }
+  if (-not $printer.DriverName) { continue }
+  $portRole = ''
+  if ($printer.PortName) {
+    $portKey = $printer.PortName.ToLowerInvariant()
+    if ($portIndex.ContainsKey($portKey) -and $portIndex[$portKey].Role) {
+      $portRole = $portIndex[$portKey].Role.ToLowerInvariant()
+    }
+  }
+  if ($networkRoles -notcontains $portRole) { continue }
+  $driver = $null
+  if ($driverIndex.ContainsKey($printer.DriverName)) { $driver = $driverIndex[$printer.DriverName] }
+  if (-not $driver) { continue }
+  $driverType = $driver.Type
+  if ($driverType -eq $null -and $driver.TypeLabel) {
+    if ($driver.TypeLabel -match 'type\s*3') { $driverType = 3 }
+    elseif ($driver.TypeLabel -match 'type\s*4') { $driverType = 4 }
+  }
+  $isType3 = ($driverType -eq 3)
+  if (-not $isType3 -and $driver.TypeLabel -and $driver.TypeLabel -match 'type\s*3') { $isType3 = $true }
+  if (-not $isType3) { continue }
+  if ($driver.IsPackaged -eq $true) { continue }
+  $nonPackagedType3 += [pscustomobject]@{
+    Printer   = $printer.Name
+    Driver    = $driver.Name
+    PortRole  = $portRole
+    TypeLabel = if ($driver.TypeLabel) { $driver.TypeLabel } elseif ($driverType) { "Type$driverType" } else { '' }
+  }
+}
+
+if ($summary.DomainJoined -eq $true -and $nonPackagedType3.Count -gt 0) {
+  $requiresType4 = $false
+  $type4Policy = $printingStatus.Policies['PackagePointAndPrintOnly']
+  if ($type4Policy -eq 1 -or $type4Policy -eq $true) { $requiresType4 = $true }
+  $severity = if ($requiresType4) { 'high' } else { 'medium' }
+  $driverEvidence = $nonPackagedType3 | ForEach-Object {
+    $typeLabelText = if ($_.TypeLabel) { $_.TypeLabel } else { 'Type3' }
+    "{0} → {1} ({2})" -f $_.Printer, $_.Driver, $typeLabelText
+  }
+  $message = 'Non-packaged Type 3 printer drivers detected on this domain-joined device.'
+  if ($requiresType4) { $message += ' Policy enforces Type 4 drivers.' }
+  Add-Issue $severity 'Printing/Drivers' $message ($driverEvidence -join "`n")
+} elseif ($printingStatus.Printers.Count -gt 0 -and $printingStatus.Drivers.Count -gt 0 -and $nonPackagedType3.Count -eq 0) {
+  $driverSummary = $printingStatus.Drivers | Where-Object { $_.Name } | ForEach-Object {
+    $typeLabel = if ($_.TypeLabel) { $_.TypeLabel } elseif ($_.Type) { "Type$($_.Type)" } else { 'UnknownType' }
+    "{0} ({1}, Packaged={2})" -f $_.Name, $typeLabel, ($_.IsPackaged -eq $true)
+  } | Select-Object -First 6
+  $driverEvidence = $driverSummary -join "`n"
+  Add-Normal 'Printing/Drivers' 'GOOD Printing/Drivers Packaged' $driverEvidence
+}
+
+$restrictValue = $printingStatus.Policies['RestrictDriverInstallationToAdministrators']
+$noWarnInstallValue = $printingStatus.Policies['NoWarningNoElevationOnInstall']
+$noWarnUpdateValue = $printingStatus.Policies['NoWarningNoElevationOnUpdate']
+$updatePromptValue = $printingStatus.Policies['UpdatePromptSettings']
+$restrictEnabled = ($restrictValue -eq 1 -or $restrictValue -eq $true)
+$promptsSuppressed = $false
+if ($noWarnInstallValue -eq 1 -or $noWarnInstallValue -eq $true) { $promptsSuppressed = $true }
+if ($noWarnUpdateValue -eq 1 -or $noWarnUpdateValue -eq $true) { $promptsSuppressed = $true }
+if ($updatePromptValue -is [int]) {
+  if ($updatePromptValue -ge 2) { $promptsSuppressed = $true }
+} elseif ($updatePromptValue -eq 2 -or $updatePromptValue -eq $true) {
+  $promptsSuppressed = $true
+}
+if (-not $restrictEnabled -and $promptsSuppressed) {
+  $policyEvidence = @()
+  $policyEvidence += "RestrictDriverInstallationToAdministrators=$restrictValue"
+  if ($null -ne $noWarnInstallValue) { $policyEvidence += "NoWarningNoElevationOnInstall=$noWarnInstallValue" }
+  if ($null -ne $noWarnUpdateValue) { $policyEvidence += "NoWarningNoElevationOnUpdate=$noWarnUpdateValue" }
+  if ($null -ne $updatePromptValue) { $policyEvidence += "UpdatePromptSettings=$updatePromptValue" }
+  Add-Issue 'high' 'Printing/Policies' 'Point and Print restrictions are disabled while install/update prompts are suppressed.' ($policyEvidence -join "`n")
+}
+
+if ($printingEventRecords) {
+  $adminErrors = @($printingEventRecords | Where-Object { $_.LogName -and $_.LogName -match 'PrintService/Admin' -and (($_.Level -eq 2) -or ($_.LevelDisplayName -match '(?i)error')) })
+  $adminErrorCount = $adminErrors.Count
+
+  if ($adminErrorCount -gt 5) {
+    $samples = $adminErrors | Sort-Object TimeCreated -Descending | Select-Object -First 5
+    $evidence = $samples | ForEach-Object {
+      $timeLabel = if ($_.TimeCreated) { $_.TimeCreated.ToString('s') } else { 'unknown' }
+      "{0} | ID {1} | {2}" -f $timeLabel, $_.EventId, ($_.Message -replace '\r?\n',' ')
+    }
+    Add-Issue 'medium' 'Printing/Events' ("PrintService/Admin log shows {0} error events in the last 7 days." -f $adminErrorCount) ($evidence -join "`n")
+  }
+
+  $driverRelated = @($printingEventRecords | Where-Object { $_.Message -and ($_.Message -match '(?i)driver') -and ($_.Message -match '(?i)(failed|fault|crash|stopp|hang)') })
+  $driverCrashGroups = @($driverRelated | Group-Object EventId | Where-Object { $_.Count -ge 3 })
+  if ($driverCrashGroups.Count -gt 0) {
+    $driverEvidence = @()
+    foreach ($group in $driverCrashGroups) {
+      $latest = $group.Group | Sort-Object TimeCreated -Descending | Select-Object -First 1
+      $timeLabel = if ($latest.TimeCreated) { $latest.TimeCreated.ToString('s') } else { 'unknown' }
+      $driverEvidence += "Event ID {0} occurred {1} times; latest at {2}. Message: {3}" -f $group.Name, $group.Count, $timeLabel, ($latest.Message -replace '\r?\n',' ')
+    }
+    Add-Issue 'high' 'Printing/Events' 'Repeated print driver crash events detected.' ($driverEvidence -join "`n`n")
+  }
+
+  if ($printingEventRecords.Count -gt 0 -and $adminErrorCount -eq 0 -and $driverCrashGroups.Count -eq 0) {
+    $logsCaptured = ($printingEventRecords | Select-Object -ExpandProperty LogName -Unique | Where-Object { $_ } | Sort-Object)
+    $logSummary = if ($logsCaptured.Count -gt 0) { $logsCaptured -join ', ' } else { 'PrintService' }
+    Add-Normal 'Printing/Events' 'GOOD Printing/Events (no recent errors)' ("Logs analyzed: {0}" -f $logSummary)
+  }
+  }
 
 # events quick counters
 function Get-EventHighlights {
