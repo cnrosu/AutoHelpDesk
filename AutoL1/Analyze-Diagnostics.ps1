@@ -64,6 +64,9 @@ function Promote-Severity {
   return $script:SeverityOrder[$target]
 }
 
+# DNS heuristics configuration (override in-line as needed)
+[string[]]$AnycastDnsAllow = @()
+
 # ---------- helpers ----------
 function Read-Text($path) {
   if (Test-Path $path) { return (Get-Content $path -Raw -ErrorAction SilentlyContinue) } else { return "" }
@@ -721,6 +724,113 @@ foreach($key in $raw.Keys){
 
 # issues list
 $issues = New-Object System.Collections.Generic.List[pscustomobject]
+function Get-IssueExplanation {
+  param(
+    [string]$Area,
+    [string]$Message,
+    [string]$Severity
+  )
+
+  $areaLower = if ($Area) { $Area.ToLowerInvariant() } else { '' }
+  $messageLower = if ($Message) { $Message.ToLowerInvariant() } else { '' }
+  $mainArea = if ($areaLower -and $areaLower.Contains('/')) { ($areaLower -split '/')[0] } else { $areaLower }
+
+  if ($messageLower -match 'secure boot' -or $areaLower -match 'secure boot') {
+    return "Secure Boot being disabled means your PC can start up using untrusted, tampered code, making it easier for deep, hard-to-remove malware to infect the machine before Windows and your antivirus even load."
+  }
+
+  if ($areaLower -match 'system/firmware') {
+    return "Running in legacy BIOS mode blocks modern protections like Secure Boot and measured boot. Switching the device to UEFI unlocks those defenses and improves manageability."
+  }
+
+  if ($areaLower -match 'system/fast startup') {
+    return "Fast Startup keeps parts of Windows in hibernation, so the machine never truly power-cycles. That can hide driver issues and stop updates from applying cleanly until you disable it for troubleshooting." 
+  }
+
+  if ($areaLower -match 'system/bitlocker') {
+    return "BitLocker not being healthy means the drive is sitting unencrypted. A lost or stolen device could be read without a password, so turning BitLocker back on protects the data."
+  }
+
+  if ($areaLower -match 'system/uptime') {
+    return "Very long uptime tells us the PC has not restarted to finish updates or clear memory. A reboot usually resolves lingering glitches and completes patch installations."
+  }
+
+  if ($areaLower -match 'dns/internal') {
+    return "DNS not configured correctly means the Domain Controller cannot be reached. Therefore you may experience login issues and group policies failing to apply." 
+  }
+
+  if ($areaLower -match 'dns/order') {
+    return "Public DNS servers listed ahead of the internal ones make the computer ask the wrong place first. That slows logons and can stop it finding domain controllers or internal apps." 
+  }
+
+  if ($mainArea -eq 'dns') {
+    return "When DNS breaks the PC cannot translate server or website names into IP addresses. Apps that rely on name lookups will hang or fail until DNS is fixed." 
+  }
+
+  if ($mainArea -eq 'network') {
+    return "Network connectivity issues block the device from reaching the internet or company resources. Users will see web pages, VPN, or shared drives stop responding until the link is repaired." 
+  }
+
+  if ($mainArea -eq 'firewall') {
+    return "A disabled or misconfigured firewall leaves the machine wide open to unsolicited network traffic. Attackers and worms can reach the device far more easily without that shield." 
+  }
+
+  if ($mainArea -eq 'security') {
+    return "Microsoft Defender problems mean the built-in antivirus is not updating or guarding the system correctly. Without current protection the device is vulnerable to malware and phishing payloads." 
+  }
+
+  if ($mainArea -eq 'services') {
+    return "Critical Windows services being stopped or broken keeps dependent features from working. Users can notice failures with logons, printing, updates, or other roles tied to that service." 
+  }
+
+  if ($mainArea -eq 'events') {
+    return "Heavy error and warning activity in the event logs points to underlying problems that need attention. Ignoring them can lead to crashes, data loss, or service outages." 
+  }
+
+  if ($areaLower -match 'storage/smart') {
+    return "SMART warnings mean the drive itself is reporting hardware trouble. Disks in this state often fail soon, so backing up and replacing them prevents sudden data loss." 
+  }
+
+  if ($areaLower -match 'storage/free space') {
+    return "Running low on disk space makes Windows sluggish and can stop updates or temporary files from saving. Cleaning up space keeps applications responsive and prevents crashes." 
+  }
+
+  if ($areaLower -match 'storage/disks') {
+    return "Disk health or configuration problems slow the machine and risk file corruption. Fixing the underlying disk issue keeps storage reliable." 
+  }
+
+  if ($areaLower -match 'storage/volumes') {
+    return "Volume-related warnings mean Windows is struggling with partitions or mount points. Left alone the drive can stop mounting or data can disappear unexpectedly." 
+  }
+
+  if ($areaLower -match 'office/macros') {
+    return "Allowing Office macros to run freely gives malicious documents an easy way to install malware. Tightening macro policies stops harmful scripts from launching automatically." 
+  }
+
+  if ($areaLower -match 'office/protected view') {
+    return "Turning off Protected View makes Office open email or internet files directly. That removes the safety sandbox and lets risky attachments run with full access." 
+  }
+
+  if ($areaLower -match 'outlook/connectivity') {
+    return "Outlook connectivity failures mean the client cannot reach Exchange or Microsoft 365 to send and receive mail. Messages may pile up in the Outbox until the connection is restored." 
+  }
+
+  if ($areaLower -match 'outlook/autodiscover') {
+    return "Autodiscover issues stop Outlook from automatically locating mailbox settings. New profiles may not configure and users can see repeated password prompts." 
+  }
+
+  if ($areaLower -match 'outlook/ost') {
+    return "Oversized or unhealthy OST cache files slow Outlook down and risk mailbox data going out of sync. Trimming or rebuilding the cache brings Outlook performance back." 
+  }
+
+  if ($areaLower -match 'outlook/scp') {
+    return "Broken Autodiscover SCP records keep domain-joined PCs from finding the right Exchange endpoints. Outlook may connect to the wrong place or fail to sign in on the internal network." 
+  }
+
+  $severityWord = if ($Severity) { $Severity.ToLowerInvariant() } else { 'issue' }
+  return "This $severityWord points to something outside the normal health baseline. Reviewing the evidence and correcting it will help keep the device stable and secure." 
+}
+
 function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence=""){
   $wasSeverityCoerced = $false
   $wasAreaDefaulted = $false
@@ -799,6 +909,7 @@ function Add-Issue([string]$sev,[string]$area,[string]$msg,[string]$evidence="")
 
 # healthy findings
 $normals = New-Object System.Collections.Generic.List[pscustomobject]
+
 function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$badgeText="GOOD"){
   $areaText = if ($null -ne $area) { $area } else { '' }
   $areaTrimmed = $areaText.Trim()
@@ -807,7 +918,6 @@ function Add-Normal([string]$area,[string]$msg,[string]$evidence="",[string]$bad
   $messageText = if ($null -ne $msg) { $msg } else { '' }
   $messageTrimmed = $messageText.Trim()
   if (-not $messageTrimmed) { $messageTrimmed = 'OK' }
-
   $normalizedBadge = if ($badgeText) { $badgeText.ToUpperInvariant() } else { 'GOOD' }
   $normals.Add([pscustomobject]@{
     Area     = $areaTrimmed
@@ -1387,8 +1497,22 @@ if ($raw['ipconfig']){
     if ($domainJoined -eq $true) { $summary.DomainJoined = $true }
     elseif ($domainJoined -eq $false) { $summary.DomainJoined = $false }
 
+    $dnsDebugData = [ordered]@{
+      PartOfDomain           = $domainJoined
+      DomainName             = $domainName
+      ForestName             = $forestName
+      ConfiguredDns          = $dnsServers
+      AdCapableDns           = @()
+      DcIPs                  = @()
+      DcCount                = 0
+      SecureChannelOK        = $null
+      AnycastOverrideMatched = $false
+    }
+
     if ($domainJoined -eq $false) {
+      Add-Normal "DNS/Internal" "GOOD DNS/Internal: Workgroup device, policy N/A."
       Add-Normal "Network/DNS" "Workgroup/standalone: DNS servers configured" ("DNS: " + ($dnsServers -join ", "))
+      $summary.DnsDebug = $dnsDebugData
       $dnsContextHandled = $true
     } elseif ($domainJoined -eq $true) {
       Add-Normal "Network/DNS" "Domain-joined: DNS servers captured" ("DNS: " + ($dnsServers -join ", "))
@@ -1427,6 +1551,9 @@ if ($raw['ipconfig']){
         }
       }
       $dcIPs = $dcIPs | Where-Object { $_ } | Select-Object -Unique
+      $dcCount = $dcIPs.Count
+      $dnsDebugData.DcIPs = $dcIPs
+      $dnsDebugData.DcCount = $dcCount
 
       $dnsEval = @()
       foreach ($server in $dnsServers) {
@@ -1459,44 +1586,97 @@ if ($raw['ipconfig']){
         }
       }
 
-      $goodServers = $dnsEval | Where-Object { $_.IsDCIP -or $_.AuthoritativeAD -eq $true -or $_.ResolvesADSRV -eq $true }
-      if ($goodServers) {
-        $goodList = $goodServers | Select-Object -ExpandProperty Server -Unique
-        Add-Normal "DNS/Internal" "Domain-joined: AD-capable DNS present" ($goodList -join ", ")
+      $configuredCount = if ($dnsServers) { $dnsServers.Count } else { 0 }
+      $adCapableInOrder = @()
+      foreach ($server in $dnsServers) {
+        $entry = $dnsEval | Where-Object { $_.Server -eq $server } | Select-Object -First 1
+        if ($entry -and ($entry.IsDCIP -or $entry.AuthoritativeAD -eq $true -or $entry.ResolvesADSRV -eq $true)) {
+          if ($adCapableInOrder -notcontains $server) { $adCapableInOrder += $server }
+        }
       }
+      $dnsDebugData.AdCapableDns = $adCapableInOrder
 
       $dnsEvalTable = if ($dnsEval -and $dnsEval.Count -gt 0) { $dnsEval | Format-Table -AutoSize | Out-String } else { '' }
 
+      $normalizedAllow = @()
+      if ($AnycastDnsAllow) {
+        $normalizedAllow = $AnycastDnsAllow | Where-Object { $_ } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique
+      }
+      $anycastOverrideMatch = $false
+      $primaryServer = $dnsServers | Select-Object -First 1
+      if ($configuredCount -eq 1 -and $primaryServer) {
+        if ($normalizedAllow -and ($normalizedAllow -contains $primaryServer)) {
+          $anycastOverrideMatch = $true
+        }
+      }
+      $dnsDebugData.AnycastOverrideMatched = $anycastOverrideMatch
+
+      $secureOK = $null
+      try { $secureOK = Test-ComputerSecureChannel -Verbose:$false -ErrorAction Stop } catch { $secureOK = $null }
+      $dnsDebugData.SecureChannelOK = $secureOK
+
+      $canEvaluateDns = $dnsTestsAvailable -and ($dnsTestsAttempted -or $dcIPs.Count -gt 0)
+
+      $dnsEvidenceLines = @()
+      if ($configuredCount -gt 0) { $dnsEvidenceLines += ("Configured DNS: " + ($dnsServers -join ", ")) }
+      if ($adCapableInOrder.Count -gt 0) {
+        $dnsEvidenceLines += ("AD-capable DNS: " + ($adCapableInOrder -join ", "))
+      } else {
+        $dnsEvidenceLines += "AD-capable DNS: (none)"
+      }
+      if ($dcIPs.Count -gt 0) {
+        $dnsEvidenceLines += ("Discovered DC IPs: " + ($dcIPs -join ", "))
+      } else {
+        $dnsEvidenceLines += "Discovered DC IPs: (none)"
+      }
+      $dnsEvidenceLines += ("DC count: " + $dcCount)
+      if ($normalizedAllow -and $normalizedAllow.Count -gt 0) {
+        $dnsEvidenceLines += ("Anycast allowlist: " + ($normalizedAllow -join ", "))
+      }
+      $dnsEvidenceLines += ("Anycast override matched: " + ([string]$anycastOverrideMatch))
+      $dnsEvidenceLines += ("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
+      if ($dcCount -ge 2 -and $adCapableInOrder.Count -lt 2) {
+        $dnsEvidenceLines += ("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
+      }
+      if ($dnsEvalTable) {
+        $dnsEvidenceLines += ''
+        $dnsEvidenceLines += $dnsEvalTable.TrimEnd()
+      }
+      $dnsEvidence = $dnsEvidenceLines -join "`n"
+
+      if ($anycastOverrideMatch) {
+        Add-Normal "DNS/Internal" ("GOOD DNS/Internal: Single Anycast/VIP resolver approved by policy: {0}." -f $primaryServer) $dnsEvidence
+      } elseif ($canEvaluateDns) {
+        if ($adCapableInOrder.Count -ge 2) {
+          Add-Normal "DNS/Internal" ("GOOD DNS/Internal: Two or more AD-capable DNS servers detected: {0}." -f ($adCapableInOrder -join ", ")) $dnsEvidence
+        } elseif ($adCapableInOrder.Count -eq 1) {
+          $singleCapable = $adCapableInOrder[0]
+          $severity = if ($secureOK -eq $false) { 'medium' } else { 'high' }
+          Add-Issue $severity "DNS/Internal" ("DNS/Internal: Only one AD-capable DNS server configured (no failover) — {0}." -f $singleCapable) $dnsEvidence
+        } else {
+          if ($secureOK -eq $false) {
+            Add-Issue 'medium' "DNS/Internal" "DNS/Internal: Domain-joined but AD-capable DNS not present; device likely off-network/VPN down." $dnsEvidence
+          } else {
+            Add-Issue 'high' "DNS/Internal" "DNS/Internal: No AD-capable DNS resolvers configured; AD lookups will fail." $dnsEvidence
+          }
+        }
+      }
+
       $publicServers = $dnsEval | Where-Object { $_.IsPublic }
-      if ($publicServers) {
+      if (-not $anycastOverrideMatch -and $publicServers) {
         $pubList = $publicServers | Select-Object -ExpandProperty Server -Unique
         Add-Issue "medium" "DNS/Internal" "Domain-joined: public DNS servers detected ($($pubList -join ', '))." $dnsEvalTable
       }
 
-      $primaryServer = $dnsServers | Select-Object -First 1
-      if ($primaryServer) {
-        $primaryEval = $dnsEval | Where-Object { $_.Server -eq $primaryServer }
-        if ($primaryEval -and $primaryEval.IsPublic) {
-          Add-Issue "low" "DNS/Order" "Primary DNS is public; move internal server to the top." ("Primary: $primaryServer`nAll: " + ($dnsServers -join ", "))
+      if (-not $anycastOverrideMatch -and $primaryServer) {
+        $primaryEval = $dnsEval | Where-Object { $_.Server -eq $primaryServer } | Select-Object -First 1
+        $adCapableLater = $adCapableInOrder | Where-Object { $_ -ne $primaryServer } | Select-Object -First 1
+        if ($primaryEval -and $primaryEval.IsPublic -and $adCapableLater) {
+          Add-Issue "low" "DNS/Order" ("DNS/Order: Primary DNS is public; move internal AD-capable DNS to the top: Primary={0}; Internal={1}." -f $primaryServer, $adCapableLater) ("Primary: $primaryServer`nInternal: $adCapableLater`nAll: " + ($dnsServers -join ", "))
         }
       }
 
-      $needCritical = $false
-      if ($dnsTestsAvailable -and $dnsTestsAttempted) {
-        if (-not $goodServers -or $goodServers.Count -eq 0) {
-          $needCritical = $true
-        }
-      }
-
-      if ($needCritical) {
-        $secureOK = $null
-        try { $secureOK = Test-ComputerSecureChannel -Verbose:$false -ErrorAction Stop } catch { $secureOK = $null }
-        if ($secureOK -eq $false) {
-          Add-Issue "medium" "DNS/Internal" "Domain-joined but DNS not internal/AD-capable (device likely off-network/VPN down)." $dnsEvalTable
-        } else {
-          Add-Issue "critical" "DNS/Internal" "Domain-joined: DNS servers cannot resolve AD SRV records or are public." $dnsEvalTable
-        }
-      }
+      $summary.DnsDebug = $dnsDebugData
     }
   }
 
@@ -3949,9 +4129,20 @@ function New-IssueCardHtml {
 
   $cardHtml = "<details class='report-card report-card--{0}'><summary><span class='report-badge report-badge--{0}'>{1}</span><span class='report-card__summary-text'>{2}</span></summary>" -f $cardClass, $badgeHtml, $summaryText
 
+  $bodyParts = @()
+
+  if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
+    $explanationHtml = Encode-Html $Entry.Explanation
+    $bodyParts += "<p class='report-card__explanation'>{0}</p>" -f $explanationHtml
+  }
+
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>{0}</pre></div>" -f $evidenceHtml
+    $bodyParts += "<pre class='report-pre'>{0}</pre>" -f $evidenceHtml
+  }
+
+  if ($bodyParts.Count -gt 0) {
+    $cardHtml += "<div class='report-card__body'>{0}</div>" -f ($bodyParts -join '')
   }
 
   $cardHtml += "</details>"
@@ -4146,7 +4337,58 @@ $rawDump = ($raw.Keys | Where-Object { $raw[$_] } | ForEach-Object {
   }) -join [Environment]::NewLine
 if (-not $filesDump){ $filesDump = "(no files discovered)" }
 if (-not $rawDump){ $rawDump = "(no raw entries populated)" }
-$debugHtml = "<details><summary>Debug</summary><div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div><div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div></details>"
+
+$dnsDebugHtmlSection = ''
+if ($summary.ContainsKey('DnsDebug') -and $summary.DnsDebug) {
+  $dnsDebugData = $summary.DnsDebug
+  $dnsDebugLines = @()
+
+  if ($dnsDebugData -is [System.Collections.IDictionary]) {
+    foreach ($key in $dnsDebugData.Keys) {
+      $value = $dnsDebugData[$key]
+      if ($null -eq $value) {
+        $valueText = 'Unknown'
+      } elseif ($value -is [string]) {
+        $valueText = $value
+      } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+        $items = @()
+        foreach ($item in $value) {
+          if ($null -eq $item) {
+            $items += 'Unknown'
+          } else {
+            $itemText = [string]$item
+            if ([string]::IsNullOrWhiteSpace($itemText)) { $items += '(empty)' } else { $items += $itemText }
+          }
+        }
+        if ($items.Count -eq 0) {
+          $valueText = '(none)'
+        } else {
+          $valueText = $items -join ', '
+        }
+      } else {
+        $valueText = [string]$value
+      }
+
+      if ([string]::IsNullOrWhiteSpace($valueText)) { $valueText = '(empty)' }
+      $dnsDebugLines += ("{0}: {1}" -f $key, $valueText)
+    }
+  } else {
+    $dnsDebugLines += [string]$dnsDebugData
+  }
+
+  if ($dnsDebugLines.Count -gt 0) {
+    $dnsDebugText = $dnsDebugLines -join "`n"
+    $dnsDebugHtmlSection = "<div class='report-card'><b>DNS heuristic data</b><pre class='report-pre'>$(Encode-Html $dnsDebugText)</pre></div>"
+  }
+}
+
+$filesCardHtml = "<div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div>"
+$rawCardHtml = "<div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div>"
+$debugCards = @($filesCardHtml)
+if ($dnsDebugHtmlSection) { $debugCards += $dnsDebugHtmlSection }
+$debugCards += $rawCardHtml
+$debugBodyHtml = ($debugCards -join '')
+$debugHtml = "<details><summary>Debug</summary>$debugBodyHtml</details>"
 
 $tail = "</body></html>"
 
