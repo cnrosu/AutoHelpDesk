@@ -29,14 +29,17 @@ function Add-SubcategoryCandidate {
         [System.Collections.Generic.List[string]]$List,
         $Value,
         [string]$BaseCategory,
-        [string]$OriginalCategory
+        [string]$OriginalCategory,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 8
     )
 
     if ($null -eq $Value) { return }
+    if ($Depth -ge $MaxDepth) { return }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
         foreach ($item in $Value) {
-            Add-SubcategoryCandidate -List $List -Value $item -BaseCategory $BaseCategory -OriginalCategory $OriginalCategory
+            Add-SubcategoryCandidate -List $List -Value $item -BaseCategory $BaseCategory -OriginalCategory $OriginalCategory -Depth ($Depth + 1) -MaxDepth $MaxDepth
         }
         return
     }
@@ -105,18 +108,38 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    param(
+        $Value,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 12
+    )
 
     if ($null -eq $Value) { return '' }
+    if ($Depth -ge $MaxDepth) {
+        try {
+            return ($Value | ConvertTo-Json -Depth 4)
+        } catch {
+            return [string]$Value
+        }
+    }
 
     if ($Value -is [string]) { return $Value }
     if ($Value -is [ValueType]) { return $Value.ToString() }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $entries = New-Object System.Collections.Generic.List[string]
+        foreach ($key in $Value.Keys) {
+            $formatted = Format-AnalyzerEvidence -Value $Value[$key] -Depth ($Depth + 1) -MaxDepth $MaxDepth
+            $entries.Add("$key: $formatted") | Out-Null
+        }
+        return ($entries -join [Environment]::NewLine)
+    }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
         $builder = [System.Text.StringBuilder]::new()
         $first = $true
         foreach ($item in $Value) {
-            $part = Format-AnalyzerEvidence -Value $item
+            $part = Format-AnalyzerEvidence -Value $item -Depth ($Depth + 1) -MaxDepth $MaxDepth
             if (-not $first) {
                 $null = $builder.AppendLine()
             }
