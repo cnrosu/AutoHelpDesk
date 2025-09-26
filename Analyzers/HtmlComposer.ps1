@@ -24,6 +24,86 @@ function Resolve-CategoryGroup {
     }
 }
 
+function Add-SubcategoryCandidate {
+    param(
+        [System.Collections.Generic.List[string]]$List,
+        $Value,
+        [string]$BaseCategory,
+        [string]$OriginalCategory
+    )
+
+    if ($null -eq $Value) { return }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        foreach ($item in $Value) {
+            Add-SubcategoryCandidate -List $List -Value $item -BaseCategory $BaseCategory -OriginalCategory $OriginalCategory
+        }
+        return
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) { return }
+
+    $candidate = $text.Trim()
+    if (-not $candidate) { return }
+
+    $originalBase = $OriginalCategory
+    if ($OriginalCategory -and $OriginalCategory.Contains('/')) {
+        $parts = $OriginalCategory.Split('/', 2)
+        if ($parts.Length -gt 0) { $originalBase = $parts[0].Trim() }
+    }
+
+    if ($candidate.Contains('/')) {
+        $split = $candidate.Split('/', 2)
+        $first = $split[0].Trim()
+        $rest = if ($split.Length -gt 1) { $split[1].Trim() } else { '' }
+
+        if ($rest -and (
+                ($BaseCategory -and $first.Equals($BaseCategory, [System.StringComparison]::OrdinalIgnoreCase)) -or
+                ($originalBase -and $first.Equals($originalBase, [System.StringComparison]::OrdinalIgnoreCase))
+            )) {
+            $candidate = $rest
+        }
+    }
+
+    if ($candidate -and -not $candidate.Equals($BaseCategory, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $List.Contains($candidate)) {
+            $List.Add($candidate) | Out-Null
+        }
+    }
+}
+
+function Get-IssueAreaLabel {
+    param(
+        $Category,
+        $Entry
+    )
+
+    $categoryName = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '' }
+    $baseCategory = Resolve-CategoryGroup -Name $categoryName
+
+    $subcategories = New-Object System.Collections.Generic.List[string]
+
+    if ($Entry -and $Entry.PSObject.Properties['Subcategory']) {
+        Add-SubcategoryCandidate -List $subcategories -Value $Entry.Subcategory -BaseCategory $baseCategory -OriginalCategory $categoryName
+    }
+
+    if ($Entry -and $Entry.PSObject.Properties['Area']) {
+        Add-SubcategoryCandidate -List $subcategories -Value $Entry.Area -BaseCategory $baseCategory -OriginalCategory $categoryName
+    }
+
+    if ($categoryName -and $categoryName.Contains('/')) {
+        $tail = $categoryName.Split('/', 2)[1].Trim()
+        Add-SubcategoryCandidate -List $subcategories -Value $tail -BaseCategory $baseCategory -OriginalCategory $categoryName
+    }
+
+    if ($subcategories.Count -gt 0) {
+        return ("{0}/{1}" -f $baseCategory, $subcategories[0])
+    }
+
+    return $baseCategory
+}
+
 function Format-AnalyzerEvidence {
     param($Value)
 
@@ -61,7 +141,7 @@ function Convert-ToIssueCard {
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
-        Area        = Resolve-CategoryGroup -Name $Category.Name
+        Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
@@ -79,7 +159,7 @@ function Convert-ToGoodCard {
     return [pscustomobject]@{
         CssClass  = 'good'
         BadgeText = 'GOOD'
-        Area      = Resolve-CategoryGroup -Name $Category.Name
+        Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
         Message   = $Normal.Title
         Evidence  = $detail
     }
