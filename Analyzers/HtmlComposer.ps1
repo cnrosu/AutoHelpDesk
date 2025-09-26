@@ -113,11 +113,17 @@ function Format-AnalyzerEvidence {
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
+        $builder = [System.Text.StringBuilder]::new()
+        $first = $true
         foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
+            $part = Format-AnalyzerEvidence -Value $item
+            if (-not $first) {
+                $null = $builder.AppendLine()
+            }
+            $null = $builder.Append($part)
+            $first = $false
         }
-        return ($items -join [Environment]::NewLine)
+        return $builder.ToString()
     }
 
     try {
@@ -341,8 +347,8 @@ function Get-FailedCollectorReports {
                     } elseif ($payload -is [string]) {
                         if ([string]::IsNullOrWhiteSpace($payload)) { $isEmpty = $true }
                     } elseif ($payload -is [System.Collections.IEnumerable] -and -not ($payload -is [string])) {
-                        $enumerated = @()
-                        foreach ($item in $payload) { $enumerated += $item }
+                        $enumerated = New-Object System.Collections.Generic.List[object]
+                        foreach ($item in $payload) { $null = $enumerated.Add($item) }
                         if ($enumerated.Count -eq 0) { $isEmpty = $true }
                     }
 
@@ -390,10 +396,19 @@ function Build-SummaryCardHtml {
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
 
-    $osParts = @()
-    if ($Summary.OperatingSystem) { $osParts += $Summary.OperatingSystem }
-    if ($Summary.OSVersion) { $osParts += $Summary.OSVersion }
-    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
+    $osBuilder = [System.Text.StringBuilder]::new()
+    if ($Summary.OperatingSystem) {
+        $null = $osBuilder.Append($Summary.OperatingSystem)
+    }
+    if ($Summary.OSVersion) {
+        if ($osBuilder.Length -gt 0) { $null = $osBuilder.Append(' | ') }
+        $null = $osBuilder.Append($Summary.OSVersion)
+    }
+    if ($Summary.OSBuild) {
+        if ($osBuilder.Length -gt 0) { $null = $osBuilder.Append(' | ') }
+        $null = $osBuilder.Append("Build $($Summary.OSBuild)")
+    }
+    $osText = if ($osBuilder.Length -gt 0) { $osBuilder.ToString() } else { 'Unknown' }
 
     $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
@@ -548,13 +563,13 @@ function Build-IssueSection {
         }
     }
 
-    $activeDefinitions = @()
+    $activeDefinitions = New-Object System.Collections.Generic.List[object]
     foreach ($definition in $severityDefinitions) {
-        if ($grouped[$definition.Key].Count -gt 0) { $activeDefinitions += ,$definition }
+        if ($grouped[$definition.Key].Count -gt 0) { $null = $activeDefinitions.Add($definition) }
     }
     if ($other.Count -gt 0) {
         $grouped['other'] = $other
-        $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' }
+        $null = $activeDefinitions.Add(@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' })
     }
 
     if ($activeDefinitions.Count -eq 0) {
@@ -685,13 +700,18 @@ function ConvertTo-RawCard {
     }
 
     $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
-    $metaParts = @()
-    if ($collectedAt) { $metaParts += "Collected: $collectedAt" }
-    if ($path) { $metaParts += "File: $path" }
+    $metaBuilder = [System.Text.StringBuilder]::new()
+    if ($collectedAt) {
+        $null = $metaBuilder.Append("Collected: $collectedAt")
+    }
+    if ($path) {
+        if ($metaBuilder.Length -gt 0) { $null = $metaBuilder.Append(' • ') }
+        $null = $metaBuilder.Append("File: $path")
+    }
 
     $metaHtml = ''
-    if ($metaParts.Count -gt 0) {
-        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaParts -join ' • '))</small></div>"
+    if ($metaBuilder.Length -gt 0) {
+        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
     }
 
     return "<div class='report-card'><b>$(Encode-Html $Key)</b>$metaHtml<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre></div>"
@@ -704,28 +724,31 @@ function Build-DebugSection {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    $lines = @()
+    $lineBuilder = [System.Text.StringBuilder]::new()
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines += "${key}: (no entries)"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: (no entries)")
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines += "${key}: $count file(s); first = $firstPath"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: $count file(s); first = $firstPath")
         } else {
-            $lines += "${key}: $($entries.Path)"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: $($entries.Path)")
         }
     }
 
-    if ($lines.Count -eq 0) {
+    if ($lineBuilder.Length -eq 0) {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lines -join [Environment]::NewLine))</pre></div>"
+    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lineBuilder.ToString()))</pre></div>"
 }
 
 function Build-RawSection {
@@ -822,10 +845,15 @@ function New-AnalyzerHtml {
         $failedContentBuilder = [System.Text.StringBuilder]::new()
         $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
-            $detailParts = @()
-            if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
-            if ($entry.Details) { $detailParts += $entry.Details }
-            $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
+            $detailBuilder = [System.Text.StringBuilder]::new()
+            if ($entry.Path) {
+                $null = $detailBuilder.Append((Encode-Html "File: $($entry.Path)"))
+            }
+            if ($entry.Details) {
+                if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('<br>') }
+                $null = $detailBuilder.Append((Encode-Html ([string]$entry.Details)))
+            }
+            $detailHtml = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { Encode-Html '' }
             $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
         $null = $failedContentBuilder.Append("</table></div>")
