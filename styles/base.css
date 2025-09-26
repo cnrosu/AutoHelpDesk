@@ -54,21 +54,6 @@
   --color-state-critical-border: #ffd400;
   --color-state-critical-text: #ffd400;
 
-  --color-uptime-good-bg: #e8f5e9;
-  --color-uptime-good-border: #43a047;
-  --color-uptime-good-text: #1b5e20;
-
-  --color-uptime-warning-bg: #fff8e1;
-  --color-uptime-warning-border: #fbc02d;
-  --color-uptime-warning-text: #8c6d1f;
-
-  --color-uptime-bad-bg: #ffebee;
-  --color-uptime-bad-border: #ef5350;
-  --color-uptime-bad-text: #b71c1c;
-
-  --color-uptime-critical-bg: #ffebee;
-  --color-uptime-critical-border: #c62828;
-  --color-uptime-critical-text: #8e0000;
 }
 
 body {
