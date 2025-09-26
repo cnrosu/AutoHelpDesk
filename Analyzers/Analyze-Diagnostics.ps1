@@ -54,46 +54,98 @@ function Update-AnalyzerProgress {
     Write-Verbose ('[{0:HH:mm:ss}] {1}' -f (Get-Date), $Status)
 }
 
+function Invoke-AnalyzerPhase {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [scriptblock]$ScriptBlock
+    )
+
+    Write-Verbose ('[{0:HH:mm:ss}] Starting phase: {1}' -f (Get-Date), $Name)
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $result = $null
+    $hadError = $false
+
+    try {
+        $result = & $ScriptBlock
+    } catch {
+        $hadError = $true
+        Write-Verbose ('[{0:HH:mm:ss}] Phase {1} threw: {2}' -f (Get-Date), $Name, $_.Exception.Message)
+        throw
+    }
+    finally {
+        $stopwatch.Stop()
+        $duration = [math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+
+        $issueCount = 0
+        $normalCount = 0
+        $checkCount = 0
+
+        foreach ($item in @($result)) {
+            if (-not $item) { continue }
+            if ($item.PSObject.Properties['Issues']) { $issueCount  += ($item.Issues  | Measure-Object).Count }
+            if ($item.PSObject.Properties['Normals']) { $normalCount += ($item.Normals | Measure-Object).Count }
+            if ($item.PSObject.Properties['Checks']) { $checkCount  += ($item.Checks  | Measure-Object).Count }
+        }
+
+        $status = if ($hadError) { 'failed' } else { 'completed' }
+        Write-Verbose (
+            '[{0:HH:mm:ss}] Phase {1} {2} in {3}s (issues: {4}, normals: {5}, checks: {6})' -f
+            (Get-Date),
+            $Name,
+            $status,
+            $duration,
+            $issueCount,
+            $normalCount,
+            $checkCount
+        )
+    }
+
+    return $result
+}
+
 Update-AnalyzerProgress -Status 'Initializing analyzer context'
-$context = New-AnalyzerContext -InputFolder $InputFolder
+$context = Invoke-AnalyzerPhase -Name 'Initialize context' -ScriptBlock { New-AnalyzerContext -InputFolder $InputFolder }
 
 $categories = @()
 
 Update-AnalyzerProgress -Status 'Loading system heuristics'
-$categories += Invoke-SystemHeuristics   -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'System heuristics' -ScriptBlock { Invoke-SystemHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading security heuristics'
-$categories += Invoke-SecurityHeuristics -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Security heuristics' -ScriptBlock { Invoke-SecurityHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading network heuristics'
-$categories += Invoke-NetworkHeuristics  -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Network heuristics' -ScriptBlock { Invoke-NetworkHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading Active Directory heuristics'
-$categories += Invoke-ADHeuristics       -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Active Directory heuristics' -ScriptBlock { Invoke-ADHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading Microsoft 365 heuristics'
-$categories += Invoke-OfficeHeuristics   -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Microsoft 365 heuristics' -ScriptBlock { Invoke-OfficeHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading storage heuristics'
-$categories += Invoke-StorageHeuristics  -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Storage heuristics' -ScriptBlock { Invoke-StorageHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading event log heuristics'
-$categories += Invoke-EventsHeuristics   -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Event log heuristics' -ScriptBlock { Invoke-EventsHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading services heuristics'
-$categories += Invoke-ServicesHeuristics -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Services heuristics' -ScriptBlock { Invoke-ServicesHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading printing heuristics'
-$categories += Invoke-PrintingHeuristics -Context $context
+$categories += Invoke-AnalyzerPhase -Name 'Printing heuristics' -ScriptBlock { Invoke-PrintingHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Merging heuristic results'
-$merged = Merge-AnalyzerResults -Categories $categories
+$merged = Invoke-AnalyzerPhase -Name 'Merge results' -ScriptBlock { Merge-AnalyzerResults -Categories $categories }
 
 Update-AnalyzerProgress -Status 'Building analysis summary'
-$summary = Get-AnalyzerSummary -Context $context
+$summary = Invoke-AnalyzerPhase -Name 'Build summary' -ScriptBlock { Get-AnalyzerSummary -Context $context }
 
 Update-AnalyzerProgress -Status 'Composing HTML report'
-$html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
+$html = Invoke-AnalyzerPhase -Name 'Compose HTML' -ScriptBlock { New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context }
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path -Path $InputFolder -ChildPath 'diagnostics-report.html'
@@ -128,8 +180,12 @@ if ($resolvedCss.Count -gt 0) {
     }
 
     $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
-    $cssContent = $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
-    Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+    $cssContent = Invoke-AnalyzerPhase -Name 'Read CSS assets' -ScriptBlock {
+        $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
+    }
+    Invoke-AnalyzerPhase -Name 'Bundle CSS assets' -ScriptBlock {
+        Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+    } | Out-Null
     Write-Verbose ('[{0:HH:mm:ss}] Report styles bundled to {1}' -f (Get-Date), $cssOutputPath)
 } else {
     Write-Verbose ('[{0:HH:mm:ss}] No report styles found to bundle' -f (Get-Date))

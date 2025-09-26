@@ -16,15 +16,27 @@ function New-AnalyzerContext {
     $resolved = (Resolve-Path -LiteralPath $InputFolder).ProviderPath
     $artifactMap = @{}
 
+    Write-Verbose ('[{0:HH:mm:ss}] Building analyzer context from {1}' -f (Get-Date), $resolved)
+
     Get-ChildItem -Path $resolved -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Verbose ('[{0:HH:mm:ss}] Loading artifact {1}' -f (Get-Date), $_.FullName)
         $content = Get-Content -Path $_.FullName -Raw -ErrorAction SilentlyContinue
         $data = $null
         if ($content) {
             try {
                 $data = $content | ConvertFrom-Json -ErrorAction Stop
+                Write-Verbose ('[{0:HH:mm:ss}] Parsed artifact {1} ({2} characters)' -f (Get-Date), $_.FullName, $content.Length)
             } catch {
                 $data = [pscustomobject]@{ Error = $_.Exception.Message }
+                Write-Verbose (
+                    '[{0:HH:mm:ss}] Failed to parse artifact {1}: {2}' -f
+                    (Get-Date),
+                    $_.FullName,
+                    $_.Exception.Message
+                )
             }
+        } else {
+            Write-Verbose ('[{0:HH:mm:ss}] Artifact {1} is empty or unreadable' -f (Get-Date), $_.FullName)
         }
 
         $key = $_.BaseName.ToLowerInvariant()
@@ -41,10 +53,13 @@ function New-AnalyzerContext {
         }
     }
 
-    return [pscustomobject]@{
+    $context = [pscustomobject]@{
         InputFolder = $resolved
         Artifacts   = $artifactMap
     }
+
+    Write-Verbose ('[{0:HH:mm:ss}] Analyzer context ready with {1} artifact keys' -f (Get-Date), $artifactMap.Keys.Count)
+    return $context
 }
 
 function Get-AnalyzerArtifact {
