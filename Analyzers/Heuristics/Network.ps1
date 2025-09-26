@@ -35,6 +35,34 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function ConvertTo-NetworkAddressString {
+    param($RemoteAddress)
+
+    if (-not $RemoteAddress) { return $null }
+
+    if ($RemoteAddress -is [string]) { return $RemoteAddress }
+    if ($RemoteAddress -is [System.Net.IPAddress]) { return $RemoteAddress.ToString() }
+
+    if ($RemoteAddress.PSObject -and $RemoteAddress.PSObject.Properties['Address']) {
+        $addressValue = $RemoteAddress.Address
+
+        if ($addressValue -is [string] -and $addressValue) { return $addressValue }
+        if ($addressValue -is [byte[]] -and $addressValue.Length -gt 0) {
+            try { return ([System.Net.IPAddress]::new($addressValue)).ToString() } catch {}
+        }
+
+        try {
+            if ($null -ne $addressValue) {
+                return ([System.Net.IPAddress]::new([int64]$addressValue)).ToString()
+            }
+        } catch {
+            # fall through to default conversion
+        }
+    }
+
+    return [string]$RemoteAddress
+}
+
 function Invoke-NetworkHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -90,10 +118,12 @@ function Invoke-NetworkHeuristics {
         if ($payload -and $payload.Latency) {
             $latency = $payload.Latency
             if ($latency.PSObject.Properties['PingSucceeded']) {
+                $remoteAddress = ConvertTo-NetworkAddressString $latency.RemoteAddress
+                if (-not $remoteAddress) { $remoteAddress = 'DNS server' }
                 if (-not $latency.PingSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to {0} failed' -f $latency.RemoteAddress) -Subcategory 'Latency'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to DNS {0} failed' -f $remoteAddress) -Subcategory 'Latency'
                 } else {
-                    Add-CategoryNormal -CategoryResult $result -Title ('Ping to {0} succeeded' -f $latency.RemoteAddress)
+                    Add-CategoryNormal -CategoryResult $result -Title ('Ping to DNS {0} succeeded' -f $remoteAddress)
                 }
             } elseif ($latency -is [string] -and $latency -match 'Request timed out') {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Latency test reported timeouts' -Subcategory 'Latency'
