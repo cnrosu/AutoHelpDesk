@@ -94,15 +94,26 @@ function Add-CategoryIssue {
 
         [object]$Evidence = $null,
 
-        [string]$Subcategory = $null
+        [string]$Subcategory = $null,
+
+        [string]$CheckId = $null
     )
 
-    $CategoryResult.Issues.Add([pscustomobject]@{
-            Severity = $Severity
-            Title    = $Title
-            Evidence = $Evidence
-            Subcategory = $Subcategory
-        }) | Out-Null
+    $issue = [ordered]@{
+        Severity = $Severity
+        Title    = $Title
+        Evidence = $Evidence
+    }
+
+    if ($PSBoundParameters.ContainsKey('Subcategory') -and $Subcategory) {
+        $issue['Subcategory'] = $Subcategory
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and $CheckId) {
+        $issue['CheckId'] = $CheckId
+    }
+
+    $CategoryResult.Issues.Add([pscustomobject]$issue) | Out-Null
 }
 
 function Add-CategoryNormal {
@@ -115,7 +126,9 @@ function Add-CategoryNormal {
 
         [object]$Evidence = $null,
 
-        [string]$Subcategory = $null
+        [string]$Subcategory = $null,
+
+        [string]$CheckId = $null
     )
 
     $entry = [ordered]@{
@@ -125,6 +138,10 @@ function Add-CategoryNormal {
 
     if ($PSBoundParameters.ContainsKey('Subcategory') -and $Subcategory) {
         $entry['Subcategory'] = $Subcategory
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and $CheckId) {
+        $entry['CheckId'] = $CheckId
     }
 
     $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
@@ -141,14 +158,22 @@ function Add-CategoryCheck {
         [Parameter(Mandatory)]
         [string]$Status,
 
-        [string]$Details = ''
+        [string]$Details = '',
+
+        [string]$CheckId = $null
     )
 
-    $CategoryResult.Checks.Add([pscustomobject]@{
-            Name    = $Name
-            Status  = $Status
-            Details = $Details
-        }) | Out-Null
+    $entry = [ordered]@{
+        Name    = $Name
+        Status  = $Status
+        Details = $Details
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and $CheckId) {
+        $entry['CheckId'] = $CheckId
+    }
+
+    $CategoryResult.Checks.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Merge-AnalyzerResults {

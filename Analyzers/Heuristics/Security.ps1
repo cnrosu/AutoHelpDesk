@@ -154,32 +154,142 @@ function Invoke-SecurityHeuristics {
     }
 
     $firewallArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
+    $firewallCheckId = 'Security/FirewallProfiles'
     if ($firewallArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $firewallArtifact)
         if ($payload -and $payload.Profiles) {
-            $disabledProfiles = @()
-            foreach ($profile in $payload.Profiles) {
-                if ($profile.PSObject.Properties['Enabled']) {
-                    $enabled = ConvertTo-NullableBool $profile.Enabled
-                    if ($enabled -eq $false) {
-                        $disabledProfiles += $profile.Name
+            $profilesRaw = ConvertTo-List $payload.Profiles
+            $structuredProfiles = @($profilesRaw | Where-Object { $_ -and $_.PSObject.Properties['Name'] })
+
+            if ($structuredProfiles.Count -eq 0) {
+                $profileError = $null
+                $firstProfile = if ($profilesRaw.Count -gt 0) { $profilesRaw[0] } else { $null }
+                if ($firstProfile -and $firstProfile.PSObject.Properties['Error']) { $profileError = $firstProfile.Error }
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Evidence $profileError -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+            } else {
+                $profilesByName = @{}
+                $profileSummaries = @()
+                $disabledProfiles = @()
+                $domainProfileDisabled = $false
+
+                foreach ($profile in $structuredProfiles) {
+                    $name = if ($profile.PSObject.Properties['Name']) { [string]$profile.Name } else { '(Unknown)' }
+                    $enabled = $null
+                    if ($profile.PSObject.Properties['Enabled']) { $enabled = ConvertTo-NullableBool $profile.Enabled }
+                    $inbound = if ($profile.PSObject.Properties['DefaultInboundAction']) { [string]$profile.DefaultInboundAction } else { '' }
+                    $outbound = if ($profile.PSObject.Properties['DefaultOutboundAction']) { [string]$profile.DefaultOutboundAction } else { '' }
+
+                    if ($name) {
+                        $profilesByName[$name.ToLowerInvariant()] = [pscustomobject]@{
+                            Enabled               = $enabled
+                            DefaultInboundAction  = $inbound
+                            DefaultOutboundAction = $outbound
+                        }
                     }
-                    Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $profile.Name) -Status ($(if ($enabled) { 'Enabled' } elseif ($enabled -eq $false) { 'Disabled' } else { 'Unknown' })) -Details ("Inbound: {0}; Outbound: {1}" -f $profile.DefaultInboundAction, $profile.DefaultOutboundAction)
+
+                    $statusText = if ($enabled -eq $true) { 'Enabled' } elseif ($enabled -eq $false) { 'Disabled' } else { 'Unknown' }
+                    $details = "Inbound: $inbound; Outbound: $outbound"
+                    Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $name) -Status $statusText -Details $details -CheckId $firewallCheckId
+
+                    if ($enabled -eq $false) {
+                        $disabledProfiles += $name
+                        if ($name -match '^(?i)domain$') { $domainProfileDisabled = $true }
+                    }
+
+                    $profileSummaries += [pscustomobject]@{
+                        Name                  = $name
+                        Enabled               = if ($enabled -eq $true) { 'True' } elseif ($enabled -eq $false) { 'False' } else { 'Unknown' }
+                        DefaultInboundAction  = if ($inbound) { $inbound } else { 'Unknown' }
+                        DefaultOutboundAction = if ($outbound) { $outbound } else { 'Unknown' }
+                    }
+                }
+
+                $profileTableEvidence = $null
+                if ($profileSummaries.Count -gt 0) {
+                    $profileTableEvidence = ($profileSummaries | Format-Table -AutoSize | Out-String).TrimEnd()
+                }
+
+                $connectionProfiles = ConvertTo-List $payload.ConnectionProfiles
+                $connectionEntries = @()
+                $connectionError = $null
+                if ($connectionProfiles.Count -eq 1 -and $connectionProfiles[0] -and $connectionProfiles[0].PSObject.Properties['Error'] -and -not $connectionProfiles[0].PSObject.Properties['NetworkCategory']) {
+                    $connectionError = $connectionProfiles[0].Error
+                } else {
+                    foreach ($conn in $connectionProfiles) {
+                        if (-not $conn) { continue }
+                        if (-not $conn.PSObject.Properties['NetworkCategory']) { continue }
+
+                        $category = if ($conn.NetworkCategory) { [string]$conn.NetworkCategory } else { '' }
+                        $name = if ($conn.PSObject.Properties['Name']) { [string]$conn.Name } else { '' }
+                        $alias = if ($conn.PSObject.Properties['InterfaceAlias']) { [string]$conn.InterfaceAlias } else { '' }
+
+                        $isConnected = $false
+                        foreach ($propName in @('IPv4Connectivity', 'IPv6Connectivity')) {
+                            if ($conn.PSObject.Properties[$propName]) {
+                                $value = [string]$conn.$propName
+                                if ($value -and $value -notmatch '^(None|Disconnected)$') { $isConnected = $true }
+                            }
+                        }
+                        if (-not $conn.PSObject.Properties['IPv4Connectivity'] -and -not $conn.PSObject.Properties['IPv6Connectivity']) {
+                            $isConnected = $true
+                        }
+
+                        $entry = [pscustomobject]@{
+                            Name            = $name
+                            InterfaceAlias  = $alias
+                            NetworkCategory = $category
+                            Connected       = if ($isConnected) { 'True' } else { 'False' }
+                        }
+                        $connectionEntries += $entry
+                    }
+                }
+
+                $connectionTableEvidence = $null
+                if ($connectionEntries.Count -gt 0) {
+                    $connectionTableEvidence = ($connectionEntries | Format-Table -AutoSize | Out-String).TrimEnd()
+                }
+
+                if ($disabledProfiles.Count -gt 0) {
+                    $severity = if ($domainProfileDisabled) { 'high' } else { 'medium' }
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Firewall profiles disabled: {0}' -f ($disabledProfiles -join ', ')) -Evidence $profileTableEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                }
+
+                $domainProfileInfo = if ($profilesByName.ContainsKey('domain')) { $profilesByName['domain'] } else { $null }
+                $privateProfileInfo = if ($profilesByName.ContainsKey('private')) { $profilesByName['private'] } else { $null }
+                $publicProfileInfo = if ($profilesByName.ContainsKey('public')) { $profilesByName['public'] } else { $null }
+
+                $activeDomainConnections = @($connectionEntries | Where-Object { $_.Connected -eq 'True' -and $_.NetworkCategory -match 'Domain' })
+                if ($activeDomainConnections.Count -gt 0 -and $publicProfileInfo -and $publicProfileInfo.Enabled -eq $true -and (-not $domainProfileInfo -or $domainProfileInfo.Enabled -ne $true)) {
+                    $evidenceParts = @()
+                    if ($profileTableEvidence) { $evidenceParts += "Profiles:`n$profileTableEvidence" }
+                    if ($connectionTableEvidence) { $evidenceParts += "Connections:`n$connectionTableEvidence" }
+                    $combinedEvidence = if ($evidenceParts.Count -gt 0) { $evidenceParts -join "`n`n" } else { $null }
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain network appears to be using the Public firewall profile.' -Evidence $combinedEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                }
+
+                if ($disabledProfiles.Count -eq 0 -and $domainProfileInfo -and $domainProfileInfo.Enabled -eq $true -and $privateProfileInfo -and $privateProfileInfo.Enabled -eq $true) {
+                    $domainDefaultsOk = ($domainProfileInfo.DefaultInboundAction -match '^(?i)Block$') -and ($domainProfileInfo.DefaultOutboundAction -match '^(?i)Allow$')
+                    $privateDefaultsOk = ($privateProfileInfo.DefaultInboundAction -match '^(?i)Block$') -and ($privateProfileInfo.DefaultOutboundAction -match '^(?i)Allow$')
+                    if ($domainDefaultsOk -and $privateDefaultsOk) {
+                        Add-CategoryNormal -CategoryResult $result -Title 'Domain and Private firewall profiles enabled with default actions.' -Evidence $profileTableEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                    } elseif ($profileTableEvidence) {
+                        Add-CategoryNormal -CategoryResult $result -Title 'Firewall profiles collected.' -Evidence $profileTableEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                    }
+                } elseif ($disabledProfiles.Count -eq 0 -and $profileTableEvidence) {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Firewall profiles collected.' -Evidence $profileTableEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                }
+
+                if ($connectionError) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query network connection profiles for firewall context.' -Evidence $connectionError -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
                 }
             }
-
-            if ($disabledProfiles.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Firewall profiles disabled: {0}' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall'
-            } else {
-                Add-CategoryNormal -CategoryResult $result -Title 'All firewall profiles enabled'
-            }
         } elseif ($payload -and $payload.Profiles -and $payload.Profiles.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
     }
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'
