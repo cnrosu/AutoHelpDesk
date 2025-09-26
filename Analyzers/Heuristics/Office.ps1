@@ -81,8 +81,8 @@ function Invoke-OfficeHeuristics {
                 $windowStart = (Get-Date).AddDays(-30)
             }
 
-            $eventErrors = @()
-            $events = @()
+            $eventErrors = [System.Collections.Generic.List[object]]::new()
+            $events = [System.Collections.Generic.List[object]]::new()
             if ($payload.PSObject.Properties['Events']) {
                 $rawEvents = $payload.Events
                 if ($rawEvents -is [System.Collections.IEnumerable] -and -not ($rawEvents -is [string])) {
@@ -94,10 +94,10 @@ function Invoke-OfficeHeuristics {
                 foreach ($entry in $rawEvents) {
                     if (-not $entry) { continue }
                     if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
-                        $eventErrors += $entry
+                        $null = $eventErrors.Add($entry)
                         continue
                     }
-                    $events += $entry
+                    $null = $events.Add($entry)
                 }
             }
 
@@ -105,7 +105,7 @@ function Invoke-OfficeHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Failed to query Outlook application events' -Evidence $errorEntry.Error -Subcategory 'Outlook OST Rebuilds'
             }
 
-            $rebuildEvents = @()
+            $rebuildEvents = [System.Collections.Generic.List[pscustomobject]]::new()
             $eventPattern = '(?i)(creating new data file|rebuild|re-created|recreated|ost file|offline storage)' 
             foreach ($evt in $events) {
                 if (-not $evt) { continue }
@@ -122,15 +122,15 @@ function Invoke-OfficeHeuristics {
 
                 $message = if ($evt.PSObject.Properties['Message']) { [string]$evt.Message } else { '' }
                 if ($message -match $eventPattern) {
-                    $rebuildEvents += [pscustomobject]@{
+                    $null = $rebuildEvents.Add([pscustomobject]@{
                         TimeCreated = $timeCreated
                         Id          = if ($evt.PSObject.Properties['Id']) { $evt.Id } else { $null }
                         Message     = $message
-                    }
+                    })
                 }
             }
 
-            $ostEntries = @()
+            $ostEntries = [System.Collections.Generic.List[pscustomobject]]::new()
             if ($payload.PSObject.Properties['OstFiles']) {
                 $rawFiles = $payload.OstFiles
                 if ($rawFiles -is [System.Collections.IEnumerable] -and -not ($rawFiles -is [string])) {
@@ -159,20 +159,20 @@ function Invoke-OfficeHeuristics {
                     $normalized = $normalized.Trim()
                     if (-not $normalized) { $normalized = $baseName }
 
-                    $ostEntries += [pscustomobject]@{
+                    $null = $ostEntries.Add([pscustomobject]@{
                         Name           = $name
                         FullName       = [string]$file.FullName
                         Directory      = $directory
                         Length         = $length
                         LastWriteTime  = $lastWrite
                         NormalizedBase = $normalized
-                    }
+                    })
                 }
             }
 
             $suffixPattern = '(?i)(\(\d+\)\.ost$| copy\.ost$| backup\.ost$| bak\.ost$|\.ost\d+$| _old\.ost$| _bak\.ost$|\.ost\.bak$| \d+\.ost$)'
-            $duplicateEvidence = @()
-            $sizeCollapseEvidence = @()
+            $duplicateEvidence = [System.Collections.Generic.List[pscustomobject]]::new()
+            $sizeCollapseEvidence = [System.Collections.Generic.List[pscustomobject]]::new()
 
             if ($ostEntries.Count -gt 0) {
                 $groups = $ostEntries | Group-Object -Property {
@@ -194,11 +194,11 @@ function Invoke-OfficeHeuristics {
                     }
 
                     if ($hasSuffix) {
-                        $duplicateEvidence += [pscustomobject]@{
+                        $null = $duplicateEvidence.Add([pscustomobject]@{
                             Directory = $members[0].Directory
                             BaseName  = $members[0].NormalizedBase
                             Files     = ($members | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name, LastWriteTime, @{ Name = 'SizeMB'; Expression = { if ($_.Length -ne $null) { [math]::Round($_.Length / 1MB, 1) } else { $null } } })
-                        }
+                        })
                     }
 
                     $recentMembers = $members | Where-Object { $_.LastWriteTime }
@@ -211,19 +211,19 @@ function Invoke-OfficeHeuristics {
                     if ($previous.Length -le 0 -or $newest.Length -eq $null) { continue }
                     $sizeRatio = if ($previous.Length -gt 0) { $newest.Length / [double]$previous.Length } else { 1 }
                     if ($previous.Length -ge 1GB -and $sizeRatio -lt 0.5) {
-                        $sizeCollapseEvidence += [pscustomobject]@{
+                        $null = $sizeCollapseEvidence.Add([pscustomobject]@{
                             Directory      = $newest.Directory
                             BaseName       = $newest.NormalizedBase
                             PreviousSizeMB = [math]::Round($previous.Length / 1MB, 1)
                             PreviousDate   = $previous.LastWriteTime
                             CurrentSizeMB  = if ($newest.Length -ne $null) { [math]::Round($newest.Length / 1MB, 1) } else { $null }
                             CurrentDate    = $newest.LastWriteTime
-                        }
+                        })
                     }
                 }
             }
 
-            $scanPstEvidence = @()
+            $scanPstEvidence = [System.Collections.Generic.List[pscustomobject]]::new()
             if ($payload.PSObject.Properties['ScanPstLogs']) {
                 $rawLogs = $payload.ScanPstLogs
                 if ($rawLogs -is [System.Collections.IEnumerable] -and -not ($rawLogs -is [string])) {
@@ -240,46 +240,46 @@ function Invoke-OfficeHeuristics {
                         try { $logTime = [datetime]$log.LastWriteTime } catch { $logTime = $null }
                     }
                     if ($logTime -and $logTime -lt $windowStart) { continue }
-                    $scanPstEvidence += [pscustomobject]@{
+                    $null = $scanPstEvidence.Add([pscustomobject]@{
                         Name          = if ($log.PSObject.Properties['Name']) { [string]$log.Name } else { $null }
                         FullName      = if ($log.PSObject.Properties['FullName']) { [string]$log.FullName } else { $null }
                         LastWriteTime = $logTime
-                    }
+                    })
                 }
             }
 
-            $indicatorSummaries = @()
+            $indicatorSummaries = [System.Collections.Generic.List[string]]::new()
             $indicatorEvidence = [ordered]@{}
             $indicatorCount = 0
 
             if ($rebuildEvents.Count -gt 0) {
                 $indicatorCount++
                 $rebuildSuffix = if ($rebuildEvents.Count -eq 1) { '' } else { 's' }
-                $indicatorSummaries += ('{0} Outlook rebuild event{1}' -f $rebuildEvents.Count, $rebuildSuffix)
+                $null = $indicatorSummaries.Add('{0} Outlook rebuild event{1}' -f $rebuildEvents.Count, $rebuildSuffix)
                 $indicatorEvidence['RebuildEvents'] = $rebuildEvents | Select-Object -First 10
             }
 
             if ($duplicateEvidence.Count -gt 0) {
                 $indicatorCount++
                 $duplicateSuffix = if ($duplicateEvidence.Count -eq 1) { '' } else { 's' }
-                $indicatorSummaries += ('Duplicate OST caches in {0} location{1}' -f $duplicateEvidence.Count, $duplicateSuffix)
-                $indicatorEvidence['DuplicateCaches'] = $duplicateEvidence
+                $null = $indicatorSummaries.Add('Duplicate OST caches in {0} location{1}' -f $duplicateEvidence.Count, $duplicateSuffix)
+                $indicatorEvidence['DuplicateCaches'] = $duplicateEvidence.ToArray()
             }
 
             if ($sizeCollapseEvidence.Count -gt 0) {
                 $indicatorCount++
-                $indicatorSummaries += ('Recent OST size collapse detected ({0})' -f $sizeCollapseEvidence.Count)
-                $indicatorEvidence['SizeCollapse'] = $sizeCollapseEvidence
+                $null = $indicatorSummaries.Add('Recent OST size collapse detected ({0})' -f $sizeCollapseEvidence.Count)
+                $indicatorEvidence['SizeCollapse'] = $sizeCollapseEvidence.ToArray()
             }
 
             if ($scanPstEvidence.Count -gt 0) {
                 $indicatorCount++
-                $indicatorSummaries += ('ScanPST runs ({0})' -f $scanPstEvidence.Count)
-                $indicatorEvidence['ScanPstLogs'] = $scanPstEvidence
+                $null = $indicatorSummaries.Add('ScanPST runs ({0})' -f $scanPstEvidence.Count)
+                $indicatorEvidence['ScanPstLogs'] = $scanPstEvidence.ToArray()
             }
 
             if ($indicatorSummaries.Count -gt 0) {
-                $indicatorEvidence['Summary'] = $indicatorSummaries
+                $indicatorEvidence['Summary'] = $indicatorSummaries.ToArray()
             }
 
             $checkDetails = if ($indicatorSummaries.Count -gt 0) { $indicatorSummaries -join '; ' } else { 'No OST rebuild indicators detected.' }
