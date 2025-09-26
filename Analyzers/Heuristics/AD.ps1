@@ -123,7 +123,7 @@ function Invoke-ADHeuristics {
                 if ($candidate.Hostname) { [void]$dcNames.Add($candidate.Hostname) }
             }
         }
-        $dcEvidence = if ($dcNames.Count -gt 0) { (@($dcNames) | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
+        $dcEvidence = if ($dcNames.Count -gt 0) { ($dcNames.ToArray() | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
         Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence
     } else {
         $srvErrors = $srvLookups | Where-Object { $_ -and $_.Succeeded -ne $true }
@@ -143,7 +143,7 @@ function Invoke-ADHeuristics {
             if ($discovery.DcList.Error) { [void]$evidence.Add("dclist: $($discovery.DcList.Error)") }
             elseif ($discovery.DcList.Output) { [void]$evidence.Add("dclist output: $($discovery.DcList.Output -join ' | ')") }
         }
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered.' -Evidence (@($evidence) -join '; ') -Subcategory 'Discovery'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered.' -Evidence ($evidence.ToArray() -join '; ') -Subcategory 'Discovery'
     }
 
     $candidates.Clear()
@@ -152,7 +152,7 @@ function Invoke-ADHeuristics {
             if ($candidate.Hostname) { [void]$candidates.Add($candidate.Hostname.ToLowerInvariant()) }
         }
     }
-    $candidates = @($candidates | Sort-Object -Unique)
+    $candidates = $candidates.ToArray() | Sort-Object -Unique
 
     $portMap = @{}
     $reachTests = if ($reachability) { $reachability.Tests } else { $null }
@@ -209,7 +209,7 @@ function Invoke-ADHeuristics {
     }
 
     if ($reachableWithShares.Count -gt 0) {
-        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence ((@($reachableWithShares) | Sort-Object -Unique) -join ', ')
+        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares.ToArray() | Sort-Object -Unique) -join ', ')
     }
 
     $testsWithoutErrors = 0
@@ -234,7 +234,7 @@ function Invoke-ADHeuristics {
     }
 
     if ($sharesFailingHosts.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth).' -Evidence ((@($sharesFailingHosts) | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth).' -Evidence (($sharesFailingHosts.ToArray() | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
     }
 
     $timeSkewHigh = $false
@@ -304,7 +304,7 @@ function Invoke-ADHeuristics {
                 [void]$evidenceParts.Add("Expected realm: $($kerberosInfo.Parsed.TgtRealm)")
             }
             if ($noDcReachable) { [void]$evidenceParts.Add('likely off network') }
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence (@($evidenceParts) -join '; ') -Subcategory 'Kerberos'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence ($evidenceParts.ToArray() -join '; ') -Subcategory 'Kerberos'
         }
 
         if ($failureCount -gt 0) {
@@ -350,7 +350,7 @@ function Invoke-ADHeuristics {
                 if ($eventSummary) { [void]$evidence.Add($eventSummary) }
             }
             if ($evidence.Count -eq 0) { [void]$evidence.Add('GPO data unavailable') }
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence (@($evidence) -join '; ') -Subcategory 'Group Policy'
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence ($evidence.ToArray() -join '; ') -Subcategory 'Group Policy'
         }
     }
 
