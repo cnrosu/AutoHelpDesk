@@ -14,6 +14,57 @@ if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Wher
 
 $script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
+function Get-DiagFlag {
+  try {
+    return (Get-Variable -Name EnableDiag -Scope Global -ValueOnly -ErrorAction Stop)
+  } catch {
+    return $false
+  }
+}
+
+function Start-Phase([string]$name) {
+  if (-not $script:__phase) { $script:__phase = @{} }
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $script:__phase[$name] = $sw
+  if (Get-DiagFlag) { Write-Verbose ("[START] {0} @ {1:HH:mm:ss}" -f $name,(Get-Date)) }
+}
+
+function End-Phase([string]$name) {
+  if ($script:__phase.ContainsKey($name)) {
+    $sw = $script:__phase[$name]; $sw.Stop()
+    if (Get-DiagFlag) { Write-Verbose ("[END]   {0} — {1:n1}s" -f $name,$sw.Elapsed.TotalSeconds) }
+  }
+}
+
+function Mark([string]$msg) { if (Get-DiagFlag) { Write-Verbose ("[MARK]  {0}" -f $msg) } }
+
+function CountOf($label, $items) {
+  if (Get-DiagFlag) {
+    $n = if ($null -eq $items) { 0 } elseif ($items -is [System.Collections.ICollection]) { $items.Count } else { ($items | Measure-Object).Count }
+    Write-Verbose ("[COUNT] {0}: {1}" -f $label,$n)
+  }
+}
+
+function Dump([string]$label, $value, [int]$maxLen=2000) {
+  if (-not (Get-DiagFlag)) { return }
+  try {
+    $s = if ($null -eq $value) { '<null>' } elseif ($value -is [string]) { $value } else { $value | ConvertTo-Json -Depth 4 }
+    if ($s.Length -gt $maxLen) { $s = $s.Substring(0,$maxLen) + ' …(truncated)' }
+    Write-Verbose ("[DUMP]  {0}: {1}" -f $label,$s)
+  } catch {
+    Write-Verbose ("[DUMP]  {0}: <unserializable: {1}>" -f $label,$_.Exception.Message)
+  }
+}
+
+function With-Timing([string]$label, [scriptblock]$block) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  try { & $block }
+  finally {
+    $sw.Stop()
+    if (Get-DiagFlag) { Write-Verbose ("[TIME]  {0}: {1:n1}s" -f $label,$sw.Elapsed.TotalSeconds) }
+  }
+}
+
 function ConvertTo-NormalizedSeverity {
   param($Severity)
 

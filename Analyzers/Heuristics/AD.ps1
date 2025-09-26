@@ -34,6 +34,16 @@ function Invoke-ADHeuristics {
         $Context
     )
 
+    $diag = Get-DiagFlag
+    if ($diag) {
+        $contextType = if ($null -eq $Context) { '<null>' } else { $Context.GetType().FullName }
+        if ($null -eq $Context -or -not $Context.PSObject.Properties['Artifacts']) {
+            throw "Context missing Artifacts (got: $contextType)"
+        }
+    }
+
+    Mark 'AD: start'
+
     $result = New-CategoryResult -Name 'Active Directory Health'
 
     $adArtifact = Get-AnalyzerArtifact -Context $Context -Name 'ad-health'
@@ -60,6 +70,7 @@ function Invoke-ADHeuristics {
 
     if (-not $domainStatus) {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable' -Subcategory 'Collection'
+        Mark 'AD: end'
         return $result
     }
 
@@ -70,6 +81,7 @@ function Invoke-ADHeuristics {
 
     if (-not $domainJoined) {
         Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable'
+        Mark 'AD: end'
         return $result
     }
 
@@ -99,17 +111,20 @@ function Invoke-ADHeuristics {
     $messageBuilder = [System.Text.StringBuilder]::new()
 
     $srvSuccess = $false
-    if ($discovery -and $discovery.SrvLookups) {
-        foreach ($prop in $discovery.SrvLookups.PSObject.Properties) {
-            $entry = $prop.Value
-            if ($entry) {
-                [void]$srvLookups.Add($entry)
-                if ($entry.Succeeded -eq $true -and $entry.Records -and $entry.Records.Count -gt 0) {
-                    $srvSuccess = $true
+    With-Timing 'AD: build SRV lookups' {
+        if ($discovery -and $discovery.SrvLookups) {
+            foreach ($prop in $discovery.SrvLookups.PSObject.Properties) {
+                $entry = $prop.Value
+                if ($entry) {
+                    [void]$srvLookups.Add($entry)
+                    if ($entry.Succeeded -eq $true -and $entry.Records -and $entry.Records.Count -gt 0) {
+                        $srvSuccess = $true
+                    }
                 }
             }
         }
     }
+    CountOf 'AD: srvLookups' $srvLookups
 
     $nltestSuccess = $false
     if ($discovery) {
@@ -117,12 +132,21 @@ function Invoke-ADHeuristics {
         if ($discovery.DcList -and $discovery.DcList.Succeeded) { $nltestSuccess = $true }
     }
 
-    if ($srvSuccess) {
+    With-Timing 'AD: candidate DC names' {
+        $candidates.Clear()
         if ($discovery -and $discovery.Candidates) {
             foreach ($candidate in $discovery.Candidates) {
-                if ($candidate.Hostname) { [void]$dcNames.Add($candidate.Hostname) }
+                if (-not $candidate -or -not $candidate.Hostname) { continue }
+                $hostName = [string]$candidate.Hostname
+                if ($srvSuccess) { [void]$dcNames.Add($hostName) }
+                [void]$candidates.Add($hostName.ToLowerInvariant())
             }
         }
+    }
+    $candidates = $candidates.ToArray() | Sort-Object -Unique
+    CountOf 'AD: dcNames' $dcNames
+
+    if ($srvSuccess) {
         $dcEvidence = if ($dcNames.Count -gt 0) { ($dcNames.ToArray() | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
         Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence
     } else {
@@ -146,67 +170,79 @@ function Invoke-ADHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered.' -Evidence ($evidence.ToArray() -join '; ') -Subcategory 'Discovery'
     }
 
-    $candidates.Clear()
-    if ($discovery -and $discovery.Candidates) {
-        foreach ($candidate in $discovery.Candidates) {
-            if ($candidate.Hostname) { [void]$candidates.Add($candidate.Hostname.ToLowerInvariant()) }
-        }
-    }
-    $candidates = $candidates.ToArray() | Sort-Object -Unique
-
     $portMap = @{}
     $reachTests = if ($reachability) { $reachability.Tests } else { $null }
-    if ($reachTests) {
-        foreach ($test in $reachTests) {
-            if (-not $test) { continue }
-            $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
-            if (-not $target) { continue }
-            $key = $target.ToLowerInvariant()
-            if (-not $portMap.ContainsKey($key)) { $portMap[$key] = @{} }
-            if ($test.PSObject.Properties['Port']) {
-                $portMap[$key][$test.Port] = [bool]$test.Success
+    With-Timing 'AD: port probes' {
+        if ($reachTests) {
+            if ($diag -and $reachTests -is [System.Collections.ICollection] -and $reachTests.Count -gt 20000) {
+                Write-Verbose ("[WARN] Large input ({0}) in {1}" -f $reachTests.Count,$MyInvocation.MyCommand)
             }
-        }
-    }
 
-    $requiredPorts = @(88, 389, 445, 135)
-    $fullyReachableHosts.Clear()
-    foreach ($entry in $portMap.GetEnumerator()) {
-        $host = $entry.Key
-        $ports = $entry.Value
-        $allOpen = $true
-        foreach ($port in $requiredPorts) {
-            if (-not ($ports.ContainsKey($port) -and $ports[$port])) {
-                $allOpen = $false
-                break
+            foreach ($test in $reachTests) {
+                if (-not $test) { continue }
+                $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
+                if (-not $target) { continue }
+                $key = $target.ToLowerInvariant()
+                if (-not $portMap.ContainsKey($key)) { $portMap[$key] = @{} }
+                if ($test.PSObject.Properties['Port']) {
+                    $portMap[$key][$test.Port] = [bool]$test.Success
+                }
             }
         }
-        if ($allOpen) { [void]$fullyReachableHosts.Add($host) }
+
+        $requiredPorts = @(88, 389, 445, 135)
+        $fullyReachableHosts.Clear()
+        foreach ($entry in $portMap.GetEnumerator()) {
+            $host = $entry.Key
+            $ports = $entry.Value
+            $allOpen = $true
+            foreach ($port in $requiredPorts) {
+                if (-not ($ports.ContainsKey($port) -and $ports[$port])) {
+                    $allOpen = $false
+                    break
+                }
+            }
+            if ($allOpen) { [void]$fullyReachableHosts.Add($host) }
+        }
     }
+    Dump 'AD: portMap keys (sample)' ($portMap.Keys | Select-Object -First 20)
 
     $shareMap = @{}
     $shareTests = if ($sysvol) { $sysvol.Tests } else { $null }
-    if ($shareTests) {
-        foreach ($test in $shareTests) {
-            if (-not $test) { continue }
-            $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
-            $share = if ($test.PSObject.Properties['Share']) { $test.Share } else { $null }
-            if (-not $target -or -not $share) { continue }
-            $key = $target.ToLowerInvariant()
-            if (-not $shareMap.ContainsKey($key)) { $shareMap[$key] = @{} }
-            $shareMap[$key][$share.ToUpperInvariant()] = [bool]$test.Success
+    With-Timing 'AD: share checks' {
+        if ($shareTests) {
+            foreach ($test in $shareTests) {
+                if (-not $test) { continue }
+                $target = if ($test.PSObject.Properties['Target']) { $test.Target } else { $null }
+                $share = if ($test.PSObject.Properties['Share']) { $test.Share } else { $null }
+                if (-not $target -or -not $share) { continue }
+                $key = $target.ToLowerInvariant()
+                if (-not $shareMap.ContainsKey($key)) { $shareMap[$key] = @{} }
+                $shareMap[$key][$share.ToUpperInvariant()] = [bool]$test.Success
+            }
         }
-    }
 
-    $reachableWithShares.Clear()
-    foreach ($host in $fullyReachableHosts) {
-        if ($shareMap.ContainsKey($host)) {
-            $values = $shareMap[$host].Values
-            if ($values -and ($values -contains $true)) {
-                [void]$reachableWithShares.Add($host)
+        $reachableWithShares.Clear()
+        foreach ($host in $fullyReachableHosts) {
+            if ($shareMap.ContainsKey($host)) {
+                $values = $shareMap[$host].Values
+                if ($values -and ($values -contains $true)) {
+                    [void]$reachableWithShares.Add($host)
+                }
+            }
+        }
+
+        $sharesFailingHosts.Clear()
+        foreach ($host in $fullyReachableHosts) {
+            if (-not $shareMap.ContainsKey($host)) { continue }
+            $shares = $shareMap[$host].Values
+            if (-not ($shares -contains $true)) {
+                [void]$sharesFailingHosts.Add($host)
             }
         }
     }
+    CountOf 'AD: reachableWithShares' $reachableWithShares
+    CountOf 'AD: sharesFailingHosts' $sharesFailingHosts
 
     if ($reachableWithShares.Count -gt 0) {
         Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares.ToArray() | Sort-Object -Unique) -join ', ')
@@ -222,15 +258,6 @@ function Invoke-ADHeuristics {
     $allPortsTested = $portMap.Count -gt 0
     if ($candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Cannot reach any DC on required ports.' -Evidence (($portMap.Keys | Sort-Object) -join ', ') -Subcategory 'Connectivity'
-    }
-
-    $sharesFailingHosts.Clear()
-    foreach ($host in $fullyReachableHosts) {
-        if (-not $shareMap.ContainsKey($host)) { continue }
-        $shares = $shareMap[$host].Values
-        if (-not ($shares -contains $true)) {
-            [void]$sharesFailingHosts.Add($host)
-        }
     }
 
     if ($sharesFailingHosts.Count -gt 0) {
@@ -287,40 +314,43 @@ function Invoke-ADHeuristics {
     $noDcReachable = $fullyReachableHosts.Count -eq 0
 
     if ($kerberosInfo) {
-        $kerberosEvents.Clear()
-        if ($kerberosInfo.Events) {
-            foreach ($event in $kerberosInfo.Events) {
-                if ($event -and -not $event.Error) { [void]$kerberosEvents.Add($event) }
+        With-Timing 'AD: kerberos scan' {
+            $kerberosEvents.Clear()
+            if ($kerberosInfo.Events) {
+                foreach ($event in $kerberosInfo.Events) {
+                    if ($event -and -not $event.Error) { [void]$kerberosEvents.Add($event) }
+                }
             }
-        }
 
-        $failureEvents = $kerberosEvents | Where-Object { $_.Id -in 4768, 4771, 4776 }
-        $failureCount = $failureEvents.Count
-        if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
-            $title = 'Kerberos TGT not present'
-            $evidenceParts.Clear()
-            [void]$evidenceParts.Add('klist output missing krbtgt ticket')
-            if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
-                [void]$evidenceParts.Add("Expected realm: $($kerberosInfo.Parsed.TgtRealm)")
+            $failureEvents = $kerberosEvents | Where-Object { $_.Id -in 4768, 4771, 4776 }
+            $failureCount = $failureEvents.Count
+            if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
+                $title = 'Kerberos TGT not present'
+                $evidenceParts.Clear()
+                [void]$evidenceParts.Add('klist output missing krbtgt ticket')
+                if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
+                    [void]$evidenceParts.Add("Expected realm: $($kerberosInfo.Parsed.TgtRealm)")
+                }
+                if ($noDcReachable) { [void]$evidenceParts.Add('likely off network') }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence ($evidenceParts.ToArray() -join '; ') -Subcategory 'Kerberos'
             }
-            if ($noDcReachable) { [void]$evidenceParts.Add('likely off network') }
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence ($evidenceParts.ToArray() -join '; ') -Subcategory 'Kerberos'
-        }
 
-        if ($failureCount -gt 0) {
-            $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
-            if ($noDcReachable -and $severity -eq 'high') { $severity = 'medium' }
-            $messageBuilder.Clear() | Out-Null
-            [void]$messageBuilder.Append("Kerberos authentication failures detected ($failureCount)")
-            if ($timeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
-                [void]$messageBuilder.Append(' related to time skew')
-            } elseif ($noDcReachable) {
-                [void]$messageBuilder.Append('; DC unreachable')
+            if ($failureCount -gt 0) {
+                $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
+                if ($noDcReachable -and $severity -eq 'high') { $severity = 'medium' }
+                $messageBuilder.Clear() | Out-Null
+                [void]$messageBuilder.Append("Kerberos authentication failures detected ($failureCount)")
+                if ($timeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
+                    [void]$messageBuilder.Append(' related to time skew')
+                } elseif ($noDcReachable) {
+                    [void]$messageBuilder.Append('; DC unreachable')
+                }
+                $message = $messageBuilder.ToString()
+                $failureSummary = ($failureEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $message -Evidence $failureSummary -Subcategory 'Kerberos'
             }
-            $message = $messageBuilder.ToString()
-            $failureSummary = ($failureEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $message -Evidence $failureSummary -Subcategory 'Kerberos'
         }
+        CountOf 'AD: kerberosEvents' $kerberosEvents
     }
 
     if ($gpoInfo) {
@@ -389,5 +419,6 @@ function Invoke-ADHeuristics {
         }
     }
 
+    Mark 'AD: end'
     return $result
 }
