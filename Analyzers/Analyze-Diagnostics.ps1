@@ -64,6 +64,7 @@ function Invoke-AnalyzerPhase {
     )
 
     Write-Verbose ('[{0:HH:mm:ss}] Starting phase: {1}' -f (Get-Date), $Name)
+    Write-AnalyzerLog -Level 'DEBUG' -Message "Phase start: $Name"
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $result = $null
     $hadError = $false
@@ -73,6 +74,7 @@ function Invoke-AnalyzerPhase {
     } catch {
         $hadError = $true
         Write-Verbose ('[{0:HH:mm:ss}] Phase {1} threw: {2}' -f (Get-Date), $Name, $_.Exception.Message)
+        Write-AnalyzerLog -Level 'ERROR' -Message "Phase $Name failed: $($_.Exception.Message)"
         throw
     }
     finally {
@@ -101,12 +103,16 @@ function Invoke-AnalyzerPhase {
             $normalCount,
             $checkCount
         )
+        if (-not $hadError) {
+            Write-AnalyzerLog -Level 'DEBUG' -Message "Phase $Name completed in ${duration}s (issues: $issueCount, normals: $normalCount, checks: $checkCount)"
+        }
     }
 
     return $result
 }
 
 Update-AnalyzerProgress -Status 'Initializing analyzer context'
+Write-AnalyzerLog -Message "Analyzer starting. Input folder: $InputFolder"
 $context = Invoke-AnalyzerPhase -Name 'Initialize context' -ScriptBlock { New-AnalyzerContext -InputFolder $InputFolder }
 
 if ($script:CategoriesList) {
@@ -185,6 +191,8 @@ if (-not $OutputPath) {
     $OutputPath = Join-Path -Path $InputFolder -ChildPath 'diagnostics-report.html'
 }
 
+Write-AnalyzerLog -Message "HTML output path resolved to: $OutputPath"
+
 $directory = Split-Path -Path $OutputPath -Parent
 if (-not (Test-Path -Path $directory)) {
     $null = New-Item -Path $directory -ItemType Directory -Force
@@ -214,6 +222,7 @@ if ($resolvedCss.Count -gt 0) {
     }
 
     $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
+    Write-AnalyzerLog -Level 'DEBUG' -Message "Bundling $($resolvedCss.Count) CSS asset(s) to $cssOutputPath"
     $cssContent = Invoke-AnalyzerPhase -Name 'Read CSS assets' -ScriptBlock {
         $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
     }
@@ -221,15 +230,19 @@ if ($resolvedCss.Count -gt 0) {
         Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
     } | Out-Null
     Write-Verbose ('[{0:HH:mm:ss}] Report styles bundled to {1}' -f (Get-Date), $cssOutputPath)
+    Write-AnalyzerLog -Level 'DEBUG' -Message "Report styles bundled to $cssOutputPath"
 } else {
     Write-Verbose ('[{0:HH:mm:ss}] No report styles found to bundle' -f (Get-Date))
+    Write-AnalyzerLog -Level 'WARN' -Message 'No report styles were bundled because no CSS sources were found.'
 }
 
 Update-AnalyzerProgress -Status 'Writing analysis report to disk'
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
+Write-AnalyzerLog -Message "HTML report written to $OutputPath"
 
 Write-Progress -Activity $script:progressActivity -Completed -Status 'Analysis complete'
 Write-Verbose ('[{0:HH:mm:ss}] Analysis complete. Output: {1}' -f (Get-Date), $OutputPath)
+Write-AnalyzerLog -Message 'Analysis complete.'
 
 [pscustomobject]@{
     HtmlPath = (Resolve-Path -Path $OutputPath).ProviderPath
