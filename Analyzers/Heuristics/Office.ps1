@@ -24,18 +24,18 @@ function Invoke-OfficeHeuristics {
                     if ($value -ge 4) {
                         $macroBlocked = $true
                     } else {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office macros allowed' -Evidence ("VBAWarnings={0} at {1}" -f $value, $policy.Path)
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office macros allowed' -Evidence ("VBAWarnings={0} at {1}" -f $value, $policy.Path) -Subcategory 'Macro Policies'
                     }
                 }
                 if ($policy.Values -and $policy.Values.PSObject.Properties['DisableTrustBarNotificationsFromUnsignedMacros']) {
                     $setting = [int]$policy.Values.DisableTrustBarNotificationsFromUnsignedMacros
                     if ($setting -eq 1) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Trust Bar notifications disabled' -Evidence $policy.Path
+                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Trust Bar notifications disabled' -Evidence $policy.Path -Subcategory 'Macro Policies'
                     }
                 }
                 if ($policy.Values -and $policy.Values.PSObject.Properties['DisableProtectedViewForAttachments']) {
                     if ([int]$policy.Values.DisableProtectedViewForAttachments -eq 1) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Protected View disabled for attachments' -Evidence $policy.Path
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Protected View disabled for attachments' -Evidence $policy.Path -Subcategory 'Protected View Policies'
                     }
                 }
             }
@@ -44,9 +44,9 @@ function Invoke-OfficeHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title 'Macro runtime blocked by policy'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office MOTW macro blocking - no data. Confirm macro policies.'
-            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office macro notifications - no data. Collect policy details.'
-            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office Protected View - no data. Verify Protected View policies.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office MOTW macro blocking - no data. Confirm macro policies.' -Subcategory 'Macro Policies'
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office macro notifications - no data. Collect policy details.' -Subcategory 'Macro Policies'
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office Protected View - no data. Verify Protected View policies.' -Subcategory 'Protected View Policies'
         }
     }
 
@@ -57,7 +57,7 @@ function Invoke-OfficeHeuristics {
             $largeCaches = $payload.Caches | Where-Object { $_.Length -gt 25GB }
             if ($largeCaches.Count -gt 0) {
                 $names = $largeCaches | Select-Object -ExpandProperty FullName -First 5
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Large Outlook cache files detected' -Evidence ($names -join "`n")
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Large Outlook cache files detected' -Evidence ($names -join "`n") -Subcategory 'Outlook Cache'
             } elseif ($payload.Caches.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('Outlook cache files present ({0})' -f $payload.Caches.Count)
             }
@@ -83,11 +83,11 @@ function Invoke-OfficeHeuristics {
                     if ($targets -match 'autodiscover\.outlook\.com') {
                         Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover CNAME healthy for {0}" -f $domain) -Evidence $targetText
                     } else {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Autodiscover for {0} points to {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Autodiscover for {0} points to {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS'
                     }
                 } elseif ($autoRecord.Success -eq $false) {
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS'
                 }
             }
         }
