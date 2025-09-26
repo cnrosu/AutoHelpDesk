@@ -138,40 +138,10 @@ try {
         }
     }
 
-    $analyzerResult = $null
-    $analyzerScriptPath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Analyzers/Analyze-Diagnostics.ps1'
-
-    if (Test-Path -Path $analyzerScriptPath) {
-        try {
-            Write-Host "Starting analyzer orchestrator: $analyzerScriptPath"
-            $analyzerResult = & $analyzerScriptPath -InputFolder $resolvedOutputRoot -ErrorAction Stop
-            if ($analyzerResult -and $analyzerResult.HtmlPath) {
-                Write-Host "Analyzer complete. Report written to $($analyzerResult.HtmlPath)"
-            } else {
-                Write-Host 'Analyzer complete.'
-            }
-        } catch {
-            Write-Warning "Analyzer orchestrator failed: $($_.Exception.Message)"
-            $analyzerResult = [pscustomobject]@{
-                HtmlPath = $null
-                Issues   = @()
-                Normals  = @()
-                Checks   = @()
-                Error    = $_.Exception.Message
-            }
-        }
-    } else {
-        Write-Warning "Analyzer orchestrator not found at $analyzerScriptPath"
-    }
-
     $summary = [ordered]@{
         CollectedAt = (Get-Date).ToString('o')
         OutputRoot  = $resolvedOutputRoot
         Results     = $results
-    }
-
-    if ($analyzerResult) {
-        $summary['Analyzer'] = $analyzerResult
     }
 
     $summaryPath = Export-CollectorResult -OutputDirectory $resolvedOutputRoot -FileName 'collection-summary.json' -Data $summary -Depth 6
