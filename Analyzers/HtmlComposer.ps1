@@ -262,22 +262,35 @@ function Build-GoodSection {
         $categorized[$category].Add((New-GoodCardHtml -Entry $entry))
     }
 
-    $firstNonEmpty = $null
+    $orderedCategories = New-Object System.Collections.Generic.List[string]
     foreach ($category in $categoryOrder) {
+        $null = $orderedCategories.Add($category)
+    }
+    foreach ($category in $categorized.Keys) {
+        if (-not $orderedCategories.Contains($category)) {
+            $null = $orderedCategories.Add($category)
+        }
+    }
+
+    $firstNonEmpty = $null
+    foreach ($category in $orderedCategories) {
         if ($categorized.ContainsKey($category) -and $categorized[$category].Count -gt 0) {
             $firstNonEmpty = $category
             break
         }
     }
-    if (-not $firstNonEmpty) { $firstNonEmpty = $categoryOrder[0] }
+    if (-not $firstNonEmpty) {
+        return "<div class='report-card'><i>No positives captured in any category.</i></div>"
+    }
 
     $tabName = 'good-tabs'
     $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
     $index = 0
-    foreach ($category in $categoryOrder) {
+    foreach ($category in $orderedCategories) {
         if (-not $categorized.ContainsKey($category)) { continue }
         $cards = $categorized[$category]
         $count = $cards.Count
+        if ($count -eq 0) { continue }
         $slug = [regex]::Replace($category.ToLowerInvariant(), '[^a-z0-9]+', '-')
         $slug = [regex]::Replace($slug, '^-+|-+$', '')
         if (-not $slug) { $slug = "cat$index" }
