@@ -248,7 +248,7 @@ function Build-GoodSection {
         return "<div class='report-card'><i>No specific positives recorded.</i></div>"
     }
 
-    $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events','General')
+    $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events')
     $categorized = [ordered]@{}
     foreach ($category in $categoryOrder) {
         $categorized[$category] = New-Object System.Collections.Generic.List[string]
