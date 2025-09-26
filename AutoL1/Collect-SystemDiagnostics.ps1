@@ -86,6 +86,40 @@ function Save-Output {
   return $file
 }
 
+function Get-FirstTrimmedPropertyValue {
+  param(
+    [psobject]$InputObject,
+    [string[]]$PropertyNames,
+    [string]$Default = ''
+  )
+
+  if (-not $InputObject -or -not $PropertyNames) { return $Default }
+
+  foreach ($propertyName in $PropertyNames) {
+    if (-not $propertyName) { continue }
+
+    $property = $InputObject.PSObject.Properties[$propertyName]
+    if (-not $property) { continue }
+
+    $rawValue = $property.Value
+    if ($null -eq $rawValue) { continue }
+
+    $text = ''
+    try {
+      $text = [string]$rawValue
+    } catch {
+      $text = [Convert]::ToString($rawValue)
+    }
+
+    if (-not $text) { continue }
+
+    $trimmed = $text.Trim()
+    if ($trimmed) { return $trimmed }
+  }
+
+  return $Default
+}
+
 function Resolve-AutorunsExecutablePath {
   param([string]$CommandLine)
 
@@ -136,37 +170,11 @@ function Export-StartupProgramsReport {
   foreach ($entry in $startupEntries) {
     if (-not $entry) { continue }
 
-    $entryName = ''
-    foreach ($nameField in @('Name','Caption')) {
-      if ($entry.PSObject.Properties[$nameField]) {
-        $candidateName = [string]$entry.$nameField
-        if ($candidateName) {
-          $entryName = $candidateName.Trim()
-          if ($entryName) { break }
-        }
-      }
-    }
-    if (-not $entryName) { $entryName = 'Unknown' }
-
-    $description = ''
-    if ($entry.PSObject.Properties['Description']) {
-      $description = ([string]$entry.Description).Trim()
-    }
-
-    $commandLine = ''
-    if ($entry.PSObject.Properties['Command']) {
-      $commandLine = ([string]$entry.Command).Trim()
-    }
-
-    $entryLocation = ''
-    if ($entry.PSObject.Properties['Location']) {
-      $entryLocation = ([string]$entry.Location).Trim()
-    }
-
-    $userContext = ''
-    if ($entry.PSObject.Properties['User']) {
-      $userContext = ([string]$entry.User).Trim()
-    }
+    $entryName = Get-FirstTrimmedPropertyValue -InputObject $entry -PropertyNames @('Name','Caption') -Default 'Unknown'
+    $description = Get-FirstTrimmedPropertyValue -InputObject $entry -PropertyNames @('Description')
+    $commandLine = Get-FirstTrimmedPropertyValue -InputObject $entry -PropertyNames @('Command')
+    $entryLocation = Get-FirstTrimmedPropertyValue -InputObject $entry -PropertyNames @('Location')
+    $userContext = Get-FirstTrimmedPropertyValue -InputObject $entry -PropertyNames @('User')
 
     $imagePath = Resolve-AutorunsExecutablePath -CommandLine $commandLine
     if ($imagePath) {
