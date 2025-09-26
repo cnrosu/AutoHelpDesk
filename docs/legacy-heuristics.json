@@ -1,0 +1,1426 @@
+{
+  "generatedAt": "2025-09-26T03:16:29.935853+00:00",
+  "sourceFile": "AutoL1/Analyze-Diagnostics.ps1",
+  "whatLooksGood": [
+    {
+      "category": "System/Firmware",
+      "message": "UEFI firmware mode detected",
+      "evidence_expression": "$firmwareEvidenceText",
+      "note": null,
+      "source_line": 1723
+    },
+    {
+      "category": "System/Secure Boot",
+      "message": "Secure Boot enabled",
+      "evidence_expression": "$secureBootEvidenceText",
+      "note": null,
+      "source_line": 1739
+    },
+    {
+      "category": "System/Fast Startup",
+      "message": "Fast Startup disabled",
+      "evidence_expression": "$fastStartupEvidence",
+      "note": null,
+      "source_line": 1803
+    },
+    {
+      "category": "System/Startup Programs",
+      "message": "Autoruns captured: no enabled startup entries detected.",
+      "evidence_expression": "",
+      "note": "INFO",
+      "source_line": 1828
+    },
+    {
+      "category": "System/Startup Programs",
+      "message": "(\"Startup autoruns manageable ({0} non-Microsoft entries out of {1}).\" -f $nonMicrosoftCount, $totalAutoruns)",
+      "evidence_expression": "",
+      "note": "INFO",
+      "source_line": 1858
+    },
+    {
+      "category": "System/Uptime",
+      "message": "$message",
+      "evidence_expression": "$summary.LastBoot",
+      "note": null,
+      "source_line": 1963
+    },
+    {
+      "category": "System/Uptime",
+      "message": "Last boot captured",
+      "evidence_expression": "$summary.LastBoot",
+      "note": null,
+      "source_line": 1970
+    },
+    {
+      "category": "Network/IP",
+      "message": "IPv4 address acquired",
+      "evidence_expression": "(\"IPv4: \" + ($uniqueIPv4 -join \", \"))",
+      "note": null,
+      "source_line": 2009
+    },
+    {
+      "category": "Network/Routing",
+      "message": "Default gateway present",
+      "evidence_expression": "(\"GW: \" + ($uniqueGws -join \", \"))",
+      "note": null,
+      "source_line": 2012
+    },
+    {
+      "category": "DNS/Internal",
+      "message": "GOOD DNS/Internal: Workgroup device, policy N/A.",
+      "evidence_expression": null,
+      "note": null,
+      "source_line": 2074
+    },
+    {
+      "category": "Network/DNS",
+      "message": "Workgroup/standalone: DNS servers configured",
+      "evidence_expression": "(\"DNS: \" + ($dnsServers -join \", \"))",
+      "note": null,
+      "source_line": 2075
+    },
+    {
+      "category": "Network/DNS",
+      "message": "Domain-joined: DNS servers captured",
+      "evidence_expression": "(\"DNS: \" + ($dnsServers -join \", \"))",
+      "note": null,
+      "source_line": 2079
+    },
+    {
+      "category": "DNS/Internal",
+      "message": "(\"GOOD DNS/Internal: Single Anycast/VIP resolver approved by policy: {0}.\" -f $primaryServer)",
+      "evidence_expression": "$dnsEvidence",
+      "note": null,
+      "source_line": 2213
+    },
+    {
+      "category": "DNS/Internal",
+      "message": "(\"GOOD DNS/Internal: Two or more AD-capable DNS servers detected: {0}.\" -f ($adCapableInOrder -join \", \"))",
+      "evidence_expression": "$dnsEvidence",
+      "note": null,
+      "source_line": 2216
+    },
+    {
+      "category": "Network/DNS",
+      "message": "DNS servers configured",
+      "evidence_expression": "(\"DNS: \" + ($dnsServers -join \", \"))",
+      "note": null,
+      "source_line": 2254
+    },
+    {
+      "category": "Network/Routing",
+      "message": "Default route 0.0.0.0/0 present",
+      "evidence_expression": "($routeLines -join \"`n\")",
+      "note": null,
+      "source_line": 2381
+    },
+    {
+      "category": "DNS",
+      "message": "DNS resolver responds",
+      "evidence_expression": "(([regex]::Split($raw['nslookup'],'\\r?\\n') | Select-Object -First 6) -join \"`n\")",
+      "note": null,
+      "source_line": 2496
+    },
+    {
+      "category": "Network/ICMP",
+      "message": "(\"Ping OK\" + $avgLabel)",
+      "evidence_expression": "$pingTail",
+      "note": null,
+      "source_line": 2512
+    },
+    {
+      "category": "Outlook/Connectivity",
+      "message": "(\"HTTPS connectivity to outlook.office365.com succeeded{0}{1}.\" -f $rttText, $remoteSuffix)",
+      "evidence_expression": "$evidenceText",
+      "note": null,
+      "source_line": 2534
+    },
+    {
+      "category": "Outlook/OST",
+      "message": "(\"OST cache sizes within guidance (max {0} GB across {1} file{2}).\" -f $largestText, $count, $plural)",
+      "evidence_expression": "$healthyEvidence",
+      "note": null,
+      "source_line": 2607
+    },
+    {
+      "category": "Outlook/Autodiscover",
+      "message": "(\"autodiscover.{0} CNAME → autodiscover.outlook.com\" -f $domainTrimmed)",
+      "evidence_expression": "$evidenceText",
+      "note": null,
+      "source_line": 2714
+    },
+    {
+      "category": "Outlook/SCP",
+      "message": "GOOD Outlook/SCP: Not domain-joined; SCP not applicable.",
+      "evidence_expression": "$scpEvidence",
+      "note": null,
+      "source_line": 2805
+    },
+    {
+      "category": "Outlook/SCP",
+      "message": "(\"GOOD Outlook/SCP: Autodiscover SCP published: {0}\" -f $bindingUrl)",
+      "evidence_expression": "$scpEvidence",
+      "note": null,
+      "source_line": 2810
+    },
+    {
+      "category": "Outlook/SCP",
+      "message": "(\"GOOD Outlook/SCP: Autodiscover SCP published: {0}\" -f $bindingUrl)",
+      "evidence_expression": "$scpEvidence",
+      "note": null,
+      "source_line": 2818
+    },
+    {
+      "category": "Office/Macros",
+      "message": "(\"{0} macro protections verified ({1}).\" -f $appInfo.Name, $messageDetails)",
+      "evidence_expression": "$positiveEvidence",
+      "note": null,
+      "source_line": 3003
+    },
+    {
+      "category": "Security/Defender",
+      "message": "(\"Signature age GOOD ({0} days; daily updates confirmed).\" -f $maxSigAgeInt)",
+      "evidence_expression": "$sigEvidenceText",
+      "note": null,
+      "source_line": 3034
+    },
+    {
+      "category": "Security/Defender",
+      "message": "(\"Signature age OK ({0} days; monitor that daily updates continue).\" -f $maxSigAgeInt)",
+      "evidence_expression": "$sigEvidenceText",
+      "note": null,
+      "source_line": 3036
+    },
+    {
+      "category": "Security/Defender",
+      "message": "Real-time protection ON",
+      "evidence_expression": "(([regex]::Split($raw['defender'],'\\r?\\n') | Select-Object -First 12) -join \"`n\")",
+      "note": null,
+      "source_line": 3048
+    },
+    {
+      "category": "Security/Defender",
+      "message": "Defender engine reports up to date",
+      "evidence_expression": "($engineEvidence -join \"`n\")",
+      "note": null,
+      "source_line": 3074
+    },
+    {
+      "category": "Security/Defender",
+      "message": "Defender platform reports up to date",
+      "evidence_expression": "($platformEvidence -join \"`n\")",
+      "note": null,
+      "source_line": 3097
+    },
+    {
+      "category": "Security/Firewall",
+      "message": "All firewall profiles ON",
+      "evidence_expression": "$profileSummary",
+      "note": null,
+      "source_line": 3122
+    },
+    {
+      "category": "Security/BitLocker",
+      "message": "BitLocker protection active for system volume(s).",
+      "evidence_expression": "$evidence",
+      "note": null,
+      "source_line": 3192
+    },
+    {
+      "category": "Security/BitLocker",
+      "message": "BitLocker enabled on captured volume(s).",
+      "evidence_expression": "$evidence",
+      "note": null,
+      "source_line": 3199
+    },
+    {
+      "category": "Services",
+      "message": "(\"Core services running: \" + ($legacyRunning -join ', '))",
+      "evidence_expression": "",
+      "note": null,
+      "source_line": 4271
+    },
+    {
+      "category": "Services/Printer Spooler",
+      "message": "GOOD Printer Spooler Running (Automatic)",
+      "evidence_expression": "$spoolerEvidence",
+      "note": null,
+      "source_line": 4308
+    },
+    {
+      "category": "Printing/Drivers",
+      "message": "GOOD Printing/Drivers Packaged",
+      "evidence_expression": "(\"Packaged Type 4 drivers in use: {0}\" -f $driverSummary)",
+      "note": null,
+      "source_line": 4577
+    },
+    {
+      "category": "Printing/Network",
+      "message": "GOOD Printing/Network Reachable (ports)",
+      "evidence_expression": "$networkEvidence",
+      "note": null,
+      "source_line": 4659
+    },
+    {
+      "category": "Printing/Events",
+      "message": "GOOD Printing/Events (no recent errors)",
+      "evidence_expression": "$eventsEvidence",
+      "note": null,
+      "source_line": 4693
+    },
+    {
+      "category": "Active Directory/Time Sync",
+      "message": "$normalMessage",
+      "evidence_expression": "$timeStatusEvidence",
+      "note": null,
+      "source_line": 5217
+    },
+    {
+      "category": "Events",
+      "message": "Low recent error counts in System/Application",
+      "evidence_expression": "(\"System: E=$($sysEW.E) W=$($sysEW.W) ; Application: E=$($appEW.E) W=$($appEW.W)\")",
+      "note": null,
+      "source_line": 5340
+    },
+    {
+      "category": "(\"Events/$label\")",
+      "message": "Collected (unparsed format)",
+      "evidence_expression": "$evidence",
+      "note": null,
+      "source_line": 5362
+    },
+    {
+      "category": "System/Scheduled Tasks",
+      "message": "Contains on-demand/unscheduled entries",
+      "evidence_expression": "$scheduleInfo.Value",
+      "note": null,
+      "source_line": 5368
+    },
+    {
+      "category": "Network/Netstat",
+      "message": "Reasonable number of listening sockets",
+      "evidence_expression": "(\"LISTENING count: \" + $lstn)",
+      "note": null,
+      "source_line": 5376
+    },
+    {
+      "category": "System/Patching",
+      "message": "Hotfixes present",
+      "evidence_expression": "(\"Counted KB lines: \" + $hfCount)",
+      "note": null,
+      "source_line": 5384
+    },
+    {
+      "category": "Storage/SMART",
+      "message": "SMART status shows no failure indicators",
+      "evidence_expression": "(([regex]::Split($smartText,'\\r?\\n') | Select-Object -First 12) -join \"`n\")",
+      "note": null,
+      "source_line": 5409
+    },
+    {
+      "category": "Storage/Disks",
+      "message": "All discovered disks report Online/Healthy status",
+      "evidence_expression": "($sampleDisk.Raw)",
+      "note": null,
+      "source_line": 5502
+    },
+    {
+      "category": "Storage/Free Space",
+      "message": "Volumes meet free space targets",
+      "evidence_expression": "($healthy -join \"; \")",
+      "note": null,
+      "source_line": 5647
+    }
+  ],
+  "potentialIssues": [
+    {
+      "severity": "medium",
+      "category": "System/Firmware",
+      "message": "Legacy BIOS firmware mode detected—enable UEFI to support modern security protections.",
+      "evidence_expression": "$firmwareEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1725
+    },
+    {
+      "severity": "low",
+      "category": "System/Firmware",
+      "message": "Unable to determine firmware mode from Get-ComputerInfo output.",
+      "evidence_expression": "$firmwareEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1727
+    },
+    {
+      "severity": "high",
+      "category": "System/Secure Boot",
+      "message": "Secure Boot is disabled.",
+      "evidence_expression": "$secureBootEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1745
+    },
+    {
+      "severity": "high",
+      "category": "System/Secure Boot",
+      "message": "Secure Boot unsupported on this hardware.",
+      "evidence_expression": "$secureBootEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1748
+    },
+    {
+      "severity": "high",
+      "category": "System/Secure Boot",
+      "message": "(\"Secure Boot state reported as '{0}'.\" -f $secureBootState)",
+      "evidence_expression": "$secureBootEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1750
+    },
+    {
+      "severity": "high",
+      "category": "System/Secure Boot",
+      "message": "Secure Boot state not reported despite UEFI firmware.",
+      "evidence_expression": "$secureBootEvidenceText",
+      "extra_arguments": [],
+      "source_line": 1754
+    },
+    {
+      "severity": "warning",
+      "category": "System/Fast Startup",
+      "message": "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting.",
+      "evidence_expression": "$fastStartupEvidence",
+      "extra_arguments": [],
+      "source_line": 1799
+    },
+    {
+      "severity": "warning",
+      "category": "System/Fast Startup",
+      "message": "Unable to determine Fast Startup (Fast Boot) state from available data.",
+      "evidence_expression": "$fastStartupEvidence",
+      "extra_arguments": [],
+      "source_line": 1808
+    },
+    {
+      "severity": "low",
+      "category": "System/Startup Programs",
+      "message": "Autoruns output detected but format not recognized for automated analysis. Review manually for startup bloat.",
+      "evidence_expression": "$autorunsEvidence",
+      "extra_arguments": [],
+      "source_line": 1818
+    },
+    {
+      "severity": "medium",
+      "category": "System/Startup Programs",
+      "message": "$message",
+      "evidence_expression": "$autorunsEvidence",
+      "extra_arguments": [],
+      "source_line": 1853
+    },
+    {
+      "severity": "low",
+      "category": "System/Startup Programs",
+      "message": "$message",
+      "evidence_expression": "$autorunsEvidence",
+      "extra_arguments": [],
+      "source_line": 1856
+    },
+    {
+      "severity": "low",
+      "category": "System/Startup Programs",
+      "message": "Autoruns file present but empty.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 1863
+    },
+    {
+      "severity": "$classification.Severity",
+      "category": "System/Uptime",
+      "message": "$message",
+      "evidence_expression": "$summary.LastBoot",
+      "extra_arguments": [],
+      "source_line": 1966
+    },
+    {
+      "severity": "critical",
+      "category": "Network",
+      "message": "No IPv4 address detected (driver/DHCP/link).",
+      "evidence_expression": "$raw['ipconfig']",
+      "extra_arguments": [],
+      "source_line": 2004
+    },
+    {
+      "severity": "critical",
+      "category": "Network",
+      "message": "APIPA address 169.254.x.x → DHCP/link issue.",
+      "evidence_expression": "($uniqueIPv4 -join \", \")",
+      "extra_arguments": [],
+      "source_line": 2005
+    },
+    {
+      "severity": "high",
+      "category": "Network",
+      "message": "No default gateway — internet likely broken.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 2006
+    },
+    {
+      "severity": "$severity",
+      "category": "DNS/Internal",
+      "message": "(\"DNS/Internal: Only one AD-capable DNS server configured (no failover) — {0}.\" -f $singleCapable)",
+      "evidence_expression": "$dnsEvidence",
+      "extra_arguments": [],
+      "source_line": 2220
+    },
+    {
+      "severity": "medium",
+      "category": "DNS/Internal",
+      "message": "DNS/Internal: Domain-joined but AD-capable DNS not present; device likely off-network/VPN down.",
+      "evidence_expression": "$dnsEvidence",
+      "extra_arguments": [],
+      "source_line": 2223
+    },
+    {
+      "severity": "high",
+      "category": "DNS/Internal",
+      "message": "DNS/Internal: No AD-capable DNS resolvers configured; AD lookups will fail.",
+      "evidence_expression": "$dnsEvidence",
+      "extra_arguments": [],
+      "source_line": 2225
+    },
+    {
+      "severity": "medium",
+      "category": "DNS/Internal",
+      "message": "Domain-joined: public DNS servers detected ($($pubList -join ', ')).",
+      "evidence_expression": "$dnsEvalTable",
+      "extra_arguments": [],
+      "source_line": 2237
+    },
+    {
+      "severity": "low",
+      "category": "DNS/Order",
+      "message": "(\"DNS/Order: Primary DNS is public; move internal AD-capable DNS to the top: Primary={0}; Internal={1}.\" -f $primaryServer, $adCapableLater)",
+      "evidence_expression": "(\"Primary: $primaryServer`nInternal: $adCapableLater`nAll: \" + ($dnsServers -join \", \"))",
+      "extra_arguments": [],
+      "source_line": 2244
+    },
+    {
+      "severity": "high",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP enabled on {0} but no server address was reported.\" -f $adapter.DisplayName)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2285
+    },
+    {
+      "severity": "critical",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP lease expired on {0}; client is relying on a stale address.\" -f $adapter.DisplayName)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2291
+    },
+    {
+      "severity": "high",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP lease for {0} expires in {1}; renewals appear to be failing.\" -f $adapter.DisplayName, $window)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2294
+    },
+    {
+      "severity": "medium",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP lease on {0} is stale ({1} old; configured lease window {2}). Client may not be reaching the DHCP server.\" -f $adapter.DisplayName, $ageLabel, $leaseLabel)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2316
+    },
+    {
+      "severity": "high",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP disabled on {0} but no static gateway or DNS servers are configured.\" -f $adapter.DisplayName)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2338
+    },
+    {
+      "severity": "medium",
+      "category": "Network/DHCP",
+      "message": "(\"DHCP server addresses outside private ranges detected ({0}). Investigate rogue or mis-scoped DHCP sources.\" -f ($publicDhcp -join ', '))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 2368
+    },
+    {
+      "severity": "high",
+      "category": "Network",
+      "message": "Routing table lacks a default route (0.0.0.0/0).",
+      "evidence_expression": "$raw['route']",
+      "extra_arguments": [],
+      "source_line": 2376
+    },
+    {
+      "severity": "medium",
+      "category": "DNS",
+      "message": "nslookup shows timeouts or NXDOMAIN.",
+      "evidence_expression": "$raw['nslookup']",
+      "extra_arguments": [],
+      "source_line": 2493
+    },
+    {
+      "severity": "high",
+      "category": "Network",
+      "message": "Ping to 8.8.8.8 failed (0 received).",
+      "evidence_expression": "$raw['ping']",
+      "extra_arguments": [],
+      "source_line": 2499
+    },
+    {
+      "severity": "low",
+      "category": "Network",
+      "message": "Traceroute didn’t complete within hop limit (may be normal if ICMP filtered).",
+      "evidence_expression": "$raw['tracert']",
+      "extra_arguments": [],
+      "source_line": 2517
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Connectivity",
+      "message": "Test-NetConnection cmdlet not available to verify outlook.office365.com:443.",
+      "evidence_expression": "$raw['testnet_outlook443']",
+      "extra_arguments": [],
+      "source_line": 2523
+    },
+    {
+      "severity": "high",
+      "category": "Outlook/Connectivity",
+      "message": "(\"HTTPS connectivity to outlook.office365.com failed{0}.\" -f $remoteSuffix)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2538
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Connectivity",
+      "message": "Unable to determine Test-NetConnection result for outlook.office365.com.",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2540
+    },
+    {
+      "severity": "critical",
+      "category": "Outlook/OST",
+      "message": "OST cache HIGH tier (>25 GB) detected.",
+      "evidence_expression": "($criticalEntries -join \"`n\")",
+      "extra_arguments": [],
+      "source_line": 2592
+    },
+    {
+      "severity": "high",
+      "category": "Outlook/OST",
+      "message": "OST cache BAD tier (15–25 GB) detected.",
+      "evidence_expression": "($badEntries -join \"`n\")",
+      "extra_arguments": [],
+      "source_line": 2595
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/OST",
+      "message": "OST cache WARN tier (5–15 GB) detected.",
+      "evidence_expression": "($warnEntries -join \"`n\")",
+      "extra_arguments": [],
+      "source_line": 2598
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Autodiscover",
+      "message": "Resolve-DnsName cmdlet not available to check autodiscover CNAME.",
+      "evidence_expression": "$autoText",
+      "extra_arguments": [],
+      "source_line": 2617
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Autodiscover",
+      "message": "No domain candidates identified for autodiscover lookup.",
+      "evidence_expression": "$autoText",
+      "extra_arguments": [],
+      "source_line": 2619
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"autodiscover.{0} CNAME points to {1} (expected autodiscover.outlook.com).\" -f $domainTrimmed, $targetDisplay)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2719
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"autodiscover.{0} CNAME points to {1}. Verify Exchange Online onboarding.\" -f $domainTrimmed, $targetDisplay)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2721
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"Autodiscover lookup failed for {0}.\" -f $domainTrimmed)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2726
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"Autodiscover lookup failed for {0}.\" -f $domainTrimmed)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2728
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"No CNAME records returned for autodiscover.{0}.\" -f $domainTrimmed)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2733
+    },
+    {
+      "severity": "info",
+      "category": "Outlook/Autodiscover",
+      "message": "(\"No CNAME records returned for autodiscover.{0}.\" -f $domainTrimmed)",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 2735
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/SCP",
+      "message": "Outlook/SCP: Domain-joined; SCP query failed (AD unreachable or permissions).",
+      "evidence_expression": "$scpEvidence",
+      "extra_arguments": [],
+      "source_line": 2808
+    },
+    {
+      "severity": "low",
+      "category": "Outlook/SCP",
+      "message": "Outlook/SCP: Domain-joined but no Autodiscover SCP found (OK if EXO-only).",
+      "evidence_expression": "$scpEvidence",
+      "extra_arguments": [],
+      "source_line": 2812
+    },
+    {
+      "severity": "medium",
+      "category": "Outlook/SCP",
+      "message": "Outlook/SCP: SCP query failed (domain join status unknown).",
+      "evidence_expression": "$scpEvidence",
+      "extra_arguments": [],
+      "source_line": 2816
+    },
+    {
+      "severity": "high",
+      "category": "Office/Macros",
+      "message": "(\"{0} macro MOTW blocking disabled or not configured. Fix: Enforce via GPO/MDM.\" -f $appInfo.Name)",
+      "evidence_expression": "$blockEvidence",
+      "extra_arguments": [],
+      "source_line": 2924
+    },
+    {
+      "severity": "medium",
+      "category": "Office/Macros",
+      "message": "(\"{0} macro notification policy allows macros ({1}). Fix: Enforce via GPO/MDM.\" -f $appInfo.Name, $warnValues)",
+      "evidence_expression": "$warnEvidence",
+      "extra_arguments": [],
+      "source_line": 2945
+    },
+    {
+      "severity": "medium",
+      "category": "Office/Protected View",
+      "message": "(\"Protected View disabled for {0} ({1}). Fix: Enforce via GPO/MDM.\" -f $appInfo.Name, $pvReasonText)",
+      "evidence_expression": "$pvEvidence",
+      "extra_arguments": [],
+      "source_line": 2959
+    },
+    {
+      "severity": "high",
+      "category": "Security",
+      "message": "Defender real-time protection is OFF.",
+      "evidence_expression": "$raw['defender']",
+      "extra_arguments": [],
+      "source_line": 3012
+    },
+    {
+      "severity": "medium",
+      "category": "Security",
+      "message": "(\"Defender signatures WARNING tier ({0} days old). Signatures should update daily—even on isolated networks.\" -f $maxSigAgeInt)",
+      "evidence_expression": "$sigEvidenceText",
+      "extra_arguments": [],
+      "source_line": 3038
+    },
+    {
+      "severity": "high",
+      "category": "Security",
+      "message": "(\"Defender signatures BAD tier ({0} days old). Trigger an update promptly.\" -f $maxSigAgeInt)",
+      "evidence_expression": "$sigEvidenceText",
+      "extra_arguments": [],
+      "source_line": 3040
+    },
+    {
+      "severity": "critical",
+      "category": "Security",
+      "message": "(\"Defender signatures CRITICAL tier ({0} days old). Update signatures immediately.\" -f $maxSigAgeInt)",
+      "evidence_expression": "$sigEvidenceText",
+      "extra_arguments": [],
+      "source_line": 3042
+    },
+    {
+      "severity": "high",
+      "category": "Security",
+      "message": "Defender engine updates appear missing/out of date.",
+      "evidence_expression": "$engineEvidenceText",
+      "extra_arguments": [],
+      "source_line": 3072
+    },
+    {
+      "severity": "high",
+      "category": "Security",
+      "message": "Defender platform updates appear missing/out of date.",
+      "evidence_expression": "$platformEvidenceText",
+      "extra_arguments": [],
+      "source_line": 3095
+    },
+    {
+      "severity": "info",
+      "category": "Security",
+      "message": "Defender status not captured (3rd-party AV or cmdlet unavailable).",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3100
+    },
+    {
+      "severity": "medium",
+      "category": "Firewall",
+      "message": "$pname profile is OFF.",
+      "evidence_expression": "$b",
+      "extra_arguments": [],
+      "source_line": 3115
+    },
+    {
+      "severity": "low",
+      "category": "Security/BitLocker",
+      "message": "BitLocker cmdlets unavailable on this system (likely unsupported edition).",
+      "evidence_expression": "(($bitlockerText -split \"\\r?\\n\") | Select-Object -First 8)",
+      "extra_arguments": [
+        "-join",
+        "`n"
+      ],
+      "source_line": 3136
+    },
+    {
+      "severity": "low",
+      "category": "Security/BitLocker",
+      "message": "Failed to query BitLocker status.",
+      "evidence_expression": "(($bitlockerText -split \"\\r?\\n\") | Select-Object -First 12)",
+      "extra_arguments": [
+        "-join",
+        "`n"
+      ],
+      "source_line": 3138
+    },
+    {
+      "severity": "critical",
+      "category": "Security/BitLocker",
+      "message": "(\"BitLocker is OFF for system volume(s): {0}.\" -f ($mountList))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3174
+    },
+    {
+      "severity": "high",
+      "category": "Security/BitLocker",
+      "message": "(\"BitLocker encryption incomplete on system volume(s): {0}.\" -f ($mountList))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3183
+    },
+    {
+      "severity": "low",
+      "category": "Security/BitLocker",
+      "message": "(\"BitLocker protection state unclear for system volume(s): {0}.\" -f ($mountList))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3189
+    },
+    {
+      "severity": "high",
+      "category": "Security/BitLocker",
+      "message": "No BitLocker-protected volumes detected.",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3204
+    },
+    {
+      "severity": "low",
+      "category": "Security/BitLocker",
+      "message": "BitLocker output captured but no volumes parsed.",
+      "evidence_expression": "(($bitlockerText -split \"\\r?\\n\") | Select-Object -First 12)",
+      "extra_arguments": [
+        "-join",
+        "`n"
+      ],
+      "source_line": 3209
+    },
+    {
+      "severity": "low",
+      "category": "Security/BitLocker",
+      "message": "BitLocker status file present but empty.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3213
+    },
+    {
+      "severity": "medium",
+      "category": "Security/TPM",
+      "message": "TPM detected but not ready. Initialize TPM to meet security baselines.",
+      "evidence_expression": "$tpmEvidence",
+      "extra_arguments": [],
+      "source_line": 3262
+    },
+    {
+      "severity": "$issueSeverity",
+      "category": "Security/TPM",
+      "message": "No TPM detected. Modern Windows devices require TPM 2.0 for security assurances.",
+      "evidence_expression": "$tpmEvidence",
+      "extra_arguments": [],
+      "source_line": 3268
+    },
+    {
+      "severity": "medium",
+      "category": "Security/HVCI",
+      "message": "Memory integrity (HVCI) is available but not running. Enable virtualization-based protection.",
+      "evidence_expression": "$dgEvidence",
+      "extra_arguments": [],
+      "source_line": 3287
+    },
+    {
+      "severity": "medium",
+      "category": "Security/HVCI",
+      "message": "Memory integrity (HVCI) not captured. Collect Device Guard diagnostics.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3292
+    },
+    {
+      "severity": "high",
+      "category": "Security/Credential Guard",
+      "message": "Credential Guard or LSA protection is not enforced. Enable RunAsPPL and Credential Guard.",
+      "evidence_expression": "$lsaEvidence",
+      "extra_arguments": [],
+      "source_line": 3308
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Kernel DMA",
+      "message": "Kernel DMA protection allows DMA while locked on this mobile device (AllowDmaUnderLock = 1).",
+      "evidence_expression": "$dmaEvidence",
+      "extra_arguments": [],
+      "source_line": 3334
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Kernel DMA",
+      "message": "Kernel DMA protection is disabled or unsupported on this mobile device.",
+      "evidence_expression": "$dmaEvidence",
+      "extra_arguments": [],
+      "source_line": 3359
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Kernel DMA",
+      "message": "Unable to determine Kernel DMA protection due to Device Guard query failure.",
+      "evidence_expression": "$dmaEvidence",
+      "extra_arguments": [],
+      "source_line": 3367
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Kernel DMA",
+      "message": "Kernel DMA protection status could not be determined. Confirm DMA policy configuration.",
+      "evidence_expression": "$dmaEvidence",
+      "extra_arguments": [],
+      "source_line": 3376
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Kernel DMA",
+      "message": "Kernel DMA protection unknown. Confirm DMA protection capabilities.",
+      "evidence_expression": "$dmaEvidence",
+      "extra_arguments": [],
+      "source_line": 3381
+    },
+    {
+      "severity": "high",
+      "category": "Security/Firewall",
+      "message": "Windows Firewall not captured. Collect firewall profile configuration.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3395
+    },
+    {
+      "severity": "high",
+      "category": "Security/RDP",
+      "message": "Remote Desktop is enabled without Network Level Authentication. Enforce NLA or disable RDP.",
+      "evidence_expression": "$rdpEvidence",
+      "extra_arguments": [],
+      "source_line": 3410
+    },
+    {
+      "severity": "medium",
+      "category": "Security/RDP",
+      "message": "Remote Desktop is enabled on a mobile device. Validate exposure and access controls.",
+      "evidence_expression": "$rdpEvidence",
+      "extra_arguments": [],
+      "source_line": 3414
+    },
+    {
+      "severity": "high",
+      "category": "Security/SMB",
+      "message": "SMB1 protocol is enabled. Disable SMB1 to mitigate legacy protocol risks.",
+      "evidence_expression": "$smbEvidence",
+      "extra_arguments": [],
+      "source_line": 3428
+    },
+    {
+      "severity": "medium",
+      "category": "Security/NTLM",
+      "message": "NTLM hardening policies are not configured. Enforce RestrictSending/Audit NTLM settings.",
+      "evidence_expression": "$ntlmEvidence",
+      "extra_arguments": [],
+      "source_line": 3454
+    },
+    {
+      "severity": "medium",
+      "category": "Security/SmartScreen",
+      "message": "SmartScreen is disabled. Enable SmartScreen for app and URL protection.",
+      "evidence_expression": "$smartScreenSummary",
+      "extra_arguments": [],
+      "source_line": 3467
+    },
+    {
+      "severity": "high",
+      "category": "Security/ASR",
+      "message": "(\"ASR rule not enforced: {0}. Configure to Block (1).\" -f $label)",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3530
+    },
+    {
+      "severity": "medium",
+      "category": "Security/ExploitProtection",
+      "message": "('Exploit protection mitigations not fully enabled ({0}).' -f $detailText)",
+      "evidence_expression": "$exploitEvidence",
+      "extra_arguments": [],
+      "source_line": 3567
+    },
+    {
+      "severity": "medium",
+      "category": "Security/ExploitProtection",
+      "message": "Exploit Protection not captured. Collect Get-ProcessMitigation output.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3570
+    },
+    {
+      "severity": "medium",
+      "category": "Security/WDAC",
+      "message": "No WDAC policy enforcement detected. Evaluate Application Control requirements.",
+      "evidence_expression": "($wdacEvidenceLines -join \"`n\")",
+      "extra_arguments": [],
+      "source_line": 3594
+    },
+    {
+      "severity": "medium",
+      "category": "Security/SmartAppControl",
+      "message": "Smart App Control is not enabled on Windows 11 device.",
+      "evidence_expression": "$smartAppEvidence",
+      "extra_arguments": [],
+      "source_line": 3617
+    },
+    {
+      "severity": "high",
+      "category": "Security/LocalAdmin",
+      "message": "The current user is a member of the local Administrators group. Use least privilege accounts.",
+      "evidence_expression": "$localAdminEvidence",
+      "extra_arguments": [],
+      "source_line": 3643
+    },
+    {
+      "severity": "info",
+      "category": "Security/LAPS",
+      "message": "LAPS not deployed – no standing local admins; absence of LAPS is low risk.",
+      "evidence_expression": "$lapsEvidence",
+      "extra_arguments": [],
+      "source_line": 3726
+    },
+    {
+      "severity": "high",
+      "category": "Security/LAPS",
+      "message": "Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM and password appears persistent.",
+      "evidence_expression": "$lapsEvidence",
+      "extra_arguments": [],
+      "source_line": 3730
+    },
+    {
+      "severity": "medium",
+      "category": "Security/LAPS",
+      "message": "Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM but password not stale.",
+      "evidence_expression": "$lapsEvidence",
+      "extra_arguments": [],
+      "source_line": 3733
+    },
+    {
+      "severity": "low",
+      "category": "Security/LAPS",
+      "message": "Local admin present: LAPS/PAM in place. Rotation/escrow control detected (Windows LAPS/AdmPwd or PAM/JIT).",
+      "evidence_expression": "$lapsEvidence",
+      "extra_arguments": [],
+      "source_line": 3737
+    },
+    {
+      "severity": "high",
+      "category": "Security/LAPS",
+      "message": "LAPS/PLAP not detected. Enforce password management policy.",
+      "evidence_expression": "$lapsEvidence",
+      "extra_arguments": [],
+      "source_line": 3767
+    },
+    {
+      "severity": "high",
+      "category": "Security/UAC",
+      "message": "('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail)",
+      "evidence_expression": "$uacEvidence",
+      "extra_arguments": [],
+      "source_line": 3785
+    },
+    {
+      "severity": "medium",
+      "category": "Security/PowerShellLogging",
+      "message": "('PowerShell logging is incomplete ({0}). Enable required logging for auditing.' -f $detail)",
+      "evidence_expression": "$psLoggingEvidence",
+      "extra_arguments": [],
+      "source_line": 3831
+    },
+    {
+      "severity": "high",
+      "category": "Security/LDAPNTLM",
+      "message": "('LDAP/NTLM hardening not enforced ({0}). Configure signing, channel binding, and NTLM controls.' -f $detailText)",
+      "evidence_expression": "($ldapEvidence + \"`n\" + $ntlmEvidence)",
+      "extra_arguments": [],
+      "source_line": 3851
+    },
+    {
+      "severity": "high",
+      "category": "Security/DHCP",
+      "message": "('Non-private DHCP servers detected: {0}. Investigate rogue DHCP sources.' -f ($publicDhcp -join ', '))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 3877
+    },
+    {
+      "severity": "medium",
+      "category": "Security/Office",
+      "message": "Office MOTW macro blocking - no data. Confirm macro policies.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3901
+    },
+    {
+      "severity": "low",
+      "category": "Security/Office",
+      "message": "Office macro notifications - no data. Collect policy details.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3903
+    },
+    {
+      "severity": "low",
+      "category": "Security/Office",
+      "message": "Office Protected View - no data. Verify Protected View policies.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 3905
+    },
+    {
+      "severity": "high",
+      "category": "Security/BitLocker",
+      "message": "No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.",
+      "evidence_expression": "$bitlockerEvidence",
+      "extra_arguments": [],
+      "source_line": 3918
+    },
+    {
+      "severity": "high",
+      "category": "Services",
+      "message": "Core service stopped: $legacyName",
+      "evidence_expression": "$legacyRecord.RawLine",
+      "extra_arguments": [],
+      "source_line": 4265
+    },
+    {
+      "severity": "info",
+      "category": "Services/Printer Spooler",
+      "message": "(\"Print Spooler service not running (Status: {0}, StartType: {1}).\" -f $statusDisplay, $startDisplay)",
+      "evidence_expression": "$spoolerEvidence",
+      "extra_arguments": [],
+      "source_line": 4306
+    },
+    {
+      "severity": "high",
+      "category": "Printing/Queues",
+      "message": "('Multiple print queues are offline: {0}' -f (($offlinePrinters | ForEach-Object { $_.Name }) -join ', '))",
+      "evidence_expression": "$offlineEvidence",
+      "extra_arguments": [],
+      "source_line": 4369
+    },
+    {
+      "severity": "medium",
+      "category": "Printing/Queues",
+      "message": "('Print queue offline: {0}' -f $offlinePrinters[0].Name)",
+      "evidence_expression": "$offlineEvidence",
+      "extra_arguments": [],
+      "source_line": 4371
+    },
+    {
+      "severity": "low",
+      "category": "Printing/Queues",
+      "message": "(\"Default printer '{0}' not present in inventory.\" -f $defaultPrinterName)",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 4376
+    },
+    {
+      "severity": "low",
+      "category": "Printing/Queues",
+      "message": "Default printer not configured.",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 4378
+    },
+    {
+      "severity": "low",
+      "category": "Printing/Queues",
+      "message": "(\"Default printer '{0}' is offline.\" -f $defaultName)",
+      "evidence_expression": "(($defaultOffline | ForEach-Object { $_.Name + ' => ' + $_.PrinterStatus }) -join \"`n\")",
+      "extra_arguments": [],
+      "source_line": 4385
+    },
+    {
+      "severity": "$severity",
+      "category": "Printing/Queues",
+      "message": "('Stuck print job(s) detected ({0}).' -f ($stuckJobs.Count))",
+      "evidence_expression": "$stuckEvidence",
+      "extra_arguments": [],
+      "source_line": 4431
+    },
+    {
+      "severity": "low",
+      "category": "Printing/Ports",
+      "message": "('Printer(s) using WSD ports: {0}. Prefer TCP/IP or IPP ports for reliability.' -f ($wsdPrinters -join ', '))",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 4447
+    },
+    {
+      "severity": "low",
+      "category": "Printing/Ports",
+      "message": "('SNMP community remains set to \"public\" on: {0}' -f ($snmpPublicPrinters -join ', '))",
+      "evidence_expression": "",
+      "extra_arguments": [],
+      "source_line": 4466
+    },
+    {
+      "severity": "high",
+      "category": "Printing/Policies",
+      "message": "Point-and-Print hardening disabled (install prompts suppressed without driver restrictions).",
+      "evidence_expression": "$policyEvidence",
+      "extra_arguments": [],
+      "source_line": 4511
+    },
+    {
+      "severity": "$driverSeverity",
+      "category": "Printing/Drivers",
+      "message": "Legacy Type 3 or non-packaged print drivers detected on a domain-joined client.",
+      "evidence_expression": "$driverEvidence",
+      "extra_arguments": [],
+      "source_line": 4574
+    },
+    {
+      "severity": "$severity",
+      "category": "Printing/Network",
+      "message": "('Printer host unreachable ({0}): {1}' -f $kind, (if ($hostName) { $hostName } else { 'Unknown host' }))",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 4654
+    },
+    {
+      "severity": "medium",
+      "category": "Printing/Events",
+      "message": "(\"PrintService/Admin log recorded {0} error events in the last 7 days.\" -f $adminErrorCount)",
+      "evidence_expression": "$eventsEvidence",
+      "extra_arguments": [],
+      "source_line": 4691
+    },
+    {
+      "severity": "high",
+      "category": "Printing/Events",
+      "message": "(\"Recurring print driver crash events detected: {0}.\" -f $crashSummary)",
+      "evidence_expression": "$eventsEvidence",
+      "extra_arguments": [],
+      "source_line": 4724
+    },
+    {
+      "severity": "$dhcpEventSeverity[$key]",
+      "category": "Network/DHCP",
+      "message": "$message",
+      "evidence_expression": "$evidence",
+      "extra_arguments": [],
+      "source_line": 5013
+    },
+    {
+      "severity": "critical",
+      "category": "Network/DHCP",
+      "message": "DHCP scope likely exhausted; clients cannot obtain addresses from the server.",
+      "evidence_expression": "$scopeEvidence",
+      "extra_arguments": [],
+      "source_line": 5045
+    },
+    {
+      "severity": "critical",
+      "category": "Active Directory/DC Discovery",
+      "message": "No domain controllers discovered via DNS SRV records. Domain logons and policy refresh will fail.",
+      "evidence_expression": "$dcEvidenceText",
+      "extra_arguments": [],
+      "source_line": 5126
+    },
+    {
+      "severity": "critical",
+      "category": "Active Directory/AD DNS",
+      "message": "No AD-capable DNS resolvers detected; client cannot locate domain controllers.",
+      "evidence_expression": "$dnsText",
+      "extra_arguments": [],
+      "source_line": 5131
+    },
+    {
+      "severity": "high",
+      "category": "Active Directory/AD DNS",
+      "message": "(\"Only one AD-capable DNS resolver configured ({0}); there is no failover for domain lookups.\" -f $singleDns)",
+      "evidence_expression": "$dnsText",
+      "extra_arguments": [],
+      "source_line": 5135
+    },
+    {
+      "severity": "medium",
+      "category": "Active Directory/AD DNS",
+      "message": "(\"Public DNS servers configured on a domain-joined client: {0}. These can block DC discovery.\" -f ($publicDnsList -join ', '))",
+      "evidence_expression": "$dnsText",
+      "extra_arguments": [],
+      "source_line": 5140
+    },
+    {
+      "severity": "critical",
+      "category": "Active Directory/Secure Channel",
+      "message": "Machine secure channel to the domain is broken. Reset the computer account or rejoin the domain.",
+      "evidence_expression": "$secureEvidence",
+      "extra_arguments": [],
+      "source_line": 5148
+    },
+    {
+      "severity": "medium",
+      "category": "Active Directory/Time Sync",
+      "message": "$issueMessage",
+      "evidence_expression": "$timeStatusEvidence",
+      "extra_arguments": [],
+      "source_line": 5209
+    },
+    {
+      "severity": "high",
+      "category": "Active Directory/Time & Kerberos",
+      "message": "Time synchronization or Kerberos authentication errors detected. Verify clock alignment and domain controller reachability.",
+      "evidence_expression": "$timeKerbEvidence",
+      "extra_arguments": [],
+      "source_line": 5243
+    },
+    {
+      "severity": "high",
+      "category": "Active Directory/SYSVOL/NETLOGON",
+      "message": "Errors accessing SYSVOL or NETLOGON shares detected. Client cannot read required domain scripts or policies.",
+      "evidence_expression": "$sysvolEvidence",
+      "extra_arguments": [],
+      "source_line": 5270
+    },
+    {
+      "severity": "high",
+      "category": "Active Directory/GPO Processing",
+      "message": "Group Policy processing errors detected in recent logs.",
+      "evidence_expression": "$gpoEvidence",
+      "extra_arguments": [],
+      "source_line": 5289
+    },
+    {
+      "severity": "medium",
+      "category": "Events",
+      "message": "$name log shows many errors ($err in recent sample).",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 5310
+    },
+    {
+      "severity": "low",
+      "category": "Events",
+      "message": "$name log shows many warnings ($warn in recent sample).",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 5324
+    },
+    {
+      "severity": "critical",
+      "category": "Storage/SMART",
+      "message": "$message",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 5406
+    },
+    {
+      "severity": "$aggregateSeverity",
+      "category": "Storage/Disks",
+      "message": "$messageText",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 5498
+    },
+    {
+      "severity": "$aggregateSeverity",
+      "category": "Storage/Volumes",
+      "message": "$messageText",
+      "evidence_expression": "$evidenceText",
+      "extra_arguments": [],
+      "source_line": 5595
+    },
+    {
+      "severity": "critical",
+      "category": "Storage/Free Space",
+      "message": "Free space critically low",
+      "evidence_expression": "($criticals -join \"; \")",
+      "extra_arguments": [],
+      "source_line": 5641
+    },
+    {
+      "severity": "high",
+      "category": "Storage/Free Space",
+      "message": "Free space warning",
+      "evidence_expression": "($warns -join \"; \")",
+      "extra_arguments": [],
+      "source_line": 5644
+    }
+  ]
+}
