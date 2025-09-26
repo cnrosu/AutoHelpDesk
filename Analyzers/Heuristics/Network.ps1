@@ -63,6 +63,120 @@ function ConvertTo-NetworkAddressString {
     return [string]$RemoteAddress
 }
 
+function ConvertTo-KebabCase {
+    param([string]$Text)
+
+    if (-not $Text) { return $Text }
+
+    $normalized = $Text -replace '([a-z0-9])([A-Z])', '$1-$2'
+    $normalized = $normalized -replace '([A-Z]+)([A-Z][a-z])', '$1-$2'
+
+    return $normalized.ToLowerInvariant()
+}
+
+function Invoke-DhcpAnalyzers {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $CategoryResult
+    )
+
+    if (-not $Context -or -not $Context.Artifacts) { return }
+
+    $dhcpKeys = @($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*' })
+    if ($dhcpKeys.Count -eq 0) { return }
+
+    $firstKey = $dhcpKeys | Select-Object -First 1
+    if (-not $firstKey) { return }
+
+    $firstEntry = $Context.Artifacts[$firstKey] | Select-Object -First 1
+    if (-not $firstEntry -or -not $firstEntry.Path) { return }
+
+    $inputFolder = Split-Path -Path $firstEntry.Path -Parent
+    if (-not $inputFolder -or -not (Test-Path -LiteralPath $inputFolder)) { return }
+
+    $analyzerRoot = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath 'Network/DHCP'
+    if (-not (Test-Path -LiteralPath $analyzerRoot)) { return }
+
+    $scriptFiles = Get-ChildItem -Path $analyzerRoot -Filter 'Analyze-Dhcp*.ps1' -File -ErrorAction SilentlyContinue | Sort-Object Name
+    if (-not $scriptFiles -or $scriptFiles.Count -eq 0) { return }
+
+    $eligibleAnalyzers = @()
+    foreach ($script in $scriptFiles) {
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($script.Name)
+        if (-not $baseName.StartsWith('Analyze-')) { continue }
+        $suffix = $baseName.Substring(8)
+        if (-not $suffix) { continue }
+
+        $artifactBase = ConvertTo-KebabCase $suffix
+        if (-not $artifactBase) { continue }
+
+        $artifactPath = Join-Path -Path $inputFolder -ChildPath ($artifactBase + '.json')
+        if (Test-Path -LiteralPath $artifactPath) {
+            $eligibleAnalyzers += [pscustomobject]@{
+                Script       = $script
+                ArtifactBase = $artifactBase
+                ArtifactPath = (Resolve-Path -LiteralPath $artifactPath).ProviderPath
+            }
+        }
+    }
+
+    if ($eligibleAnalyzers.Count -eq 0) { return }
+
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    foreach ($analyzer in $eligibleAnalyzers) {
+        try {
+            $result = & $analyzer.Script.FullName -InputFolder $inputFolder
+        } catch {
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title ("DHCP analyzer failed: {0}" -f $analyzer.Script.Name) -Evidence $_.Exception.Message -Subcategory 'DHCP'
+            continue
+        }
+
+        if ($null -eq $result) { continue }
+
+        if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
+            foreach ($item in $result) {
+                if ($null -ne $item) { $findings.Add($item) | Out-Null }
+            }
+        } else {
+            $findings.Add($result) | Out-Null
+        }
+    }
+
+    if ($findings.Count -gt 0) {
+        foreach ($finding in $findings) {
+            if (-not $finding) { continue }
+
+            $severity = if ($finding.PSObject.Properties['Severity'] -and $finding.Severity) { [string]$finding.Severity } else { 'info' }
+            $title = if ($finding.PSObject.Properties['Message'] -and $finding.Message) {
+                    [string]$finding.Message
+                } elseif ($finding.PSObject.Properties['Check'] -and $finding.Check) {
+                    [string]$finding.Check
+                } else {
+                    'DHCP finding'
+                }
+            $evidence = if ($finding.PSObject.Properties['Evidence']) { $finding.Evidence } else { $null }
+            $subcategory = if ($finding.PSObject.Properties['Subcategory'] -and $finding.Subcategory) { [string]$finding.Subcategory } else { 'DHCP' }
+
+            if ($severity -in @('good', 'ok', 'normal')) {
+                Add-CategoryNormal -CategoryResult $CategoryResult -Title $title -Evidence $evidence -Subcategory $subcategory
+            } else {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory
+            }
+        }
+    } else {
+        $evidence = [ordered]@{
+            Checks = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
+            Folder = $inputFolder
+        }
+
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title ("DHCP diagnostics healthy ({0} checks)" -f $eligibleAnalyzers.Count) -Evidence $evidence -Subcategory 'DHCP'
+    }
+}
+
 function Invoke-NetworkHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -304,6 +418,8 @@ function Invoke-NetworkHeuristics {
             }
         }
     }
+
+    Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result
 
     return $result
 }

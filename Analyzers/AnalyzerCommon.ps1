@@ -113,13 +113,21 @@ function Add-CategoryNormal {
         [Parameter(Mandatory)]
         [string]$Title,
 
-        [object]$Evidence = $null
+        [object]$Evidence = $null,
+
+        [string]$Subcategory = $null
     )
 
-    $CategoryResult.Normals.Add([pscustomobject]@{
-            Title    = $Title
-            Evidence = $Evidence
-        }) | Out-Null
+    $entry = [ordered]@{
+        Title    = $Title
+        Evidence = $Evidence
+    }
+
+    if ($PSBoundParameters.ContainsKey('Subcategory') -and $Subcategory) {
+        $entry['Subcategory'] = $Subcategory
+    }
+
+    $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Add-CategoryCheck {
