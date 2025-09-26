@@ -467,13 +467,13 @@ if ($secureBootState) {
 }
 
 $fastStartupState = $null
-$fastStartupEvidenceLines = @()
+$fastStartupEvidenceLines = [System.Collections.Generic.List[string]]::new()
 if ($raw['power_settings']) {
   $powerSettingsText = $raw['power_settings']
   $hiberMatch = [regex]::Match($powerSettingsText,'(?im)^\s*HiberbootEnabled\s*[:=]\s*(.+)$')
   if ($hiberMatch.Success) {
     $hiberValueText = $hiberMatch.Groups[1].Value.Trim()
-    if ($hiberValueText) { $fastStartupEvidenceLines += $hiberMatch.Value.Trim() }
+    if ($hiberValueText) { $null = $fastStartupEvidenceLines.Add($hiberMatch.Value.Trim()) }
     $fastStartupState = Get-BoolFromString -Value $hiberValueText
     if ($fastStartupState -eq $null) {
       $numericMatch = [regex]::Match($hiberValueText,'0x[0-9a-fA-F]+|\d+')
@@ -491,13 +491,13 @@ if ($raw['power_settings']) {
       }
     }
   } elseif ($powerSettingsText -match '(?i)value not present') {
-    $fastStartupEvidenceLines += 'HiberbootEnabled value not present.'
+    $null = $fastStartupEvidenceLines.Add('HiberbootEnabled value not present.')
   }
 
   $fastStartupLines = [regex]::Matches($powerSettingsText,'(?im)^.*Fast Startup.*$')
   foreach ($lineMatch in $fastStartupLines) {
     $lineValue = $lineMatch.Value.Trim()
-    if ($lineValue) { $fastStartupEvidenceLines += $lineValue }
+    if ($lineValue) { $null = $fastStartupEvidenceLines.Add($lineValue) }
   }
 }
 
@@ -544,13 +544,13 @@ if (-not [string]::IsNullOrWhiteSpace($autorunsText)) {
       [void]$evidenceParts.Add("Non-Microsoft autorun entries: $nonMicrosoftCount")
       $topEntries = @($nonMicrosoftEntries | Select-Object -First 8)
       foreach ($entry in $topEntries) {
-        $linePieces = @()
-        $linePieces += $entry.Entry
-        if ($entry.Description) { $linePieces += $entry.Description }
-        if ($entry.Publisher) { $linePieces += ("Publisher: {0}" -f $entry.Publisher) }
-        else { $linePieces += 'Publisher: (unknown)' }
-        if ($entry.Location) { $linePieces += ("Location: {0}" -f $entry.Location) }
-        elseif ($entry.ImagePath) { $linePieces += ("Path: {0}" -f $entry.ImagePath) }
+        $linePieces = [System.Collections.Generic.List[string]]::new()
+        $null = $linePieces.Add([string]$entry.Entry)
+        if ($entry.Description) { $null = $linePieces.Add([string]$entry.Description) }
+        if ($entry.Publisher) { $null = $linePieces.Add("Publisher: {0}" -f $entry.Publisher) }
+        else { $null = $linePieces.Add('Publisher: (unknown)') }
+        if ($entry.Location) { $null = $linePieces.Add("Location: {0}" -f $entry.Location) }
+        elseif ($entry.ImagePath) { $null = $linePieces.Add("Path: {0}" -f $entry.ImagePath) }
         $lineText = ($linePieces -join ' | ')
         if ($lineText) { [void]$evidenceParts.Add($lineText) }
       }
@@ -894,30 +894,30 @@ if ($raw['ipconfig']){
 
       $canEvaluateDns = $dnsTestsAvailable -and ($dnsTestsAttempted -or $dcIPs.Count -gt 0)
 
-      $dnsEvidenceLines = @()
-      if ($configuredCount -gt 0) { $dnsEvidenceLines += ("Configured DNS: " + ($dnsServers -join ", ")) }
+      $dnsEvidenceLines = [System.Collections.Generic.List[string]]::new()
+      if ($configuredCount -gt 0) { $null = $dnsEvidenceLines.Add("Configured DNS: " + ($dnsServers -join ", ")) }
       if ($adCapableInOrder.Count -gt 0) {
-        $dnsEvidenceLines += ("AD-capable DNS: " + ($adCapableInOrder -join ", "))
+        $null = $dnsEvidenceLines.Add("AD-capable DNS: " + ($adCapableInOrder -join ", "))
       } else {
-        $dnsEvidenceLines += "AD-capable DNS: (none)"
+        $null = $dnsEvidenceLines.Add('AD-capable DNS: (none)')
       }
       if ($dcIPs.Count -gt 0) {
-        $dnsEvidenceLines += ("Discovered DC IPs: " + ($dcIPs -join ", "))
+        $null = $dnsEvidenceLines.Add("Discovered DC IPs: " + ($dcIPs -join ", "))
       } else {
-        $dnsEvidenceLines += "Discovered DC IPs: (none)"
+        $null = $dnsEvidenceLines.Add('Discovered DC IPs: (none)')
       }
-      $dnsEvidenceLines += ("DC count: " + $dcCount)
+      $null = $dnsEvidenceLines.Add("DC count: " + $dcCount)
       if ($normalizedAllow -and $normalizedAllow.Count -gt 0) {
-        $dnsEvidenceLines += ("Anycast allowlist: " + ($normalizedAllow -join ", "))
+        $null = $dnsEvidenceLines.Add("Anycast allowlist: " + ($normalizedAllow -join ", "))
       }
-      $dnsEvidenceLines += ("Anycast override matched: " + ([string]$anycastOverrideMatch))
-      $dnsEvidenceLines += ("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
+      $null = $dnsEvidenceLines.Add("Anycast override matched: " + ([string]$anycastOverrideMatch))
+      $null = $dnsEvidenceLines.Add("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
       if ($dcCount -ge 2 -and $adCapableInOrder.Count -lt 2) {
-        $dnsEvidenceLines += ("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
+        $null = $dnsEvidenceLines.Add("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
       }
       if ($dnsEvalTable) {
-        $dnsEvidenceLines += ''
-        $dnsEvidenceLines += $dnsEvalTable.TrimEnd()
+        $null = $dnsEvidenceLines.Add('')
+        $null = $dnsEvidenceLines.Add($dnsEvalTable.TrimEnd())
       }
       $dnsEvidence = $dnsEvidenceLines -join "`n"
 
@@ -1546,10 +1546,10 @@ if ($raw['office_security']) {
 
     $pvDisabledContexts = @($appContexts | Where-Object { ($_.PvInternetValue -eq 1) -or ($_.PvUnsafeValue -eq 1) })
     if ($pvDisabledContexts.Count -gt 0) {
-      $pvReasons = @()
+      $pvReasons = [System.Collections.Generic.List[string]]::new()
       foreach ($ctx in $pvDisabledContexts) {
-        if ($ctx.PvInternetValue -eq 1) { $pvReasons += 'internet files' }
-        if ($ctx.PvUnsafeValue -eq 1) { $pvReasons += 'unsafe locations' }
+        if ($ctx.PvInternetValue -eq 1) { $null = $pvReasons.Add('internet files') }
+        if ($ctx.PvUnsafeValue -eq 1) { $null = $pvReasons.Add('unsafe locations') }
       }
       $pvReasonText = ($pvReasons | Sort-Object -Unique) -join ', '
       if (-not $pvReasonText) { $pvReasonText = 'Protected View' }
@@ -1581,8 +1581,8 @@ if ($raw['office_security']) {
     })
 
     if (-not $hasIssue) {
-      $positiveParts = @()
-      if ($blockCompliant.Count -gt 0) { $positiveParts += 'MOTW macro blocking enforced' }
+      $positiveParts = [System.Collections.Generic.List[string]]::new()
+      if ($blockCompliant.Count -gt 0) { $null = $positiveParts.Add('MOTW macro blocking enforced') }
       $strictWarnings = @($appContexts | Where-Object {
           $val = $_.WarningsValue
           if ($null -eq $val) {
@@ -1591,8 +1591,8 @@ if ($raw['office_security']) {
             $val -ge 3
           }
         })
-      if ($strictWarnings.Count -gt 0) { $positiveParts += 'strict macro notification policy' }
-      if ($pvDisabledContexts.Count -eq 0) { $positiveParts += 'Protected View active for internet/unsafe files' }
+      if ($strictWarnings.Count -gt 0) { $null = $positiveParts.Add('strict macro notification policy') }
+      if ($pvDisabledContexts.Count -eq 0) { $null = $positiveParts.Add('Protected View active for internet/unsafe files') }
 
       if ($positiveParts.Count -gt 0) {
         $evidenceContext = if ($blockCompliant.Count -gt 0) { $blockCompliant[0] } else { $appContexts[0] }
@@ -1869,11 +1869,11 @@ if ($tpmText) {
 }
 
 # 2. Memory integrity (HVCI)
-$dgEvidenceLines = @()
-if ($securityServicesConfigured.Count -gt 0) { $dgEvidenceLines += "Configured: $($securityServicesConfigured -join ',')" }
-if ($securityServicesRunning.Count -gt 0) { $dgEvidenceLines += "Running: $($securityServicesRunning -join ',')" }
-if ($availableSecurityProperties.Count -gt 0) { $dgEvidenceLines += "Available: $($availableSecurityProperties -join ',')" }
-if ($requiredSecurityProperties.Count -gt 0) { $dgEvidenceLines += "Required: $($requiredSecurityProperties -join ',')" }
+$dgEvidenceLines = [System.Collections.Generic.List[string]]::new()
+if ($securityServicesConfigured.Count -gt 0) { $null = $dgEvidenceLines.Add("Configured: $($securityServicesConfigured -join ',')") }
+if ($securityServicesRunning.Count -gt 0) { $null = $dgEvidenceLines.Add("Running: $($securityServicesRunning -join ',')") }
+if ($availableSecurityProperties.Count -gt 0) { $null = $dgEvidenceLines.Add("Available: $($availableSecurityProperties -join ',')") }
+if ($requiredSecurityProperties.Count -gt 0) { $null = $dgEvidenceLines.Add("Required: $($requiredSecurityProperties -join ',')") }
 $dgEvidence = $dgEvidenceLines -join "`n"
 $hvciRunning = ($securityServicesRunning -contains 2)
 $hvciAvailable = ($availableSecurityProperties -contains 2) -or ($requiredSecurityProperties -contains 2)
@@ -1893,10 +1893,10 @@ if ($hvciRunning) {
 $credentialGuardRunning = ($securityServicesRunning -contains 1)
 $runAsPpl = ConvertTo-NullableInt $lsaMap['RunAsPPL']
 $runAsPplBoot = ConvertTo-NullableInt $lsaMap['RunAsPPLBoot']
-$lsaEvidenceLines = @()
-if ($credentialGuardRunning) { $lsaEvidenceLines += 'SecurityServicesRunning includes 1 (Credential Guard).' }
-if ($runAsPpl -ne $null) { $lsaEvidenceLines += "RunAsPPL: $runAsPpl" }
-if ($runAsPplBoot -ne $null) { $lsaEvidenceLines += "RunAsPPLBoot: $runAsPplBoot" }
+$lsaEvidenceLines = [System.Collections.Generic.List[string]]::new()
+if ($credentialGuardRunning) { $null = $lsaEvidenceLines.Add('SecurityServicesRunning includes 1 (Credential Guard).') }
+if ($runAsPpl -ne $null) { $null = $lsaEvidenceLines.Add("RunAsPPL: $runAsPpl") }
+if ($runAsPplBoot -ne $null) { $null = $lsaEvidenceLines.Add("RunAsPPLBoot: $runAsPplBoot") }
 $lsaEvidence = $lsaEvidenceLines -join "`n"
 if ($credentialGuardRunning -and $runAsPpl -eq 1) {
   Add-SecurityHeuristic 'Credential Guard (LSA isolation)' 'Enabled' 'good' 'Credential Guard running with LSA protection.' $lsaEvidence
@@ -2041,34 +2041,34 @@ $requiredAsrSets = @(
 foreach ($set in $requiredAsrSets) {
   $label = $set.Label
   $ids = $set.Ids
-  $missing = @()
-  $nonBlocking = @()
+  $missing = [System.Collections.Generic.List[string]]::new()
+  $nonBlocking = [System.Collections.Generic.List[string]]::new()
   foreach ($id in $ids) {
     $lookup = $id.ToUpperInvariant()
     if (-not $asrRules.ContainsKey($lookup)) {
-      $missing += $lookup
+      $null = $missing.Add($lookup)
       continue
     }
     $action = $asrRules[$lookup]
     if ($action -ne 1) {
-      $nonBlocking += "{0} => {1}" -f $lookup, $action
+      $null = $nonBlocking.Add("{0} => {1}" -f $lookup, $action)
     }
   }
   if ($missing.Count -eq 0 -and $nonBlocking.Count -eq 0 -and $ids.Count -gt 0) {
     $evidence = ($ids | ForEach-Object { "{0} => 1" -f $_ }) -join "`n"
     Add-SecurityHeuristic ("ASR: {0}" -f $label) 'Block' 'good' '' $evidence
   } else {
-    $detailsParts = @()
-    if ($missing.Count -gt 0) { $detailsParts += ("Missing rule(s): {0}" -f ($missing -join ', ')) }
-    if ($nonBlocking.Count -gt 0) { $detailsParts += ("Non-blocking: {0}" -f ($nonBlocking -join '; ')) }
+    $detailsParts = [System.Collections.Generic.List[string]]::new()
+    if ($missing.Count -gt 0) { $null = $detailsParts.Add("Missing rule(s): {0}" -f ($missing -join ', ')) }
+    if ($nonBlocking.Count -gt 0) { $null = $detailsParts.Add("Non-blocking: {0}" -f ($nonBlocking -join '; ')) }
     $detailText = if ($detailsParts.Count -gt 0) { $detailsParts -join '; ' } else { 'Rule not enforced.' }
-    $evidenceLines = @()
+    $evidenceLines = [System.Collections.Generic.List[string]]::new()
     foreach ($id in $ids) {
       $lookup = $id.ToUpperInvariant()
       if ($asrRules.ContainsKey($lookup)) {
-        $evidenceLines += "{0} => {1}" -f $lookup, $asrRules[$lookup]
+        $null = $evidenceLines.Add("{0} => {1}" -f $lookup, $asrRules[$lookup])
       } else {
-        $evidenceLines += "{0} => (missing)" -f $lookup
+        $null = $evidenceLines.Add("{0} => (missing)" -f $lookup)
       }
     }
     $evidence = $evidenceLines -join "`n"
@@ -2082,32 +2082,32 @@ $exploitData = ConvertFrom-JsonSafe $raw['security_exploit']
 $cfgEnabled = $false
 $depEnabled = $false
 $aslrEnabled = $false
-$exploitEvidenceLines = @()
+$exploitEvidenceLines = [System.Collections.Generic.List[string]]::new()
 if ($exploitData) {
   if ($exploitData.PSObject.Properties['CFG']) {
     $cfgValue = $exploitData.CFG.Enable
     $cfgEnabled = Test-IsEnabledValue $cfgValue
-    $exploitEvidenceLines += "CFG.Enable: $cfgValue"
+    $null = $exploitEvidenceLines.Add("CFG.Enable: $cfgValue")
   }
   if ($exploitData.PSObject.Properties['DEP']) {
     $depValue = $exploitData.DEP.Enable
     $depEnabled = Test-IsEnabledValue $depValue
-    $exploitEvidenceLines += "DEP.Enable: $depValue"
+    $null = $exploitEvidenceLines.Add("DEP.Enable: $depValue")
   }
   if ($exploitData.PSObject.Properties['ASLR']) {
     $aslrValue = $exploitData.ASLR.Enable
     $aslrEnabled = Test-IsEnabledValue $aslrValue
-    $exploitEvidenceLines += "ASLR.Enable: $aslrValue"
+    $null = $exploitEvidenceLines.Add("ASLR.Enable: $aslrValue")
   }
 }
 $exploitEvidence = $exploitEvidenceLines -join "`n"
 if ($cfgEnabled -and $depEnabled -and $aslrEnabled) {
   Add-SecurityHeuristic 'Exploit protection (system)' 'CFG/DEP/ASLR enforced' 'good' '' $exploitEvidence
 } elseif ($exploitData) {
-  $details = @()
-  if (-not $cfgEnabled) { $details += 'CFG disabled' }
-  if (-not $depEnabled) { $details += 'DEP disabled' }
-  if (-not $aslrEnabled) { $details += 'ASLR disabled' }
+  $details = [System.Collections.Generic.List[string]]::new()
+  if (-not $cfgEnabled) { $null = $details.Add('CFG disabled') }
+  if (-not $depEnabled) { $null = $details.Add('DEP disabled') }
+  if (-not $aslrEnabled) { $null = $details.Add('ASLR disabled') }
   $detailText = if ($details.Count -gt 0) { $details -join '; ' } else { 'Mitigation status unknown.' }
   Add-SecurityHeuristic 'Exploit protection (system)' 'Relaxed' 'warning' $detailText $exploitEvidence -SkipIssue
   Add-Issue 'medium' 'Security/ExploitProtection' ('Exploit protection mitigations not fully enabled ({0}).' -f $detailText) $exploitEvidence
@@ -2118,17 +2118,17 @@ if ($cfgEnabled -and $depEnabled -and $aslrEnabled) {
 
 # 11. WDAC / Smart App Control
 $wdacData = ConvertFrom-JsonSafe $raw['security_wdac']
-$wdacEvidenceLines = @()
+$wdacEvidenceLines = [System.Collections.Generic.List[string]]::new()
 $wdacEnforced = $false
 if ($securityServicesConfigured -contains 4 -or $securityServicesRunning -contains 4) {
   $wdacEnforced = $true
-  $wdacEvidenceLines += 'DeviceGuard SecurityServices include 4 (Code Integrity).'
+  $null = $wdacEvidenceLines.Add('DeviceGuard SecurityServices include 4 (Code Integrity).')
 }
 if ($wdacData -and $wdacData.PSObject.Properties['DeviceGuard']) {
   $dgSection = $wdacData.DeviceGuard
   if ($dgSection.PSObject.Properties['CodeIntegrityPolicyEnforcementStatus']) {
     $ciStatus = ConvertTo-NullableInt $dgSection.CodeIntegrityPolicyEnforcementStatus
-    $wdacEvidenceLines += "CodeIntegrityPolicyEnforcementStatus: $ciStatus"
+    $null = $wdacEvidenceLines.Add("CodeIntegrityPolicyEnforcementStatus: $ciStatus")
     if ($ciStatus -ge 1) { $wdacEnforced = $true }
   }
 }
