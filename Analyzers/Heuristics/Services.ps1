@@ -5,6 +5,8 @@
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
+$CoreAutostartServices = @('Dnscache','Netlogon','LanmanWorkstation','BITS','WSearch')
+
 function Invoke-ServicesHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -14,6 +16,7 @@ function Invoke-ServicesHeuristics {
     $result = New-CategoryResult -Name 'Services'
 
     $servicesArtifact = Get-AnalyzerArtifact -Context $Context -Name 'services'
+    $startPendingCheckAdded = $false
     if ($servicesArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $servicesArtifact)
         if ($payload -and $payload.Services -and -not $payload.Services.Error) {
@@ -66,11 +69,108 @@ function Invoke-ServicesHeuristics {
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Automatic services running'
             }
+
+            $autostartSamples = @()
+            if ($payload.PSObject.Properties['AutostartServiceSamples']) {
+                $sampleValue = $payload.AutostartServiceSamples
+                if ($sampleValue -is [System.Collections.IEnumerable] -and -not ($sampleValue -is [string])) {
+                    $autostartSamples = @($sampleValue)
+                } elseif ($sampleValue) {
+                    $autostartSamples = @($sampleValue)
+                }
+            }
+
+            $validSamples = $autostartSamples | Where-Object { $_ -and -not $_.Error }
+            if ($validSamples.Count -ge 2) {
+                $sortedSamples = $validSamples | Sort-Object -Property {
+                    if ($_.PSObject.Properties['ElapsedSeconds']) {
+                        try { [double]$_.ElapsedSeconds } catch { 0 }
+                    } else { 0 }
+                }
+
+                $firstSample = $sortedSamples[0]
+                $secondSample = $sortedSamples[1]
+
+                $firstLookup = @{}
+                if ($firstSample.Services -and ($firstSample.Services -is [System.Collections.IEnumerable]) -and -not ($firstSample.Services -is [string])) {
+                    foreach ($svc in $firstSample.Services) {
+                        if ($svc -and $svc.PSObject.Properties['Name']) {
+                            $firstLookup[[string]$svc.Name] = $svc
+                        }
+                    }
+                }
+
+                $stuckServices = @()
+                if ($secondSample.Services -and ($secondSample.Services -is [System.Collections.IEnumerable]) -and -not ($secondSample.Services -is [string])) {
+                    foreach ($svc in $secondSample.Services) {
+                        if (-not $svc -or -not $svc.PSObject.Properties['Name']) { continue }
+                        $name = [string]$svc.Name
+                        if (-not $firstLookup.ContainsKey($name)) { continue }
+                        $initialStatus = ''
+                        if ($firstLookup[$name].PSObject.Properties['Status']) { $initialStatus = [string]$firstLookup[$name].Status }
+                        $initialStatusLower = if ($initialStatus) { $initialStatus.ToLowerInvariant() } else { '' }
+                        if ($initialStatusLower -notin @('startpending','stoppending')) { continue }
+
+                        $currentStatus = ''
+                        if ($svc.PSObject.Properties['Status']) { $currentStatus = [string]$svc.Status }
+                        $currentStatusLower = if ($currentStatus) { $currentStatus.ToLowerInvariant() } else { '' }
+                        if ($currentStatusLower -notin @('startpending','stoppending')) { continue }
+
+                        $startType = ''
+                        if ($svc.PSObject.Properties['StartType']) { $startType = [string]$svc.StartType }
+
+                        $elapsed = 0
+                        if ($secondSample.PSObject.Properties['ElapsedSeconds']) {
+                            try { $elapsed = [math]::Round([double]$secondSample.ElapsedSeconds, 2) } catch { $elapsed = 0 }
+                        }
+
+                        $stuckServices += [pscustomobject]@{
+                            Name       = $name
+                            Status     = $currentStatus
+                            StartType  = $startType
+                            ElapsedSec = $elapsed
+                        }
+                    }
+                }
+
+                if ($stuckServices.Count -gt 0) {
+                    $coreLookup = @{}
+                    foreach ($svcName in $CoreAutostartServices) {
+                        if ($svcName) { $coreLookup[$svcName.ToLowerInvariant()] = $true }
+                    }
+
+                    $coreStuck = $stuckServices | Where-Object { $coreLookup.ContainsKey($_.Name.ToLowerInvariant()) }
+                    $nonCoreStuck = $stuckServices | Where-Object { -not $coreLookup.ContainsKey($_.Name.ToLowerInvariant()) }
+
+                    if ($coreStuck.Count -gt 0) {
+                        $coreEvidence = $coreStuck | ForEach-Object { "{0} — {1}s — {2}" -f $_.Name, $_.ElapsedSec, $_.StartType }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Core autostart service(s) stuck pending start/stop' -Evidence ($coreEvidence -join "`n") -Subcategory 'Service Inventory'
+                    }
+
+                    if ($nonCoreStuck.Count -gt 0) {
+                        $nonCoreEvidence = $nonCoreStuck | ForEach-Object { "{0} — {1}s — {2}" -f $_.Name, $_.ElapsedSec, $_.StartType }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Autostart service(s) stuck pending start/stop' -Evidence ($nonCoreEvidence -join "`n") -Subcategory 'Service Inventory'
+                    }
+
+                    $checkDetails = $stuckServices | ForEach-Object { "{0} — {1}s — {2}" -f $_.Name, $_.ElapsedSec, $_.StartType }
+                    Add-CategoryCheck -CategoryResult $result -Name 'Services/StartPending' -Status 'WARN' -Details ($checkDetails -join '; ')
+                    $startPendingCheckAdded = $true
+                }
+            }
+
+            if (-not $startPendingCheckAdded) {
+                Add-CategoryCheck -CategoryResult $result -Name 'Services/StartPending' -Status 'GOOD' -Details 'No autostart service stuck.'
+                $startPendingCheckAdded = $true
+            }
         } elseif ($payload.Services.Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $payload.Services.Error -Subcategory 'Service Inventory'
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Services artifact missing' -Subcategory 'Collection'
+    }
+
+    if (-not $startPendingCheckAdded) {
+        Add-CategoryCheck -CategoryResult $result -Name 'Services/StartPending' -Status 'UNKNOWN' -Details 'Autostart service sampling unavailable.'
     }
 
     return $result
