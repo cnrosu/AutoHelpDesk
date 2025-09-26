@@ -47,3 +47,40 @@ function New-CollectorMetadata {
         Payload     = $Payload
     }
 }
+
+function Invoke-CollectorNativeCommand {
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [string[]]$ArgumentList = @(),
+
+        [string]$SourceLabel,
+
+        [hashtable]$ErrorMetadata
+    )
+
+    try {
+        return & $FilePath @ArgumentList 2>$null
+    } catch {
+        $metadata = [ordered]@{}
+
+        if ($PSBoundParameters.ContainsKey('ErrorMetadata') -and $ErrorMetadata) {
+            foreach ($key in $ErrorMetadata.Keys) {
+                $metadata[$key] = $ErrorMetadata[$key]
+            }
+        } elseif ($PSBoundParameters.ContainsKey('SourceLabel') -and $SourceLabel) {
+            $metadata['Source'] = $SourceLabel
+        } else {
+            $commandName = [System.IO.Path]::GetFileName($FilePath)
+            if ($ArgumentList.Count -gt 0) {
+                $commandName = "$commandName $($ArgumentList -join ' ')"
+            }
+            $metadata['Source'] = $commandName
+        }
+
+        $metadata['Error'] = $_.Exception.Message
+
+        return [PSCustomObject]$metadata
+    }
+}

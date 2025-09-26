@@ -11,14 +11,7 @@ param(
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
 function Get-WinHttpProxy {
-    try {
-        return netsh.exe winhttp show proxy 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'netsh winhttp'
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'netsh.exe' -ArgumentList 'winhttp','show','proxy' -SourceLabel 'netsh winhttp'
 }
 
 function Get-InternetSettings {

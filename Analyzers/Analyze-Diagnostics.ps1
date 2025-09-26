@@ -23,15 +23,12 @@ if (Test-Path -Path $commonModulePath) {
 }
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'AnalyzerCommon.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/System.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Security.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Network.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/AD.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Office.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Storage.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Events.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Services.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics/Printing.ps1')
+$heuristicsPath = Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics'
+if (Test-Path -Path $heuristicsPath) {
+    Get-ChildItem -Path $heuristicsPath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object {
+        . $_.FullName
+    }
+}
 . (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
