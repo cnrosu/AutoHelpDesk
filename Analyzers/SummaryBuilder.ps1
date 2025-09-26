@@ -13,36 +13,55 @@ function Get-FirstNonEmptyString {
 
     process {
         if ($null -eq $Value) { return }
-        if ($Value -is [string]) {
-            $trimmed = $Value.Trim()
-            if ($trimmed) { return $trimmed }
-            return
-        }
 
-        if ($Value -is [ValueType]) {
-            $text = $Value.ToString().Trim()
-            if ($text) { return $text }
-            return
-        }
+        $visited = [System.Collections.Generic.HashSet[int]]::new()
+        $stack = [System.Collections.Stack]::new()
+        $null = $stack.Push($Value)
 
-        if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-            foreach ($item in $Value) {
-                $candidate = Get-FirstNonEmptyString -Value $item
-                if ($candidate) { return $candidate }
+        while ($stack.Count -gt 0) {
+            $current = $stack.Pop()
+            if ($null -eq $current) { continue }
+
+            if ($current -is [string]) {
+                $trimmed = $current.Trim()
+                if ($trimmed) { return $trimmed }
+                continue
             }
-            return
-        }
 
-        foreach ($prop in 'Name','Value','DisplayValue','NextHop','IPAddress','Address') {
-            if ($Value.PSObject.Properties[$prop]) {
-                $candidate = Get-FirstNonEmptyString -Value $Value.$prop
-                if ($candidate) { return $candidate }
+            if ($current -is [ValueType]) {
+                $text = $current.ToString().Trim()
+                if ($text) { return $text }
+                continue
             }
-        }
 
-        $fallback = [string]$Value
-        $fallback = $fallback.Trim()
-        if ($fallback) { return $fallback }
+            $identity = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($current)
+            if (-not $visited.Add($identity)) { continue }
+
+            if ($current -is [System.Collections.IEnumerable] -and -not ($current -is [string])) {
+                $items = @()
+                foreach ($item in $current) { $items += ,$item }
+                for ($index = $items.Count - 1; $index -ge 0; $index--) {
+                    $null = $stack.Push($items[$index])
+                }
+                continue
+            }
+
+            $properties = @('Name','Value','DisplayValue','NextHop','IPAddress','Address')
+            $pushed = $false
+            for ($idx = $properties.Count - 1; $idx -ge 0; $idx--) {
+                $prop = $properties[$idx]
+                if ($current.PSObject.Properties[$prop]) {
+                    $null = $stack.Push($current.$prop)
+                    $pushed = $true
+                }
+            }
+
+            if ($pushed) { continue }
+
+            $fallback = [string]$current
+            $fallback = $fallback.Trim()
+            if ($fallback) { return $fallback }
+        }
     }
 }
 
@@ -77,42 +96,57 @@ function Get-AllStrings {
     )
 
     $results = New-Object System.Collections.Generic.List[string]
+    $stringSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::Ordinal)
+    $visited = [System.Collections.Generic.HashSet[int]]::new()
+    $stack = [System.Collections.Stack]::new()
+    $null = $stack.Push($Value)
 
-    function Add-StringRecursive {
-        param($InputValue)
+    while ($stack.Count -gt 0) {
+        $current = $stack.Pop()
+        if ($null -eq $current) { continue }
 
-        if ($null -eq $InputValue) { return }
-        if ($InputValue -is [string]) {
-            $text = $InputValue.Trim()
-            if ($text) { $results.Add($text) | Out-Null }
-            return
+        if ($current -is [string]) {
+            $text = $current.Trim()
+            if ($text -and $stringSet.Add($text)) { $results.Add($text) | Out-Null }
+            continue
         }
 
-        if ($InputValue -is [ValueType]) {
-            $text = $InputValue.ToString().Trim()
-            if ($text) { $results.Add($text) | Out-Null }
-            return
+        if ($current -is [ValueType]) {
+            $text = $current.ToString().Trim()
+            if ($text -and $stringSet.Add($text)) { $results.Add($text) | Out-Null }
+            continue
         }
 
-        if ($InputValue -is [System.Collections.IEnumerable] -and -not ($InputValue -is [string])) {
-            foreach ($item in $InputValue) { Add-StringRecursive -InputValue $item }
-            return
+        $identity = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($current)
+        if (-not $visited.Add($identity)) { continue }
+
+        if ($current -is [System.Collections.IEnumerable] -and -not ($current -is [string])) {
+            $items = @()
+            foreach ($item in $current) { $items += ,$item }
+            for ($index = $items.Count - 1; $index -ge 0; $index--) {
+                $null = $stack.Push($items[$index])
+            }
+            continue
         }
 
-        foreach ($prop in 'IPAddress','Address','NextHop','Value','DisplayValue','Name','ServerAddresses') {
-            if ($InputValue.PSObject.Properties[$prop]) {
-                Add-StringRecursive -InputValue $InputValue.$prop
-                return
+        $properties = @('IPAddress','Address','NextHop','Value','DisplayValue','Name','ServerAddresses')
+        $handled = $false
+        for ($idx = $properties.Count - 1; $idx -ge 0; $idx--) {
+            $prop = $properties[$idx]
+            if ($current.PSObject.Properties[$prop]) {
+                $null = $stack.Push($current.$prop)
+                $handled = $true
             }
         }
 
-        $fallback = [string]$InputValue
+        if ($handled) { continue }
+
+        $fallback = [string]$current
         $fallback = $fallback.Trim()
-        if ($fallback) { $results.Add($fallback) | Out-Null }
+        if ($fallback -and $stringSet.Add($fallback)) { $results.Add($fallback) | Out-Null }
     }
 
-    Add-StringRecursive -InputValue $Value
-    return ($results | Select-Object -Unique)
+    return $results
 }
 
 function Parse-IpConfigNetworkValues {
