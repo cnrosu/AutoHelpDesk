@@ -46,6 +46,30 @@ function Get-FirstNonEmptyString {
     }
 }
 
+function Convert-ToUniqueStringArray {
+    param(
+        [Parameter(Mandatory)]
+        [System.Collections.IEnumerable]$Values
+    )
+
+    $ordered = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($value in $Values) {
+        if ($null -eq $value) { continue }
+        $text = [string]$value
+        if (-not $text) { continue }
+        $trimmed = $text.Trim()
+        if (-not $trimmed) { continue }
+        if ($seen.Add($trimmed)) {
+            $ordered.Add($trimmed) | Out-Null
+        }
+    }
+
+    if ($ordered.Count -eq 0) { return @() }
+    return $ordered.ToArray()
+}
+
 function Get-AllStrings {
     param(
         [Parameter(Mandatory)]
@@ -89,6 +113,87 @@ function Get-AllStrings {
 
     Add-StringRecursive -InputValue $Value
     return ($results | Select-Object -Unique)
+}
+
+function Parse-IpConfigNetworkValues {
+    param([string]$IpConfigText)
+
+    $ipv4 = New-Object System.Collections.Generic.List[string]
+    $gateways = New-Object System.Collections.Generic.List[string]
+    $dns = New-Object System.Collections.Generic.List[string]
+
+    if ([string]::IsNullOrWhiteSpace($IpConfigText)) {
+        return [pscustomobject]@{
+            IPv4     = @()
+            Gateways = @()
+            Dns      = @()
+        }
+    }
+
+    $lines = [regex]::Split($IpConfigText, '\r?\n')
+    $collectingDns = $false
+    $collectingGateway = $false
+
+    foreach ($line in $lines) {
+        $raw = if ($null -ne $line) { $line.Trim() } else { '' }
+        if (-not $raw) { continue }
+
+        if ($raw -match '^(?<label>[A-Za-z0-9\s\.-]+?):\s*(?<value>.*)$') {
+            $label = $matches['label'].Trim()
+            $value = $matches['value']
+            if ($null -ne $value) { $value = $value.Trim() }
+
+            $collectingDns = $false
+            $collectingGateway = $false
+
+            switch -Regex ($label) {
+                'IPv4\s+Address' {
+                    if ($value) {
+                        $clean = ($value -replace '\(Preferred\)', '')
+                        $clean = ($clean -replace '\s*\(.*$','').Trim()
+                        if ($clean -and $clean -notmatch '^169\.254\.') {
+                            $ipv4.Add($clean) | Out-Null
+                        }
+                    }
+                }
+                'Default\s+Gateway' {
+                    if ($value) {
+                        $gateways.Add($value) | Out-Null
+                    } else {
+                        $collectingGateway = $true
+                    }
+                }
+                'DNS\s+Servers' {
+                    if ($value) {
+                        $dns.Add($value) | Out-Null
+                    }
+                    $collectingDns = $true
+                }
+            }
+
+            continue
+        }
+
+        if ($collectingGateway) {
+            $gateways.Add($raw) | Out-Null
+            continue
+        }
+
+        if ($collectingDns) {
+            $dns.Add($raw) | Out-Null
+            continue
+        }
+    }
+
+    $ipv4Array = Convert-ToUniqueStringArray -Values $ipv4
+    $gatewayArray = Convert-ToUniqueStringArray -Values ($gateways | Where-Object { $_ -and $_ -ne '0.0.0.0' })
+    $dnsArray = Convert-ToUniqueStringArray -Values $dns
+
+    return [pscustomobject]@{
+        IPv4     = $ipv4Array
+        Gateways = $gatewayArray
+        Dns      = $dnsArray
+    }
 }
 
 function Format-DeviceState {
@@ -264,9 +369,42 @@ function Get-AnalyzerSummary {
                 }
             }
 
-            if ($ipv4.Count -gt 0) { $summary.IPv4Addresses = ($ipv4 | Select-Object -Unique) }
-            if ($gateways.Count -gt 0) { $summary.Gateways = ($gateways | Select-Object -Unique) }
-            if ($dns.Count -gt 0) { $summary.DnsServers = ($dns | Select-Object -Unique) }
+            if ($ipv4.Count -gt 0) { $summary.IPv4Addresses = Convert-ToUniqueStringArray -Values $ipv4 }
+            if ($gateways.Count -gt 0) { $summary.Gateways = Convert-ToUniqueStringArray -Values ($gateways | Where-Object { $_ -and $_ -ne '0.0.0.0' }) }
+            if ($dns.Count -gt 0) { $summary.DnsServers = Convert-ToUniqueStringArray -Values $dns }
+        }
+    }
+
+    $hasIpv4 = ($summary.IPv4Addresses -and @($summary.IPv4Addresses).Count -gt 0)
+    $hasGateway = ($summary.Gateways -and @($summary.Gateways).Count -gt 0)
+    $hasDns = ($summary.DnsServers -and @($summary.DnsServers).Count -gt 0)
+
+    if (-not ($hasIpv4 -and $hasGateway -and $hasDns)) {
+        if (-not $hostnameArtifact) {
+            $hostnameArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
+        }
+
+        if ($hostnameArtifact) {
+            $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $hostnameArtifact)
+            if ($payload -and $payload.IpConfig) {
+                $ipConfigText = $payload.IpConfig
+                if ($ipConfigText -isnot [string]) {
+                    if ($ipConfigText -is [System.Collections.IEnumerable]) {
+                        $ipConfigText = ($ipConfigText -join "`n")
+                    } else {
+                        $ipConfigText = [string]$ipConfigText
+                    }
+                }
+
+                if ($ipConfigText) {
+                    $parsed = Parse-IpConfigNetworkValues -IpConfigText $ipConfigText
+                    if ($parsed) {
+                        if (-not $hasIpv4 -and $parsed.IPv4.Count -gt 0) { $summary.IPv4Addresses = $parsed.IPv4 }
+                        if (-not $hasGateway -and $parsed.Gateways.Count -gt 0) { $summary.Gateways = $parsed.Gateways }
+                        if (-not $hasDns -and $parsed.Dns.Count -gt 0) { $summary.DnsServers = $parsed.Dns }
+                    }
+                }
+            }
         }
     }
 
