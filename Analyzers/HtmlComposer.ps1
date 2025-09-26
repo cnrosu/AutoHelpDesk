@@ -165,6 +165,203 @@ function Convert-ToGoodCard {
     }
 }
 
+function Get-CollectorDisplayName {
+    param(
+        [string]$ScriptPath,
+        [string]$Fallback
+    )
+
+    if ($ScriptPath) {
+        try {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($ScriptPath)
+        } catch {
+            $name = $null
+        }
+
+        if ($name) {
+            if ($name.StartsWith('Collect-', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $trimmed = $name.Substring('Collect-'.Length)
+                if ($trimmed) { return $trimmed }
+            }
+
+            return $name
+        }
+
+        return $ScriptPath
+    }
+
+    if ($Fallback) { return $Fallback }
+
+    return 'Unknown'
+}
+
+function Get-CollectorOutputCandidates {
+    param($Output)
+
+    $values = New-Object System.Collections.Generic.List[string]
+
+    if ($null -eq $Output) { return $values }
+
+    if ($Output -is [System.Collections.IEnumerable] -and -not ($Output -is [string])) {
+        foreach ($item in $Output) {
+            foreach ($value in Get-CollectorOutputCandidates -Output $item) {
+                if ($value) { $values.Add($value) | Out-Null }
+            }
+        }
+
+        return $values
+    }
+
+    $text = [string]$Output
+    if ([string]::IsNullOrWhiteSpace($text)) { return $values }
+
+    $trimmed = $text.Trim()
+    if (-not $trimmed) { return $values }
+
+    $values.Add($trimmed) | Out-Null
+    return $values
+}
+
+function Get-FailedCollectorReports {
+    param($Context)
+
+    $failures = New-Object System.Collections.Generic.List[pscustomobject]
+
+    if (-not $Context) { return $failures }
+
+    $summaryArtifact = Get-AnalyzerArtifact -Context $Context -Name 'collection-summary'
+    if ($summaryArtifact -and $summaryArtifact.Data -and $summaryArtifact.Data.PSObject.Properties['Results']) {
+        $results = $summaryArtifact.Data.Results
+        if (-not ($results -is [System.Collections.IEnumerable] -and -not ($results -is [string]))) {
+            $results = @($results)
+        }
+
+        foreach ($result in $results) {
+            if (-not $result) { continue }
+
+            $scriptPath = if ($result.PSObject.Properties['Script']) { [string]$result.Script } else { $null }
+            $output = if ($result.PSObject.Properties['Output']) { $result.Output } else { $null }
+            $candidates = Get-CollectorOutputCandidates -Output $output
+            $displayName = $null
+            foreach ($candidate in $candidates) {
+                if (-not $candidate) { continue }
+                try {
+                    $name = [System.IO.Path]::GetFileName($candidate)
+                } catch {
+                    $name = $null
+                }
+                if ($name) { $displayName = $name; break }
+            }
+            if (-not $displayName -and $candidates.Count -gt 0) { $displayName = $candidates[0] }
+            if (-not $displayName) { $displayName = Get-CollectorDisplayName -ScriptPath $scriptPath -Fallback $null }
+
+            $status = if ($result.PSObject.Properties['Success']) { [bool]$result.Success } else { $null }
+            if ($status -eq $false) {
+                $detail = if ($result.PSObject.Properties['Error'] -and $result.Error) { [string]$result.Error } else { 'Collector reported failure.' }
+                $failures.Add([pscustomobject]@{
+                        Key     = if ($displayName) { $displayName } else { 'Collector' }
+                        Status  = 'Execution failed'
+                        Details = $detail
+                        Path    = $scriptPath
+                    }) | Out-Null
+                continue
+            }
+
+            if ($status -eq $true) {
+                if ($null -eq $output -or ([string]::IsNullOrWhiteSpace([string]$output))) {
+                    $failures.Add([pscustomobject]@{
+                            Key     = if ($displayName) { $displayName } else { 'Collector' }
+                            Status  = 'No output'
+                            Details = 'Collector did not return a path or payload reference.'
+                            Path    = $scriptPath
+                        }) | Out-Null
+                    continue
+                }
+
+                $resolvedAny = $false
+                $missing = New-Object System.Collections.Generic.List[string]
+
+                foreach ($candidate in $candidates) {
+                    if (-not $candidate) { continue }
+
+                    try {
+                        if (Test-Path -LiteralPath $candidate) {
+                            $resolvedAny = $true
+                            continue
+                        }
+                    } catch {
+                    }
+
+                    $missing.Add($candidate) | Out-Null
+                }
+
+                if (-not $resolvedAny -and $missing.Count -gt 0) {
+                    $detailText = "Expected file not found: {0}" -f ($missing -join ', ')
+                    $failures.Add([pscustomobject]@{
+                            Key     = if ($displayName) { $displayName } else { 'Collector' }
+                            Status  = 'Output missing'
+                            Details = $detailText
+                            Path    = $scriptPath
+                        }) | Out-Null
+                }
+            }
+        }
+    }
+
+    if ($Context.Artifacts) {
+        foreach ($key in $Context.Artifacts.Keys) {
+            if (-not $Context.Artifacts[$key]) { continue }
+
+            $entries = $Context.Artifacts[$key]
+            if (-not ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string]))) {
+                $entries = @($entries)
+            }
+
+            foreach ($entry in $entries) {
+                if (-not $entry) { continue }
+                $path = if ($entry.PSObject.Properties['Path']) { [string]$entry.Path } else { $null }
+                $data = if ($entry.PSObject.Properties['Data']) { $entry.Data } else { $null }
+
+                if ($data -and $data.PSObject.Properties['Error'] -and $data.Error) {
+                    $failures.Add([pscustomobject]@{
+                            Key     = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
+                            Status  = 'Parse error'
+                            Details = [string]$data.Error
+                            Path    = $path
+                        }) | Out-Null
+                    continue
+                }
+
+                if ($data -and $data.PSObject.Properties['Payload']) {
+                    $payload = $data.Payload
+                    $isEmpty = $false
+
+                    if ($null -eq $payload) {
+                        $isEmpty = $true
+                    } elseif ($payload -is [string]) {
+                        if ([string]::IsNullOrWhiteSpace($payload)) { $isEmpty = $true }
+                    } elseif ($payload -is [System.Collections.IEnumerable] -and -not ($payload -is [string])) {
+                        $enumerated = @()
+                        foreach ($item in $payload) { $enumerated += $item }
+                        if ($enumerated.Count -eq 0) { $isEmpty = $true }
+                    }
+
+                    if ($isEmpty) {
+                        $failures.Add([pscustomobject]@{
+                                Key     = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
+                                Status  = 'Empty output'
+                                Details = 'Captured file contained no payload.'
+                                Path    = $path
+                            }) | Out-Null
+                    }
+                }
+            }
+        }
+    }
+
+    return $failures
+}
+
 function Build-SummaryCardHtml {
     param(
         [pscustomobject]$Summary,
@@ -444,7 +641,22 @@ function New-AnalyzerHtml {
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
-    $failedHtml = New-ReportSection -Title 'Failed Reports (0)' -ContentHtml "<div class='report-card'><i>No failed collector outputs were reported by the modular pipeline.</i></div>"
+    $failedReports = Get-FailedCollectorReports -Context $Context
+    $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
+    if ($failedReports.Count -eq 0) {
+        $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
+    } else {
+        $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+        foreach ($entry in $failedReports) {
+            $detailParts = @()
+            if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
+            if ($entry.Details) { $detailParts += $entry.Details }
+            $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
+            $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+        }
+        $failedContent += "</table></div>"
+    }
+    $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml "<div class='report-card'><i>Raw excerpts are not currently generated by the modular analyzer workflow.</i></div>"
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
