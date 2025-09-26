@@ -18,7 +18,8 @@ param(
   [switch]$SaveReport
 )
 $ErrorActionPreference = 'Stop'
-$stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$now = Get-Date
+$stamp = $now.ToString('yyyyMMdd_HHmmss')
 $reportDir = Join-Path -Path $PSScriptRoot -ChildPath "Reports"
 if ($SaveReport -and -not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir | Out-Null }
 $sb = New-Object System.Text.StringBuilder
@@ -36,7 +37,7 @@ $sb = New-Object System.Text.StringBuilder
 #>
 function Add-Line($txt){[void]$sb.AppendLine($txt); $txt}
 
-Add-Line "=== AD QUICK HEALTH $(Get-Date) ==="
+Add-Line "=== AD QUICK HEALTH $now ==="
 
 # Domain/Forest basics
 try{
