@@ -12,7 +12,7 @@ param(
 
 function Get-DiskInventory {
     try {
-        return Get-Disk -ErrorAction Stop | Select-Object Number, FriendlyName, SerialNumber, HealthStatus, OperationalStatus, Size, PartitionStyle
+        return Get-Disk -ErrorAction Stop | Select-Object Number, FriendlyName, SerialNumber, HealthStatus, OperationalStatus, Size, PartitionStyle, IsBoot, IsSystem, IsReadOnly, WriteCacheEnabled
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-Disk'

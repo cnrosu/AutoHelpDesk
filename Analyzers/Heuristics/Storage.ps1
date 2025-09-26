@@ -93,16 +93,99 @@ function Invoke-StorageHeuristics {
 
     $result = New-CategoryResult -Name 'Storage'
 
+    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    $isWorkstationPerformanceTarget = $false
+    if ($systemArtifact) {
+        $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+        if ($systemPayload -and $systemPayload.OperatingSystem -and -not $systemPayload.OperatingSystem.Error) {
+            $caption = [string]$systemPayload.OperatingSystem.Caption
+            if ($caption -and ($caption -notmatch '(?i)windows\s+server')) {
+                $isWorkstationPerformanceTarget = $true
+            }
+        }
+    }
+
     $storageArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage'
     if ($storageArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $storageArtifact)
         if ($payload -and $payload.Disks -and -not $payload.Disks.Error) {
-            $unhealthy = $payload.Disks | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
+            $diskEntries = $payload.Disks
+            if ($diskEntries -isnot [System.Collections.IEnumerable] -or $diskEntries -is [string]) {
+                $diskEntries = @($diskEntries)
+            }
+
+            $unhealthy = $diskEntries | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
             if ($unhealthy.Count -gt 0) {
                 $details = $unhealthy | ForEach-Object { "Disk $($_.Number): $($_.HealthStatus) ($($_.OperationalStatus))" }
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy'
+            }
+
+            $systemDisks = New-Object System.Collections.Generic.List[object]
+            foreach ($disk in $diskEntries) {
+                $isBoot = $null
+                if ($disk.PSObject.Properties['IsBoot']) { $isBoot = ConvertTo-NullableBool $disk.IsBoot }
+                $isSystem = $null
+                if ($disk.PSObject.Properties['IsSystem']) { $isSystem = ConvertTo-NullableBool $disk.IsSystem }
+                $isReadOnly = $null
+                if ($disk.PSObject.Properties['IsReadOnly']) { $isReadOnly = ConvertTo-NullableBool $disk.IsReadOnly }
+                $writeCacheEnabled = $null
+                if ($disk.PSObject.Properties['WriteCacheEnabled']) { $writeCacheEnabled = ConvertTo-NullableBool $disk.WriteCacheEnabled }
+
+                if (($isBoot -eq $true) -or ($isSystem -eq $true)) {
+                    $systemDisks.Add([pscustomobject]@{
+                            Number            = if ($disk.PSObject.Properties['Number']) { $disk.Number } else { $null }
+                            IsBoot            = $isBoot
+                            IsSystem          = $isSystem
+                            IsReadOnly        = $isReadOnly
+                            WriteCacheEnabled = $writeCacheEnabled
+                        }) | Out-Null
+                }
+            }
+
+            if ($systemDisks.Count -gt 0) {
+                foreach ($diskSummary in $systemDisks) {
+                    $status = switch ($diskSummary.WriteCacheEnabled) {
+                        $true { 'Enabled' }
+                        $false { 'Disabled' }
+                        default { 'Unknown' }
+                    }
+
+                    $formatFlag = {
+                        param($value)
+                        if ($value -eq $true) { return 'True' }
+                        if ($value -eq $false) { return 'False' }
+                        return 'Unknown'
+                    }
+
+                    $details = @(
+                        "Boot=$(&$formatFlag $diskSummary.IsBoot)",
+                        "System=$(&$formatFlag $diskSummary.IsSystem)",
+                        "ReadOnly=$(&$formatFlag $diskSummary.IsReadOnly)"
+                    ) -join '; '
+
+                    $diskLabel = if ($null -ne $diskSummary.Number) { "Disk $($diskSummary.Number)" } else { 'Disk (unknown number)' }
+                    Add-CategoryCheck -CategoryResult $result -Name ('{0} write cache' -f $diskLabel) -Status $status -Details $details
+                }
+
+                $disabledCaches = $systemDisks | Where-Object { $_.WriteCacheEnabled -eq $false }
+                if ($disabledCaches.Count -gt 0) {
+                    $severity = if ($isWorkstationPerformanceTarget) { 'high' } else { 'medium' }
+                    $evidence = $disabledCaches | ForEach-Object {
+                        $flagParts = @(
+                            "Boot=$((if ($_.IsBoot -eq $true) { 'True' } elseif ($_.IsBoot -eq $false) { 'False' } else { 'Unknown' }))",
+                            "System=$((if ($_.IsSystem -eq $true) { 'True' } elseif ($_.IsSystem -eq $false) { 'False' } else { 'Unknown' }))",
+                            "ReadOnly=$((if ($_.IsReadOnly -eq $true) { 'True' } elseif ($_.IsReadOnly -eq $false) { 'False' } else { 'Unknown' }))",
+                            "WriteCacheEnabled=False"
+                        ) -join ', '
+                        $label = if ($null -ne $_.Number) { "Disk $($_.Number)" } else { 'Disk (unknown number)' }
+                        "$label ($flagParts)"
+                    }
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Write cache disabled on system disk' -Evidence ($evidence -join "`n") -Subcategory 'Disk Configuration'
+                } elseif (($systemDisks | Where-Object { $_.WriteCacheEnabled -eq $null }).Count -eq 0 -and ($systemDisks | Where-Object { $_.WriteCacheEnabled -eq $true }).Count -gt 0) {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Write cache enabled on system disks' -Subcategory 'Disk Configuration'
+                }
             }
         }
 
