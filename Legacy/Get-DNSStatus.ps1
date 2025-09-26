@@ -21,8 +21,7 @@ param(
   [switch]$SaveReport
 )
 $ErrorActionPreference = 'Stop'
-$now = Get-Date
-$stamp = $now.ToString('yyyyMMdd_HHmmss')
+$stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
 $reportDir = Join-Path -Path $PSScriptRoot -ChildPath "Reports"
 if ($SaveReport -and -not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir | Out-Null }
 $sb = New-Object System.Text.StringBuilder
@@ -36,7 +35,7 @@ $sb = New-Object System.Text.StringBuilder
 #>
 function Add-Line($t){[void]$sb.AppendLine($t); $t}
 
-Add-Line "=== DNS STATUS on $ComputerName $now ==="
+Add-Line "=== DNS STATUS on $ComputerName $(Get-Date) ==="
 
 try{
   Add-Line "`n--- Forwarders ---"
