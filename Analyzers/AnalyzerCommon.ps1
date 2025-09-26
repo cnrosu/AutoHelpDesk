@@ -94,15 +94,23 @@ function Add-CategoryIssue {
 
         [object]$Evidence = $null,
 
-        [string]$Subcategory = $null
+        [string]$Subcategory = $null,
+
+        [string]$CheckId = $null
     )
 
-    $CategoryResult.Issues.Add([pscustomobject]@{
-            Severity = $Severity
-            Title    = $Title
-            Evidence = $Evidence
-            Subcategory = $Subcategory
-        }) | Out-Null
+    $entry = [ordered]@{
+        Severity    = $Severity
+        Title       = $Title
+        Evidence    = $Evidence
+        Subcategory = $Subcategory
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
+        $entry['CheckId'] = $CheckId
+    }
+
+    $CategoryResult.Issues.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Add-CategoryNormal {
@@ -115,7 +123,9 @@ function Add-CategoryNormal {
 
         [object]$Evidence = $null,
 
-        [string]$Subcategory = $null
+        [string]$Subcategory = $null,
+
+        [string]$CheckId = $null
     )
 
     $entry = [ordered]@{
@@ -125,6 +135,10 @@ function Add-CategoryNormal {
 
     if ($PSBoundParameters.ContainsKey('Subcategory') -and $Subcategory) {
         $entry['Subcategory'] = $Subcategory
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
+        $entry['CheckId'] = $CheckId
     }
 
     $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
