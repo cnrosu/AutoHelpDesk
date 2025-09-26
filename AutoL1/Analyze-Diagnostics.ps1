@@ -5872,7 +5872,7 @@ function Get-NormalCategory {
   )
 
   if ([string]::IsNullOrWhiteSpace($Area)) {
-    return 'General'
+    return 'Hardware'
   }
 
   $prefix = ($Area -split '/')[0]
@@ -5883,16 +5883,14 @@ function Get-NormalCategory {
   $trimmed = $prefix.Trim()
 
   switch -Regex ($trimmed) {
-    '^(?i)services'           { return 'Services' }
-    '^(?i)(outlook|office)'   { return 'Office' }
-    '^(?i)(network|dns)'      { return 'Network' }
-    '^(?i)system'             { return 'System' }
-    '^(?i)(storage|hardware)' { return 'Hardware' }
-    '^(?i)security'           { return 'Security' }
-    '^(?i)active\s*directory' { return 'Active Directory' }
-    '^(?i)printing'           { return 'Printing' }
-    '^(?i)events'             { return 'Events' }
-    default                   { return 'General' }
+    '^(?i)services$'        { return 'Services' }
+    '^(?i)(outlook|office)$' { return 'Office' }
+    '^(?i)(network|dns)$'    { return 'Network' }
+    '^(?i)security$'         { return 'Security' }
+    '^(?i)system$'           { return 'System' }
+    '^(?i)scheduled tasks$'  { return 'System' }
+    '^(?i)storage$'          { return 'Hardware' }
+    default { return 'Hardware' }
   }
 }
 
@@ -5901,7 +5899,7 @@ $goodTitle = "What Looks Good ({0})" -f $normals.Count
 if ($normals.Count -eq 0){
   $goodContent = '<div class="report-card"><i>No specific positives recorded.</i></div>'
 } else {
-  $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events','General')
+  $categoryOrder = @('Services','Office','Network','System','Hardware','Security')
   $categorized = [ordered]@{}
 
   foreach ($category in $categoryOrder) {
