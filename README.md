@@ -116,6 +116,7 @@ The following sections list the analysis functions and issue card heuristics gro
 ## Outlook & Office Heuristics
 - **Outlook/Connectivity** – Records informational findings when Test-NetConnection is unavailable or inconclusive and elevates to high severity when HTTPS tests to outlook.office365.com fail.
 - **Outlook/OST** – Flags OST caches as critical (>25 GB), high (15–25 GB), or medium (5–15 GB) to highlight sync bloat issues.
+- **Outlook/OST Rebuilds** – Counts Outlook rebuild indicators (application events, duplicate caches, size collapses, ScanPST runs) within 30 days, raising medium severity when at least two are present (high if frequent) and reporting GOOD when none are detected.
 - **Outlook/Autodiscover** – Emits info/medium issues for missing cmdlets, absent domain candidates, incorrect CNAME targets, failed lookups, or missing records so onboarding problems are obvious.
 - **Outlook/SCP** – Alerts with medium severity when SCP queries fail and low severity when no SCP exists on a domain-joined client (acceptable for Exchange Online only tenants).
 - **Office/Macros** – Produces a high severity when MOTW blocking is disabled and medium when macro notification policies still allow macros.
