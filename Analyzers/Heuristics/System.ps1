@@ -217,6 +217,197 @@ function Invoke-SystemHeuristics {
         }
     }
 
+    $userProfilesArtifact = Get-AnalyzerArtifact -Context $Context -Name 'userprofiles'
+    if ($userProfilesArtifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $userProfilesArtifact)
+        if ($payload) {
+            $eventsData = $payload.TempProfileEvents
+            $eventEntries = @()
+            $eventErrors = @()
+
+            if ($null -ne $eventsData) {
+                if ($eventsData -is [System.Collections.IEnumerable] -and -not ($eventsData -is [string])) {
+                    foreach ($entry in $eventsData) {
+                        if (-not $entry) { continue }
+                        if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+                            $eventErrors += $entry
+                        } else {
+                            $eventEntries += $entry
+                        }
+                    }
+                } elseif ($eventsData.PSObject.Properties['Error'] -and $eventsData.Error) {
+                    $eventErrors += $eventsData
+                } else {
+                    $eventEntries = @($eventsData)
+                }
+            }
+
+            if ($eventErrors.Count -gt 0) {
+                $details = $eventErrors | ForEach-Object {
+                    if ($_.PSObject.Properties['Source'] -and $_.Source -and $_.PSObject.Properties['Error'] -and $_.Error) {
+                        "{0}: {1}" -f $_.Source, $_.Error
+                    } elseif ($_.PSObject.Properties['Error'] -and $_.Error) {
+                        [string]$_.Error
+                    } else {
+                        [string]$_
+                    }
+                }
+                $details = $details | Where-Object { $_ }
+                $evidence = if ($details) { $details -join "`n" } else { 'Unknown error retrieving temporary profile events.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query temporary profile events' -Evidence $evidence -Subcategory 'User Profiles'
+            }
+
+            $profileListData = $payload.ProfileList
+            $profileEntries = @()
+            $profileErrors = @()
+            $profileListRootError = $null
+            $profileListRootSource = $null
+
+            if ($null -ne $profileListData) {
+                if ($profileListData -is [System.Collections.IEnumerable] -and -not ($profileListData -is [string])) {
+                    foreach ($entry in $profileListData) {
+                        if (-not $entry) { continue }
+                        if ($entry.PSObject.Properties['Error'] -and $entry.Error -and -not ($entry.PSObject.Properties['ProfileImagePath'])) {
+                            $profileErrors += $entry
+                        } else {
+                            $profileEntries += $entry
+                        }
+                    }
+                } elseif ($profileListData.PSObject.Properties['Error'] -and $profileListData.Error) {
+                    $profileListRootError = $profileListData.Error
+                    if ($profileListData.PSObject.Properties['Source'] -and $profileListData.Source) {
+                        $profileListRootSource = $profileListData.Source
+                    }
+                } else {
+                    $profileEntries = @($profileListData)
+                }
+            }
+
+            if ($profileListRootError) {
+                $title = 'Unable to enumerate ProfileList registry'
+                if ($profileListRootSource) {
+                    $title = "Unable to enumerate ProfileList registry ({0})" -f $profileListRootSource
+                }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $profileListRootError -Subcategory 'User Profiles'
+            }
+
+            if ($profileErrors.Count -gt 0) {
+                $lines = New-Object System.Collections.Generic.List[string]
+                foreach ($entry in ($profileErrors | Select-Object -First 5)) {
+                    $keyName = if ($entry.PSObject.Properties['KeyName']) { [string]$entry.KeyName } else { $null }
+                    $errorText = if ($entry.PSObject.Properties['Error']) { [string]$entry.Error } else { $null }
+                    if ($keyName -and $errorText) {
+                        [void]$lines.Add("{0}: {1}" -f $keyName, $errorText)
+                    } elseif ($errorText) {
+                        [void]$lines.Add($errorText)
+                    }
+                }
+                $remaining = $profileErrors.Count - $lines.Count
+                if ($remaining -gt 0) {
+                    [void]$lines.Add("(+{0} additional registry entry errors)" -f $remaining)
+                }
+                $evidence = $lines -join "`n"
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Errors reading ProfileList registry entries' -Evidence $evidence -Subcategory 'User Profiles'
+            }
+
+            $bakEntries = @()
+            $stateFlaggedEntries = @()
+
+            foreach ($entry in $profileEntries) {
+                if (-not $entry) { continue }
+                if ($entry.PSObject.Properties['IsBackup'] -and $entry.IsBackup) {
+                    $bakEntries += $entry
+                } elseif ($entry.PSObject.Properties['KeyName'] -and ($entry.KeyName -match '\\.bak$')) {
+                    $bakEntries += $entry
+                }
+
+                if ($entry.PSObject.Properties['State']) {
+                    $rawState = $entry.State
+                    if ($null -ne $rawState) {
+                        $stateValue = $null
+                        try { $stateValue = [uint32]$rawState } catch { try { $stateValue = [int64]$rawState } catch { $stateValue = $null } }
+                        if ($null -ne $stateValue -and ($stateValue -band 0x00000100) -ne 0) {
+                            $stateFlaggedEntries += [pscustomobject]@{
+                                Entry      = $entry
+                                StateValue = $stateValue
+                            }
+                        }
+                    }
+                }
+            }
+
+            $evidenceSections = New-Object System.Collections.Generic.List[string]
+
+            if ($eventEntries.Count -gt 0) {
+                $eventLines = New-Object System.Collections.Generic.List[string]
+                foreach ($event in ($eventEntries | Sort-Object TimeCreated -Descending | Select-Object -First 5)) {
+                    $timeStamp = if ($event.PSObject.Properties['TimeCreated']) { [string]$event.TimeCreated } else { $null }
+                    $idText = if ($event.PSObject.Properties['Id']) { [string]$event.Id } else { $null }
+                    $message = $null
+                    if ($event.PSObject.Properties['Message'] -and $event.Message) {
+                        $message = [string]$event.Message
+                        $message = ($message -split "\r?\n")[0]
+                        if ($message.Length -gt 160) { $message = $message.Substring(0, 160) + '...' }
+                    }
+
+                    $parts = @()
+                    if ($timeStamp) { $parts += $timeStamp }
+                    if ($idText) { $parts += ("Event ID {0}" -f $idText) }
+                    if ($message) { $parts += $message }
+                    $line = if ($parts.Count -gt 0) { $parts -join ' - ' } else { 'Temporary profile event detected' }
+                    [void]$eventLines.Add($line)
+                }
+                $eventEvidence = "Recent temporary profile events:`n{0}" -f ($eventLines -join "`n")
+                [void]$evidenceSections.Add($eventEvidence)
+            }
+
+            if ($bakEntries.Count -gt 0) {
+                $bakLines = New-Object System.Collections.Generic.List[string]
+                foreach ($entry in ($bakEntries | Select-Object -First 8)) {
+                    $keyName = if ($entry.PSObject.Properties['KeyName']) { [string]$entry.KeyName } else { '(unknown key)' }
+                    $profilePath = if ($entry.PSObject.Properties['ProfileImagePath']) { [string]$entry.ProfileImagePath } else { '(no ProfileImagePath)' }
+                    [void]$bakLines.Add("{0} -> {1}" -f $keyName, $profilePath)
+                }
+                $remaining = $bakEntries.Count - $bakLines.Count
+                if ($remaining -gt 0) {
+                    [void]$bakLines.Add("(+{0} additional .bak entries)" -f $remaining)
+                }
+                $bakEvidence = "ProfileList contains .bak entries:`n{0}" -f ($bakLines -join "`n")
+                [void]$evidenceSections.Add($bakEvidence)
+            }
+
+            if ($stateFlaggedEntries.Count -gt 0) {
+                $stateLines = New-Object System.Collections.Generic.List[string]
+                foreach ($flagged in ($stateFlaggedEntries | Select-Object -First 8)) {
+                    $entry = $flagged.Entry
+                    if (-not $entry) { continue }
+                    $keyName = if ($entry.PSObject.Properties['KeyName']) { [string]$entry.KeyName } else { '(unknown key)' }
+                    $stateValue = $flagged.StateValue
+                    $stateLabel = if ($null -ne $stateValue) { "{0} (0x{1:X})" -f $stateValue, $stateValue } else { [string]$entry.State }
+                    $profilePath = if ($entry.PSObject.Properties['ProfileImagePath']) { [string]$entry.ProfileImagePath } else { '(no ProfileImagePath)' }
+                    [void]$stateLines.Add("{0} -> State {1} -> {2}" -f $keyName, $stateLabel, $profilePath)
+                }
+                $remaining = $stateFlaggedEntries.Count - $stateLines.Count
+                if ($remaining -gt 0) {
+                    [void]$stateLines.Add("(+{0} additional flagged profiles)" -f $remaining)
+                }
+                $stateEvidence = "ProfileList state flags indicating temporary profiles:`n{0}" -f ($stateLines -join "`n")
+                [void]$evidenceSections.Add($stateEvidence)
+            }
+
+            if ($evidenceSections.Count -gt 0) {
+                $evidence = $evidenceSections -join "`n`n"
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Temporary profile or SID mismatch detected' -Evidence $evidence -Subcategory 'User Profiles' -CheckId 'UX/TempProfile'
+            } elseif ($eventErrors.Count -eq 0 -and -not $profileListRootError -and $profileErrors.Count -eq 0) {
+                Add-CategoryNormal -CategoryResult $result -Title 'No temp profiles; clean ProfileList.' -Subcategory 'User Profiles' -CheckId 'UX/TempProfile'
+            }
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'User profile payload missing' -Subcategory 'User Profiles'
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'User profile artifact missing' -Subcategory 'Collection'
+    }
+
     $startupArtifact = Get-AnalyzerArtifact -Context $Context -Name 'startup'
     if ($startupArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $startupArtifact)
