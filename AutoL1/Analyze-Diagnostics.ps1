@@ -63,6 +63,77 @@ function Convert-SizeToGB {
   }
 }
 
+function ConvertTo-VersionValue {
+  param($Value)
+
+  if ($null -eq $Value) { return $null }
+
+  $text = [string]$Value
+  if (-not $text) { return $null }
+
+  $trimmed = $text.Trim()
+  if (-not $trimmed) { return $null }
+
+  $match = [regex]::Match($trimmed,'\d+(?:\.\d+)+')
+  $candidate = if ($match.Success) { $match.Value } else { $trimmed }
+
+  $parsed = $null
+  if ([version]::TryParse($candidate, [ref]$parsed)) { return $parsed }
+
+  try {
+    return [version]$candidate
+  } catch {
+    return $null
+  }
+}
+
+function Get-DefenderPlatformMinimumValue {
+  param($Config)
+
+  if ($null -eq $Config) { return $null }
+
+  if ($Config -is [string]) { return $Config }
+
+  if ($Config -is [System.Collections.IEnumerable] -and -not ($Config -is [string])) {
+    foreach ($item in $Config) {
+      $candidate = Get-DefenderPlatformMinimumValue $item
+      if ($candidate) { return $candidate }
+    }
+    return $null
+  }
+
+  if (-not ($Config | Get-Member -ErrorAction SilentlyContinue)) { return $null }
+
+  $propertyNames = @(
+    'DefenderPlatformMinimum',
+    'MinimumDefenderPlatformVersion',
+    'MinDefenderPlatformVersion',
+    'DefenderPlatformVersionMinimum',
+    'MinimumDefenderPlatform',
+    'MinDefenderPlatform',
+    'DefenderPlatform',
+    'DefenderPlatformVersion',
+    'MinimumPlatformVersion',
+    'MinPlatformVersion'
+  )
+
+  foreach ($name in $propertyNames) {
+    if ($Config.PSObject.Properties[$name]) {
+      $value = $Config.$name
+      if ($value) { return [string]$value }
+    }
+  }
+
+  foreach ($child in @('Payload','Minimums','Defender','MicrosoftDefender','Security','Baseline','SecurityBaseline','DefenderBaseline')) {
+    if ($Config.PSObject.Properties[$child]) {
+      $candidate = Get-DefenderPlatformMinimumValue $Config.$child
+      if ($candidate) { return $candidate }
+    }
+  }
+
+  return $null
+}
+
 function Test-IsMicrosoftPublisher {
   param(
     [string[]]$Values
@@ -1091,6 +1162,7 @@ $files = [ordered]@{
   outlook_autodiscover = Find-ByContent @('Autodiscover_DNS')    @('### Domain','autodiscover')
   outlook_scp    = Find-ByContent @('Outlook_SCP')               @('Autodiscover','serviceBindingInformation','SCP lookup')
   office_security = Find-ByContent @('Office_SecurityPolicies')  @('BlockContentExecutionFromInternet','VBAWarnings','ProtectedView')
+  security_baseline = Find-ByContent @('Security_Baseline','Defender_Baseline','defender-baseline','security-baseline','DefenderBaseline','SecurityBaseline') @('DefenderPlatform','MinimumDefenderPlatform','MinDefenderPlatform')
 
   systeminfo     = Find-ByContent @('systeminfo')                @('OS Name:\s','OS Version:\s','System Boot Time')
   os_cim         = Find-ByContent @('OS_CIM','OperatingSystem')  @('Win32_OperatingSystem','Caption\s*:')
@@ -1171,6 +1243,52 @@ foreach($key in $raw.Keys){
     $snippet = $raw[$key].Substring(0,[Math]::Min(80,$raw[$key].Length)).Replace("`r"," ").Replace("`n"," ")
     Write-Verbose ("  {0}: {1}" -f $key, $snippet)
   }
+}
+
+$securityBaselineConfig = $null
+$securityBaselineMinimumText = $null
+$securityBaselineMinimumVersion = $null
+$baselineRaw = $raw['security_baseline']
+if ($baselineRaw -and -not [string]::IsNullOrWhiteSpace($baselineRaw)) {
+  try {
+    $securityBaselineConfig = $baselineRaw | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    $securityBaselineConfig = $null
+  }
+
+  if ($securityBaselineConfig -and $securityBaselineConfig.PSObject.Properties['Payload']) {
+    $securityBaselineConfig = $securityBaselineConfig.Payload
+  }
+
+  if ($securityBaselineConfig) {
+    $securityBaselineMinimumText = Get-DefenderPlatformMinimumValue $securityBaselineConfig
+    $securityBaselineMinimumVersion = ConvertTo-VersionValue $securityBaselineMinimumText
+  }
+}
+
+$osVersionContext = $null
+$osBuildContext = $null
+if ($raw['computerinfo']) {
+  $ciVersionMatch = [regex]::Match($raw['computerinfo'],'(?im)^OsVersion\s*:\s*(?<value>.+)$')
+  if ($ciVersionMatch.Success) { $osVersionContext = $ciVersionMatch.Groups['value'].Value.Trim() }
+
+  $ciBuildLabMatch = [regex]::Match($raw['computerinfo'],'(?im)^WindowsBuildLabEx\s*:\s*(?<value>.+)$')
+  if ($ciBuildLabMatch.Success) { $osBuildContext = $ciBuildLabMatch.Groups['value'].Value.Trim() }
+
+  if (-not $osBuildContext) {
+    $ciBuildMatch = [regex]::Match($raw['computerinfo'],'(?im)^OsBuildNumber\s*:\s*(?<value>.+)$')
+    if ($ciBuildMatch.Success) { $osBuildContext = $ciBuildMatch.Groups['value'].Value.Trim() }
+  }
+}
+
+if (-not $osVersionContext -and $raw['systeminfo']) {
+  $siVersionMatch = [regex]::Match($raw['systeminfo'],'(?im)^OS Version\s*:\s*(?<value>.+)$')
+  if ($siVersionMatch.Success) { $osVersionContext = $siVersionMatch.Groups['value'].Value.Trim() }
+}
+
+if (-not $osBuildContext -and $raw['systeminfo']) {
+  $siBuildMatch = [regex]::Match($raw['systeminfo'],'(?im)^OS Version\s*:\s*\S+\s+\S+\s+Build\s+(?<value>\d+)')
+  if ($siBuildMatch.Success) { $osBuildContext = $siBuildMatch.Groups['value'].Value.Trim() }
 }
 
 # Preprocess network adapter data for DHCP heuristics
@@ -3050,6 +3168,7 @@ if ($raw['defender']){
 
   $engineVersionMatch = [regex]::Match($raw['defender'],'AMEngineVersion\s*:\s*([^\r\n]+)','IgnoreCase')
   $platformVersionMatch = [regex]::Match($raw['defender'],'AMProductVersion\s*:\s*([^\r\n]+)','IgnoreCase')
+  $nisPlatformVersionMatch = [regex]::Match($raw['defender'],'NISPlatformVersion\s*:\s*([^\r\n]+)','IgnoreCase')
 
   $engineOutMatches = [regex]::Matches($raw['defender'],'(?im)^(?<name>[^\r\n]*Engine[^\r\n]*OutOfDate)\s*:\s*(?<value>[^\r\n]+)$')
   $engineEvidence = @()
@@ -3090,10 +3209,35 @@ if ($raw['defender']){
   if ($platformVersionValue -and ($platformVersionValue -match '^(?:0+(?:\.0+)*)$' -or $platformVersionValue -match '(?i)not\s*available|unknown')){
     $platformVersionMissing = $true
   }
-  if ($platformStatusTrue -or $platformVersionMissing){
+  $nisPlatformVersionValue = if ($nisPlatformVersionMatch.Success) { $nisPlatformVersionMatch.Groups[1].Value.Trim() } else { $null }
+
+  $platformVersionParsed = if ($platformVersionValue) { ConvertTo-VersionValue $platformVersionValue } else { $null }
+  $platformBaselineEvaluated = $false
+  $platformBaselineTriggeredIssue = $false
+
+  if ($securityBaselineMinimumVersion -and $platformVersionParsed -and -not $platformStatusTrue) {
+    $platformBaselineEvaluated = $true
+    $baselineEvidenceLines = @()
+    if ($platformVersionValue) { $baselineEvidenceLines += "AMProductVersion: $platformVersionValue" }
+    if ($engineVersionValue) { $baselineEvidenceLines += "AMEngineVersion: $engineVersionValue" }
+    if ($nisPlatformVersionValue) { $baselineEvidenceLines += "NISPlatformVersion: $nisPlatformVersionValue" }
+    $baselineEvidenceLines += "Minimum required: $securityBaselineMinimumText"
+    if ($osVersionContext) { $baselineEvidenceLines += "OS Version: $osVersionContext" }
+    if ($osBuildContext) { $baselineEvidenceLines += "OS Build: $osBuildContext" }
+    $baselineEvidenceText = $baselineEvidenceLines -join "`n"
+
+    if ($platformVersionParsed -lt $securityBaselineMinimumVersion) {
+      $platformBaselineTriggeredIssue = $true
+      Add-Issue "high" "Security" ("Defender platform below baseline ({0} < {1}). Update the platform package." -f $platformVersionValue, $securityBaselineMinimumText) $baselineEvidenceText -CheckId 'Security/DefenderPlatformAge'
+    } else {
+      Add-Normal "Security/Defender" ("Defender platform meets baseline ({0} ≥ {1})." -f $platformVersionValue, $securityBaselineMinimumText) $baselineEvidenceText -CheckId 'Security/DefenderPlatformAge'
+    }
+  }
+
+  if ((($platformStatusTrue -and -not $platformBaselineTriggeredIssue)) -or $platformVersionMissing){
     $platformEvidenceText = if ($platformEvidence.Count -gt 0) { $platformEvidence -join "`n" } else { $raw['defender'] }
     Add-Issue "high" "Security" "Defender platform updates appear missing/out of date." $platformEvidenceText
-  } elseif ($platformStatusFalse -and -not $platformStatusTrue -and $platformEvidence.Count -gt 0){
+  } elseif ($platformStatusFalse -and -not $platformStatusTrue -and $platformEvidence.Count -gt 0 -and -not $platformBaselineEvaluated){
     Add-Normal "Security/Defender" "Defender platform reports up to date" ($platformEvidence -join "`n")
   }
 } else {

@@ -33,6 +33,77 @@ function ConvertTo-IntArray {
     return $list
 }
 
+function ConvertTo-VersionValue {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $text = [string]$Value
+    if (-not $text) { return $null }
+
+    $trimmed = $text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $match = [regex]::Match($trimmed, '\d+(?:\.\d+)+')
+    $candidate = if ($match.Success) { $match.Value } else { $trimmed }
+
+    $parsed = $null
+    if ([version]::TryParse($candidate, [ref]$parsed)) { return $parsed }
+
+    try {
+        return [version]$candidate
+    } catch {
+        return $null
+    }
+}
+
+function Get-DefenderPlatformMinimumValue {
+    param($Config)
+
+    if ($null -eq $Config) { return $null }
+
+    if ($Config -is [string]) { return $Config }
+
+    if ($Config -is [System.Collections.IEnumerable] -and -not ($Config -is [string])) {
+        foreach ($item in $Config) {
+            $candidate = Get-DefenderPlatformMinimumValue $item
+            if ($candidate) { return $candidate }
+        }
+        return $null
+    }
+
+    if (-not ($Config | Get-Member -ErrorAction SilentlyContinue)) { return $null }
+
+    $propertyNames = @(
+        'DefenderPlatformMinimum',
+        'MinimumDefenderPlatformVersion',
+        'MinDefenderPlatformVersion',
+        'DefenderPlatformVersionMinimum',
+        'MinimumDefenderPlatform',
+        'MinDefenderPlatform',
+        'DefenderPlatform',
+        'DefenderPlatformVersion',
+        'MinimumPlatformVersion',
+        'MinPlatformVersion'
+    )
+
+    foreach ($name in $propertyNames) {
+        if ($Config.PSObject.Properties[$name]) {
+            $value = $Config.$name
+            if ($value) { return [string]$value }
+        }
+    }
+
+    foreach ($child in @('Payload','Minimums','Defender','MicrosoftDefender','Security','Baseline','SecurityBaseline','DefenderBaseline')) {
+        if ($Config.PSObject.Properties[$child]) {
+            $candidate = Get-DefenderPlatformMinimumValue $Config.$child
+            if ($candidate) { return $candidate }
+        }
+    }
+
+    return $null
+}
+
 function Format-BitLockerVolume {
     param($Volume)
 
@@ -65,6 +136,39 @@ function Get-RegistryValueFromEntries {
     return $null
 }
 
+function Get-ArtifactRootData {
+    param($Artifact)
+
+    if ($null -eq $Artifact) { return $null }
+
+    if ($Artifact -is [System.Collections.IEnumerable] -and -not ($Artifact -is [string])) {
+        foreach ($entry in $Artifact) {
+            $candidate = Get-ArtifactRootData $entry
+            if ($candidate) { return $candidate }
+        }
+        return $null
+    }
+
+    $payload = Get-ArtifactPayload -Artifact $Artifact
+    $resolved = Resolve-SinglePayload -Payload $payload
+
+    if ($resolved -and $resolved.PSObject.Properties['Payload']) {
+        $resolved = $resolved.Payload
+    }
+
+    if ($resolved) { return $resolved }
+
+    if ($Artifact.PSObject -and $Artifact.PSObject.Properties['Data']) {
+        $data = $Artifact.Data
+        if ($data) {
+            if ($data.PSObject -and $data.PSObject.Properties['Payload']) { return $data.Payload }
+            return $data
+        }
+    }
+
+    return $null
+}
+
 function Invoke-SecurityHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -86,6 +190,19 @@ function Invoke-SecurityHeuristics {
             }
         }
     }
+
+    $defenderBaselineMinimumText = $null
+    $baselineArtifactNames = @('security-baseline','defender-baseline','defender-config','security-config')
+    foreach ($baselineName in $baselineArtifactNames) {
+        if ($defenderBaselineMinimumText) { break }
+        $baselineArtifact = Get-AnalyzerArtifact -Context $Context -Name $baselineName
+        if (-not $baselineArtifact) { continue }
+        $baselineData = Get-ArtifactRootData $baselineArtifact
+        if (-not $baselineData) { continue }
+        $candidate = Get-DefenderPlatformMinimumValue $baselineData
+        if ($candidate) { $defenderBaselineMinimumText = $candidate }
+    }
+    $defenderBaselineMinimumVersion = ConvertTo-VersionValue $defenderBaselineMinimumText
 
     $securityServicesRunning = @()
     $securityServicesConfigured = @()
@@ -131,6 +248,46 @@ function Invoke-SecurityHeuristics {
             $tamper = ConvertTo-NullableBool $status.TamperProtectionEnabled
             if ($tamper -eq $false) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Tamper protection not enabled' -Evidence 'Get-MpComputerStatus indicates tamper protection is disabled.' -Subcategory 'Microsoft Defender'
+            }
+
+            $platformVersionText = $null
+            if ($status.PSObject.Properties['AMProductVersion']) { $platformVersionText = [string]$status.AMProductVersion }
+            elseif ($status.PSObject.Properties['ProductVersion']) { $platformVersionText = [string]$status.ProductVersion }
+
+            $engineVersionText = $null
+            if ($status.PSObject.Properties['AMEngineVersion']) { $engineVersionText = [string]$status.AMEngineVersion }
+            elseif ($status.PSObject.Properties['AntimalwareEngineVersion']) { $engineVersionText = [string]$status.AntimalwareEngineVersion }
+
+            $nisPlatformVersionText = $null
+            if ($status.PSObject.Properties['NISPlatformVersion']) { $nisPlatformVersionText = [string]$status.NISPlatformVersion }
+
+            $platformVersion = ConvertTo-VersionValue $platformVersionText
+
+            if ($defenderBaselineMinimumVersion -and $platformVersion) {
+                $evidenceLines = @()
+                if ($platformVersionText) { $evidenceLines += "AMProductVersion: $platformVersionText" }
+                if ($engineVersionText) { $evidenceLines += "AMEngineVersion: $engineVersionText" }
+                if ($nisPlatformVersionText) { $evidenceLines += "NISPlatformVersion: $nisPlatformVersionText" }
+                $evidenceLines += "Minimum required: $defenderBaselineMinimumText"
+
+                if ($payload.OperatingSystem) {
+                    $osSection = $payload.OperatingSystem
+                    if ($osSection.Error) {
+                        $evidenceLines += "Operating system query error: $($osSection.Error)"
+                    } else {
+                        if ($osSection.PSObject.Properties['Version'] -and $osSection.Version) { $evidenceLines += "OS Version: $($osSection.Version)" }
+                        if ($osSection.PSObject.Properties['BuildNumber'] -and $osSection.BuildNumber) { $evidenceLines += "OS Build: $($osSection.BuildNumber)" }
+                        if ($osSection.PSObject.Properties['Caption'] -and $osSection.Caption) { $evidenceLines += "OS Caption: $($osSection.Caption)" }
+                    }
+                }
+
+                $evidenceText = $evidenceLines -join "`n"
+
+                if ($platformVersion -lt $defenderBaselineMinimumVersion) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Defender platform below baseline ({0} < {1}). Update the platform package.' -f $platformVersionText, $defenderBaselineMinimumText) -Evidence $evidenceText -Subcategory 'Microsoft Defender'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title ('Defender platform meets baseline ({0} ≥ {1}).' -f $platformVersionText, $defenderBaselineMinimumText) -Evidence $evidenceText -Subcategory 'Microsoft Defender'
+                }
             }
 
             $definitions = @($status.AntivirusSignatureVersion, $status.AntispywareSignatureVersion) | Where-Object { $_ }

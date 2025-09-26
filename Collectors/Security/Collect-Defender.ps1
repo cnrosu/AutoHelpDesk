@@ -13,10 +13,22 @@ param(
 function Get-DefenderStatus {
     try {
         $status = Get-MpComputerStatus -ErrorAction Stop
-        return $status | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled, IoavProtectionEnabled, RealTimeProtectionEnabled, TamperProtectionEnabled, IsTamperProtected, NISEnabled, QuickScanEndTime, FullScanEndTime, ProductStatus, AntivirusSignatureVersion, AntispywareSignatureVersion
+        return $status | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled, IoavProtectionEnabled, RealTimeProtectionEnabled, TamperProtectionEnabled, IsTamperProtected, NISEnabled, QuickScanEndTime, FullScanEndTime, ProductStatus, AMEngineVersion, AntimalwareEngineVersion, AMProductVersion, NISPlatformVersion, AntivirusSignatureVersion, AntispywareSignatureVersion
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-MpComputerStatus'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
+function Get-OperatingSystemBuild {
+    try {
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        return $os | Select-Object Caption, Version, BuildNumber
+    } catch {
+        return [PSCustomObject]@{
+            Source = 'Get-CimInstance Win32_OperatingSystem'
             Error  = $_.Exception.Message
         }
     }
@@ -54,6 +66,7 @@ function Invoke-Main {
         Status       = Get-DefenderStatus
         Threats      = Get-DefenderThreatStatistics
         Preferences  = Get-DefenderPreferences
+        OperatingSystem = Get-OperatingSystemBuild
     }
 
     $result = New-CollectorMetadata -Payload $payload
