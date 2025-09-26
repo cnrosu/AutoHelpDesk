@@ -33,6 +33,29 @@ function ConvertTo-IntArray {
     return $list
 }
 
+function Get-ObjectPropertyString {
+    param(
+        $Object,
+        [string]$PropertyName,
+        [string]$NullPlaceholder = 'null'
+    )
+
+    if (-not $Object) { return $NullPlaceholder }
+    if (-not $PropertyName) { return $NullPlaceholder }
+
+    $property = $Object.PSObject.Properties[$PropertyName]
+    if (-not $property) { return $NullPlaceholder }
+
+    $value = $property.Value
+    if ($null -eq $value) { return $NullPlaceholder }
+
+    if ($value -is [bool]) {
+        if ($value) { return 'True' }
+        return 'False'
+    }
+    return [string]$value
+}
+
 function Format-BitLockerVolume {
     param($Volume)
 
@@ -116,6 +139,7 @@ function Invoke-SecurityHeuristics {
     $defenderArtifact = Get-AnalyzerArtifact -Context $Context -Name 'defender'
     if ($defenderArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $defenderArtifact)
+        $statusTamper = $null
         if ($payload -and $payload.Status -and -not $payload.Status.Error) {
             $status = $payload.Status
             $rtp = ConvertTo-NullableBool $status.RealTimeProtectionEnabled
@@ -127,11 +151,7 @@ function Invoke-SecurityHeuristics {
             if ($av -eq $false) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Defender antivirus engine disabled' -Evidence 'Get-MpComputerStatus reports AntivirusEnabled = False.' -Subcategory 'Microsoft Defender'
             }
-
-            $tamper = ConvertTo-NullableBool $status.TamperProtectionEnabled
-            if ($tamper -eq $false) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Tamper protection not enabled' -Evidence 'Get-MpComputerStatus indicates tamper protection is disabled.' -Subcategory 'Microsoft Defender'
-            }
+            $statusTamper = ConvertTo-NullableBool $status.TamperProtectionEnabled
 
             $definitions = @($status.AntivirusSignatureVersion, $status.AntispywareSignatureVersion) | Where-Object { $_ }
             if ($definitions.Count -gt 0) {
@@ -148,6 +168,103 @@ function Invoke-SecurityHeuristics {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender status' -Evidence $payload.Status.Error -Subcategory 'Microsoft Defender'
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact missing expected structure' -Subcategory 'Microsoft Defender'
+        }
+
+        if ($payload -and $payload.PSObject.Properties['Preferences']) {
+            $preferencesEntry = Resolve-SinglePayload -Payload $payload.Preferences
+            if ($preferencesEntry -and $preferencesEntry.PSObject.Properties['Error'] -and $preferencesEntry.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender preferences' -Evidence $preferencesEntry.Error -Subcategory 'Microsoft Defender'
+            } elseif ($preferencesEntry) {
+                $prefEvidence = 'DisableTamperProtection={0}; MAPSReporting={1}; SubmitSamplesConsent={2}; CloudBlockLevel={3}' -f `
+                    (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'DisableTamperProtection'),
+                    (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'MAPSReporting'),
+                    (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'SubmitSamplesConsent'),
+                    (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'CloudBlockLevel')
+
+                $prefTamperDisabled = $null
+                if ($preferencesEntry.PSObject.Properties['DisableTamperProtection']) {
+                    $prefTamperDisabled = ConvertTo-NullableBool $preferencesEntry.DisableTamperProtection
+                }
+
+                $tamperProtectionOff = $false
+                if ($prefTamperDisabled -eq $true -or $statusTamper -eq $false) {
+                    $tamperProtectionOff = $true
+                }
+
+                if ($tamperProtectionOff) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Defender tamper protection disabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderTamper'
+                } elseif (($prefTamperDisabled -eq $false) -or ($statusTamper -eq $true)) {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Defender tamper protection enabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderTamper'
+                }
+
+                $mapsEnabled = $null
+                if ($preferencesEntry.PSObject.Properties['MAPSReporting']) {
+                    $mapsRaw = $preferencesEntry.MAPSReporting
+                    if ($null -ne $mapsRaw) {
+                        $mapsText = [string]$mapsRaw
+                        $mapsTrimmed = $mapsText.Trim()
+                        if ($mapsTrimmed) {
+                            $mapsInt = 0
+                            if ([int]::TryParse($mapsTrimmed, [ref]$mapsInt)) {
+                                $mapsEnabled = ($mapsInt -gt 0)
+                            } else {
+                                try {
+                                    $mapsLower = $mapsTrimmed.ToLowerInvariant()
+                                } catch {
+                                    $mapsLower = $mapsTrimmed
+                                    if ($mapsLower) { $mapsLower = $mapsLower.ToLowerInvariant() }
+                                }
+                                if ($mapsLower -in @('0', 'off', 'disable', 'disabled')) {
+                                    $mapsEnabled = $false
+                                } elseif ($mapsLower -in @('basic', 'advanced')) {
+                                    $mapsEnabled = $true
+                                } else {
+                                    $mapsEnabled = $null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $cloudDisabled = $null
+                if ($preferencesEntry.PSObject.Properties['CloudBlockLevel']) {
+                    $cloudRaw = $preferencesEntry.CloudBlockLevel
+                    if ($null -ne $cloudRaw) {
+                        $cloudText = [string]$cloudRaw
+                        $cloudTrimmed = $cloudText.Trim()
+                        if ($cloudTrimmed) {
+                            try {
+                                $cloudLower = $cloudTrimmed.ToLowerInvariant()
+                            } catch {
+                                $cloudLower = $cloudTrimmed
+                                if ($cloudLower) { $cloudLower = $cloudLower.ToLowerInvariant() }
+                            }
+
+                            if ($cloudLower -in @('0', 'off', 'disable', 'disabled')) {
+                                $cloudDisabled = $true
+                            } elseif ($cloudLower -in @('high', 'highplus', 'high+') -or ($cloudLower -match '^[1-4]$')) {
+                                $cloudDisabled = $false
+                            }
+                        }
+                    }
+                }
+
+                $cloudProtectionOff = $false
+                if ($mapsEnabled -eq $false -or $cloudDisabled -eq $true) {
+                    $cloudProtectionOff = $true
+                }
+
+                if ($cloudProtectionOff) {
+                    $cloudSeverity = 'medium'
+                    if (($mapsEnabled -eq $false) -and ($cloudDisabled -eq $true)) {
+                        $cloudSeverity = 'high'
+                    }
+
+                    Add-CategoryIssue -CategoryResult $result -Severity $cloudSeverity -Title 'Defender cloud-delivered protection disabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
+                } elseif (($mapsEnabled -eq $true) -or ($cloudDisabled -eq $false)) {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Defender cloud-delivered protection enabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact not collected' -Subcategory 'Microsoft Defender'

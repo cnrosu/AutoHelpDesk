@@ -40,7 +40,7 @@ function Get-DefenderThreatStatistics {
 function Get-DefenderPreferences {
     try {
         $prefs = Get-MpPreference -ErrorAction Stop
-        return $prefs | Select-Object DisableRealtimeMonitoring, DisableIOAVProtection, DisablePrivacyMode, DisableIntrusionPreventionSystem, DisableScriptScanning, ScanScheduleDay, ScanScheduleTime, SignatureScheduleDay, SignatureScheduleTime, MAPSReporting, SubmitSamplesConsent, EnableNetworkProtection, UILockdownMode
+        return $prefs | Select-Object DisableTamperProtection, DisableRealtimeMonitoring, DisableIOAVProtection, DisablePrivacyMode, DisableIntrusionPreventionSystem, DisableScriptScanning, ScanScheduleDay, ScanScheduleTime, SignatureScheduleDay, SignatureScheduleTime, MAPSReporting, SubmitSamplesConsent, CloudBlockLevel, EnableNetworkProtection, UILockdownMode
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-MpPreference'
