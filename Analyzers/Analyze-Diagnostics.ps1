@@ -1,3 +1,16 @@
+# --- DEBUG: print a call stack on any terminating error in this script ---
+$EnableDiag = ($env:ANALYZER_DEBUG -eq '1')
+
+trap {
+  try {
+    if ($EnableDiag) {
+      Write-Error "[analyzer.entry] $($_.Exception.Message)"
+      Get-PSCallStack | Format-List -Force | Out-Host
+    }
+  } catch {}
+  throw   # rethrow so the exit code reflects failure
+}
+
 <#!
 .SYNOPSIS
     Analyzer orchestrator that loads JSON artifacts, runs heuristic modules, and generates an HTML report.
