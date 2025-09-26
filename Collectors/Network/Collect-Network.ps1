@@ -11,47 +11,19 @@ param(
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
 function Get-IpConfiguration {
-    try {
-        return ipconfig.exe /all 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'ipconfig.exe'
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'ipconfig.exe' -ArgumentList '/all' -SourceLabel 'ipconfig.exe'
 }
 
 function Get-RoutingTable {
-    try {
-        return route.exe print 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'route.exe'
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'route.exe' -ArgumentList 'print' -SourceLabel 'route.exe'
 }
 
 function Get-NetstatSnapshot {
-    try {
-        return netstat.exe -ano 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'netstat.exe'
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'netstat.exe' -ArgumentList '-ano' -SourceLabel 'netstat.exe'
 }
 
 function Get-ArpCache {
-    try {
-        return arp.exe -a 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'arp.exe'
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'arp.exe' -ArgumentList '-a' -SourceLabel 'arp.exe'
 }
 
 function Invoke-Main {

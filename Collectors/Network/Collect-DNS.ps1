@@ -37,14 +37,7 @@ function Test-DnsResolution {
 
 function Trace-NetworkPath {
     param([string]$Target = 'outlook.office365.com')
-    try {
-        return tracert.exe $Target 2>$null
-    } catch {
-        return [PSCustomObject]@{
-            Target = $Target
-            Error  = $_.Exception.Message
-        }
-    }
+    return Invoke-CollectorNativeCommand -FilePath 'tracert.exe' -ArgumentList $Target -ErrorMetadata @{ Target = $Target }
 }
 
 function Test-Latency {
@@ -52,14 +45,7 @@ function Test-Latency {
     try {
         return Test-NetConnection -ComputerName $Target -WarningAction SilentlyContinue
     } catch {
-        try {
-            return ping.exe $Target 2>$null
-        } catch {
-            return [PSCustomObject]@{
-                Target = $Target
-                Error  = $_.Exception.Message
-            }
-        }
+        return Invoke-CollectorNativeCommand -FilePath 'ping.exe' -ArgumentList $Target -ErrorMetadata @{ Target = $Target }
     }
 }
 

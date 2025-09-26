@@ -8,6 +8,30 @@ AutoHelpDesk is a modular PowerShell toolkit that collects Windows device teleme
 
 This README documents how the system fits together and enumerates the available heuristics so you can understand what the analyzer looks for out of the box.
 
+## Quick start
+
+The toolkit is designed to run entirely from PowerShell—no installers required. The commands below assume you are running from the repository root.
+
+1. **Collect diagnostics**
+   ```powershell
+   pwsh -File .\Collectors\Collect-All.ps1 -OutputRoot .\artifacts
+   ```
+   This script discovers every `Collect-*.ps1` module, executes them in parallel, and writes JSON payloads to the `artifacts` folder (grouped by area).
+
+2. **Review collection status (optional)**
+   ```powershell
+   Get-Content .\artifacts\collection-summary.json | ConvertFrom-Json
+   ```
+   The summary lists each collector, whether it succeeded, and the on-disk path of its artifact.
+
+3. **Generate the HTML report**
+   ```powershell
+   pwsh -File .\Analyzers\Analyze-Diagnostics.ps1 -InputFolder .\artifacts -OutputPath .\artifacts\diagnostics-report.html
+   ```
+   The analyzer loads every JSON file under `artifacts`, runs the heuristic catalog, and emits an HTML report (plus merged CSS under `artifacts\styles`).
+
+You can re-run the analyzer against existing collections—only the `-InputFolder` is required if you are happy with the default output path.
+
 ## Repository layout
 
 | Path | Description |
