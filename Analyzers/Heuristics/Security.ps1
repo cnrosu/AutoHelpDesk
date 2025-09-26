@@ -33,6 +33,67 @@ function ConvertTo-IntArray {
     return $list
 }
 
+function ConvertTo-VersionObject {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    try {
+        $text = [string]$Value
+    } catch {
+        $text = $Value
+    }
+
+    if (-not $text) { return $null }
+
+    $trimmed = $text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $parts = $trimmed.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
+    if ($parts.Count -eq 0) { return $null }
+
+    $numbers = @()
+    foreach ($part in $parts) {
+        $cleanMatch = [regex]::Match($part, '\d+')
+        if (-not $cleanMatch.Success) { return $null }
+        $parsed = 0
+        if (-not [int]::TryParse($cleanMatch.Value, [ref]$parsed)) { return $null }
+        $numbers += $parsed
+        if ($numbers.Count -ge 4) { break }
+    }
+
+    if ($numbers.Count -eq 0) { return $null }
+
+    try {
+        switch ($numbers.Count) {
+            1 { return [version]::new($numbers[0], 0) }
+            2 { return [version]::new($numbers[0], $numbers[1]) }
+            3 { return [version]::new($numbers[0], $numbers[1], $numbers[2]) }
+            default { return [version]::new($numbers[0], $numbers[1], $numbers[2], $numbers[3]) }
+        }
+    } catch {
+        return $null
+    }
+}
+
+$script:SecurityHeuristicsConfig = $null
+function Get-SecurityHeuristicsConfig {
+    if ($script:SecurityHeuristicsConfig) { return $script:SecurityHeuristicsConfig }
+
+    $configPath = Join-Path -Path $PSScriptRoot -ChildPath 'SecurityConfig.psd1'
+    if (Test-Path -LiteralPath $configPath) {
+        try {
+            $script:SecurityHeuristicsConfig = Import-PowerShellDataFile -Path $configPath -ErrorAction Stop
+        } catch {
+            $script:SecurityHeuristicsConfig = @{}
+        }
+    } else {
+        $script:SecurityHeuristicsConfig = @{}
+    }
+
+    return $script:SecurityHeuristicsConfig
+}
+
 function Get-ObjectPropertyString {
     param(
         $Object,
@@ -156,6 +217,47 @@ function Invoke-SecurityHeuristics {
             $definitions = @($status.AntivirusSignatureVersion, $status.AntispywareSignatureVersion) | Where-Object { $_ }
             if ($definitions.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('Defender signatures present ({0})' -f ($definitions -join ', '))
+            }
+
+            $config = Get-SecurityHeuristicsConfig
+            $platformConfig = $null
+            if ($config -and ($config -is [System.Collections.IDictionary]) -and $config.ContainsKey('DefenderPlatform')) {
+                $platformConfig = $config['DefenderPlatform']
+            }
+
+            $minimumProductVersionText = $null
+            if ($platformConfig -and ($platformConfig -is [System.Collections.IDictionary]) -and $platformConfig.ContainsKey('MinimumProductVersion')) {
+                $minimumProductVersionText = [string]$platformConfig['MinimumProductVersion']
+            }
+
+            $productVersionText = if ($status.PSObject.Properties['AMProductVersion']) { [string]$status.AMProductVersion } else { $null }
+            $engineVersionText = if ($status.PSObject.Properties['AntimalwareEngineVersion']) { [string]$status.AntimalwareEngineVersion } else { $null }
+            $nisPlatformVersionText = if ($status.PSObject.Properties['NISPlatformVersion']) { [string]$status.NISPlatformVersion } else { $null }
+
+            $productVersion = ConvertTo-VersionObject $productVersionText
+            $minimumProductVersion = ConvertTo-VersionObject $minimumProductVersionText
+
+            $platformEvidence = @()
+            if ($productVersionText) { $platformEvidence += ("AMProductVersion: {0}" -f $productVersionText) }
+            if ($engineVersionText) { $platformEvidence += ("AntimalwareEngineVersion: {0}" -f $engineVersionText) }
+            if ($nisPlatformVersionText) { $platformEvidence += ("NISPlatformVersion: {0}" -f $nisPlatformVersionText) }
+            if ($minimumProductVersionText) { $platformEvidence += ("Minimum required: {0}" -f $minimumProductVersionText) }
+            if ($operatingSystem -and $operatingSystem.BuildNumber) {
+                $platformEvidence += ("OS Build: {0}" -f $operatingSystem.BuildNumber)
+            }
+
+            $platformEvidenceText = if ($platformEvidence.Count -gt 0) { $platformEvidence -join "`n" } else { 'Defender platform version details unavailable.' }
+
+            if ($minimumProductVersion -and $productVersion) {
+                if ($productVersion -lt $minimumProductVersion) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Defender platform below baseline ({0} < {1}).' -f $productVersionText, $minimumProductVersionText) -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title ('Defender platform meets baseline ({0} ≥ {1}).' -f $productVersionText, $minimumProductVersionText) -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+                }
+            } elseif ($minimumProductVersion -and -not $productVersionText) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to determine Defender platform version' -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+            } elseif ($minimumProductVersionText) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender platform version parsing failed' -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
             }
 
             if ($payload.Threats -and $payload.Threats.Count -gt 0 -and -not ($payload.Threats[0] -is [string])) {
