@@ -45,10 +45,24 @@ function Get-FirewallRules {
     }
 }
 
+function Get-ConnectionProfiles {
+    try {
+        return Get-NetConnectionProfile -ErrorAction Stop |
+            Select-Object Name, InterfaceAlias, NetworkCategory, DomainAuthenticationSucceeded
+    } catch {
+        Write-Verbose "Get-NetConnectionProfile failed: $($_.Exception.Message)"
+        return [PSCustomObject]@{
+            Source = 'Get-NetConnectionProfile'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         Profiles = Get-FirewallProfiles
         Rules    = Get-FirewallRules
+        Connections = Get-ConnectionProfiles
     }
 
     $result = New-CollectorMetadata -Payload $payload
