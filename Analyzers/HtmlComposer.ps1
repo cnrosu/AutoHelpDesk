@@ -594,6 +594,107 @@ function Build-IssueSection {
     return $tabs
 }
 
+function Get-TruncatedText {
+    param(
+        [string]$Text,
+        [int]$MaxLines,
+        [int]$MaxChars
+    )
+
+    if ($null -eq $Text) {
+        return [pscustomobject]@{ Text = ''; WasTruncated = $false }
+    }
+
+    $normalized = $Text -replace "`r`n", "`n"
+    $normalized = $normalized -replace "`r", "`n"
+    $wasTruncated = $false
+
+    if ($MaxLines -gt 0) {
+        $lines = $normalized -split "`n"
+        if ($lines.Length -gt $MaxLines) {
+            $normalized = ($lines[0..($MaxLines - 1)] -join [Environment]::NewLine)
+            $wasTruncated = $true
+        }
+    }
+
+    if ($MaxChars -gt 0 -and $normalized.Length -gt $MaxChars) {
+        $normalized = $normalized.Substring(0, $MaxChars)
+        $wasTruncated = $true
+    }
+
+    if ($wasTruncated) {
+        $normalized = $normalized.TrimEnd() + [Environment]::NewLine + '... (truncated)'
+    }
+
+    return [pscustomobject]@{
+        Text         = $normalized
+        WasTruncated = $wasTruncated
+    }
+}
+
+function ConvertTo-RawCard {
+    param(
+        [string]$Key,
+        $Entry,
+        [int]$MaxLines,
+        [int]$MaxChars
+    )
+
+    $path = $null
+    $data = $null
+
+    if ($Entry -and $Entry.PSObject.Properties['Path']) {
+        $path = [string]$Entry.Path
+    }
+
+    if ($Entry -and $Entry.PSObject.Properties['Data']) {
+        $data = $Entry.Data
+    }
+
+    $collectedAt = $null
+    if ($data -and $data.PSObject.Properties['CollectedAt']) {
+        $collectedAt = [string]$data.CollectedAt
+        if ($collectedAt) {
+            try {
+                $parsed = [datetime]$collectedAt
+                $collectedAt = $parsed.ToUniversalTime().ToString('u')
+            } catch {
+                $collectedAt = [string]$collectedAt
+            }
+        }
+    }
+
+    $payload = $null
+    if ($data -and $data.PSObject.Properties['Payload']) {
+        $payload = $data.Payload
+    } elseif ($data) {
+        $payload = $data
+    } elseif ($Entry -and $Entry.PSObject.Properties['Payload']) {
+        $payload = $Entry.Payload
+    }
+
+    $evidence = Format-AnalyzerEvidence -Value $payload
+    if (-not $evidence) {
+        if ($data -and $data.PSObject.Properties['Error'] -and $data.Error) {
+            $evidence = "Error: $($data.Error)"
+        } else {
+            $evidence = '(no payload data)'
+        }
+    }
+
+    $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
+    $metaParts = @()
+    if ($collectedAt) { $metaParts += "Collected: $collectedAt" }
+    if ($path) { $metaParts += "File: $path" }
+
+    $metaHtml = ''
+    if ($metaParts.Count -gt 0) {
+        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaParts -join ' • '))</small></div>"
+    }
+
+    return "<div class='report-card'><b>$(Encode-Html $Key)</b>$metaHtml<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre></div>"
+}
+
 function Build-DebugSection {
     param($Context)
 
@@ -623,6 +724,63 @@ function Build-DebugSection {
     }
 
     return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lines -join [Environment]::NewLine))</pre></div>"
+}
+
+function Build-RawSection {
+    param(
+        $Context,
+        [int]$MaxArtifacts = 10,
+        [int]$MaxLines = 40,
+        [int]$MaxChars = 2000
+    )
+
+    if (-not $Context -or -not $Context.Artifacts -or $Context.Artifacts.Count -eq 0) {
+        return "<div class='report-card'><i>No raw payloads available.</i></div>"
+    }
+
+    $items = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
+        $entries = $Context.Artifacts[$key]
+        if (-not $entries) { continue }
+
+        if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
+            foreach ($entry in $entries) {
+                if ($entry) {
+                    $items.Add([pscustomobject]@{ Key = $key; Entry = $entry }) | Out-Null
+                }
+            }
+        } else {
+            $items.Add([pscustomobject]@{ Key = $key; Entry = $entries }) | Out-Null
+        }
+    }
+
+    if ($items.Count -eq 0) {
+        return "<div class='report-card'><i>No raw payloads available.</i></div>"
+    }
+
+    $cards = New-Object System.Collections.Generic.List[string]
+    $cards.Add("<div class='report-card'><i>Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters.</i></div>") | Out-Null
+
+    $processed = 0
+    foreach ($item in $items) {
+        if ($processed -ge $MaxArtifacts) { break }
+        $card = ConvertTo-RawCard -Key $item.Key -Entry $item.Entry -MaxLines $MaxLines -MaxChars $MaxChars
+        if ($card) {
+            $cards.Add($card) | Out-Null
+            $processed++
+        }
+    }
+
+    if ($processed -eq 0) {
+        return "<div class='report-card'><i>No raw payload excerpts available.</i></div>"
+    }
+
+    if ($items.Count -gt $processed) {
+        $remaining = $items.Count - $processed
+        $cards.Add("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>") | Out-Null
+    }
+
+    return ($cards -join '')
 }
 
 function New-AnalyzerHtml {
@@ -670,7 +828,7 @@ function New-AnalyzerHtml {
         $failedContent += "</table></div>"
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
-    $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml "<div class='report-card'><i>Raw excerpts are not currently generated by the modular analyzer workflow.</i></div>"
+    $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
