@@ -4,8 +4,10 @@ The collector layer captures raw diagnostics from Windows endpoints and writes t
 
 ## Running collectors
 
-- **Run everything:** `Collectors/Collect-All.ps1` discovers every `Collect-*.ps1` script under this directory, executes them, and drops JSON into per-area subfolders (`output/Network`, `output/Security`, etc.).
-- **Run a single collector:** Execute the script directly and supply an `-OutputDirectory` if you do not want to use the default timestamped folder. Example:
+> **Tip:** Launch PowerShell **as Administrator** before running collectors. Several scripts query security logs, Defender status, or networking configuration that require elevated rights.
+
+- **Run everything:** `Collectors/Collect-All.ps1` discovers every `Collect-*.ps1` script under this directory, executes them (in parallel by default), and drops JSON into per-area subfolders (`output/Network`, `output/Security`, etc.). Override `-OutputRoot` to control the root folder or `-ThrottleLimit` to cap parallelism.
+- **Run a single collector:** Execute the script directly and supply an `-OutputDirectory` if you do not want to use the default timestamped folder that orchestrators create. Example:
   ```powershell
   powershell.exe -ExecutionPolicy Bypass -File .\Collectors\Network\Collect-Network.ps1 -OutputDirectory C:\Temp\Diag\Network
   ```
