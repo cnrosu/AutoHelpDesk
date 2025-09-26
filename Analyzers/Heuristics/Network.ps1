@@ -176,6 +176,8 @@ function Invoke-NetworkHeuristics {
         }
     }
 
+    $officeNetworkResult = $null
+
     $outlookArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
     if ($outlookArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $outlookArtifact)
@@ -183,12 +185,15 @@ function Invoke-NetworkHeuristics {
             $conn = $payload.Connectivity
             if ($conn.PSObject.Properties['TcpTestSucceeded']) {
                 if (-not $conn.TcpTestSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Outlook HTTPS connectivity failed' -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress)
+                    if (-not $officeNetworkResult) { $officeNetworkResult = New-CategoryResult -Name 'Office/Network' }
+                    Add-CategoryIssue -CategoryResult $officeNetworkResult -Severity 'high' -Title 'Outlook HTTPS connectivity failed' -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress)
                 } else {
-                    Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded'
+                    if (-not $officeNetworkResult) { $officeNetworkResult = New-CategoryResult -Name 'Office/Network' }
+                    Add-CategoryNormal -CategoryResult $officeNetworkResult -Title 'Outlook HTTPS connectivity succeeded'
                 }
             } elseif ($conn.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity' -Evidence $conn.Error
+                if (-not $officeNetworkResult) { $officeNetworkResult = New-CategoryResult -Name 'Office/Network' }
+                Add-CategoryIssue -CategoryResult $officeNetworkResult -Severity 'medium' -Title 'Unable to test Outlook connectivity' -Evidence $conn.Error
             }
         }
 
@@ -196,9 +201,11 @@ function Invoke-NetworkHeuristics {
             $largeOst = $payload.OstFiles | Where-Object { $_.Length -gt 25GB }
             if ($largeOst.Count -gt 0) {
                 $names = $largeOst | Select-Object -ExpandProperty Name
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', '))
+                if (-not $officeNetworkResult) { $officeNetworkResult = New-CategoryResult -Name 'Office/Network' }
+                Add-CategoryIssue -CategoryResult $officeNetworkResult -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', '))
             } elseif ($payload.OstFiles.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count)
+                if (-not $officeNetworkResult) { $officeNetworkResult = New-CategoryResult -Name 'Office/Network' }
+                Add-CategoryNormal -CategoryResult $officeNetworkResult -Title ('OST files present ({0})' -f $payload.OstFiles.Count)
             }
         }
     }
@@ -273,6 +280,13 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText
             }
         }
+    }
+
+    if ($officeNetworkResult -and (
+            $officeNetworkResult.Issues.Count -gt 0 -or
+            $officeNetworkResult.Normals.Count -gt 0 -or
+            $officeNetworkResult.Checks.Count -gt 0)) {
+        return @($result, $officeNetworkResult)
     }
 
     return $result
