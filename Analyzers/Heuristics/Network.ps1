@@ -177,6 +177,147 @@ function Test-NetworkPseudoInterface {
     return $false
 }
 
+function Test-NetworkErrorEntry {
+    param($Value)
+
+    if (-not $Value) { return $false }
+
+    try {
+        if ($Value.PSObject -and $Value.PSObject.Properties['Error'] -and $Value.Error) { return $true }
+    } catch {
+        return $false
+    }
+
+    return $false
+}
+
+function ConvertTo-NetworkDateTime {
+    param([string]$Value)
+
+    if (-not $Value) { return $null }
+
+    try {
+        $styles = [System.Globalization.DateTimeStyles]::RoundtripKind
+        return [datetime]::Parse($Value, [System.Globalization.CultureInfo]::InvariantCulture, $styles)
+    } catch {
+        try {
+            return [datetime]::Parse($Value)
+        } catch {
+            return $null
+        }
+    }
+}
+
+function Get-NetworkWifiRoamSummary {
+    param(
+        [System.Collections.IEnumerable]$Events,
+        [int]$LookbackMinutes = 30
+    )
+
+    $lookback = [math]::Abs($LookbackMinutes)
+    $windowStart = (Get-Date).AddMinutes(-$lookback)
+
+    $observations = New-Object System.Collections.Generic.List[pscustomobject]
+    if (-not $Events) {
+        return [pscustomobject]@{
+            LookbackMinutes   = $lookback
+            SampleCount       = 0
+            RoamCount         = 0
+            UniqueBssidCount  = 0
+            Observations      = @()
+        }
+    }
+
+    foreach ($event in $Events) {
+        if (-not $event) { continue }
+
+        $time = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $time = ConvertTo-NetworkDateTime -Value $event.TimeCreated
+        }
+
+        if (-not $time) { continue }
+        if ($time -lt $windowStart) { continue }
+
+        $bssid = $null
+        foreach ($field in @('NewBssid','TargetBssid','Bssid')) {
+            if ($event.PSObject.Properties[$field] -and $event.$field) {
+                try {
+                    $bssid = ([string]$event.$field).ToLowerInvariant()
+                } catch {
+                    $bssid = [string]$event.$field
+                }
+                if ($bssid) { $bssid = $bssid -replace '-', ':' }
+                break
+            }
+        }
+
+        if (-not $bssid -and $event.PSObject.Properties['Properties']) {
+            $propertyValues = ConvertTo-NetworkArray $event.Properties
+            foreach ($value in $propertyValues) {
+                if (-not $value) { continue }
+                if ($value -match '(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}') {
+                    $candidate = ($value -replace '-', ':').ToLowerInvariant()
+                    if ($candidate) { $bssid = $candidate; break }
+                }
+            }
+        }
+
+        if (-not $bssid) { continue }
+
+        $ssidValue = $null
+        if ($event.PSObject.Properties['Ssid'] -and $event.Ssid) {
+            $ssidValue = [string]$event.Ssid
+        }
+
+        $observations.Add([pscustomobject]@{
+                Time    = $time
+                Bssid   = $bssid
+                EventId = if ($event.PSObject.Properties['Id']) { try { [int]$event.Id } catch { $event.Id } } else { $null }
+                Ssid    = $ssidValue
+            }) | Out-Null
+    }
+
+    if ($observations.Count -eq 0) {
+        return [pscustomobject]@{
+            LookbackMinutes   = $lookback
+            SampleCount       = 0
+            RoamCount         = 0
+            UniqueBssidCount  = 0
+            Observations      = @()
+        }
+    }
+
+    $sorted = $observations | Sort-Object -Property Time
+    $lastBssid = $null
+    $changes = 0
+    $evidence = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($item in $sorted) {
+        if ($item.Bssid) {
+            if ($lastBssid -and $item.Bssid -ne $lastBssid) { $changes++ }
+            $lastBssid = $item.Bssid
+        }
+
+        $evidence.Add([pscustomobject]@{
+                TimeCreated = $item.Time.ToString('o')
+                Bssid       = $item.Bssid
+                EventId     = $item.EventId
+                Ssid        = $item.Ssid
+            }) | Out-Null
+    }
+
+    $uniqueBssids = ($evidence | Where-Object { $_.Bssid } | Select-Object -ExpandProperty Bssid -Unique)
+
+    return [pscustomobject]@{
+        LookbackMinutes   = $lookback
+        SampleCount       = $evidence.Count
+        RoamCount         = $changes
+        UniqueBssidCount  = $uniqueBssids.Count
+        Observations      = $evidence.ToArray()
+    }
+}
+
 function Get-NetworkDnsInterfaceInventory {
     param($AdapterPayload)
 
@@ -810,6 +951,205 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration'
             }
         }
+    }
+
+    $wifiArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-wifi'
+    if ($wifiArtifact) {
+        $wifiPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wifiArtifact)
+
+        $wifiInterfacesSection = $null
+        if ($wifiPayload -and $wifiPayload.PSObject.Properties['Interfaces']) {
+            $wifiInterfacesSection = $wifiPayload.Interfaces
+        }
+
+        $wifiRaw = $null
+        if ($wifiInterfacesSection -and $wifiInterfacesSection.PSObject.Properties['Raw']) {
+            $wifiRaw = $wifiInterfacesSection.Raw
+        }
+
+        if ($wifiRaw -and (Test-NetworkErrorEntry $wifiRaw)) {
+            $rawError = if ($wifiRaw.PSObject.Properties['Error']) { [string]$wifiRaw.Error } else { 'Failed to query Wi-Fi interfaces.' }
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to collect Wi-Fi interface details' -Evidence $rawError -Subcategory 'Wi-Fi Quality'
+        }
+
+        $wifiSamples = @()
+        if ($wifiInterfacesSection -and $wifiInterfacesSection.PSObject.Properties['Samples']) {
+            $wifiSamples = ConvertTo-NetworkArray $wifiInterfacesSection.Samples | Where-Object { $_ }
+        } elseif ($wifiPayload -and $wifiPayload.PSObject.Properties['Samples']) {
+            $wifiSamples = ConvertTo-NetworkArray $wifiPayload.Samples | Where-Object { $_ }
+        }
+
+        $signalCandidates = @($wifiSamples | Where-Object { $_ -and $_.PSObject.Properties['SignalPercent'] -and $null -ne $_.SignalPercent })
+        $connectedCandidates = @($signalCandidates | Where-Object {
+                $state = $null
+                if ($_.PSObject.Properties['State']) {
+                    $state = [string]$_.State
+                    if ($state) {
+                        try { $state = $state.ToLowerInvariant() } catch { $state = $state.ToLower() }
+                    }
+                }
+                return ($state -eq 'connected')
+            })
+
+        $consideredSamples = if ($connectedCandidates.Count -gt 0) { $connectedCandidates } else { $signalCandidates }
+
+        $normalizedSamples = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($sample in $consideredSamples) {
+            if (-not $sample) { continue }
+
+            $percent = $null
+            if ($sample.PSObject.Properties['SignalPercent']) {
+                $percentRaw = $sample.SignalPercent
+                if ($percentRaw -is [int]) {
+                    $percent = [int]$percentRaw
+                } else {
+                    $percentText = [string]$percentRaw
+                    if ($percentText -match '(\d+)') {
+                        $percent = [int]$matches[1]
+                    }
+                }
+            }
+
+            if ($null -eq $percent) { continue }
+            $percent = [math]::Max([math]::Min([int]$percent, 100), 0)
+
+            $dbmValue = $null
+            if ($sample.PSObject.Properties['SignalDbm'] -and $sample.SignalDbm -ne $null) {
+                $dbmRaw = $sample.SignalDbm
+                if ($dbmRaw -is [int]) {
+                    $dbmValue = [int]$dbmRaw
+                } else {
+                    $dbmText = [string]$dbmRaw
+                    if ($dbmText -match '(-?\d+)') {
+                        $dbmValue = [int]$matches[1]
+                    }
+                }
+            }
+
+            $normalizedSamples.Add([pscustomobject]@{
+                    Percent = $percent
+                    Dbm     = $dbmValue
+                    Sample  = $sample
+                }) | Out-Null
+        }
+
+        if ($normalizedSamples.Count -gt 0) {
+            $normalizedArray = $normalizedSamples.ToArray()
+            $totalSamples = $normalizedArray.Count
+            $below60 = ($normalizedArray | Where-Object { $_.Percent -lt 60 }).Count
+            $below35 = ($normalizedArray | Where-Object { $_.Percent -lt 35 }).Count
+
+            $share60 = if ($totalSamples -gt 0) { $below60 / $totalSamples } else { 0 }
+            $share35 = if ($totalSamples -gt 0) { $below35 / $totalSamples } else { 0 }
+
+            $sortedSamples = $normalizedArray | Sort-Object -Property Percent
+            $worstSample = $sortedSamples | Select-Object -First 1
+
+            $sampleEvidence = New-Object System.Collections.Generic.List[pscustomobject]
+            foreach ($entry in $sortedSamples) {
+                $sampleData = $entry.Sample
+                $sampleEvidence.Add([pscustomobject]@{
+                        Interface     = if ($sampleData.PSObject.Properties['Name']) { [string]$sampleData.Name } else { $null }
+                        SSID          = if ($sampleData.PSObject.Properties['Ssid']) { [string]$sampleData.Ssid } else { $null }
+                        SignalPercent = $entry.Percent
+                        SignalDbm     = $entry.Dbm
+                        Channel       = if ($sampleData.PSObject.Properties['Channel']) { $sampleData.Channel } else { $null }
+                        Bssid         = if ($sampleData.PSObject.Properties['Bssid']) { $sampleData.Bssid } else { $null }
+                        State         = if ($sampleData.PSObject.Properties['State']) { $sampleData.State } else { $null }
+                        SampledAt     = if ($sampleData.PSObject.Properties['SampledAt']) { $sampleData.SampledAt } else { $null }
+                    }) | Out-Null
+            }
+
+            $signalEvidence = [ordered]@{
+                TotalSamples   = $totalSamples
+                Below60Percent = $below60
+                Below35Percent = $below35
+                Samples        = $sampleEvidence.ToArray()
+            }
+
+            $worstPercentText = $null
+            if ($worstSample) {
+                if ($worstSample.Dbm -ne $null) {
+                    $worstPercentText = '{0}% (~{1} dBm)' -f $worstSample.Percent, $worstSample.Dbm
+                } else {
+                    $worstPercentText = '{0}%' -f $worstSample.Percent
+                }
+            }
+
+            if ($share35 -ge 0.6) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Wi-Fi signal quality critical' -Evidence $signalEvidence -Subcategory 'Wi-Fi Quality'
+                $detail = ('{0}/{1} samples ({2:P1}) below 35% signal quality.' -f $below35, $totalSamples, $share35)
+                Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiQuality' -Status 'High risk' -Details $detail
+            } elseif ($share60 -ge 0.6) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Wi-Fi signal quality weak' -Evidence $signalEvidence -Subcategory 'Wi-Fi Quality'
+                $detail = ('{0}/{1} samples ({2:P1}) below 60% signal quality.' -f $below60, $totalSamples, $share60)
+                Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiQuality' -Status 'Medium risk' -Details $detail
+            } else {
+                $title = if ($worstSample -and $worstSample.Percent -ge 70) { 'Wi-Fi signal quality healthy (≥70%)' } else { 'Wi-Fi signal quality stable' }
+                if ($worstPercentText) { $title = '{0} (worst {1})' -f $title, $worstPercentText }
+                Add-CategoryNormal -CategoryResult $result -Title $title -Subcategory 'Wi-Fi Quality'
+                $detail = if ($worstPercentText) { 'Worst recorded signal {0}.' -f $worstPercentText } else { 'Signal levels above 60% for collected samples.' }
+                Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiQuality' -Status 'Healthy' -Details $detail
+            }
+        } else {
+            $qualityDetail = if ($wifiRaw -and (Test-NetworkErrorEntry $wifiRaw) -and $wifiRaw.PSObject.Properties['Error']) {
+                [string]$wifiRaw.Error
+            } elseif ($wifiSamples.Count -gt 0) {
+                'Wi-Fi samples lacked signal percentage values.'
+            } else {
+                'No Wi-Fi signal samples were collected (adapter may be disconnected).'
+            }
+
+            $qualityStatus = if ($wifiRaw -and (Test-NetworkErrorEntry $wifiRaw)) { 'Unavailable' } else { 'No data' }
+            Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiQuality' -Status $qualityStatus -Details $qualityDetail
+        }
+
+        $roamSource = $null
+        if ($wifiPayload -and $wifiPayload.PSObject.Properties['RoamEvents']) {
+            $roamSource = $wifiPayload.RoamEvents
+        }
+
+        if ($roamSource) {
+            if (Test-NetworkErrorEntry $roamSource) {
+                $roamError = if ($roamSource.PSObject.Properties['Error']) { [string]$roamSource.Error } else { 'Failed to query Wi-Fi roam events.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to collect Wi-Fi roam events' -Evidence $roamError -Subcategory 'Wi-Fi Roaming'
+                Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'Unavailable' -Details $roamError
+            } else {
+                $roamEvents = ConvertTo-NetworkArray $roamSource | Where-Object { $_ }
+                $roamSummary = Get-NetworkWifiRoamSummary -Events $roamEvents -LookbackMinutes 30
+
+                if ($roamSummary.SampleCount -gt 0) {
+                    $roamEvidence = [ordered]@{
+                        LookbackMinutes  = $roamSummary.LookbackMinutes
+                        RoamCount        = $roamSummary.RoamCount
+                        SampleCount      = $roamSummary.SampleCount
+                        UniqueBssidCount = $roamSummary.UniqueBssidCount
+                        Observations     = $roamSummary.Observations
+                    }
+
+                    if ($roamSummary.RoamCount -ge 12) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Frequent Wi-Fi roaming detected' -Evidence $roamEvidence -Subcategory 'Wi-Fi Roaming'
+                        $detail = ('{0} roam events within {1} minutes.' -f $roamSummary.RoamCount, $roamSummary.LookbackMinutes)
+                        Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'High risk' -Details $detail
+                    } elseif ($roamSummary.RoamCount -ge 5) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Elevated Wi-Fi roaming rate' -Evidence $roamEvidence -Subcategory 'Wi-Fi Roaming'
+                        $detail = ('{0} roam events within {1} minutes.' -f $roamSummary.RoamCount, $roamSummary.LookbackMinutes)
+                        Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'Medium risk' -Details $detail
+                    } else {
+                        Add-CategoryNormal -CategoryResult $result -Title 'Wi-Fi roaming rate normal' -Subcategory 'Wi-Fi Roaming'
+                        $detail = ('{0} roam events within {1} minutes.' -f $roamSummary.RoamCount, $roamSummary.LookbackMinutes)
+                        Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'Healthy' -Details $detail
+                    }
+                } else {
+                    Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'Healthy' -Details 'No Wi-Fi roam events observed within the last 30 minutes.'
+                }
+            }
+        } else {
+            Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'No data' -Details 'Wi-Fi roam event log entries were not included in the collection.'
+        }
+    } else {
+        Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiQuality' -Status 'Not collected' -Details 'Wi-Fi diagnostics collector output not found.'
+        Add-CategoryCheck -CategoryResult $result -Name 'Network/WiFiRoamRate' -Status 'Not collected' -Details 'Wi-Fi diagnostics collector output not found.'
     }
 
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result
