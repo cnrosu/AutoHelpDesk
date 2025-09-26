@@ -478,12 +478,14 @@ function New-GoodCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
+  if ([string]::IsNullOrWhiteSpace($Entry.Evidence)) {
+    return "<div class='report-card report-card--$cardClass report-card--static'><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></div>"
+  }
+
   $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
 
-  if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
-    $evidenceHtml = Encode-Html $Entry.Evidence
-    $cardHtml += "<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>"
-  }
+  $evidenceHtml = Encode-Html $Entry.Evidence
+  $cardHtml += "<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>"
 
   $cardHtml += "</details>"
   return $cardHtml
