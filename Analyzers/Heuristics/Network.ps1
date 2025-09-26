@@ -460,6 +460,15 @@ function Invoke-NetworkHeuristics {
         }
     }
 
+    $domainJoined = $null
+    if ($computerSystem -and $computerSystem.PSObject.Properties['PartOfDomain']) {
+        try {
+            $domainJoined = [bool]$computerSystem.PartOfDomain
+        } catch {
+            $domainJoined = $computerSystem.PartOfDomain
+        }
+    }
+
     $adapterPayload = $null
     $adapterInventory = $null
     $adapterArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-adapters'
@@ -467,6 +476,85 @@ function Invoke-NetworkHeuristics {
         $adapterPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $adapterArtifact)
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
+
+    $profileArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-profiles'
+    $connectionProfiles = @()
+    if ($profileArtifact) {
+        $profilePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $profileArtifact)
+        if ($profilePayload) {
+            if (-not $computerSystem -and $profilePayload.PSObject -and $profilePayload.PSObject.Properties['ComputerSystem'] -and $profilePayload.ComputerSystem -and -not $profilePayload.ComputerSystem.Error) {
+                $computerSystem = $profilePayload.ComputerSystem
+                if ($computerSystem.PSObject.Properties['PartOfDomain']) {
+                    try {
+                        $domainJoined = [bool]$computerSystem.PartOfDomain
+                    } catch {
+                        $domainJoined = $computerSystem.PartOfDomain
+                    }
+                }
+            }
+
+            if ($profilePayload.PSObject.Properties['ConnectionProfiles'] -and $profilePayload.ConnectionProfiles) {
+                $profilesArray = ConvertTo-NetworkArray $profilePayload.ConnectionProfiles
+                $profileErrors = $profilesArray | Where-Object { $_ -and $_.PSObject -and $_.PSObject.Properties['Error'] -and $_.Error }
+                if ($profilesArray.Count -eq 1 -and $profileErrors.Count -eq 1) {
+                    $source = if ($profileErrors[0].PSObject.Properties['Source']) { $profileErrors[0].Source } else { 'Get-NetConnectionProfile' }
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network connection profiles' -Evidence ("{0}: {1}" -f $source, $profileErrors[0].Error) -Subcategory 'Network Profiles'
+                } else {
+                    foreach ($profile in $profilesArray) {
+                        if (-not $profile) { continue }
+                        if ($profile.PSObject.Properties['Error'] -and $profile.Error) { continue }
+                        $connectionProfiles += $profile
+                    }
+                }
+            }
+
+            if (-not $domainJoined -and $profilePayload.PSObject.Properties['ComputerSystem'] -and $profilePayload.ComputerSystem) {
+                $cs = $profilePayload.ComputerSystem
+                if ($cs.PSObject.Properties['Error'] -and $cs.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to determine domain membership state' -Evidence $cs.Error -Subcategory 'Network Profiles'
+                } elseif ($cs.PSObject.Properties['PartOfDomain']) {
+                    try {
+                        $domainJoined = [bool]$cs.PartOfDomain
+                    } catch {
+                        $domainJoined = $cs.PartOfDomain
+                    }
+                }
+            }
+        }
+    }
+
+    if ($connectionProfiles.Count -gt 0 -and $domainJoined -eq $true) {
+        $profileEvidence = @()
+        foreach ($profile in $connectionProfiles) {
+            $profileEvidence += [pscustomobject]@{
+                Name           = if ($profile.PSObject.Properties['Name']) { [string]$profile.Name } else { $null }
+                InterfaceAlias = if ($profile.PSObject.Properties['InterfaceAlias']) { [string]$profile.InterfaceAlias } else { $null }
+                NetworkCategory = if ($profile.PSObject.Properties['NetworkCategory']) { [string]$profile.NetworkCategory } else { $null }
+            }
+        }
+
+        $publicProfiles = $profileEvidence | Where-Object { $_.NetworkCategory -eq 'Public' }
+        if ($publicProfiles.Count -gt 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Domain-joined device connected to public network' -Evidence $profileEvidence -Subcategory 'Network Profiles'
+            Add-CategoryCheck -CategoryResult $result -Name 'Network profile categories' -Status 'Issue' -Details 'Public network profile detected on a domain-joined device.' -CheckId 'Network/ProfileCategory'
+        } else {
+            Add-CategoryNormal -CategoryResult $result -Title 'Network profiles private or domain authenticated' -Evidence $profileEvidence -Subcategory 'Network Profiles'
+            Add-CategoryCheck -CategoryResult $result -Name 'Network profile categories' -Status 'Good' -Details 'All active profiles are DomainAuthenticated or Private.' -CheckId 'Network/ProfileCategory'
+        }
+    } elseif ($connectionProfiles.Count -gt 0 -and $domainJoined -ne $true) {
+        $profileEvidence = @()
+        foreach ($profile in $connectionProfiles) {
+            $profileEvidence += [pscustomobject]@{
+                Name           = if ($profile.PSObject.Properties['Name']) { [string]$profile.Name } else { $null }
+                InterfaceAlias = if ($profile.PSObject.Properties['InterfaceAlias']) { [string]$profile.InterfaceAlias } else { $null }
+                NetworkCategory = if ($profile.PSObject.Properties['NetworkCategory']) { [string]$profile.NetworkCategory } else { $null }
+            }
+        }
+
+        Add-CategoryCheck -CategoryResult $result -Name 'Network profile categories' -Status 'Not domain joined' -Details 'Device is not domain-joined; network profile category check skipped.' -CheckId 'Network/ProfileCategory'
+    } elseif ($domainJoined -eq $true -and $connectionProfiles.Count -eq 0) {
+        Add-CategoryCheck -CategoryResult $result -Name 'Network profile categories' -Status 'Unknown' -Details 'No network connection profiles were collected.' -CheckId 'Network/ProfileCategory'
+    }
 
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
     if ($networkArtifact) {
