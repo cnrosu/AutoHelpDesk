@@ -95,6 +95,10 @@ details.report-card[open] > summary {
   line-height: 1.6;
 }
 
+.report-card--critical .report-card__explanation {
+  color: var(--color-state-critical-text);
+}
+
 .report-card__body > .report-card__explanation:last-child {
   margin-bottom: 0;
 }
