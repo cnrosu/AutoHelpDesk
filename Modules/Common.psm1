@@ -14,7 +14,7 @@ if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Wher
 
 $script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
-function Normalize-Severity {
+function ConvertTo-NormalizedSeverity {
   param($Severity)
 
   if ($null -eq $Severity) { return '' }
@@ -42,7 +42,7 @@ function Get-SeverityIndex {
 
   if (-not $Severity) { return -1 }
 
-  $normalized = Normalize-Severity $Severity
+  $normalized = ConvertTo-NormalizedSeverity $Severity
   if (-not $normalized) { return -1 }
 
   return $script:SeverityOrder.IndexOf($normalized)
@@ -61,7 +61,7 @@ function Get-MaxSeverity {
   return $Second
 }
 
-function Promote-Severity {
+function ConvertTo-EscalatedSeverity {
   param(
     [string]$Severity,
     [int]$Steps = 1

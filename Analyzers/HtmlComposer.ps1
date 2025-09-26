@@ -133,7 +133,7 @@ function Convert-ToIssueCard {
         $Issue
     )
 
-    $severity = Normalize-Severity $Issue.Severity
+    $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
     $hasNewLines = $detail -match "\r|\n"
 
