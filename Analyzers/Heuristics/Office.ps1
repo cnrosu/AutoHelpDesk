@@ -254,13 +254,15 @@ function Invoke-OfficeHeuristics {
 
             if ($rebuildEvents.Count -gt 0) {
                 $indicatorCount++
-                $indicatorSummaries += ('{0} Outlook rebuild event{1}' -f $rebuildEvents.Count, if ($rebuildEvents.Count -eq 1) { '' } else { 's' })
+                $rebuildSuffix = if ($rebuildEvents.Count -eq 1) { '' } else { 's' }
+                $indicatorSummaries += ('{0} Outlook rebuild event{1}' -f $rebuildEvents.Count, $rebuildSuffix)
                 $indicatorEvidence['RebuildEvents'] = $rebuildEvents | Select-Object -First 10
             }
 
             if ($duplicateEvidence.Count -gt 0) {
                 $indicatorCount++
-                $indicatorSummaries += ('Duplicate OST caches in {0} location{1}' -f $duplicateEvidence.Count, if ($duplicateEvidence.Count -eq 1) { '' } else { 's' })
+                $duplicateSuffix = if ($duplicateEvidence.Count -eq 1) { '' } else { 's' }
+                $indicatorSummaries += ('Duplicate OST caches in {0} location{1}' -f $duplicateEvidence.Count, $duplicateSuffix)
                 $indicatorEvidence['DuplicateCaches'] = $duplicateEvidence
             }
 
