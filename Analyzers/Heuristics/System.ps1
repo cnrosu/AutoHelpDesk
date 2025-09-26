@@ -91,7 +91,16 @@ function Invoke-SystemHeuristics {
             $caption = $os.Caption
             $build = $os.BuildNumber
             if ($caption) {
-                Add-CategoryNormal -CategoryResult $result -Title ("Operating system: {0} (build {1})" -f $caption, $build)
+                $description = if ($build) { "{0} (build {1})" -f $caption, $build } else { [string]$caption }
+                $captionLower = $caption.ToLowerInvariant()
+                if ($captionLower -match 'windows\s+11') {
+                    Add-CategoryNormal -CategoryResult $result -Title ("Operating system supported: {0}" -f $description)
+                } elseif ($captionLower -match 'windows\s+10') {
+                    $evidence = "Detected operating system: {0}. Windows 10 versions, including 22H2, are no longer supported by Microsoft; upgrade to Windows 11." -f $description
+                    Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence
+                } else {
+                    Add-CategoryCheck -CategoryResult $result -Name 'Operating system' -Status $description
+                }
             }
             if ($os.LastBootUpTime) {
                 Add-CategoryCheck -CategoryResult $result -Name 'Last boot time' -Status ([string]$os.LastBootUpTime)
@@ -104,9 +113,6 @@ function Invoke-SystemHeuristics {
 
         if ($payload -and $payload.ComputerSystem -and -not $payload.ComputerSystem.Error) {
             $cs = $payload.ComputerSystem
-            if ($cs.Manufacturer -or $cs.Model) {
-                Add-CategoryNormal -CategoryResult $result -Title ("Hardware: {0} {1}" -f $cs.Manufacturer, $cs.Model)
-            }
             if ($cs.TotalPhysicalMemory) {
                 $gb = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
                 Add-CategoryCheck -CategoryResult $result -Name 'Physical memory (GB)' -Status ([string]$gb)
