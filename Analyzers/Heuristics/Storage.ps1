@@ -337,7 +337,11 @@ function Invoke-StorageHeuristics {
                 } elseif ($wearInfo) {
                     Add-CategoryNormal -CategoryResult $result -Title ("{0} wear within acceptable range" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
                 } elseif ($counterParts.Count -gt 0) {
-                    Add-CategoryCheck -CategoryResult $result -Name ("{0} reliability counters" -f $diskLabel) -Status 'Collected' -Details $evidence -CheckId 'Storage/SSDWear'
+                    $title = "{0} SMART counters collected" -f $diskLabel
+                    if ($entry.PSObject.Properties['MediaType'] -and $entry.MediaType -and ($entry.MediaType -match '(?i)ssd|nvme|solid')) {
+                        $title = "{0} SSD reliability counters collected" -f $diskLabel
+                    }
+                    Add-CategoryNormal -CategoryResult $result -Title $title -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
                 }
             }
 
