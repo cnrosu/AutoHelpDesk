@@ -74,44 +74,70 @@ function ConvertTo-NetworkArray {
 }
 
 function Get-NetworkValueText {
-    param($Value)
+    [CmdletBinding()]
+    param(
+        $Value,
+        [int]$MaxDepth = 16,
+        [Parameter(DontShow)]
+        [System.Collections.Generic.HashSet[int]]$Seen = $( [System.Collections.Generic.HashSet[int]]::new() )
+    )
 
     if ($null -eq $Value) { return @() }
+    if ($MaxDepth -le 0) { return @() }
 
     if ($Value -is [string]) {
         $trimmed = $Value.Trim()
-        if ($trimmed) { return @($trimmed) }
+        if ($trimmed) { return ,$trimmed }
         return @()
     }
 
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $results = @()
-        foreach ($item in $Value) { $results += Get-NetworkValueText $item }
-        return $results
+    if ($Value -is [ValueType]) {
+        $trimmed = $Value.ToString().Trim()
+        if ($trimmed) { return ,$trimmed }
+        return @()
     }
 
-    if ($Value -is [hashtable]) {
-        $results = @()
-        foreach ($item in $Value.Values) { $results += Get-NetworkValueText $item }
-        return $results
+    try {
+        $id = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($Value)
+        if (-not $Seen.Add($id)) { return @() }
+    } catch {
+        # If identity cannot be computed, continue without adding
+    }
+
+    $results = [System.Collections.Generic.List[string]]::new()
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($item in $Value.Values) {
+            foreach ($entry in (Get-NetworkValueText -Value $item -MaxDepth ($MaxDepth - 1) -Seen $Seen)) {
+                $null = $results.Add($entry)
+            }
+        }
+        return $results.ToArray()
+    }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        foreach ($item in $Value) {
+            foreach ($entry in (Get-NetworkValueText -Value $item -MaxDepth ($MaxDepth - 1) -Seen $Seen)) {
+                $null = $results.Add($entry)
+            }
+        }
+        return $results.ToArray()
     }
 
     if ($Value.PSObject) {
-        $results = @()
-        foreach ($name in @('IPAddress','IPv4Address','IPv6Address','Address','NextHop','Value')) {
+        foreach ($name in @('IPAddress','IPv4Address','IPv6Address','Address','NextHop','Value','DisplayValue','Name','ServerAddresses')) {
             if ($Value.PSObject.Properties[$name]) {
-                $results += Get-NetworkValueText ($Value.$name)
+                foreach ($entry in (Get-NetworkValueText -Value $Value.$name -MaxDepth ($MaxDepth - 1) -Seen $Seen)) {
+                    $null = $results.Add($entry)
+                }
             }
         }
 
-        if ($results.Count -gt 0) { return $results }
+        if ($results.Count -gt 0) { return $results.ToArray() }
     }
 
-    $text = [string]$Value
-    if ($text) {
-        $trimmed = $text.Trim()
-        if ($trimmed) { return @($trimmed) }
-    }
+    $text = ([string]$Value).Trim()
+    if ($text) { return ,$text }
 
     return @()
 }
