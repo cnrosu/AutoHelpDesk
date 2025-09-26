@@ -5,7 +5,7 @@ The analyzer layer ingests collector JSON artifacts, evaluates heuristic rules, 
 ## Entry point
 
 - **`Analyze-Diagnostics.ps1`** – Accepts an `-InputFolder` that points at a collector output tree. It imports shared helpers, loads every `*.json` file, runs heuristic modules per category, and writes an HTML report (`diagnostics-report.html` by default).
-- Optionally pass `-OutputPath` to control the destination of the HTML report. The command returns an object containing the resolved HTML path and flattened collections of issues, normals, and checks for automation scenarios.
+- Optionally pass `-OutputPath` to control the destination of the HTML report. The command returns an object containing the resolved HTML path (`HtmlPath`) and flattened collections of issues, normals, and checks for automation scenarios. The script also merges shared CSS into `<output>\styles\device-health-report.css` so the report is self-contained.
 
 Example:
 ```powershell
@@ -56,6 +56,7 @@ Available modules:
 - `Storage.ps1`
 - `Events.ps1`
 - `Services.ps1`
+- `Printing.ps1`
 
 Refer to the repository root `README.md` for a full catalogue of heuristic behaviors.
 

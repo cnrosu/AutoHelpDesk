@@ -7,12 +7,13 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 
 ### Device-Report.ps1 (Orchestrator)
 - **Purpose**: One-button experience that runs the shared collectors, executes the analyzer, and opens the Device Health report.
+- **Elevation required**: The script enforces `Run as Administrator` via `Assert-Admin` to guarantee the collectors can reach Defender, event log, and networking data.
 - **Workflow**:
   1. If `-InputFolder` is not provided, invokes `Collectors/Collect-All.ps1` to emit JSON artifacts into a fresh timestamped folder under the chosen output root.
   2. Feeds that folder to `Analyzers/Analyze-Diagnostics.ps1`, which reads every artifact and produces the HTML report.
   3. Opens the generated Device Health HTML report and writes its path to stdout.
 - **Inputs**:
-  - `-OutRoot` (optional): base folder for new collections (defaults to `Desktop\DiagReports`).
+  - `-OutRoot` (optional): base folder for new collections (defaults to `%USERPROFILE%\Desktop\DiagReports`).
   - `-InputFolder` (optional): analyze an existing collection without re-running the collector.
 - **Outputs**: Launches `diagnostics-report.html` in the default browser (and returns its resolved path).
 
@@ -60,8 +61,12 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 ## Typical Usage
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
+Set-Location .\AutoL1
+Start-Process powershell.exe -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File .\\Device-Report.ps1'
+# …or run the script from an already elevated session:
 ./Device-Report.ps1
 ```
+The snippet above assumes you start in the repository root. Adjust the path in `Set-Location` if you have copied the toolkit elsewhere.
 1. Collector creates `Desktop\DiagReports\<timestamp>\` with JSON artifacts grouped by area (`Network`, `Security`, etc.).
 2. Analyzer writes `diagnostics-report.html` into the same folder.
 3. Device-Report opens the Device Health report automatically.
