@@ -820,17 +820,23 @@ function New-AnalyzerHtml {
         $Context
     )
 
+    $categoryList = @($Categories)
+    $categoryCount = $categoryList.Count
+    $categoryLabel = if ($categoryCount -eq 1) { 'category' } else { 'categories' }
+    Write-AnalyzerLog -Level 'DEBUG' -Message ("Composing HTML report for {0} {1}" -f $categoryCount, $categoryLabel)
+
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    foreach ($category in $Categories) {
+    foreach ($category in $categoryList) {
         if (-not $category) { continue }
         foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
         foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
     }
     $sw.Stop()
     Write-Verbose ("[HTML] Cards built in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+    Write-AnalyzerLog -Level 'DEBUG' -Message ("Prepared {0} issue card(s) and {1} good card(s) in {2:n1}s." -f $issues.Count, $normals.Count, $sw.Elapsed.TotalSeconds)
 
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
@@ -844,6 +850,7 @@ function New-AnalyzerHtml {
     $failedReports = Get-FailedCollectorReports -Context $Context
     $sw.Stop()
     Write-Verbose ("[HTML] Failed collectors in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+    Write-AnalyzerLog -Level 'DEBUG' -Message ("Evaluated failed collectors in {0:n1}s. Count: {1}" -f $sw.Elapsed.TotalSeconds, $failedReports.Count)
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
@@ -870,8 +877,12 @@ function New-AnalyzerHtml {
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
     $sw.Stop()
     Write-Verbose ("[HTML] Raw section in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+    Write-AnalyzerLog -Level 'DEBUG' -Message ("Raw section rendered in {0:n1}s." -f $sw.Elapsed.TotalSeconds)
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
-    return ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    $htmlOutput = $head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail
+    Write-AnalyzerLog -Level 'INFO' -Message "HTML composition complete (issues: $($issues.Count), normals: $($normals.Count), failed collectors: $($failedReports.Count))."
+
+    return $htmlOutput
 }
