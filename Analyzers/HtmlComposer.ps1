@@ -60,7 +60,7 @@ function Convert-ToIssueCard {
     return [pscustomobject]@{
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
-        BadgeText   = if ($Issue.Severity) { [string]$Issue.Severity } else { 'ISSUE' }
+        BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
         Area        = Resolve-CategoryGroup -Name $Category.Name
         Message     = $Issue.Title
         Explanation = if ($hasNewLines) { $null } else { $detail }
