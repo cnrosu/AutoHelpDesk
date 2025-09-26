@@ -186,26 +186,26 @@ function ConvertTo-IntArray {
     if (-not $trimmed) { return @() }
     $clean = ($trimmed -replace '^\{','') -replace '\}$',''
     $parts = [regex]::Split($clean,'[\s,]+') | Where-Object { $_ }
-    $result = @()
+    $list = [System.Collections.Generic.List[int]]::new()
     foreach ($part in $parts) {
       $parsed = 0
       if ([int]::TryParse($part, [ref]$parsed)) {
-        $result += $parsed
+        $list.Add($parsed)
       }
     }
-    return $result
+    return $list.ToArray()
   }
 
   if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-    $result = @()
+    $list = [System.Collections.Generic.List[int]]::new()
     foreach ($item in $Value) {
       if ($null -eq $item) { continue }
       $parsed = 0
       if ([int]::TryParse([string]$item, [ref]$parsed)) {
-        $result += $parsed
+        $list.Add($parsed)
       }
     }
-    return $result
+    return $list.ToArray()
   }
 
   $single = 0
