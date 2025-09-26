@@ -123,7 +123,7 @@ function Invoke-ADHeuristics {
                 if ($candidate.Hostname) { [void]$dcNames.Add($candidate.Hostname) }
             }
         }
-        $dcEvidence = if ($dcNames.Count -gt 0) { (@($dcNames) | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
+        $dcEvidence = if ($dcNames.Count -gt 0) { ($dcNames.ToArray() | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
         Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence
     } else {
         $srvErrors = $srvLookups | Where-Object { $_ -and $_.Succeeded -ne $true }
