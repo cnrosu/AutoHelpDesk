@@ -470,36 +470,36 @@ function Get-NetworkTestsForPrinters {
         }
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     foreach ($entry in $hostMap.Values) {
-        $definitions = @()
+        $definitions = [System.Collections.Generic.List[hashtable]]::new()
         switch ($entry.Kind) {
             'ServerQueue' {
-                $definitions += @{ Name='SMB'; Type='Common'; Common='SMB' }
-                $definitions += @{ Name='TCP135'; Port=135; Type='Tcp' }
-                $definitions += @{ Name='TCP445'; Port=445; Type='Tcp' }
+                $null = $definitions.Add(@{ Name='SMB'; Type='Common'; Common='SMB' })
+                $null = $definitions.Add(@{ Name='TCP135'; Port=135; Type='Tcp' })
+                $null = $definitions.Add(@{ Name='TCP445'; Port=445; Type='Tcp' })
             }
             'DirectIp' {
-                $definitions += @{ Name='TCP9100'; Port=9100; Type='Tcp' }
-                $definitions += @{ Name='TCP631'; Port=631; Type='Tcp' }
+                $null = $definitions.Add(@{ Name='TCP9100'; Port=9100; Type='Tcp' })
+                $null = $definitions.Add(@{ Name='TCP631'; Port=631; Type='Tcp' })
             }
             default {
-                $definitions += @{ Name='TCP9100'; Port=9100; Type='Tcp' }
-                $definitions += @{ Name='TCP631'; Port=631; Type='Tcp' }
+                $null = $definitions.Add(@{ Name='TCP9100'; Port=9100; Type='Tcp' })
+                $null = $definitions.Add(@{ Name='TCP631'; Port=631; Type='Tcp' })
             }
         }
 
-        $tests = @()
+        $tests = [System.Collections.Generic.List[object]]::new()
         foreach ($definition in $definitions) {
-            $tests += Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition
+            $null = $tests.Add(Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition)
         }
 
-        $results += [ordered]@{
+        $null = $results.Add([ordered]@{
             Host     = $entry.Host
             Kind     = $entry.Kind
             Printers = $entry.Printers.ToArray()
             Tests    = $tests
-        }
+        })
     }
 
     return $results
