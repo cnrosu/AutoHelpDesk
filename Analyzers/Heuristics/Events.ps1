@@ -31,19 +31,19 @@ function Invoke-EventsHeuristics {
                         }
                     } else {
                         if ($errorCount -gt 20) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("High error volume in {0} log" -f $logName) -Evidence ("Recent errors: {0}" -f $errorCount)
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample)." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount)
                         }
                         if ($warnCount -gt 40) {
                             Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log" -f $logName)
                         }
                     }
                 } elseif ($entries.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Unable to read {0} event log" -f $logName) -Evidence $entries.Error
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log" -f $logName) -Evidence $entries.Error
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Event log artifact missing'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing'
     }
 
     return $result

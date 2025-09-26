@@ -114,6 +114,27 @@ function Invoke-SystemHeuristics {
         } elseif ($payload -and $payload.ComputerSystem -and $payload.ComputerSystem.Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query computer system details' -Evidence $payload.ComputerSystem.Error
         }
+
+        if ($payload -and $payload.SystemInfoText -and -not ($payload.SystemInfoText.Error)) {
+            $systemInfo = $payload.SystemInfoText
+            if ($systemInfo -is [System.Collections.IEnumerable] -and -not ($systemInfo -is [string])) {
+                $systemInfo = ($systemInfo | ForEach-Object { [string]$_ }) -join "`n"
+            }
+            $systemInfoText = [string]$systemInfo
+            if ($systemInfoText) {
+                $biosModeMatch = [regex]::Match($systemInfoText,'(?im)^\s*BIOS\s+Mode\s*:\s*(?<value>.+)$')
+                $secureBootMatch = [regex]::Match($systemInfoText,'(?im)^\s*Secure\s+Boot\s+State\s*:\s*(?<value>.+)$')
+                if ($biosModeMatch.Success) {
+                    $biosMode = $biosModeMatch.Groups['value'].Value.Trim()
+                    $uefi = ($biosMode -match '(?i)UEFI')
+                    if ($uefi -and -not $secureBootMatch.Success) {
+                        $evidence = ($systemInfoText -split "\r?\n" | Where-Object { $_ -match '(?i)(BIOS\s+Mode|Secure\s+Boot)' } | Select-Object -First 5)
+                        if ($evidence.Count -eq 0) { $evidence = ($systemInfoText -split "\r?\n" | Select-Object -First 10) }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware.' -Evidence (($evidence | Where-Object { $_ }) -join "`n")
+                    }
+                }
+            }
+        }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'System inventory artifact missing'
     }
@@ -147,7 +168,7 @@ function Invoke-SystemHeuristics {
         if ($payload -and $payload.FastStartup -and -not $payload.FastStartup.Error) {
             $fast = $payload.FastStartup
             if ($fast.HiberbootEnabled -eq 1) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Fast Startup enabled' -Evidence 'Fast Startup (hiberboot) can interfere with troubleshooting; consider disabling.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting.' -Evidence 'Fast Startup keeps Windows in a hybrid hibernation state and can mask reboot-dependent fixes.'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Fast Startup disabled'
             }
@@ -232,7 +253,7 @@ function Invoke-SystemHeuristics {
                 $evidence = $evidenceBuilder -join "`n"
 
                 if ($nonMicrosoftEntries.Count -gt 10) {
-                    $title = "Startup autoruns bloat detected ({0} non-Microsoft entries)." -f $nonMicrosoftEntries.Count
+                    $title = "Startup autoruns bloat: {0} non-Microsoft entries detected. Review and trim startup apps to reduce login delay." -f $nonMicrosoftEntries.Count
                     Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence
                 } elseif ($nonMicrosoftEntries.Count -gt 5) {
                     $title = "Startup autoruns trending high ({0} non-Microsoft entries)." -f $nonMicrosoftEntries.Count

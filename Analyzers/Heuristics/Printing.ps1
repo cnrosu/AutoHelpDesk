@@ -58,6 +58,8 @@ function Invoke-PrintingHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode)
             } elseif ($startMode -and $startMode -notmatch '(?i)auto') {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Spooler start mode not automatic' -Evidence ("Current mode: {0}" -f $startMode)
+            } else {
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Print Spooler running — disable if this workstation does not need printing.'
             }
         }
     }

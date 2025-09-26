@@ -44,7 +44,9 @@ function Invoke-OfficeHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title 'Macro runtime blocked by policy'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'No Office policy data collected'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office MOTW macro blocking - no data. Confirm macro policies.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office macro notifications - no data. Collect policy details.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office Protected View - no data. Verify Protected View policies.'
         }
     }
 
