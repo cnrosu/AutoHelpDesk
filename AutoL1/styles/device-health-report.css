@@ -34,6 +34,13 @@
   background-color: var(--color-surface);
 }
 
+.report-card--static {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
 details.report-card {
   padding: 0;
 }
