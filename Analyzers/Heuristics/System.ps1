@@ -100,7 +100,7 @@ function Invoke-SystemHeuristics {
                     if ($unsupportedMatch.Success) {
                         $versionLabel = $unsupportedMatch.Groups[1].Value
                         $evidence = "Detected operating system: {0}. Microsoft support for Windows {1} has ended; upgrade to Windows 11." -f $description, $versionLabel
-                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence
+                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence -Subcategory 'Operating System'
                     } else {
                         Add-CategoryCheck -CategoryResult $result -Name 'Operating system' -Status $description
                     }
@@ -110,9 +110,9 @@ function Invoke-SystemHeuristics {
                 Add-CategoryCheck -CategoryResult $result -Name 'Last boot time' -Status ([string]$os.LastBootUpTime)
             }
         } elseif ($payload -and $payload.OperatingSystem -and $payload.OperatingSystem.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read OS inventory' -Evidence ($payload.OperatingSystem.Error)
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read OS inventory' -Evidence ($payload.OperatingSystem.Error) -Subcategory 'Operating System'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Operating system inventory not available'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Operating system inventory not available' -Subcategory 'Operating System'
         }
 
         if ($payload -and $payload.ComputerSystem -and -not $payload.ComputerSystem.Error) {
@@ -122,7 +122,7 @@ function Invoke-SystemHeuristics {
                 Add-CategoryCheck -CategoryResult $result -Name 'Physical memory (GB)' -Status ([string]$gb)
             }
         } elseif ($payload -and $payload.ComputerSystem -and $payload.ComputerSystem.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query computer system details' -Evidence $payload.ComputerSystem.Error
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query computer system details' -Evidence $payload.ComputerSystem.Error -Subcategory 'Hardware Inventory'
         }
 
         if ($payload -and $payload.SystemInfoText -and -not ($payload.SystemInfoText.Error)) {
@@ -140,13 +140,13 @@ function Invoke-SystemHeuristics {
                     if ($uefi -and -not $secureBootMatch.Success) {
                         $evidence = ($systemInfoText -split "\r?\n" | Where-Object { $_ -match '(?i)(BIOS\s+Mode|Secure\s+Boot)' } | Select-Object -First 5)
                         if ($evidence.Count -eq 0) { $evidence = ($systemInfoText -split "\r?\n" | Select-Object -First 10) }
-                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware.' -Evidence (($evidence | Where-Object { $_ }) -join "`n")
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware.' -Evidence (($evidence | Where-Object { $_ }) -join "`n") -Subcategory 'Firmware'
                     }
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'System inventory artifact missing'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'System inventory artifact missing' -Subcategory 'Collection'
     }
 
     $uptimeArtifact = Get-AnalyzerArtifact -Context $Context -Name 'uptime'
@@ -164,7 +164,7 @@ function Invoke-SystemHeuristics {
                 $days = [math]::Floor($span.TotalDays)
                 Add-CategoryCheck -CategoryResult $result -Name 'Current uptime (days)' -Status ([string][math]::Round($span.TotalDays,2))
                 if ($span.TotalDays -gt 30) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Device has not rebooted in over 30 days' -Evidence ("Reported uptime: {0}" -f $uptimeText)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Device has not rebooted in over 30 days' -Evidence ("Reported uptime: {0}" -f $uptimeText) -Subcategory 'Uptime'
                 } elseif ($span.TotalDays -lt 1) {
                     Add-CategoryNormal -CategoryResult $result -Title 'Recent reboot detected'
                 }
@@ -178,12 +178,12 @@ function Invoke-SystemHeuristics {
         if ($payload -and $payload.FastStartup -and -not $payload.FastStartup.Error) {
             $fast = $payload.FastStartup
             if ($fast.HiberbootEnabled -eq 1) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting.' -Evidence 'Fast Startup keeps Windows in a hybrid hibernation state and can mask reboot-dependent fixes.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting.' -Evidence 'Fast Startup keeps Windows in a hybrid hibernation state and can mask reboot-dependent fixes.' -Subcategory 'Power Configuration'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Fast Startup disabled'
             }
         } elseif ($payload -and $payload.FastStartup -and $payload.FastStartup.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read Fast Startup configuration' -Evidence $payload.FastStartup.Error
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read Fast Startup configuration' -Evidence $payload.FastStartup.Error -Subcategory 'Power Configuration'
         }
     }
 
@@ -199,7 +199,7 @@ function Invoke-SystemHeuristics {
                     $usedPct = [math]::Round((($totalMb - $freeMb) / $totalMb) * 100, 1)
                     Add-CategoryCheck -CategoryResult $result -Name 'Memory utilization (%)' -Status ([string]$usedPct)
                     if ($usedPct -ge 90) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'High memory utilization detected' -Evidence ("Used memory percentage: {0}%" -f $usedPct)
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'High memory utilization detected' -Evidence ("Used memory percentage: {0}%" -f $usedPct) -Subcategory 'Performance'
                     }
                 }
             }
@@ -207,7 +207,7 @@ function Invoke-SystemHeuristics {
 
         if ($payload -and $payload.TopCpuProcesses) {
             if (($payload.TopCpuProcesses | Where-Object { $_.Error }).Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate running processes'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate running processes' -Subcategory 'Performance'
             } else {
             $topProcess = $payload.TopCpuProcesses | Select-Object -First 1
             if ($topProcess -and $topProcess.CPU -gt 0) {
@@ -230,7 +230,7 @@ function Invoke-SystemHeuristics {
             $errorEntries = @($entries | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error })
             if ($errorEntries.Count -gt 0) {
                 $message = "Unable to enumerate all startup items ({0})." -f ($errorEntries[0].Error)
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program inventory incomplete' -Evidence $message
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program inventory incomplete' -Evidence $message -Subcategory 'Startup Programs'
             }
 
             $validEntries = @($entries | Where-Object { -not ($_.PSObject.Properties['Error'] -and $_.Error) })
@@ -264,10 +264,10 @@ function Invoke-SystemHeuristics {
 
                 if ($nonMicrosoftEntries.Count -gt 10) {
                     $title = "Startup autoruns bloat: {0} non-Microsoft entries detected. Review and trim startup apps to reduce login delay." -f $nonMicrosoftEntries.Count
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
                 } elseif ($nonMicrosoftEntries.Count -gt 5) {
                     $title = "Startup autoruns trending high ({0} non-Microsoft entries)." -f $nonMicrosoftEntries.Count
-                    Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title $title -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
                 } else {
                     $title = "Startup autoruns manageable ({0} non-Microsoft of {1} total)." -f $nonMicrosoftEntries.Count, $validEntries.Count
                     Add-CategoryNormal -CategoryResult $result -Title $title -Evidence $evidence
@@ -276,10 +276,10 @@ function Invoke-SystemHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title 'No startup entries detected'
             }
         } elseif ($payload -and $payload.StartupCommands -eq $null) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program inventory empty'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program inventory empty' -Subcategory 'Startup Programs'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program artifact missing'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Startup program artifact missing' -Subcategory 'Startup Programs'
     }
 
     return $result

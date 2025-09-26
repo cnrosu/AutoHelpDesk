@@ -60,18 +60,18 @@ function Invoke-NetworkHeuristics {
             if ($ipText -match 'IPv4 Address') {
                 Add-CategoryNormal -CategoryResult $result -Title 'IPv4 addressing detected'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found' -Evidence 'ipconfig /all output did not include IPv4 details.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration'
             }
         }
 
         if ($payload -and $payload.Route) {
             $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
             if ($routeText -notmatch '0\.0\.0\.0') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route' -Evidence 'route print output did not include 0.0.0.0/0.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing'
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected' -Subcategory 'Collection'
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
@@ -81,7 +81,7 @@ function Invoke-NetworkHeuristics {
             $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
                 $names = $failures | Select-Object -ExpandProperty Name
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0}' -f ($names -join ', '))
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0}' -f ($names -join ', ')) -Subcategory 'DNS Resolution'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'DNS lookups succeeded'
             }
@@ -91,12 +91,12 @@ function Invoke-NetworkHeuristics {
             $latency = $payload.Latency
             if ($latency.PSObject.Properties['PingSucceeded']) {
                 if (-not $latency.PingSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to {0} failed' -f $latency.RemoteAddress)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to {0} failed' -f $latency.RemoteAddress) -Subcategory 'Latency'
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title ('Ping to {0} succeeded' -f $latency.RemoteAddress)
                 }
             } elseif ($latency -is [string] -and $latency -match 'Request timed out') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Latency test reported timeouts'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Latency test reported timeouts' -Subcategory 'Latency'
             }
         }
 
@@ -104,7 +104,7 @@ function Invoke-NetworkHeuristics {
             $autoErrors = $payload.Autodiscover | Where-Object { $_.Error }
             if ($autoErrors.Count -gt 0) {
                 $details = $autoErrors | Select-Object -ExpandProperty Error -First 3
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed' -Evidence ($details -join "`n")
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover'
             }
         }
 
@@ -116,7 +116,7 @@ function Invoke-NetworkHeuristics {
 
             foreach ($entry in $entries) {
                 if ($entry -and $entry.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate DNS servers' -Evidence $entry.Error
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate DNS servers' -Evidence $entry.Error -Subcategory 'DNS Client'
                     continue
                 }
 
@@ -140,13 +140,13 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($missingInterfaces.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Adapters missing DNS servers: {0}' -f ($missingInterfaces -join ', '))
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Adapters missing DNS servers: {0}' -f ($missingInterfaces -join ', ')) -Subcategory 'DNS Client'
             }
 
             if ($publicServers.Count -gt 0) {
                 $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'high' } else { 'medium' }
                 $unique = ($publicServers | Select-Object -Unique)
-                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Public DNS servers detected: {0}' -f ($unique -join ', ')) -Evidence 'Prioritize internal DNS for domain services.'
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Public DNS servers detected: {0}' -f ($unique -join ', ')) -Evidence 'Prioritize internal DNS for domain services.' -Subcategory 'DNS Client'
             } elseif (-not $loopbackOnly) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Private DNS servers detected'
             }
@@ -156,7 +156,7 @@ function Invoke-NetworkHeuristics {
             $policies = ConvertTo-NetworkArray $payload.ClientPolicies
             foreach ($policy in $policies) {
                 if ($policy -and $policy.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'DNS client policy query failed' -Evidence $policy.Error
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'DNS client policy query failed' -Evidence $policy.Error -Subcategory 'DNS Client'
                     continue
                 }
 
@@ -169,7 +169,7 @@ function Invoke-NetworkHeuristics {
                 if ($policy.PSObject.Properties['RegisterThisConnectionsAddress']) {
                     $register = $policy.RegisterThisConnectionsAddress
                     if ($register -eq $false -and $computerSystem -and $computerSystem.PartOfDomain -eq $true) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("DNS registration disabled on {0}" -f $alias) -Evidence 'RegisterThisConnectionsAddress = False'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("DNS registration disabled on {0}" -f $alias) -Evidence 'RegisterThisConnectionsAddress = False' -Subcategory 'DNS Client'
                     }
                 }
             }
@@ -183,12 +183,12 @@ function Invoke-NetworkHeuristics {
             $conn = $payload.Connectivity
             if ($conn.PSObject.Properties['TcpTestSucceeded']) {
                 if (-not $conn.TcpTestSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Outlook HTTPS connectivity failed' -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Outlook HTTPS connectivity failed' -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity'
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded'
                 }
             } elseif ($conn.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity' -Evidence $conn.Error
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity' -Evidence $conn.Error -Subcategory 'Outlook Connectivity'
             }
         }
 
@@ -196,7 +196,7 @@ function Invoke-NetworkHeuristics {
             $largeOst = $payload.OstFiles | Where-Object { $_.Length -gt 25GB }
             if ($largeOst.Count -gt 0) {
                 $names = $largeOst | Select-Object -ExpandProperty Name
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', '))
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', ')) -Subcategory 'Outlook Data Files'
             } elseif ($payload.OstFiles.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count)
             }
@@ -222,18 +222,18 @@ function Invoke-NetworkHeuristics {
                         Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover healthy for {0}" -f $domain) -Evidence $targetText
                     } else {
                         $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'medium' } else { 'low' }
-                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.'
+                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS'
                     }
                 } elseif ($autoRecord.Success -eq $false) {
                     $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'high' } else { 'medium' }
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
-                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS'
                 }
 
                 foreach ($additional in ($lookups | Where-Object { $_.Label -ne 'Autodiscover' })) {
                     if (-not $additional) { continue }
                     if ($additional.Success -eq $false -and $additional.Error) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}" -f $additional.Label, $domain) -Evidence $additional.Error
+                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}" -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS'
                     }
                 }
             }
@@ -248,7 +248,7 @@ function Invoke-NetworkHeuristics {
             if ($upAdapters.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters | Select-Object -ExpandProperty Name -join ', '))
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported' -Subcategory 'Network Adapters'
             }
         }
     }
@@ -259,7 +259,7 @@ function Invoke-NetworkHeuristics {
         if ($payload -and $payload.Internet) {
             $internet = $payload.Internet
             if ($internet.ProxyEnable -eq 1 -and $internet.ProxyServer) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('User proxy enabled: {0}' -f $internet.ProxyServer)
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('User proxy enabled: {0}' -f $internet.ProxyServer) -Subcategory 'Proxy Configuration'
             } elseif ($internet.ProxyEnable -eq 0) {
                 Add-CategoryNormal -CategoryResult $result -Title 'User proxy disabled'
             }
@@ -270,7 +270,7 @@ function Invoke-NetworkHeuristics {
             if ($winHttpText -match 'Direct access') {
                 Add-CategoryNormal -CategoryResult $result -Title 'WinHTTP proxy: Direct access'
             } elseif ($winHttpText) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration'
             }
         }
     }

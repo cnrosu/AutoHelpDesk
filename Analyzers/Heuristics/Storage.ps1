@@ -100,7 +100,7 @@ function Invoke-StorageHeuristics {
             $unhealthy = $payload.Disks | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
             if ($unhealthy.Count -gt 0) {
                 $details = $unhealthy | ForEach-Object { "Disk $($_.Number): $($_.HealthStatus) ($($_.OperationalStatus))" }
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n")
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy'
             }
@@ -132,17 +132,17 @@ function Invoke-StorageHeuristics {
                 $warnPercent = $threshold.WarnPercent * 100
                 if ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                     $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space" -f $label) -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space" -f $label) -Evidence $evidence -Subcategory 'Free Space'
                 } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                     $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence -Subcategory 'Free Space'
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title ("Volume {0} has {1}% free" -f $label, [math]::Round($freePct,1))
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing' -Subcategory 'Collection'
     }
 
     return $result

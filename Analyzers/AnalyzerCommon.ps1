@@ -92,13 +92,16 @@ function Add-CategoryIssue {
         [Parameter(Mandatory)]
         [string]$Title,
 
-        [object]$Evidence = $null
+        [object]$Evidence = $null,
+
+        [string]$Subcategory = $null
     )
 
     $CategoryResult.Issues.Add([pscustomobject]@{
             Severity = $Severity
             Title    = $Title
             Evidence = $Evidence
+            Subcategory = $Subcategory
         }) | Out-Null
 }
 

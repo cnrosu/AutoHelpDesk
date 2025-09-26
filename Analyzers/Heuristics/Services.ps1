@@ -40,11 +40,11 @@ function Invoke-ServicesHeuristics {
                 $startNorm = if ($startMode) { $startMode.ToLowerInvariant() } else { '' }
 
                 if ($startNorm -like 'auto*' -and $statusNorm -notlike 'running') {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'BITS stopped — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'BITS stopped — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode) -Subcategory 'BITS Service'
                 } elseif ($startNorm -eq 'manual' -and $statusNorm -notlike 'running') {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'BITS stopped (Manual start) — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'BITS stopped (Manual start) — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode) -Subcategory 'BITS Service'
                 } elseif ($startNorm -like 'disabled*') {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'BITS disabled — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'BITS disabled — background transfers for updates/AV/Office.' -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode) -Subcategory 'BITS Service'
                 }
             }
 
@@ -53,7 +53,7 @@ function Invoke-ServicesHeuristics {
                 $status = if ($spooler.PSObject.Properties['State']) { [string]$spooler.State } elseif ($spooler.PSObject.Properties['Status']) { [string]$spooler.Status } else { 'Unknown' }
                 $startMode = if ($spooler.PSObject.Properties['StartMode']) { [string]$spooler.StartMode } elseif ($spooler.PSObject.Properties['StartType']) { [string]$spooler.StartType } else { 'Unknown' }
                 if ($status -notmatch '(?i)running') {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Print Spooler service not running (Status: {0}, StartType: {1})." -f $status, $startMode) -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Print Spooler service not running (Status: {0}, StartType: {1})." -f $status, $startMode) -Evidence ("Status: {0}; StartType: {1}" -f $status, $startMode) -Subcategory 'Print Spooler Service'
                 }
             }
 
@@ -62,15 +62,15 @@ function Invoke-ServicesHeuristics {
             }
             if ($stoppedAuto.Count -gt 0) {
                 $summary = $stoppedAuto | Select-Object -First 5 | ForEach-Object { "{0} ({1})" -f $_.DisplayName, ($_.State ? $_.State : $_.Status) }
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n")
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Automatic services running'
             }
         } elseif ($payload.Services.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $payload.Services.Error
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $payload.Services.Error -Subcategory 'Service Inventory'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Services artifact missing'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Services artifact missing' -Subcategory 'Collection'
     }
 
     return $result
