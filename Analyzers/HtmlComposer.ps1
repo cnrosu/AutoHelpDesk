@@ -113,9 +113,9 @@ function Format-AnalyzerEvidence {
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
+        $items = [System.Collections.Generic.List[string]]::new()
         foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
+            $null = $items.Add([string](Format-AnalyzerEvidence -Value $item))
         }
         return ($items -join [Environment]::NewLine)
     }
@@ -341,8 +341,8 @@ function Get-FailedCollectorReports {
                     } elseif ($payload -is [string]) {
                         if ([string]::IsNullOrWhiteSpace($payload)) { $isEmpty = $true }
                     } elseif ($payload -is [System.Collections.IEnumerable] -and -not ($payload -is [string])) {
-                        $enumerated = @()
-                        foreach ($item in $payload) { $enumerated += $item }
+                        $enumerated = [System.Collections.Generic.List[object]]::new()
+                        foreach ($item in $payload) { $null = $enumerated.Add($item) }
                         if ($enumerated.Count -eq 0) { $isEmpty = $true }
                     }
 
@@ -390,10 +390,11 @@ function Build-SummaryCardHtml {
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
 
-    $osParts = @()
-    if ($Summary.OperatingSystem) { $osParts += $Summary.OperatingSystem }
-    if ($Summary.OSVersion) { $osParts += $Summary.OSVersion }
-    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
+    $osParts = [System.Collections.Generic.List[string]]::new()
+    if ($Summary.OperatingSystem) { $null = $osParts.Add([string]$Summary.OperatingSystem) }
+    if ($Summary.OSVersion) { $null = $osParts.Add([string]$Summary.OSVersion) }
+    if ($Summary.OSBuild) { $null = $osParts.Add("Build $($Summary.OSBuild)") }
+    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
 
     $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
@@ -548,13 +549,13 @@ function Build-IssueSection {
         }
     }
 
-    $activeDefinitions = @()
+    $activeDefinitions = [System.Collections.Generic.List[hashtable]]::new()
     foreach ($definition in $severityDefinitions) {
-        if ($grouped[$definition.Key].Count -gt 0) { $activeDefinitions += ,$definition }
+        if ($grouped[$definition.Key].Count -gt 0) { $null = $activeDefinitions.Add($definition) }
     }
     if ($other.Count -gt 0) {
         $grouped['other'] = $other
-        $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' }
+        $null = $activeDefinitions.Add(@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' })
     }
 
     if ($activeDefinitions.Count -eq 0) {
@@ -685,9 +686,9 @@ function ConvertTo-RawCard {
     }
 
     $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
-    $metaParts = @()
-    if ($collectedAt) { $metaParts += "Collected: $collectedAt" }
-    if ($path) { $metaParts += "File: $path" }
+    $metaParts = [System.Collections.Generic.List[string]]::new()
+    if ($collectedAt) { $null = $metaParts.Add("Collected: $collectedAt") }
+    if ($path) { $null = $metaParts.Add("File: $path") }
 
     $metaHtml = ''
     if ($metaParts.Count -gt 0) {
@@ -704,20 +705,20 @@ function Build-DebugSection {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    $lines = @()
+    $lines = [System.Collections.Generic.List[string]]::new()
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines += "${key}: (no entries)"
+            $null = $lines.Add("${key}: (no entries)")
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines += "${key}: $count file(s); first = $firstPath"
+            $null = $lines.Add("${key}: $count file(s); first = $firstPath")
         } else {
-            $lines += "${key}: $($entries.Path)"
+            $null = $lines.Add("${key}: $($entries.Path)")
         }
     }
 
@@ -822,9 +823,9 @@ function New-AnalyzerHtml {
         $failedContentBuilder = [System.Text.StringBuilder]::new()
         $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
-            $detailParts = @()
-            if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
-            if ($entry.Details) { $detailParts += $entry.Details }
+            $detailParts = [System.Collections.Generic.List[string]]::new()
+            if ($entry.Path) { $null = $detailParts.Add("File: $($entry.Path)") }
+            if ($entry.Details) { $null = $detailParts.Add([string]$entry.Details) }
             $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
             $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
