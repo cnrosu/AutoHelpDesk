@@ -3,28 +3,6 @@
     Shared helper functions for analyzer modules.
 #>
 
-function Write-AnalyzerLog {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message,
-
-        [ValidateSet('INFO', 'WARN', 'DEBUG', 'ERROR')]
-        [string]$Level = 'INFO'
-    )
-
-    $timestamp = Get-Date -Format 'HH:mm:ss'
-    $normalizedLevel = $Level.ToUpperInvariant()
-    $line = "[{0}] [{1}] {2}" -f $timestamp, $normalizedLevel, $Message
-
-    Write-Verbose $line
-
-    switch ($normalizedLevel) {
-        'WARN'  { Write-Warning $line }
-        'ERROR' { Write-Host $line }
-        default { Write-Host $line }
-    }
-}
-
 function New-AnalyzerContext {
     param(
         [Parameter(Mandatory)]
