@@ -87,7 +87,7 @@ function Invoke-OfficeHeuristics {
                     }
                 } elseif ($autoRecord.Success -eq $false) {
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Cannot locate Exchange Services for {0}" -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS'
                 }
             }
         }
