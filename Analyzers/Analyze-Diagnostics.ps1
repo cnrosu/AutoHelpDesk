@@ -1,12 +1,3 @@
-$global:EnableDiag = ($env:ANALYZER_DEBUG -eq '1')
-$EnableDiag = $global:EnableDiag
-if ($EnableDiag) { $VerbosePreference = 'Continue' }
-
-trap {
-    try { if ($EnableDiag) { Get-PSCallStack | Format-List -Force | Out-Host } } catch {}
-    throw
-}
-
 <#!
 .SYNOPSIS
     Analyzer orchestrator that loads JSON artifacts, runs heuristic modules, and generates an HTML report.
@@ -23,6 +14,15 @@ param(
     [Parameter()]
     [string]$OutputPath
 )
+
+$global:EnableDiag = ($env:ANALYZER_DEBUG -eq '1')
+$EnableDiag = $global:EnableDiag
+if ($EnableDiag) { $VerbosePreference = 'Continue' }
+
+trap {
+    try { if ($EnableDiag) { Get-PSCallStack | Format-List -Force | Out-Host } } catch {}
+    throw
+}
 
 $ErrorActionPreference = 'Stop'
 
