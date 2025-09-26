@@ -823,11 +823,14 @@ function New-AnalyzerHtml {
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     foreach ($category in $Categories) {
         if (-not $category) { continue }
         foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
         foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
     }
+    $sw.Stop()
+    Write-Verbose ("[HTML] Cards built in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
 
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
@@ -837,7 +840,10 @@ function New-AnalyzerHtml {
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    $sw.Restart()
     $failedReports = Get-FailedCollectorReports -Context $Context
+    $sw.Stop()
+    Write-Verbose ("[HTML] Failed collectors in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
@@ -860,7 +866,10 @@ function New-AnalyzerHtml {
         $failedContent = $failedContentBuilder.ToString()
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
+    $sw.Restart()
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    $sw.Stop()
+    Write-Verbose ("[HTML] Raw section in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
