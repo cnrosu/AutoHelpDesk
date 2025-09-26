@@ -32,22 +32,67 @@ if (Test-Path -Path $heuristicsPath) {
 . (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
+$script:progressActivity = 'Running diagnostics analysis'
+$script:progressTotal = 15
+$script:progressIndex = 0
+
+function Update-AnalyzerProgress {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Status,
+
+        [int]$Advance = 1
+    )
+
+    $script:progressIndex += $Advance
+    $percentComplete = 0
+    if ($script:progressTotal -gt 0) {
+        $percentComplete = [math]::Min([int](($script:progressIndex / [double]$script:progressTotal) * 100), 100)
+    }
+
+    Write-Progress -Activity $script:progressActivity -Status $Status -PercentComplete $percentComplete
+    Write-Verbose ('[{0:HH:mm:ss}] {1}' -f (Get-Date), $Status)
+}
+
+Update-AnalyzerProgress -Status 'Initializing analyzer context'
 $context = New-AnalyzerContext -InputFolder $InputFolder
 
 $categories = @()
+
+Update-AnalyzerProgress -Status 'Loading system heuristics'
 $categories += Invoke-SystemHeuristics   -Context $context
+
+Update-AnalyzerProgress -Status 'Loading security heuristics'
 $categories += Invoke-SecurityHeuristics -Context $context
+
+Update-AnalyzerProgress -Status 'Loading network heuristics'
 $categories += Invoke-NetworkHeuristics  -Context $context
+
+Update-AnalyzerProgress -Status 'Loading Active Directory heuristics'
 $categories += Invoke-ADHeuristics       -Context $context
+
+Update-AnalyzerProgress -Status 'Loading Microsoft 365 heuristics'
 $categories += Invoke-OfficeHeuristics   -Context $context
+
+Update-AnalyzerProgress -Status 'Loading storage heuristics'
 $categories += Invoke-StorageHeuristics  -Context $context
+
+Update-AnalyzerProgress -Status 'Loading event log heuristics'
 $categories += Invoke-EventsHeuristics   -Context $context
+
+Update-AnalyzerProgress -Status 'Loading services heuristics'
 $categories += Invoke-ServicesHeuristics -Context $context
+
+Update-AnalyzerProgress -Status 'Loading printing heuristics'
 $categories += Invoke-PrintingHeuristics -Context $context
 
+Update-AnalyzerProgress -Status 'Merging heuristic results'
 $merged = Merge-AnalyzerResults -Categories $categories
+
+Update-AnalyzerProgress -Status 'Building analysis summary'
 $summary = Get-AnalyzerSummary -Context $context
 
+Update-AnalyzerProgress -Status 'Composing HTML report'
 $html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
 
 if (-not $OutputPath) {
@@ -69,6 +114,7 @@ $cssSources = @(
 )
 
 $resolvedCss = @()
+Update-AnalyzerProgress -Status 'Preparing report styles'
 foreach ($source in $cssSources) {
     if (Test-Path -LiteralPath $source) {
         $resolvedCss += (Resolve-Path -LiteralPath $source).ProviderPath
@@ -84,9 +130,16 @@ if ($resolvedCss.Count -gt 0) {
     $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
     $cssContent = $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
     Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+    Write-Verbose ('[{0:HH:mm:ss}] Report styles bundled to {1}' -f (Get-Date), $cssOutputPath)
+} else {
+    Write-Verbose ('[{0:HH:mm:ss}] No report styles found to bundle' -f (Get-Date))
 }
 
+Update-AnalyzerProgress -Status 'Writing analysis report to disk'
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
+
+Write-Progress -Activity $script:progressActivity -Completed -Status 'Analysis complete'
+Write-Verbose ('[{0:HH:mm:ss}] Analysis complete. Output: {1}' -f (Get-Date), $OutputPath)
 
 [pscustomobject]@{
     HtmlPath = (Resolve-Path -Path $OutputPath).ProviderPath
