@@ -33,7 +33,7 @@ if (Test-Path -Path $heuristicsPath) {
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
 $script:progressActivity = 'Running diagnostics analysis'
-$script:progressTotal = 14
+$script:progressTotal = 15
 $script:progressIndex = 0
 
 function Update-AnalyzerProgress {
@@ -127,7 +127,9 @@ Update-AnalyzerProgress -Status 'Loading network heuristics'
 $networkCats = Invoke-AnalyzerPhase -Name 'Network heuristics' -ScriptBlock { Invoke-NetworkHeuristics -Context $context }
 if ($networkCats) { $null = $script:CategoriesList.AddRange($networkCats) }
 
-# Active Directory heuristics temporarily disabled due to known stability issues.
+Update-AnalyzerProgress -Status 'Loading Active Directory heuristics'
+$categories += Invoke-AnalyzerPhase -Name 'Active Directory heuristics' -ScriptBlock { Invoke-ADHeuristics -Context $context }
+
 Update-AnalyzerProgress -Status 'Loading Microsoft 365 heuristics'
 $officeCats = Invoke-AnalyzerPhase -Name 'Microsoft 365 heuristics' -ScriptBlock { Invoke-OfficeHeuristics -Context $context }
 if ($officeCats) { $null = $script:CategoriesList.AddRange($officeCats) }
