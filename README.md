@@ -42,6 +42,20 @@ You can re-run the analyzer against existing collections—only the `-InputFolde
 | `/Reports` | Static HTML/CSS prototypes and assets for presenting analyzer output. |
 | `/Modules` | Cross-cutting PowerShell modules that can be imported by collectors, analyzers, or orchestration scripts. |
 
+## Troubleshooting PowerShell warnings
+
+PowerShell enforces a list of "approved" verbs so that commands follow discoverable naming conventions (for example, `Get-*`, `Set-*`, `New-*`). The built-in AutoHelpDesk modules now export helper functions using approved verbs, so importing them no longer emits name-check warnings. If you add your own helper functions and see warnings such as:
+
+> `WARNING: The names of some imported commands from the module 'Common' include unapproved verbs that might make them less discoverable. To find the commands with unapproved verbs, run the Import-Module command again with the Verbose parameter. For a list of approved verbs, type Get-Verb.`
+
+identify the offending commands by importing with `-Verbose`:
+
+```powershell
+Import-Module .\Modules\Common\Common.psm1 -Verbose
+```
+
+Then rename those functions so their verb appears in the output of `Get-Verb` (or choose an approved prefix such as `ConvertTo-` or `Get-`). Suppressing the warning with `Import-Module -DisableNameChecking` is possible, but using approved verbs keeps commands discoverable and avoids future warnings.
+
 ### Artifact format
 
 All collector scripts use `CollectorCommon.ps1` helpers to enforce a consistent JSON envelope:

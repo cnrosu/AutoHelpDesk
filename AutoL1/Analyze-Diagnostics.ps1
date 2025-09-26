@@ -1316,7 +1316,7 @@ function Get-IssueExplanation {
     return "Broken Autodiscover SCP records keep domain-joined PCs from finding the right Exchange endpoints. Outlook may connect to the wrong place or fail to sign in on the internal network." 
   }
 
-  $severityWord = Normalize-Severity $Severity
+  $severityWord = ConvertTo-NormalizedSeverity $Severity
   if (-not $severityWord) { $severityWord = 'issue' }
   return "This $severityWord points to something outside the normal health baseline. Reviewing the evidence and correcting it will help keep the device stable and secure."
 }
@@ -1338,7 +1338,7 @@ function Add-Issue(
     }
 
     # normalize
-    $sevKey = Normalize-Severity $Severity
+    $sevKey = ConvertTo-NormalizedSeverity $Severity
     switch -regex ($sevKey){
         '^(crit(ical)?)$' { $sevKey = 'critical' }
         '^(hi(gh)?)$'     { $sevKey = 'high' }
@@ -5461,7 +5461,7 @@ if ($raw['disks']) {
 
     if ($disk.IsBoot -eq $true -or $disk.IsSystem -eq $true) {
       if ($severity) {
-        $severity = Promote-Severity $severity 1
+        $severity = ConvertTo-EscalatedSeverity $severity 1
       } else {
         $severity = 'high'
       }
@@ -5562,7 +5562,7 @@ if ($raw['volumes']) {
     }
 
     if ($driveLetter -and $driveLetter.Length -gt 0 -and $driveLetter.ToUpperInvariant() -eq 'C') {
-      $severity = if ($severity) { Promote-Severity $severity 1 } else { 'medium' }
+      $severity = if ($severity) { ConvertTo-EscalatedSeverity $severity 1 } else { 'medium' }
     }
 
     if (-not $severity) { $severity = 'medium' }
@@ -5989,7 +5989,7 @@ if ($issues.Count -eq 0){
 
   foreach ($entry in $sortedIssues) {
     $cardHtml = New-IssueCardHtml -Entry $entry
-    $severityKey = Normalize-Severity $entry.Severity
+    $severityKey = ConvertTo-NormalizedSeverity $entry.Severity
     if ($severityKey -and $groupedIssues.ContainsKey($severityKey)) {
       $groupedIssues[$severityKey].Add($cardHtml)
     } else {
