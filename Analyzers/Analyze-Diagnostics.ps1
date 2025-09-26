@@ -115,40 +115,61 @@ if ($script:CategoriesList) {
     $script:CategoriesList = [System.Collections.Generic.List[object]]::new()
 }
 
+function Add-AnalyzerCategories {
+    param(
+        [Parameter(ValueFromPipeline)]
+        [object]$InputObject
+    )
+
+    process {
+        if (-not $InputObject) { return }
+
+        if ($InputObject -is [System.Collections.IEnumerable] -and -not ($InputObject -is [string])) {
+            foreach ($item in $InputObject) {
+                if ($null -ne $item) {
+                    $null = $script:CategoriesList.Add($item)
+                }
+            }
+        } else {
+            $null = $script:CategoriesList.Add($InputObject)
+        }
+    }
+}
+
 Update-AnalyzerProgress -Status 'Loading system heuristics'
 $systemCats = Invoke-AnalyzerPhase -Name 'System heuristics' -ScriptBlock { Invoke-SystemHeuristics -Context $context }
-if ($systemCats) { $null = $script:CategoriesList.AddRange($systemCats) }
+Add-AnalyzerCategories -InputObject $systemCats
 
 Update-AnalyzerProgress -Status 'Loading security heuristics'
 $securityCats = Invoke-AnalyzerPhase -Name 'Security heuristics' -ScriptBlock { Invoke-SecurityHeuristics -Context $context }
-if ($securityCats) { $null = $script:CategoriesList.AddRange($securityCats) }
+Add-AnalyzerCategories -InputObject $securityCats
 
 Update-AnalyzerProgress -Status 'Loading network heuristics'
 $networkCats = Invoke-AnalyzerPhase -Name 'Network heuristics' -ScriptBlock { Invoke-NetworkHeuristics -Context $context }
-if ($networkCats) { $null = $script:CategoriesList.AddRange($networkCats) }
+Add-AnalyzerCategories -InputObject $networkCats
 
 Update-AnalyzerProgress -Status 'Loading Active Directory heuristics'
 $categories += Invoke-AnalyzerPhase -Name 'Active Directory heuristics' -ScriptBlock { Invoke-ADHeuristics -Context $context }
 
 Update-AnalyzerProgress -Status 'Loading Microsoft 365 heuristics'
 $officeCats = Invoke-AnalyzerPhase -Name 'Microsoft 365 heuristics' -ScriptBlock { Invoke-OfficeHeuristics -Context $context }
-if ($officeCats) { $null = $script:CategoriesList.AddRange($officeCats) }
+Add-AnalyzerCategories -InputObject $officeCats
 
 Update-AnalyzerProgress -Status 'Loading storage heuristics'
 $storageCats = Invoke-AnalyzerPhase -Name 'Storage heuristics' -ScriptBlock { Invoke-StorageHeuristics -Context $context }
-if ($storageCats) { $null = $script:CategoriesList.AddRange($storageCats) }
+Add-AnalyzerCategories -InputObject $storageCats
 
 Update-AnalyzerProgress -Status 'Loading event log heuristics'
 $eventsCats = Invoke-AnalyzerPhase -Name 'Event log heuristics' -ScriptBlock { Invoke-EventsHeuristics -Context $context }
-if ($eventsCats) { $null = $script:CategoriesList.AddRange($eventsCats) }
+Add-AnalyzerCategories -InputObject $eventsCats
 
 Update-AnalyzerProgress -Status 'Loading services heuristics'
 $servicesCats = Invoke-AnalyzerPhase -Name 'Services heuristics' -ScriptBlock { Invoke-ServicesHeuristics -Context $context }
-if ($servicesCats) { $null = $script:CategoriesList.AddRange($servicesCats) }
+Add-AnalyzerCategories -InputObject $servicesCats
 
 Update-AnalyzerProgress -Status 'Loading printing heuristics'
 $printingCats = Invoke-AnalyzerPhase -Name 'Printing heuristics' -ScriptBlock { Invoke-PrintingHeuristics -Context $context }
-if ($printingCats) { $null = $script:CategoriesList.AddRange($printingCats) }
+Add-AnalyzerCategories -InputObject $printingCats
 
 Update-AnalyzerProgress -Status 'Merging heuristic results'
 $categories = $script:CategoriesList.ToArray()
