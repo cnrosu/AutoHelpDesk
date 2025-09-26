@@ -3,6 +3,11 @@
     Renders analyzer findings into an HTML report styled like the legacy AutoL1 output.
 #>
 
+trap {
+    try { if (Get-DiagFlag) { Get-PSCallStack | Format-List -Force | Out-Host } } catch {}
+    throw
+}
+
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
 function Resolve-CategoryGroup {
@@ -105,7 +110,12 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    param(
+        $Value,
+        [int]$MaxItemsPerLevel = 2000,
+        [int]$MaxDepth = 12,
+        [int]$CurrentDepth = 0
+    )
 
     if ($null -eq $Value) { return '' }
 
@@ -113,15 +123,30 @@ function Format-AnalyzerEvidence {
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $diag = Get-DiagFlag
+        if ($diag -and $Value -is [System.Collections.ICollection] -and $Value.Count -gt 20000) {
+            Write-Verbose ("[WARN] Large input ({0}) in {1}" -f $Value.Count,$MyInvocation.MyCommand)
+        }
+
         $builder = [System.Text.StringBuilder]::new()
         $first = $true
+        $index = 0
         foreach ($item in $Value) {
-            $part = Format-AnalyzerEvidence -Value $item
+            if ($index -ge $MaxItemsPerLevel) {
+                if ($diag -and $index -eq $MaxItemsPerLevel) {
+                    $level = [math]::Max(0, $MaxDepth - $CurrentDepth)
+                    Write-Verbose ("[EVIDENCE] item cap hit at level {0}" -f $level)
+                }
+                break
+            }
+
+            $part = Format-AnalyzerEvidence -Value $item -MaxItemsPerLevel $MaxItemsPerLevel -MaxDepth $MaxDepth -CurrentDepth ($CurrentDepth + 1)
             if (-not $first) {
                 $null = $builder.AppendLine()
             }
             $null = $builder.Append($part)
             $first = $false
+            $index++
         }
         return $builder.ToString()
     }
@@ -130,6 +155,77 @@ function Format-AnalyzerEvidence {
         return ($Value | ConvertTo-Json -Depth 6)
     } catch {
         return [string]$Value
+    }
+}
+
+function Convert-CategoriesToCards {
+    param(
+        [Parameter(Mandatory)][System.Collections.Generic.IEnumerable[object]]$Categories
+    )
+
+    $diag = Get-DiagFlag
+    if ($diag) {
+        CountOf 'Composer: categories' $Categories
+        $firstCategory = $null
+        if ($Categories -is [System.Collections.IList] -and $Categories.Count -gt 0) {
+            $firstCategory = $Categories[0]
+        } elseif ($Categories) {
+            $firstCategory = $Categories | Select-Object -First 1
+        }
+        if ($null -ne $firstCategory) {
+            Dump 'Composer: first category' $firstCategory
+        }
+        if ($Categories -is [System.Collections.ICollection] -and $Categories.Count -gt 20000) {
+            Write-Verbose ("[WARN] Large input ({0}) in {1}" -f $Categories.Count,$MyInvocation.MyCommand)
+        }
+    }
+
+    $issuePairs = [System.Collections.Generic.List[pscustomobject]]::new()
+    $normalPairs = [System.Collections.Generic.List[pscustomobject]]::new()
+
+    foreach ($category in $Categories) {
+        if (-not $category) { continue }
+
+        if ($category.PSObject.Properties['Issues']) {
+            foreach ($issue in $category.Issues) {
+                if ($null -ne $issue) {
+                    $issuePairs.Add([pscustomobject]@{ Category = $category; Item = $issue }) | Out-Null
+                }
+            }
+        }
+
+        if ($category.PSObject.Properties['Normals']) {
+            foreach ($normal in $category.Normals) {
+                if ($null -ne $normal) {
+                    $normalPairs.Add([pscustomobject]@{ Category = $category; Item = $normal }) | Out-Null
+                }
+            }
+        }
+    }
+
+    $issueCards = [System.Collections.Generic.List[pscustomobject]]::new()
+    $normalCards = [System.Collections.Generic.List[pscustomobject]]::new()
+
+    With-Timing 'HTML: evidence formatting' {
+        foreach ($pair in $issuePairs) {
+            $card = Convert-ToIssueCard -Category $pair.Category -Issue $pair.Item
+            $issueCards.Add($card) | Out-Null
+        }
+
+        foreach ($pair in $normalPairs) {
+            $card = Convert-ToGoodCard -Category $pair.Category -Normal $pair.Item
+            $normalCards.Add($card) | Out-Null
+        }
+    }
+
+    $allCards = [System.Collections.Generic.List[pscustomobject]]::new()
+    if ($issueCards.Count -gt 0) { $allCards.AddRange($issueCards) }
+    if ($normalCards.Count -gt 0) { $allCards.AddRange($normalCards) }
+
+    return [pscustomobject]@{
+        IssueCards = $issueCards
+        GoodCards  = $normalCards
+        All        = $allCards
     }
 }
 
@@ -810,8 +906,11 @@ function Build-RawSection {
 
 function New-AnalyzerHtml {
     param(
-        [Parameter(Mandatory)]
+        [Parameter()]
         [System.Collections.Generic.IEnumerable[object]]$Categories,
+
+        [Parameter()]
+        [pscustomobject]$Cards,
 
         [Parameter()]
         [pscustomobject]$Summary,
@@ -820,58 +919,85 @@ function New-AnalyzerHtml {
         $Context
     )
 
-    $issues = New-Object System.Collections.Generic.List[pscustomobject]
-    $normals = New-Object System.Collections.Generic.List[pscustomobject]
-
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    foreach ($category in $Categories) {
-        if (-not $category) { continue }
-        foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
-        foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
+    $diag = Get-DiagFlag
+    if ($diag) {
+        $contextType = if ($null -eq $Context) { '<null>' } else { $Context.GetType().FullName }
+        if ($null -eq $Context -or -not $Context.PSObject.Properties['Artifacts']) {
+            throw "Context missing Artifacts (got: $contextType)"
+        }
     }
-    $sw.Stop()
-    Write-Verbose ("[HTML] Cards built in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+
+    Mark 'HTML: start'
+
+    if (-not $Cards -and $Categories) {
+        Mark 'HTML: compute cards inside composer'
+        $Cards = With-Timing 'HTML: map → cards' {
+            Convert-CategoriesToCards -Categories $Categories
+        }
+    }
+
+    $issueCards = if ($Cards -and $Cards.PSObject.Properties['IssueCards']) { $Cards.IssueCards } else { @() }
+    $normalCards = if ($Cards -and $Cards.PSObject.Properties['GoodCards']) { $Cards.GoodCards } else { @() }
+
+    if ($diag) {
+        CountOf 'HTML: cards (issues)' $issueCards
+        CountOf 'HTML: cards (good)' $normalCards
+    }
 
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
     }
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
-    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
-    $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
-    $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
-    $sw.Restart()
-    $failedReports = Get-FailedCollectorReports -Context $Context
-    $sw.Stop()
-    Write-Verbose ("[HTML] Failed collectors in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
-    $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
-    if ($failedReports.Count -eq 0) {
-        $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
-    } else {
-        $failedContentBuilder = [System.Text.StringBuilder]::new()
-        $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
-        foreach ($entry in $failedReports) {
-            $detailBuilder = [System.Text.StringBuilder]::new()
-            if ($entry.Path) {
-                $null = $detailBuilder.Append((Encode-Html "File: $($entry.Path)"))
-            }
-            if ($entry.Details) {
-                if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('<br>') }
-                $null = $detailBuilder.Append((Encode-Html ([string]$entry.Details)))
-            }
-            $detailHtml = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { Encode-Html '' }
-            $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
-        }
-        $null = $failedContentBuilder.Append("</table></div>")
-        $failedContent = $failedContentBuilder.ToString()
-    }
-    $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
-    $sw.Restart()
-    $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
-    $sw.Stop()
-    Write-Verbose ("[HTML] Raw section in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
-    $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
-    return ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    $summaryHtml = $null
+    $goodHtml = $null
+    $issuesHtml = $null
+    $failedHtml = $null
+    $rawHtml = $null
+    $debugHtml = $null
+
+    With-Timing 'HTML: assemble sections' {
+        $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issueCards
+        $goodHtml = New-ReportSection -Title "What Looks Good ($($normalCards.Count))" -ContentHtml (Build-GoodSection -Normals $normalCards) -Open
+        $issuesHtml = New-ReportSection -Title "Detected Issues ($($issueCards.Count))" -ContentHtml (Build-IssueSection -Issues $issueCards) -Open
+
+        $failedReports = With-Timing 'HTML: failed collectors' { Get-FailedCollectorReports -Context $Context }
+        $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
+        if ($failedReports.Count -eq 0) {
+            $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
+        } else {
+            $failedContentBuilder = [System.Text.StringBuilder]::new()
+            $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
+            foreach ($entry in $failedReports) {
+                $detailBuilder = [System.Text.StringBuilder]::new()
+                if ($entry.Path) {
+                    $null = $detailBuilder.Append((Encode-Html "File: $($entry.Path)"))
+                }
+                if ($entry.Details) {
+                    if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('<br>') }
+                    $null = $detailBuilder.Append((Encode-Html ([string]$entry.Details)))
+                }
+                $detailHtml = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { Encode-Html '' }
+                $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
+            }
+            $null = $failedContentBuilder.Append("</table></div>")
+            $failedContent = $failedContentBuilder.ToString()
+        }
+        $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
+
+        $rawContent = With-Timing 'HTML: raw section build' { Build-RawSection -Context $Context }
+        $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml $rawContent
+        $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
+    }
+
+    $segments = @($head, $summaryHtml, $goodHtml, $issuesHtml, $failedHtml, $rawHtml, $debugHtml, $tail)
+    $html = $null
+    With-Timing 'HTML: finalize string' {
+        $html = ($segments -join '')
+    }
+
+    Mark 'HTML: end'
+    return $html
 }

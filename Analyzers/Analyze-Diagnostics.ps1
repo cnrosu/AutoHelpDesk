@@ -1,3 +1,12 @@
+$global:EnableDiag = ($env:ANALYZER_DEBUG -eq '1')
+$EnableDiag = $global:EnableDiag
+if ($EnableDiag) { $VerbosePreference = 'Continue' }
+
+trap {
+    try { if ($EnableDiag) { Get-PSCallStack | Format-List -Force | Out-Host } } catch {}
+    throw
+}
+
 <#!
 .SYNOPSIS
     Analyzer orchestrator that loads JSON artifacts, runs heuristic modules, and generates an HTML report.
@@ -106,8 +115,20 @@ function Invoke-AnalyzerPhase {
     return $result
 }
 
+Start-Phase 'Collecting'
 Update-AnalyzerProgress -Status 'Initializing analyzer context'
-$context = Invoke-AnalyzerPhase -Name 'Initialize context' -ScriptBlock { New-AnalyzerContext -InputFolder $InputFolder }
+$context = Invoke-AnalyzerPhase -Name 'Initialize context' -ScriptBlock {
+    With-Timing 'Initialize context' {
+        New-AnalyzerContext -InputFolder $InputFolder
+    }
+}
+if ($EnableDiag) {
+    $contextType = if ($null -eq $context) { '<null>' } else { $context.GetType().FullName }
+    if ($null -eq $context -or -not $context.PSObject.Properties['Artifacts']) {
+        throw "Context missing Artifacts (got: $contextType)"
+    }
+}
+End-Phase 'Collecting'
 
 if ($script:CategoriesList) {
     $script:CategoriesList.Clear()
@@ -136,50 +157,166 @@ function Add-AnalyzerCategories {
     }
 }
 
+function Invoke-Safe {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Block
+    )
+
+    try {
+        return & $Block
+    } catch {
+        if ($EnableDiag) {
+            Write-Warning ("[{0}] failed: {1}" -f $Name,$_.Exception.Message)
+            try { Get-PSCallStack | Format-List -Force | Out-Host } catch {}
+        }
+        $category = New-CategoryResult -Name "$Name diagnostics"
+        Add-CategoryIssue -CategoryResult $category -Severity 'medium' -Title "$Name failed" -Evidence $_.ToString() -Subcategory 'Internal Error'
+        return ,$category
+    }
+}
+
+$previousErrorPreference = $ErrorActionPreference
+$previousMaximumFunctionCount = $MaximumFunctionCount
+if ($EnableDiag) {
+    $ErrorActionPreference = 'Continue'
+    $MaximumFunctionCount = 8192
+}
+
+Start-Phase 'Analyzing'
+
 Update-AnalyzerProgress -Status 'Loading system heuristics'
-$systemCats = Invoke-AnalyzerPhase -Name 'System heuristics' -ScriptBlock { Invoke-SystemHeuristics -Context $context }
+Mark 'Loading System heuristics'
+$systemCats = Invoke-AnalyzerPhase -Name 'System heuristics' -ScriptBlock {
+    Invoke-Safe 'System heuristics' {
+        With-Timing 'System heuristics' { Invoke-SystemHeuristics -Context $context }
+    }
+}
+CountOf 'System categories' $systemCats
 Add-AnalyzerCategories -InputObject $systemCats
 
 Update-AnalyzerProgress -Status 'Loading security heuristics'
-$securityCats = Invoke-AnalyzerPhase -Name 'Security heuristics' -ScriptBlock { Invoke-SecurityHeuristics -Context $context }
+Mark 'Loading Security heuristics'
+$securityCats = Invoke-AnalyzerPhase -Name 'Security heuristics' -ScriptBlock {
+    Invoke-Safe 'Security heuristics' {
+        With-Timing 'Security heuristics' { Invoke-SecurityHeuristics -Context $context }
+    }
+}
+CountOf 'Security categories' $securityCats
 Add-AnalyzerCategories -InputObject $securityCats
 
 Update-AnalyzerProgress -Status 'Loading network heuristics'
-$networkCats = Invoke-AnalyzerPhase -Name 'Network heuristics' -ScriptBlock { Invoke-NetworkHeuristics -Context $context }
+Mark 'Loading Network heuristics'
+$networkCats = Invoke-AnalyzerPhase -Name 'Network heuristics' -ScriptBlock {
+    Invoke-Safe 'Network heuristics' {
+        With-Timing 'Network heuristics' { Invoke-NetworkHeuristics -Context $context }
+    }
+}
+CountOf 'Network categories' $networkCats
 Add-AnalyzerCategories -InputObject $networkCats
 
 Update-AnalyzerProgress -Status 'Loading Active Directory heuristics'
-$categories += Invoke-AnalyzerPhase -Name 'Active Directory heuristics' -ScriptBlock { Invoke-ADHeuristics -Context $context }
+Mark 'Loading Active Directory heuristics'
+$adCats = Invoke-AnalyzerPhase -Name 'Active Directory heuristics' -ScriptBlock {
+    Invoke-Safe 'AD heuristics' {
+        With-Timing 'AD heuristics' { Invoke-ADHeuristics -Context $context }
+    }
+}
+CountOf 'AD categories' $adCats
+Add-AnalyzerCategories -InputObject $adCats
 
 Update-AnalyzerProgress -Status 'Loading Microsoft 365 heuristics'
-$officeCats = Invoke-AnalyzerPhase -Name 'Microsoft 365 heuristics' -ScriptBlock { Invoke-OfficeHeuristics -Context $context }
+Mark 'Loading Microsoft 365 heuristics'
+$officeCats = Invoke-AnalyzerPhase -Name 'Microsoft 365 heuristics' -ScriptBlock {
+    Invoke-Safe 'Microsoft 365 heuristics' {
+        With-Timing 'Microsoft 365 heuristics' { Invoke-OfficeHeuristics -Context $context }
+    }
+}
+CountOf 'Microsoft 365 categories' $officeCats
 Add-AnalyzerCategories -InputObject $officeCats
 
 Update-AnalyzerProgress -Status 'Loading storage heuristics'
-$storageCats = Invoke-AnalyzerPhase -Name 'Storage heuristics' -ScriptBlock { Invoke-StorageHeuristics -Context $context }
+Mark 'Loading Storage heuristics'
+$storageCats = Invoke-AnalyzerPhase -Name 'Storage heuristics' -ScriptBlock {
+    Invoke-Safe 'Storage heuristics' {
+        With-Timing 'Storage heuristics' { Invoke-StorageHeuristics -Context $context }
+    }
+}
+CountOf 'Storage categories' $storageCats
 Add-AnalyzerCategories -InputObject $storageCats
 
 Update-AnalyzerProgress -Status 'Loading event log heuristics'
-$eventsCats = Invoke-AnalyzerPhase -Name 'Event log heuristics' -ScriptBlock { Invoke-EventsHeuristics -Context $context }
+Mark 'Loading Event log heuristics'
+$eventsCats = Invoke-AnalyzerPhase -Name 'Event log heuristics' -ScriptBlock {
+    Invoke-Safe 'Event log heuristics' {
+        With-Timing 'Event log heuristics' { Invoke-EventsHeuristics -Context $context }
+    }
+}
+CountOf 'Event log categories' $eventsCats
 Add-AnalyzerCategories -InputObject $eventsCats
 
 Update-AnalyzerProgress -Status 'Loading services heuristics'
-$servicesCats = Invoke-AnalyzerPhase -Name 'Services heuristics' -ScriptBlock { Invoke-ServicesHeuristics -Context $context }
+Mark 'Loading Services heuristics'
+$servicesCats = Invoke-AnalyzerPhase -Name 'Services heuristics' -ScriptBlock {
+    Invoke-Safe 'Services heuristics' {
+        With-Timing 'Services heuristics' { Invoke-ServicesHeuristics -Context $context }
+    }
+}
+CountOf 'Services categories' $servicesCats
 Add-AnalyzerCategories -InputObject $servicesCats
 
 Update-AnalyzerProgress -Status 'Loading printing heuristics'
-$printingCats = Invoke-AnalyzerPhase -Name 'Printing heuristics' -ScriptBlock { Invoke-PrintingHeuristics -Context $context }
+Mark 'Loading Printing heuristics'
+$printingCats = Invoke-AnalyzerPhase -Name 'Printing heuristics' -ScriptBlock {
+    Invoke-Safe 'Printing heuristics' {
+        With-Timing 'Printing heuristics' { Invoke-PrintingHeuristics -Context $context }
+    }
+}
+CountOf 'Printing categories' $printingCats
 Add-AnalyzerCategories -InputObject $printingCats
 
-Update-AnalyzerProgress -Status 'Merging heuristic results'
 $categories = $script:CategoriesList.ToArray()
-$merged = Invoke-AnalyzerPhase -Name 'Merge results' -ScriptBlock { Merge-AnalyzerResults -Categories $categories }
+CountOf 'Analyzing: categories aggregated' $categories
+if ($EnableDiag -and $categories.Count -gt 20000) {
+    Write-Verbose ("[WARN] Large input ({0}) in {1}" -f $categories.Count,$MyInvocation.MyCommand)
+}
+
+Update-AnalyzerProgress -Status 'Merging heuristic results'
+$merged = Invoke-AnalyzerPhase -Name 'Merge results' -ScriptBlock {
+    With-Timing 'Merge all categories' {
+        Merge-AnalyzerResults -Categories $categories
+    }
+}
 
 Update-AnalyzerProgress -Status 'Building analysis summary'
-$summary = Invoke-AnalyzerPhase -Name 'Build summary' -ScriptBlock { Get-AnalyzerSummary -Context $context }
+Mark 'Building analysis summary'
+$summary = Invoke-AnalyzerPhase -Name 'Build summary' -ScriptBlock {
+    With-Timing 'Build summary' { Get-AnalyzerSummary -Context $context }
+}
 
+End-Phase 'Analyzing'
+$ErrorActionPreference = $previousErrorPreference
+if ($EnableDiag -and $null -ne $previousMaximumFunctionCount) { $MaximumFunctionCount = $previousMaximumFunctionCount }
+
+$htmlErrorPreference = $ErrorActionPreference
+if ($EnableDiag) { $ErrorActionPreference = 'Continue' }
+
+Start-Phase 'HTML Compose'
 Update-AnalyzerProgress -Status 'Composing HTML report'
-$html = Invoke-AnalyzerPhase -Name 'Compose HTML' -ScriptBlock { New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context }
+Mark 'HTML Compose: build cards'
+$cards = With-Timing 'Build issue cards' {
+    Convert-CategoriesToCards -Categories $categories
+}
+CountOf 'Cards' $cards.All
+
+Mark 'HTML Compose: render report'
+$html = Invoke-AnalyzerPhase -Name 'Compose HTML' -ScriptBlock {
+    With-Timing 'Render HTML' {
+        New-AnalyzerHtml -Cards $cards -Summary $summary -Context $context -Categories $categories
+    }
+}
+End-Phase 'HTML Compose'
+if ($EnableDiag) { $ErrorActionPreference = $htmlErrorPreference }
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path -Path $InputFolder -ChildPath 'diagnostics-report.html'
