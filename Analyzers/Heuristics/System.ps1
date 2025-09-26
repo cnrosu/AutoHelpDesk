@@ -95,11 +95,15 @@ function Invoke-SystemHeuristics {
                 $captionLower = $caption.ToLowerInvariant()
                 if ($captionLower -match 'windows\s+11') {
                     Add-CategoryNormal -CategoryResult $result -Title ("Operating system supported: {0}" -f $description)
-                } elseif ($captionLower -match 'windows\s+10') {
-                    $evidence = "Detected operating system: {0}. Windows 10 versions, including 22H2, are no longer supported by Microsoft; upgrade to Windows 11." -f $description
-                    Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence
                 } else {
-                    Add-CategoryCheck -CategoryResult $result -Name 'Operating system' -Status $description
+                    $unsupportedMatch = [regex]::Match($captionLower, 'windows\s+(7|8(\.1)?|10)')
+                    if ($unsupportedMatch.Success) {
+                        $versionLabel = $unsupportedMatch.Groups[1].Value
+                        $evidence = "Detected operating system: {0}. Microsoft support for Windows {1} has ended; upgrade to Windows 11." -f $description, $versionLabel
+                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence
+                    } else {
+                        Add-CategoryCheck -CategoryResult $result -Name 'Operating system' -Status $description
+                    }
                 }
             }
             if ($os.LastBootUpTime) {
