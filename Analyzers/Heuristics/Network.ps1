@@ -470,6 +470,242 @@ function ConvertTo-NetworkAddressString {
     return [string]$RemoteAddress
 }
 
+function ConvertTo-NetworkLinkSpeedMbps {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $text = [string]$Value
+    if (-not $text) { return $null }
+
+    $normalized = $text.Trim()
+    if (-not $normalized) { return $null }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)\s*(g(?:bps|b/s|bit/s|igabit))') {
+        return [double]$matches[1] * 1000
+    }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)\s*(m(?:bps|b/s|bit/s|egabit))') {
+        return [double]$matches[1]
+    }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)\s*(k(?:bps|b/s|bit/s|ilobit))') {
+        return [double]$matches[1] / 1000
+    }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)\s*(bps|b/s)') {
+        return [double]$matches[1] / 1000000
+    }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)\s*(gb|mb|kb)') {
+        $value = [double]$matches[1]
+        $unit = $matches[2].ToLowerInvariant()
+        switch ($unit) {
+            'gb' { return $value * 1000 }
+            'mb' { return $value }
+            'kb' { return $value / 1000 }
+        }
+    }
+
+    if ($normalized -match '(?i)(\d+(?:\.\d+)?)(?:\s*(?:mega|giga|kilo)?(?:bit)?)') {
+        return [double]$matches[1]
+    }
+
+    return $null
+}
+
+function Get-NetworkDescriptionCapabilityMbps {
+    param([string]$Description)
+
+    if (-not $Description) { return $null }
+
+    $text = $Description.ToLowerInvariant()
+
+    if ($text -match '\b25g\b' -or $text -match '25gbase' -or $text -match '25-gigabit') { return 25000 }
+    if ($text -match '\b40g\b' -or $text -match '40gbase' -or $text -match '40-gigabit') { return 40000 }
+    if ($text -match '\b100g\b' -or $text -match '100gbase' -or $text -match '100-gigabit') { return 100000 }
+    if ($text -match '\b10g\b' -or $text -match '10gbase' -or $text -match '10-gigabit') { return 10000 }
+    if ($text -match '\b5g\b' -or $text -match '5gbase' -or $text -match '5-gigabit') { return 5000 }
+    if ($text -match '\b2\.5g\b' -or $text -match '2\.5gbase' -or $text -match '2\.5-gigabit') { return 2500 }
+    if ($text -match '\b1g\b' -or $text -match '\b1-gigabit\b' -or $text -match 'gigabit' -or $text -match '1000base') { return 1000 }
+    if ($text -match '\bfast ethernet\b' -or $text -match '\b100base' -or $text -match '\b100mbps\b') { return 100 }
+
+    return $null
+}
+
+function Get-NetworkAdapterCapabilityMbps {
+    param(
+        $Adapter,
+        $PropertyMap
+    )
+
+    $candidates = New-Object System.Collections.Generic.List[double]
+
+    if ($Adapter -and $Adapter.PSObject.Properties['DriverInformation'] -and $Adapter.DriverInformation) {
+        $infoText = [string]$Adapter.DriverInformation
+        foreach ($line in ($infoText -split "`r?`n")) {
+            if (-not $line) { continue }
+            if ($line -match '(?i)(?:link\s*speed|speed)\s*:?\s*(.+)$') {
+                $speedCandidate = ConvertTo-NetworkLinkSpeedMbps $matches[1]
+                if ($null -ne $speedCandidate -and $speedCandidate -gt 0) {
+                    $candidates.Add([double]$speedCandidate) | Out-Null
+                }
+            }
+        }
+    }
+
+    if ($Adapter -and $Adapter.PSObject.Properties['InterfaceDescription'] -and $Adapter.InterfaceDescription) {
+        $descriptionCandidate = Get-NetworkDescriptionCapabilityMbps -Description $Adapter.InterfaceDescription
+        if ($descriptionCandidate) { $candidates.Add([double]$descriptionCandidate) | Out-Null }
+    }
+
+    if ($Adapter -and $Adapter.PSObject.Properties['Name'] -and $PropertyMap) {
+        $name = [string]$Adapter.Name
+        if ($name) {
+            try {
+                $key = $name.ToLowerInvariant()
+            } catch {
+                $key = $name
+            }
+
+            if ($key -and $PropertyMap.ContainsKey($key)) {
+                foreach ($entry in $PropertyMap[$key]) {
+                    if (-not $entry) { continue }
+                    if ($entry.PSObject.Properties['DisplayValue'] -and $entry.DisplayValue) {
+                        $value = ConvertTo-NetworkLinkSpeedMbps $entry.DisplayValue
+                        if ($null -ne $value -and $value -gt 0) {
+                            $candidates.Add([double]$value) | Out-Null
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if ($candidates.Count -eq 0) { return $null }
+
+    return ($candidates | Measure-Object -Maximum).Maximum
+}
+
+function Test-NetworkWirelessInterface {
+    param(
+        [string]$Name,
+        [string]$Description
+    )
+
+    $candidates = @()
+    if ($Name) { $candidates += $Name }
+    if ($Description) { $candidates += $Description }
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        try {
+            $text = $candidate.ToLowerInvariant()
+        } catch {
+            $text = $candidate
+            if ($text) { $text = $text.ToLowerInvariant() }
+        }
+
+        if (-not $text) { continue }
+
+        if ($text -match 'wi-?fi' -or $text -match 'wireless' -or $text -match '802\.11' -or $text -match '\bwlan\b' -or $text -match 'bluetooth' -or $text -match '\bwwan\b' -or $text -match 'cellular' -or $text -match 'mobile broadband') {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function ConvertTo-NetworkLinkEventRecord {
+    param($Entry)
+
+    if (-not $Entry) { return $null }
+
+    $timeValue = $null
+    if ($Entry.PSObject.Properties['TimeCreated']) {
+        $timeValue = ConvertTo-NetworkDateTime -Value $Entry.TimeCreated
+        if (-not $timeValue -and $Entry.TimeCreated -is [datetime]) {
+            $timeValue = $Entry.TimeCreated
+        }
+    }
+
+    $provider = $null
+    foreach ($name in @('Provider', 'ProviderName')) {
+        if ($Entry.PSObject.Properties[$name] -and $Entry.$name) {
+            $provider = [string]$Entry.$name
+            break
+        }
+    }
+
+    $source = $null
+    if ($Entry.PSObject.Properties['Source'] -and $Entry.Source) {
+        $source = [string]$Entry.Source
+    }
+
+    return [pscustomobject]@{
+        Time     = $timeValue
+        Id       = if ($Entry.PSObject.Properties['Id']) { try { [int]$Entry.Id } catch { $Entry.Id } } else { $null }
+        Provider = $provider
+        Message  = if ($Entry.PSObject.Properties['Message']) { [string]$Entry.Message } else { $null }
+        Source   = $source
+        Raw      = $Entry
+    }
+}
+
+function Get-NetworkLinkEventSnippet {
+    param($Record)
+
+    if (-not $Record) { return $null }
+
+    $message = $null
+    if ($Record.Message) {
+        $message = ($Record.Message -split "`r?`n")[0]
+        if ($message.Length -gt 220) {
+            $message = $message.Substring(0, 220) + '…'
+        }
+    }
+
+    return [pscustomobject]@{
+        Time     = if ($Record.Time) { $Record.Time.ToString('o') } else { $null }
+        Id       = $Record.Id
+        Provider = $Record.Provider
+        Source   = $Record.Source
+        Message  = $message
+    }
+}
+
+function Get-NetworkDuplexObservation {
+    param($Record)
+
+    if (-not $Record) { return $null }
+
+    $message = if ($Record.Message) { [string]$Record.Message } else { '' }
+    if (-not $message) { return $null }
+
+    $lower = $message.ToLowerInvariant()
+
+    $duplex = $null
+    if ($lower -match 'full\s+duplex') { $duplex = 'Full' }
+    if ($lower -match 'half\s+duplex') { $duplex = 'Half' }
+
+    $warning = ($lower -match 'duplex mismatch' -or $lower -match 'speed and duplex' -or $lower -match 'speed/duplex')
+
+    if (-not $duplex -and -not $warning) { return $null }
+
+    $speed = ConvertTo-NetworkLinkSpeedMbps $message
+
+    return [pscustomobject]@{
+        Time      = $Record.Time
+        Id        = $Record.Id
+        Provider  = $Record.Provider
+        Source    = $Record.Source
+        Message   = $Record.Message
+        Duplex    = $duplex
+        SpeedMbps = $speed
+        Warning   = $warning
+    }
+}
+
 function ConvertTo-KebabCase {
     param([string]$Text)
 
@@ -617,6 +853,345 @@ function Invoke-NetworkHeuristics {
         $adapterPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $adapterArtifact)
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
+
+    $adapterPropertyMap = @{}
+    $adapterDetailsList = New-Object System.Collections.Generic.List[pscustomobject]
+    $linkEventRecords = New-Object System.Collections.Generic.List[pscustomobject]
+    $linkEventErrors = New-Object System.Collections.Generic.List[pscustomobject]
+    $linkEventLookback = 72
+
+    if ($adapterPayload -and $adapterPayload.PSObject.Properties['Properties']) {
+        $propertiesValue = $adapterPayload.Properties
+        if ($propertiesValue -and $propertiesValue.PSObject -and $propertiesValue.PSObject.Properties['Error'] -and $propertiesValue.Error) {
+            $linkEventErrors.Add([pscustomobject]@{
+                    Log   = 'AdapterProperties'
+                    Error = [string]$propertiesValue.Error
+                }) | Out-Null
+        } else {
+            $propertyEntries = ConvertTo-NetworkArray $propertiesValue | Where-Object { $_ }
+            foreach ($entry in $propertyEntries) {
+                if (-not $entry) { continue }
+                if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+                    $linkEventErrors.Add([pscustomobject]@{
+                            Log   = if ($entry.PSObject.Properties['Source']) { [string]$entry.Source } else { 'AdapterProperties' }
+                            Error = [string]$entry.Error
+                        }) | Out-Null
+                    continue
+                }
+
+                $name = if ($entry.PSObject.Properties['Name']) { [string]$entry.Name } else { $null }
+                if (-not $name) { continue }
+
+                try {
+                    $key = $name.ToLowerInvariant()
+                } catch {
+                    $key = $name
+                }
+
+                if (-not $adapterPropertyMap.ContainsKey($key)) {
+                    $adapterPropertyMap[$key] = New-Object System.Collections.Generic.List[object]
+                }
+
+                $adapterPropertyMap[$key].Add($entry) | Out-Null
+            }
+        }
+    }
+
+    $adapterEntries = @()
+    if ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
+        $adaptersValue = $adapterPayload.Adapters
+        if ($adaptersValue -and $adaptersValue.PSObject -and $adaptersValue.PSObject.Properties['Error'] -and $adaptersValue.Error) {
+            $linkEventErrors.Add([pscustomobject]@{
+                    Log   = if ($adaptersValue.PSObject.Properties['Source']) { [string]$adaptersValue.Source } else { 'Get-NetAdapter' }
+                    Error = [string]$adaptersValue.Error
+                }) | Out-Null
+        } else {
+            $adapterEntries = ConvertTo-NetworkArray $adaptersValue | Where-Object { $_ }
+        }
+    }
+
+    foreach ($adapter in $adapterEntries) {
+        if (-not $adapter) { continue }
+
+        $name = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
+        $status = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
+        $mediaState = if ($adapter.PSObject.Properties['MediaConnectionState']) { [string]$adapter.MediaConnectionState } else { $null }
+        $linkSpeed = if ($adapter.PSObject.Properties['LinkSpeed']) { [string]$adapter.LinkSpeed } else { $null }
+        $description = if ($adapter.PSObject.Properties['InterfaceDescription']) { [string]$adapter.InterfaceDescription } else { $null }
+
+        $statusLower = $null
+        if ($status) {
+            try { $statusLower = $status.ToLowerInvariant() } catch { $statusLower = $status }
+        }
+
+        $mediaLower = $null
+        if ($mediaState) {
+            try { $mediaLower = $mediaState.ToLowerInvariant() } catch { $mediaLower = $mediaState }
+        }
+
+        $statusConnected = ($statusLower -match 'up' -or $statusLower -match 'connected' -or $statusLower -match 'running')
+        $mediaConnected = ($mediaLower -match 'connected' -or $mediaLower -match 'up')
+        $isConnected = ($statusConnected -or $mediaConnected)
+
+        $isWireless = Test-NetworkWirelessInterface -Name $name -Description $description
+        $isPseudo = Test-NetworkPseudoInterface -Alias $name -Description $description
+        $isWired = (-not $isWireless -and -not $isPseudo)
+
+        $key = $null
+        if ($name) {
+            try { $key = $name.ToLowerInvariant() } catch { $key = $name }
+        }
+
+        $capability = Get-NetworkAdapterCapabilityMbps -Adapter $adapter -PropertyMap $adapterPropertyMap
+        $linkSpeedMbps = ConvertTo-NetworkLinkSpeedMbps $linkSpeed
+
+        $detail = [ordered]@{
+            Name                 = $name
+            InterfaceDescription = $description
+            Status               = $status
+            MediaConnectionState = $mediaState
+            LinkSpeed            = $linkSpeed
+            LinkSpeedMbps        = if ($null -ne $linkSpeedMbps) { [math]::Round($linkSpeedMbps, 2) } else { $null }
+            CapabilityMbps       = if ($null -ne $capability) { [math]::Round($capability, 2) } else { $null }
+            IsWired              = $isWired
+            IsConnected          = $isConnected
+        }
+
+        $adapterDetailsList.Add([pscustomobject]$detail) | Out-Null
+    }
+
+    if ($adapterPayload -and $adapterPayload.PSObject.Properties['LinkEvents']) {
+        $linkEventsPayload = $adapterPayload.LinkEvents
+        if ($linkEventsPayload -and $linkEventsPayload.PSObject.Properties['LookbackHours'] -and $linkEventsPayload.LookbackHours) {
+            try { $linkEventLookback = [int]$linkEventsPayload.LookbackHours } catch { $linkEventLookback = $linkEventsPayload.LookbackHours }
+        }
+
+        foreach ($logName in @('System', 'MsftNetAdapter')) {
+            if (-not ($linkEventsPayload.PSObject.Properties[$logName])) { continue }
+
+            $entries = $linkEventsPayload.$logName
+            if ($entries -and $entries.PSObject -and $entries.PSObject.Properties['Error'] -and $entries.Error) {
+                $linkEventErrors.Add([pscustomobject]@{
+                        Log   = $logName
+                        Error = [string]$entries.Error
+                    }) | Out-Null
+                continue
+            }
+
+            $eventItems = ConvertTo-NetworkArray $entries | Where-Object { $_ }
+            foreach ($item in $eventItems) {
+                if ($item.PSObject.Properties['Error'] -and $item.Error) {
+                    $linkEventErrors.Add([pscustomobject]@{
+                            Log   = if ($item.PSObject.Properties['Source']) { [string]$item.Source } else { $logName }
+                            Error = [string]$item.Error
+                        }) | Out-Null
+                    continue
+                }
+
+                $record = ConvertTo-NetworkLinkEventRecord $item
+                if (-not $record) { continue }
+                if (-not $record.Source) { $record.Source = $logName }
+                $linkEventRecords.Add($record) | Out-Null
+            }
+        }
+    }
+
+    if ($linkEventErrors.Count -gt 0) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Link event details incomplete' -Evidence ($linkEventErrors.ToArray()) -Subcategory 'Link Stability'
+    }
+
+    $linkFlapIssue = $false
+    $duplexIssue = $false
+    $speedIssue = $false
+
+    $linkStabilityWindow = 24
+    $flapWindowStart = (Get-Date).AddHours(-$linkStabilityWindow)
+    $recentLinkEvents = $linkEventRecords | Where-Object { $_.Time -and $_.Time -ge $flapWindowStart } | Sort-Object -Property Time
+
+    $downIds = @(27, 10400)
+    $upIds = @(32, 4201, 10401, 10402)
+    $downCount = 0
+    $upCount = 0
+    $flapCount = 0
+    $lastState = $null
+
+    foreach ($entry in $recentLinkEvents) {
+        if ($downIds -contains $entry.Id) {
+            $downCount++
+            $lastState = 'down'
+        } elseif ($upIds -contains $entry.Id) {
+            $upCount++
+            if ($lastState -eq 'down') { $flapCount++ }
+            $lastState = 'up'
+        }
+    }
+
+    $flapSeverity = $null
+    if ($flapCount -ge 10) {
+        $flapSeverity = 'high'
+    } elseif ($flapCount -ge 3) {
+        $flapSeverity = 'medium'
+    }
+
+    $linkSpeedEvidence = $adapterDetailsList | ForEach-Object {
+        [pscustomobject]@{
+            Name                 = $_.Name
+            Status               = $_.Status
+            MediaConnectionState = $_.MediaConnectionState
+            LinkSpeed            = $_.LinkSpeed
+            LinkSpeedMbps        = $_.LinkSpeedMbps
+            CapabilityMbps       = $_.CapabilityMbps
+        }
+    }
+
+    $recentEventSnippets = $recentLinkEvents | Sort-Object -Property Time -Descending | Select-Object -First 5 | ForEach-Object { Get-NetworkLinkEventSnippet $_ }
+
+    $flapEvidence = [ordered]@{
+        LookbackHours = $linkStabilityWindow
+        DownEvents    = $downCount
+        UpEvents      = $upCount
+        LinkFlaps     = $flapCount
+        RecentEvents  = $recentEventSnippets
+        LinkSpeeds    = $linkSpeedEvidence
+    }
+
+    if ($linkEventErrors.Count -gt 0) {
+        $flapEvidence['CollectionErrors'] = $linkEventErrors.ToArray()
+    }
+
+    if ($flapSeverity) {
+        $title = 'Frequent link flaps detected ({0} in last 24h)' -f $flapCount
+        Add-CategoryIssue -CategoryResult $result -Severity $flapSeverity -Title $title -Evidence $flapEvidence -Subcategory 'Link Stability' -CheckId 'Network/LinkStability'
+        Add-CategoryCheck -CategoryResult $result -Name 'Link stability' -Status 'Issue' -Details ('{0} link flap(s) detected in last 24 hours.' -f $flapCount) -CheckId 'Network/LinkStability'
+        $linkFlapIssue = $true
+    } elseif ($recentLinkEvents.Count -gt 0) {
+        Add-CategoryNormal -CategoryResult $result -Title 'Link stable in last 24 hours' -Evidence $flapEvidence -Subcategory 'Link Stability' -CheckId 'Network/LinkStability'
+        Add-CategoryCheck -CategoryResult $result -Name 'Link stability' -Status 'Good' -Details 'No link flaps detected in last 24 hours.' -CheckId 'Network/LinkStability'
+    } elseif ($linkEventRecords.Count -gt 0) {
+        Add-CategoryCheck -CategoryResult $result -Name 'Link stability' -Status 'Good' -Details 'No recent link flaps detected.' -CheckId 'Network/LinkStability'
+    } else {
+        Add-CategoryCheck -CategoryResult $result -Name 'Link stability' -Status 'Unknown' -Details 'No link event data collected.' -CheckId 'Network/LinkStability'
+    }
+
+    $duplexWindowHours = [math]::Min([math]::Max($linkEventLookback, 1), 72)
+    $duplexWindowStart = (Get-Date).AddHours(-$duplexWindowHours)
+    $duplexRecords = $linkEventRecords | Where-Object { $_.Time -and $_.Time -ge $duplexWindowStart } | Sort-Object -Property Time
+
+    $duplexObservations = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($entry in $duplexRecords) {
+        $observation = Get-NetworkDuplexObservation $entry
+        if ($observation) {
+            $duplexObservations.Add($observation) | Out-Null
+        }
+    }
+
+    $vendorWarnings = ($duplexObservations | Where-Object { $_.Warning }).Count
+
+    $fullSpeeds = @{}
+    $halfSpeeds = @{}
+    foreach ($obs in $duplexObservations) {
+        if (-not $obs) { continue }
+        if ($obs.Duplex -eq 'Full' -and $null -ne $obs.SpeedMbps) {
+            $key = [math]::Round([double]$obs.SpeedMbps, 2)
+            $fullSpeeds[$key] = $true
+        } elseif ($obs.Duplex -eq 'Half' -and $null -ne $obs.SpeedMbps) {
+            $key = [math]::Round([double]$obs.SpeedMbps, 2)
+            $halfSpeeds[$key] = $true
+        }
+    }
+
+    $alternatingDetected = $false
+    foreach ($key in $halfSpeeds.Keys) {
+        if ($fullSpeeds.ContainsKey($key) -and $key -le 100.5) {
+            $alternatingDetected = $true
+            break
+        }
+    }
+
+    $duplexSeverity = $null
+    if ($vendorWarnings -gt 0 -or $alternatingDetected) {
+        $duplexSeverity = 'high'
+    }
+
+    $duplexEvidence = [ordered]@{
+        LookbackHours   = $duplexWindowHours
+        ObservationCount = $duplexObservations.Count
+        VendorWarnings  = $vendorWarnings
+        AlternatingHalfFull = $alternatingDetected
+        RecentEvents    = ($duplexRecords | Sort-Object -Property Time -Descending | Select-Object -First 5 | ForEach-Object { Get-NetworkLinkEventSnippet $_ })
+        LinkSpeeds      = $linkSpeedEvidence
+    }
+
+    if ($duplexSeverity) {
+        Add-CategoryIssue -CategoryResult $result -Severity $duplexSeverity -Title 'Duplex mismatch indications detected' -Evidence $duplexEvidence -Subcategory 'Duplex Negotiation' -CheckId 'Network/Duplex'
+        Add-CategoryCheck -CategoryResult $result -Name 'Duplex negotiation' -Status 'Issue' -Details 'Event logs indicate duplex mismatch warnings.' -CheckId 'Network/Duplex'
+        $duplexIssue = $true
+    } elseif ($duplexRecords.Count -gt 0) {
+        Add-CategoryNormal -CategoryResult $result -Title 'No duplex mismatch warnings observed' -Evidence $duplexEvidence -Subcategory 'Duplex Negotiation' -CheckId 'Network/Duplex'
+        Add-CategoryCheck -CategoryResult $result -Name 'Duplex negotiation' -Status 'Good' -Details 'No duplex mismatch warnings detected.' -CheckId 'Network/Duplex'
+    } else {
+        Add-CategoryCheck -CategoryResult $result -Name 'Duplex negotiation' -Status 'Unknown' -Details 'No link event data collected for duplex analysis.' -CheckId 'Network/Duplex'
+    }
+
+    $underspeedFindings = New-Object System.Collections.Generic.List[pscustomobject]
+    $underspeedSeverity = $null
+
+    foreach ($detail in $adapterDetailsList) {
+        if (-not $detail.IsWired) { continue }
+        if (-not $detail.IsConnected) { continue }
+
+        $capability = $detail.CapabilityMbps
+        $linkSpeed = $detail.LinkSpeedMbps
+
+        if ($null -eq $capability -or $capability -le 0) { continue }
+        if ($null -eq $linkSpeed -or $linkSpeed -le 0) { continue }
+
+        if ($linkSpeed -ge ($capability * 0.5)) { continue }
+
+        $finding = [ordered]@{
+            Name                 = $detail.Name
+            Description          = $detail.InterfaceDescription
+            LinkSpeed            = $detail.LinkSpeed
+            LinkSpeedMbps        = $detail.LinkSpeedMbps
+            CapabilityMbps       = $detail.CapabilityMbps
+            Status               = $detail.Status
+            MediaConnectionState = $detail.MediaConnectionState
+        }
+
+        $underspeedFindings.Add([pscustomobject]$finding) | Out-Null
+
+        if ($capability -ge 1000 -and $linkSpeed -le 100) {
+            $underspeedSeverity = 'high'
+        } elseif (-not $underspeedSeverity) {
+            $underspeedSeverity = 'medium'
+        }
+    }
+
+    $speedEvidence = [ordered]@{
+        LinkSpeeds        = $linkSpeedEvidence
+        AffectedAdapters  = $underspeedFindings.ToArray()
+    }
+
+    if ($underspeedSeverity) {
+        $title = if ($underspeedFindings.Count -eq 1) { 'Adapter negotiating below expected speed' } else { 'Adapters negotiating below expected speed' }
+        Add-CategoryIssue -CategoryResult $result -Severity $underspeedSeverity -Title $title -Evidence $speedEvidence -Subcategory 'Speed Negotiation' -CheckId 'Network/SpeedNegotiation'
+        Add-CategoryCheck -CategoryResult $result -Name 'Speed negotiation' -Status 'Issue' -Details ('{0} wired adapter(s) below expected speed.' -f $underspeedFindings.Count) -CheckId 'Network/SpeedNegotiation'
+        $speedIssue = $true
+    } elseif (($adapterDetailsList | Where-Object { $_.IsWired -and $_.IsConnected -and $_.CapabilityMbps }).Count -gt 0) {
+        Add-CategoryNormal -CategoryResult $result -Title 'Wired adapter speeds within expected range' -Evidence $speedEvidence -Subcategory 'Speed Negotiation' -CheckId 'Network/SpeedNegotiation'
+        Add-CategoryCheck -CategoryResult $result -Name 'Speed negotiation' -Status 'Good' -Details 'Negotiated speeds align with adapter capabilities.' -CheckId 'Network/SpeedNegotiation'
+    } else {
+        Add-CategoryCheck -CategoryResult $result -Name 'Speed negotiation' -Status 'Unknown' -Details 'No wired adapter capability data collected.' -CheckId 'Network/SpeedNegotiation'
+    }
+
+    if (-not $linkFlapIssue -and -not $duplexIssue -and -not $speedIssue -and ($adapterDetailsList.Count -gt 0 -or $linkEventRecords.Count -gt 0)) {
+        $summaryEvidence = [ordered]@{
+            LinkSpeeds   = $linkSpeedEvidence
+            EventSamples = ($recentLinkEvents | Sort-Object -Property Time -Descending | Select-Object -First 3 | ForEach-Object { Get-NetworkLinkEventSnippet $_ })
+        }
+
+        Add-CategoryNormal -CategoryResult $result -Title 'Stable link, expected speed, no mismatch hints.' -Evidence $summaryEvidence -Subcategory 'Link Stability'
+    }
 
     $profileArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-profiles'
     $connectionProfiles = @()
