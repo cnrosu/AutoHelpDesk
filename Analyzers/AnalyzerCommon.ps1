@@ -40,17 +40,14 @@ function New-AnalyzerContext {
         }
 
         $key = $_.BaseName.ToLowerInvariant()
-        if ($artifactMap.ContainsKey($key)) {
-            $artifactMap[$key] = @($artifactMap[$key]) + ,([pscustomobject]@{
-                    Path = $_.FullName
-                    Data = $data
-                })
-        } else {
-            $artifactMap[$key] = @([pscustomobject]@{
-                    Path = $_.FullName
-                    Data = $data
-                })
+        if (-not $artifactMap.ContainsKey($key)) {
+            $artifactMap[$key] = [System.Collections.Generic.List[object]]::new()
         }
+
+        $null = $artifactMap[$key].Add([pscustomobject]@{
+                Path = $_.FullName
+                Data = $data
+            })
     }
 
     $context = [pscustomobject]@{
