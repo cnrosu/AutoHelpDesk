@@ -94,15 +94,28 @@ function Add-CategoryIssue {
 
         [object]$Evidence = $null,
 
-        [string]$Subcategory = $null
+        [string]$Subcategory = $null,
+
+        [string]$CheckId = $null
     )
 
-    $CategoryResult.Issues.Add([pscustomobject]@{
-            Severity = $Severity
-            Title    = $Title
-            Evidence = $Evidence
-            Subcategory = $Subcategory
-        }) | Out-Null
+    $issue = [ordered]@{
+        Severity = $Severity
+        Title    = $Title
+        Evidence = $Evidence
+    }
+
+    if ($PSBoundParameters.ContainsKey('Subcategory')) {
+        $issue['Subcategory'] = $Subcategory
+    } else {
+        $issue['Subcategory'] = $null
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and $CheckId) {
+        $issue['CheckId'] = $CheckId
+    }
+
+    $CategoryResult.Issues.Add([pscustomobject]$issue) | Out-Null
 }
 
 function Add-CategoryNormal {

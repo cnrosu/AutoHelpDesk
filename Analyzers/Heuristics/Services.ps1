@@ -5,6 +5,80 @@
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
+function Resolve-ServiceCrashServiceName {
+    param(
+        [string]$Message
+    )
+
+    if (-not $Message) { return $null }
+
+    $match = [System.Text.RegularExpressions.Regex]::Match(
+        $Message,
+        'The (?<Service>.+?) service',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+
+    if ($match.Success) {
+        return $match.Groups['Service'].Value.Trim()
+    }
+
+    return $null
+}
+
+function Resolve-FaultingModuleFromMessage {
+    param(
+        [string]$Message
+    )
+
+    if (-not $Message) { return $null }
+
+    $match = [System.Text.RegularExpressions.Regex]::Match(
+        $Message,
+        'Faulting module (?:name|path):\s*(?<Module>[^,\r\n]+)',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+
+    if ($match.Success) {
+        $module = $match.Groups['Module'].Value.Trim()
+        if ($module -match '[\\/]') {
+            try {
+                return [System.IO.Path]::GetFileName($module)
+            } catch {
+                return $module
+            }
+        }
+
+        return $module
+    }
+
+    $fallback = [System.Text.RegularExpressions.Regex]::Match(
+        $Message,
+        'Faulting application name:\s*(?<Module>[^,\r\n]+)',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+
+    if ($fallback.Success) {
+        return $fallback.Groups['Module'].Value.Trim()
+    }
+
+    return $null
+}
+
+function Resolve-DateTimeValue {
+    param(
+        $Value
+    )
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [datetime]) { return $Value }
+
+    try {
+        return [datetime]::Parse($Value.ToString())
+    } catch {
+        return $null
+    }
+}
+
 function Invoke-ServicesHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -65,6 +139,124 @@ function Invoke-ServicesHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Automatic services running'
+            }
+
+            $eventsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
+            if ($eventsArtifact) {
+                $eventsPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $eventsArtifact)
+                if ($eventsPayload) {
+                    $cutoff = (Get-Date).AddHours(-24)
+
+                    $systemEvents = @()
+                    if ($eventsPayload.PSObject.Properties['System']) {
+                        $system = $eventsPayload.System
+                        if ($system -and -not $system.Error) {
+                            if ($system -is [System.Collections.IEnumerable] -and -not ($system -is [string])) {
+                                $systemEvents = @($system)
+                            } elseif ($system) {
+                                $systemEvents = @($system)
+                            }
+                        }
+                    }
+
+                    $appCrashEvents = @()
+                    if ($eventsPayload.PSObject.Properties['Application']) {
+                        $application = $eventsPayload.Application
+                        if ($application -and -not $application.Error) {
+                            $applicationEntries = @()
+                            if ($application -is [System.Collections.IEnumerable] -and -not ($application -is [string])) {
+                                $applicationEntries = @($application)
+                            } elseif ($application) {
+                                $applicationEntries = @($application)
+                            } else {
+                                $applicationEntries = @()
+                            }
+
+                            foreach ($entry in $applicationEntries) {
+                                if (-not $entry) { continue }
+                                if ($entry.Id -ne 1000) { continue }
+                                if ($entry.ProviderName -and $entry.ProviderName -notmatch '^(?i)Application Error$') { continue }
+
+                                $time = Resolve-DateTimeValue $entry.TimeCreated
+                                if ($time -and $time -lt $cutoff) { continue }
+
+                                $message = if ($entry.PSObject.Properties['Message']) { [string]$entry.Message } else { $null }
+                                $module = Resolve-FaultingModuleFromMessage -Message $message
+
+                                $appCrashEvents += [pscustomobject]@{
+                                    Time    = $time
+                                    Message = $message
+                                    Module  = if ($module) { $module } else { $null }
+                                }
+                            }
+                        }
+                    }
+
+                    $serviceCrashMap = @{}
+                    foreach ($entry in $systemEvents) {
+                        if (-not $entry) { continue }
+                        if ($entry.Id -ne 7031 -and $entry.Id -ne 7034) { continue }
+                        if ($entry.ProviderName -and $entry.ProviderName -notmatch '^(?i)Service Control Manager$') { continue }
+
+                        $time = Resolve-DateTimeValue $entry.TimeCreated
+                        if ($time -and $time -lt $cutoff) { continue }
+
+                        $message = if ($entry.PSObject.Properties['Message']) { [string]$entry.Message } else { $null }
+                        $serviceName = Resolve-ServiceCrashServiceName -Message $message
+                        if (-not $serviceName) { continue }
+
+                        if (-not $serviceCrashMap.ContainsKey($serviceName)) {
+                            $serviceCrashMap[$serviceName] = New-Object System.Collections.Generic.List[pscustomobject]
+                        }
+
+                        $serviceCrashMap[$serviceName].Add([pscustomobject]@{
+                                Time    = $time
+                                Message = $message
+                            }) | Out-Null
+                    }
+
+                    if ($serviceCrashMap.Count -gt 0) {
+                        foreach ($key in $serviceCrashMap.Keys) {
+                            $eventsForService = $serviceCrashMap[$key]
+                            if (-not $eventsForService -or $eventsForService.Count -le 0) { continue }
+
+                            $recentEvents = $eventsForService | Where-Object { $_.Time } | Sort-Object -Property Time -Descending
+                            if (-not $recentEvents) { continue }
+
+                            $count = $eventsForService.Count
+                            $latest = $recentEvents | Select-Object -First 1
+
+                            $module = $null
+                            if ($appCrashEvents.Count -gt 0 -and $latest.Time) {
+                                $nearest = $appCrashEvents |
+                                    Sort-Object -Property @{ Expression = { if ($_.Time -and $latest.Time) { [math]::Abs(($_.Time - $latest.Time).TotalMinutes) } else { [double]::PositiveInfinity } } } |
+                                    Select-Object -First 1
+
+                                if ($nearest -and $nearest.Module -and $nearest.Time -and $latest.Time) {
+                                    $difference = [math]::Abs(($nearest.Time - $latest.Time).TotalMinutes)
+                                    if ($difference -le 60) {
+                                        $module = $nearest.Module
+                                    }
+                                }
+                            }
+
+                            if (-not $module) { $module = 'Unknown' }
+
+                            $severity = if ($count -ge 2) { 'high' } else { 'medium' }
+                            $title = if ($count -ge 2) {
+                                "Service {0} crashed {1} times in last 24h" -f $key, $count
+                            } else {
+                                "Service {0} crashed in last 24h" -f $key
+                            }
+
+                            $evidence = "Service: {0}`nCrashes (24h): {1}`nLatest faulting module: {2}" -f $key, $count, $module
+
+                            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Service Crash Loops' -CheckId 'Services/CrashLoop'
+                        }
+                    } else {
+                        Add-CategoryNormal -CategoryResult $result -Title 'No repeated service crashes.' -Subcategory 'Service Crash Loops'
+                    }
+                }
             }
         } elseif ($payload.Services.Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $payload.Services.Error -Subcategory 'Service Inventory'
