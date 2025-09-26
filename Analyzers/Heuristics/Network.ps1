@@ -569,7 +569,7 @@ function Invoke-NetworkHeuristics {
                 if (-not $addresses -or $addresses.Count -eq 0) {
                     if ($isEligible) {
                         if (-not ($missingInterfaces -contains $alias)) { $missingInterfaces += $alias }
-                    } elseif (($interfaceInfo -and $interfaceInfo.IsPseudo) -or (Test-NetworkPseudoInterface -Alias $alias -Description (if ($interfaceInfo) { $interfaceInfo.Description } else { $null }))) {
+                    } elseif (($interfaceInfo -and $interfaceInfo.IsPseudo) -or (Test-NetworkPseudoInterface -Alias $alias -Description $(if ($interfaceInfo) { $interfaceInfo.Description } else { $null }))) {
                         if (-not ($ignoredPseudo -contains $alias)) { $ignoredPseudo += $alias }
                     }
                     continue
