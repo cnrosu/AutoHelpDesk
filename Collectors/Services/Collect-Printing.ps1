@@ -491,7 +491,8 @@ function Get-NetworkTestsForPrinters {
 
         $tests = [System.Collections.Generic.List[object]]::new()
         foreach ($definition in $definitions) {
-            $null = $tests.Add(Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition)
+            $test = Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition
+            $null = $tests.Add($test)
         }
 
         $null = $results.Add([ordered]@{
