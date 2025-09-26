@@ -23,17 +23,17 @@ function Get-DhcpServerAddresses {
 
     if (-not $Value) { return @() }
     $parts = [regex]::Split($Value, '[,;\s]+') | Where-Object { $_ -and $_.Trim() }
-    $results = @()
+    $results = [System.Collections.Generic.List[string]]::new()
     foreach ($part in $parts) {
         $candidate = $part.Trim()
         if ($candidate -match '^\d+\.\d+\.\d+\.\d+$') {
-            $results += $candidate
+            $null = $results.Add($candidate)
         }
     }
-    return $results
+    return $results.ToArray()
 }
 
-$findings = @()
+$findings = [System.Collections.Generic.List[pscustomobject]]::new()
 foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     if (-not $adapter) { continue }
     if (ConvertTo-NullableBool $adapter.DHCPEnabled -ne $true) { continue }
@@ -42,14 +42,14 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     $servers = Get-DhcpServerAddresses -Value $rawServer
     foreach ($server in $servers) {
         if (-not (Test-IsPrivateIPv4 $server)) {
-            $findings += New-DhcpFinding -Check 'Unexpected DHCP servers' -Severity 'medium' -Message "Adapter $(Get-AdapterIdentity $adapter) reports DHCP server $server outside private ranges." -Evidence ([ordered]@{
-                Adapter    = Get-AdapterIdentity $adapter
-                DhcpServer = $server
-                RawValue   = $rawServer
-                IPAddress  = Format-StringList (Get-AdapterIpv4Addresses $adapter)
-            })
+            $null = $findings.Add(New-DhcpFinding -Check 'Unexpected DHCP servers' -Severity 'medium' -Message "Adapter $(Get-AdapterIdentity $adapter) reports DHCP server $server outside private ranges." -Evidence ([ordered]@{
+                    Adapter    = Get-AdapterIdentity $adapter
+                    DhcpServer = $server
+                    RawValue   = $rawServer
+                    IPAddress  = Format-StringList (Get-AdapterIpv4Addresses $adapter)
+                }))
         }
     }
 }
 
-return $findings
+return $findings.ToArray()
