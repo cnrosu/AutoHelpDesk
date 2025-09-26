@@ -18,6 +18,73 @@ function ConvertTo-StorageArray {
     return @($Value)
 }
 
+function Get-ReliabilityNumericValue {
+    param(
+        $Counter,
+        [string[]]$PropertyNames
+    )
+
+    if (-not $Counter) { return $null }
+    foreach ($name in $PropertyNames) {
+        if (-not $Counter.PSObject.Properties[$name]) { continue }
+        $value = ConvertTo-NullableDouble $Counter.$name
+        if ($null -ne $value) {
+            return [pscustomobject]@{
+                Name  = $name
+                Value = $value
+            }
+        }
+    }
+
+    return $null
+}
+
+function Get-ReliabilityNumericMatches {
+    param(
+        $Counter,
+        [string]$Pattern
+    )
+
+    $results = @()
+    if (-not $Counter -or [string]::IsNullOrWhiteSpace($Pattern)) { return $results }
+
+    foreach ($prop in $Counter.PSObject.Properties) {
+        if (-not ($prop.Name -match $Pattern)) { continue }
+        $value = ConvertTo-NullableDouble $prop.Value
+        if ($null -eq $value) { continue }
+        $results += [pscustomobject]@{
+            Name  = $prop.Name
+            Value = $value
+        }
+    }
+
+    return $results
+}
+
+function Format-ReliabilityValue {
+    param(
+        [string]$Name,
+        [double]$Value
+    )
+
+    $rounded = $Value
+    if ([math]::Abs($Value - [math]::Round($Value)) -lt 0.001) {
+        $rounded = [math]::Round($Value)
+    } else {
+        $rounded = [math]::Round($Value, 2)
+    }
+
+    if ($Name -match '(?i)temp') {
+        return "{0}={1}°C" -f $Name, $rounded
+    }
+
+    if ($Name -match '(?i)wear|percent') {
+        return "{0}={1}%" -f $Name, [math]::Round($Value, 1)
+    }
+
+    return "{0}={1}" -f $Name, $rounded
+}
+
 function Get-VolumeThreshold {
     param(
         [Parameter(Mandatory)]$Volume,
@@ -186,6 +253,110 @@ function Invoke-StorageHeuristics {
                 } elseif (($systemDisks | Where-Object { $_.WriteCacheEnabled -eq $null }).Count -eq 0 -and ($systemDisks | Where-Object { $_.WriteCacheEnabled -eq $true }).Count -gt 0) {
                     Add-CategoryNormal -CategoryResult $result -Title 'Write cache enabled on system disks' -Subcategory 'Disk Configuration'
                 }
+            }
+        }
+
+        if ($payload -and $payload.PSObject.Properties['ReliabilityCounters']) {
+            $reliabilityPayload = $payload.ReliabilityCounters
+            $reliabilityEntries = ConvertTo-StorageArray $reliabilityPayload
+
+            $reliabilityErrors = @()
+            $reliabilityData = @()
+            foreach ($entry in $reliabilityEntries) {
+                if (-not $entry) { continue }
+                if ($entry.PSObject.Properties['Counters'] -and $entry.Counters) {
+                    $reliabilityData += $entry
+                } elseif ($entry.PSObject.Properties['Error']) {
+                    $errorLabel = if ($entry.PSObject.Properties['FriendlyName'] -and $entry.FriendlyName) {
+                        "{0}: {1}" -f $entry.FriendlyName, $entry.Error
+                    } elseif ($entry.PSObject.Properties['DeviceId'] -and ($null -ne $entry.DeviceId)) {
+                        "DeviceId {0}: {1}" -f $entry.DeviceId, $entry.Error
+                    } else {
+                        [string]$entry.Error
+                    }
+                    if ($errorLabel) { $reliabilityErrors += $errorLabel }
+                }
+            }
+
+            foreach ($entry in $reliabilityData) {
+                $counter = $entry.Counters
+                if (-not $counter) { continue }
+                if ($counter -is [System.Collections.IEnumerable] -and -not ($counter -is [string]) -and -not ($counter -is [hashtable])) {
+                    $counter = $counter | Select-Object -First 1
+                }
+                if (-not $counter) { continue }
+
+                $diskLabel = if ($entry.PSObject.Properties['FriendlyName'] -and $entry.FriendlyName) {
+                    [string]$entry.FriendlyName
+                } elseif ($entry.PSObject.Properties['DeviceId'] -and ($null -ne $entry.DeviceId)) {
+                    "Disk {0}" -f $entry.DeviceId
+                } elseif ($entry.PSObject.Properties['SerialNumber'] -and $entry.SerialNumber) {
+                    "Disk {0}" -f $entry.SerialNumber
+                } else {
+                    'Disk'
+                }
+
+                $wearInfo = Get-ReliabilityNumericValue -Counter $counter -PropertyNames @('PercentUsed','Wear','WearPercentage','WearPercent','PercentageUsed')
+                $reallocationValues = Get-ReliabilityNumericMatches -Counter $counter -Pattern '(?i)realloc'
+                $pendingValues = Get-ReliabilityNumericMatches -Counter $counter -Pattern '(?i)pending'
+                $readErrorValues = Get-ReliabilityNumericMatches -Counter $counter -Pattern '(?i)read.*error'
+                $writeErrorValues = Get-ReliabilityNumericMatches -Counter $counter -Pattern '(?i)write.*error'
+                $temperatureInfo = Get-ReliabilityNumericValue -Counter $counter -PropertyNames @('Temperature','TemperatureCelsius')
+
+                $identityParts = @()
+                if ($entry.PSObject.Properties['DeviceId'] -and ($null -ne $entry.DeviceId)) { $identityParts += "DeviceId=$($entry.DeviceId)" }
+                if ($entry.PSObject.Properties['SerialNumber'] -and $entry.SerialNumber) { $identityParts += "Serial=$($entry.SerialNumber)" }
+                if ($entry.PSObject.Properties['MediaType'] -and $entry.MediaType) { $identityParts += "MediaType=$($entry.MediaType)" }
+
+                $counterParts = @()
+                if ($wearInfo) { $counterParts += Format-ReliabilityValue -Name $wearInfo.Name -Value $wearInfo.Value }
+                if ($temperatureInfo) { $counterParts += Format-ReliabilityValue -Name $temperatureInfo.Name -Value $temperatureInfo.Value }
+                foreach ($item in ($reallocationValues + $pendingValues + $readErrorValues + $writeErrorValues)) {
+                    if (-not $item) { continue }
+                    $counterParts += Format-ReliabilityValue -Name $item.Name -Value $item.Value
+                }
+
+                $evidenceParts = @()
+                $evidenceParts += $diskLabel
+                if ($identityParts.Count -gt 0) { $evidenceParts += ($identityParts -join ', ') }
+                if ($counterParts.Count -gt 0) { $evidenceParts += ($counterParts -join ', ') }
+                $evidence = $evidenceParts -join ' | '
+
+                $hasReallocationIssues = ($reallocationValues | Where-Object { $_.Value -gt 0 }).Count -gt 0
+                $hasPendingIssues = ($pendingValues | Where-Object { $_.Value -gt 0 }).Count -gt 0
+                $handled = $false
+
+                if ($hasReallocationIssues -or $hasPendingIssues) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("{0} reporting reallocated or pending sectors" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
+                    $handled = $true
+                    continue
+                }
+
+                if ($wearInfo -and $wearInfo.Value -ge 95) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("{0} wear critically high" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
+                    $handled = $true
+                } elseif ($wearInfo -and $wearInfo.Value -ge 80) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} wear approaching threshold" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
+                    $handled = $true
+                } elseif ($wearInfo) {
+                    Add-CategoryNormal -CategoryResult $result -Title ("{0} wear within acceptable range" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
+                    $handled = $true
+                }
+
+                if (-not $handled -and $counterParts.Count -gt 0) {
+                    Add-CategoryNormal -CategoryResult $result -Title ("{0} reliability counters nominal" -f $diskLabel) -Evidence $evidence -Subcategory 'Disk Health' -CheckId 'Storage/SSDWear'
+                    $handled = $true
+                }
+
+                if (-not $handled -and $counterParts.Count -eq 0) {
+                    Add-CategoryCheck -CategoryResult $result -Name ("{0} reliability counters" -f $diskLabel) -Status 'Collected' -Details $evidence -CheckId 'Storage/SSDWear'
+                }
+            }
+
+            if ($reliabilityErrors.Count -gt 0 -and ($reliabilityData.Count -eq 0)) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to collect storage reliability counters' -Evidence ($reliabilityErrors -join "`n") -Subcategory 'Collection' -CheckId 'Storage/SSDWear'
+            } elseif ($reliabilityErrors.Count -gt 0) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Partial storage reliability counter collection failures' -Evidence ($reliabilityErrors -join "`n") -Subcategory 'Collection' -CheckId 'Storage/SSDWear'
             }
         }
 
