@@ -22,6 +22,44 @@ function Test-NetworkLoopback {
     return ($Address -match '^127\.')
 }
 
+function Test-NetworkValidIpv4Address {
+    param([string]$Address)
+
+    if (-not $Address) { return $false }
+
+    $trimmed = $Address.Trim()
+    if (-not $trimmed) { return $false }
+
+    $clean = $trimmed -replace '/\d+$',''
+    $clean = $clean -replace '%.*$',''
+
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse($clean, [ref]$parsed)) { return $false }
+    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) { return $false }
+    if ($clean -match '^(0\.0\.0\.0|169\.254\.)') { return $false }
+
+    return $true
+}
+
+function Test-NetworkValidIpv6Address {
+    param([string]$Address)
+
+    if (-not $Address) { return $false }
+
+    $trimmed = $Address.Trim()
+    if (-not $trimmed) { return $false }
+
+    $clean = $trimmed -replace '/\d+$',''
+    $clean = $clean -replace '%.*$',''
+
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse($clean, [ref]$parsed)) { return $false }
+    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetworkV6) { return $false }
+    if ($clean -match '^(?i)(::1|::|fe80:)') { return $false }
+
+    return $true
+}
+
 function ConvertTo-NetworkArray {
     param($Value)
 
@@ -33,6 +71,234 @@ function ConvertTo-NetworkArray {
         return $items
     }
     return @($Value)
+}
+
+function Get-NetworkValueText {
+    param($Value)
+
+    if ($null -eq $Value) { return @() }
+
+    if ($Value -is [string]) {
+        $trimmed = $Value.Trim()
+        if ($trimmed) { return @($trimmed) }
+        return @()
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $results = @()
+        foreach ($item in $Value) { $results += Get-NetworkValueText $item }
+        return $results
+    }
+
+    if ($Value -is [hashtable]) {
+        $results = @()
+        foreach ($item in $Value.Values) { $results += Get-NetworkValueText $item }
+        return $results
+    }
+
+    if ($Value.PSObject) {
+        $results = @()
+        foreach ($name in @('IPAddress','IPv4Address','IPv6Address','Address','NextHop','Value')) {
+            if ($Value.PSObject.Properties[$name]) {
+                $results += Get-NetworkValueText ($Value.$name)
+            }
+        }
+
+        if ($results.Count -gt 0) { return $results }
+    }
+
+    $text = [string]$Value
+    if ($text) {
+        $trimmed = $text.Trim()
+        if ($trimmed) { return @($trimmed) }
+    }
+
+    return @()
+}
+
+function Test-NetworkPseudoInterface {
+    param(
+        [string]$Alias,
+        [string]$Description
+    )
+
+    $candidates = @()
+    if ($Alias) { $candidates += $Alias }
+    if ($Description) { $candidates += $Description }
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+
+        try {
+            $normalized = $candidate.ToLowerInvariant()
+        } catch {
+            $normalized = [string]$candidate
+            if ($normalized) { $normalized = $normalized.ToLowerInvariant() }
+        }
+
+        if (-not $normalized) { continue }
+
+        $patterns = @(
+            'loopback',
+            'pseudo-interface',
+            'local area connection\*',
+            'isatap',
+            'teredo',
+            '6to4',
+            'tunnel',
+            'vethernet',
+            'hyper-v',
+            'wan miniport',
+            'npcap',
+            'wireshark',
+            '\bwfp\b',
+            'wireguard',
+            'tailscale',
+            'openvpn',
+            'zerotier',
+            'expressvpn',
+            'protonvpn',
+            'cloudflare warp',
+            'docker',
+            'container',
+            'virtualbox',
+            'vmware',
+            'tap-',
+            'l2tp',
+            'pppoe',
+            'teamviewer'
+        )
+
+        foreach ($pattern in $patterns) {
+            if ($normalized -match $pattern) { return $true }
+        }
+    }
+
+    return $false
+}
+
+function Get-NetworkDnsInterfaceInventory {
+    param($AdapterPayload)
+
+    $map = @{}
+
+    $statusMap = @{}
+    $descriptionMap = @{}
+    $aliasMap = @{}
+
+    if ($AdapterPayload -and $AdapterPayload.Adapters -and -not $AdapterPayload.Adapters.Error) {
+        $adapterEntries = ConvertTo-NetworkArray $AdapterPayload.Adapters
+        foreach ($adapter in $adapterEntries) {
+            if (-not $adapter) { continue }
+            $name = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
+            if (-not $name) { continue }
+
+            $key = $name.ToLowerInvariant()
+            $status = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
+            $statusMap[$key] = $status
+            $aliasMap[$key] = $name
+
+            if ($adapter.PSObject.Properties['InterfaceDescription']) {
+                $descriptionMap[$key] = [string]$adapter.InterfaceDescription
+            }
+        }
+    }
+
+    if ($AdapterPayload -and $AdapterPayload.IPConfig -and -not $AdapterPayload.IPConfig.Error) {
+        $configEntries = ConvertTo-NetworkArray $AdapterPayload.IPConfig
+        foreach ($entry in $configEntries) {
+            if (-not $entry) { continue }
+            $alias = if ($entry.PSObject.Properties['InterfaceAlias']) { [string]$entry.InterfaceAlias } else { $null }
+            if (-not $alias) { continue }
+
+            $key = $alias.ToLowerInvariant()
+            if (-not $map.ContainsKey($key)) {
+                $map[$key] = [ordered]@{
+                    Alias       = $alias
+                    Description = if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $null }
+                    Status      = $null
+                    IPv4        = @()
+                    IPv6        = @()
+                    Gateways    = @()
+                }
+            }
+
+            $info = $map[$key]
+
+            if (-not $info.Description -and $entry.PSObject.Properties['InterfaceDescription']) {
+                $info.Description = [string]$entry.InterfaceDescription
+            }
+
+            if ($entry.PSObject.Properties['IPv4Address']) {
+                foreach ($value in Get-NetworkValueText $entry.IPv4Address) {
+                    if (-not ($info.IPv4 -contains $value)) { $info.IPv4 += $value }
+                }
+            }
+
+            if ($entry.PSObject.Properties['IPv6Address']) {
+                foreach ($value in Get-NetworkValueText $entry.IPv6Address) {
+                    if (-not ($info.IPv6 -contains $value)) { $info.IPv6 += $value }
+                }
+            }
+
+            if ($entry.PSObject.Properties['IPv4DefaultGateway']) {
+                foreach ($value in Get-NetworkValueText $entry.IPv4DefaultGateway) {
+                    if (-not ($info.Gateways -contains $value)) { $info.Gateways += $value }
+                }
+            }
+        }
+    }
+
+    foreach ($key in $statusMap.Keys) {
+        if (-not $map.ContainsKey($key)) {
+            $alias = if ($aliasMap.ContainsKey($key)) { $aliasMap[$key] } else { $key }
+            $map[$key] = [ordered]@{
+                Alias       = $alias
+                Description = if ($descriptionMap.ContainsKey($key)) { $descriptionMap[$key] } else { $null }
+                Status      = $null
+                IPv4        = @()
+                IPv6        = @()
+                Gateways    = @()
+            }
+        }
+
+        $info = $map[$key]
+        $info.Status = $statusMap[$key]
+        if (-not $info.Description -and $descriptionMap.ContainsKey($key)) {
+            $info.Description = $descriptionMap[$key]
+        }
+    }
+
+    $eligible = New-Object System.Collections.Generic.List[string]
+    $fallbackEligible = New-Object System.Collections.Generic.List[string]
+
+    foreach ($key in $map.Keys) {
+        $info = $map[$key]
+        $statusText = if ($info.Status) { [string]$info.Status } else { '' }
+        $normalizedStatus = if ($statusText) { $statusText.ToLowerInvariant() } else { '' }
+        $isUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
+
+        $hasIpv4 = ($info.IPv4 | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+        $hasIpv6 = ($info.IPv6 | Where-Object { Test-NetworkValidIpv6Address $_ }).Count -gt 0
+        $hasGateway = ($info.Gateways | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+        $isPseudo = Test-NetworkPseudoInterface -Alias $info.Alias -Description $info.Description
+
+        $info.IsUp = $isUp
+        $info.HasValidAddress = ($hasIpv4 -or $hasIpv6)
+        $info.HasGateway = $hasGateway
+        $info.IsPseudo = $isPseudo
+        $info.IsEligible = ($isUp -and ($hasIpv4 -or $hasIpv6) -and $hasGateway -and -not $isPseudo)
+        $info.IsFallbackEligible = ($isUp -and ($hasIpv4 -or $hasIpv6) -and -not $isPseudo)
+
+        if ($info.IsEligible) { $eligible.Add($info.Alias) | Out-Null }
+        if ($info.IsFallbackEligible) { $fallbackEligible.Add($info.Alias) | Out-Null }
+    }
+
+    return [pscustomobject]@{
+        Map                     = $map
+        EligibleAliases         = $eligible.ToArray()
+        FallbackEligibleAliases = $fallbackEligible.ToArray()
+    }
 }
 
 function ConvertTo-NetworkAddressString {
@@ -194,6 +460,14 @@ function Invoke-NetworkHeuristics {
         }
     }
 
+    $adapterPayload = $null
+    $adapterInventory = $null
+    $adapterArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-adapters'
+    if ($adapterArtifact) {
+        $adapterPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $adapterArtifact)
+    }
+    $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
+
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
@@ -257,6 +531,12 @@ function Invoke-NetworkHeuristics {
             $publicServers = New-Object System.Collections.Generic.List[string]
             $loopbackOnly = $true
             $missingInterfaces = @()
+            $ignoredPseudo = @()
+
+            $interfaceMap = if ($adapterInventory -and $adapterInventory.Map) { $adapterInventory.Map } else { @{} }
+            $eligibleAliases = if ($adapterInventory -and $adapterInventory.EligibleAliases) { $adapterInventory.EligibleAliases } else { @() }
+            $fallbackEligibleAliases = if ($adapterInventory -and $adapterInventory.FallbackEligibleAliases) { $adapterInventory.FallbackEligibleAliases } else { @() }
+            $useFallbackEligibility = ($eligibleAliases.Count -eq 0 -and $fallbackEligibleAliases.Count -gt 0)
 
             foreach ($entry in $entries) {
                 if ($entry -and $entry.Error) {
@@ -266,8 +546,32 @@ function Invoke-NetworkHeuristics {
 
                 $alias = if ($entry.InterfaceAlias) { [string]$entry.InterfaceAlias } else { 'Interface' }
                 $addresses = ConvertTo-NetworkArray $entry.ServerAddresses | Where-Object { $_ }
+                $aliasKey = $null
+                if ($alias) {
+                    try { $aliasKey = $alias.ToLowerInvariant() } catch { $aliasKey = $alias }
+                }
+                $interfaceInfo = $null
+                if ($aliasKey -and $interfaceMap.ContainsKey($aliasKey)) {
+                    $interfaceInfo = $interfaceMap[$aliasKey]
+                }
+
+                $isEligible = $true
+                if ($interfaceInfo) {
+                    if ($useFallbackEligibility) {
+                        $isEligible = $interfaceInfo.IsFallbackEligible
+                    } else {
+                        $isEligible = $interfaceInfo.IsEligible
+                    }
+                } else {
+                    $isEligible = -not (Test-NetworkPseudoInterface -Alias $alias)
+                }
+
                 if (-not $addresses -or $addresses.Count -eq 0) {
-                    $missingInterfaces += $alias
+                    if ($isEligible) {
+                        if (-not ($missingInterfaces -contains $alias)) { $missingInterfaces += $alias }
+                    } elseif (($interfaceInfo -and $interfaceInfo.IsPseudo) -or (Test-NetworkPseudoInterface -Alias $alias -Description (if ($interfaceInfo) { $interfaceInfo.Description } else { $null }))) {
+                        if (-not ($ignoredPseudo -contains $alias)) { $ignoredPseudo += $alias }
+                    }
                     continue
                 }
 
@@ -285,6 +589,11 @@ function Invoke-NetworkHeuristics {
 
             if ($missingInterfaces.Count -gt 0) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Adapters missing DNS servers: {0}' -f ($missingInterfaces -join ', ')) -Subcategory 'DNS Client'
+            }
+
+            if ($ignoredPseudo.Count -gt 0) {
+                $pseudoTitle = "Ignored {0} pseudo/virtual adapters (loopback/ICS/Hyper-V) without DNS — not used for normal name resolution." -f $ignoredPseudo.Count
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $pseudoTitle -Evidence ($ignoredPseudo -join ', ') -Subcategory 'DNS Client'
             }
 
             if ($publicServers.Count -gt 0) {
@@ -384,16 +693,12 @@ function Invoke-NetworkHeuristics {
         }
     }
 
-    $adapterArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-adapters'
-    if ($adapterArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $adapterArtifact)
-        if ($payload -and $payload.Adapters -and -not $payload.Adapters.Error) {
-            $upAdapters = $payload.Adapters | Where-Object { $_.Status -eq 'Up' }
-            if ($upAdapters.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters | Select-Object -ExpandProperty Name -join ', '))
-            } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported' -Subcategory 'Network Adapters'
-            }
+    if ($adapterPayload -and $adapterPayload.Adapters -and -not $adapterPayload.Adapters.Error) {
+        $upAdapters = $adapterPayload.Adapters | Where-Object { $_.Status -eq 'Up' }
+        if ($upAdapters.Count -gt 0) {
+            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters | Select-Object -ExpandProperty Name -join ', '))
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported' -Subcategory 'Network Adapters'
         }
     }
 
