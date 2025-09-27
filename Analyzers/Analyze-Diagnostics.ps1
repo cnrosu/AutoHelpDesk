@@ -60,12 +60,11 @@ if (-not (Test-Path -Path $directory)) {
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$autoL1Path = Join-Path -Path $repoRoot -ChildPath 'AutoL1'
 
 $cssSources = @(
     Join-Path -Path $repoRoot -ChildPath 'styles/base.css'
     Join-Path -Path $repoRoot -ChildPath 'styles/layout.css'
-    Join-Path -Path $autoL1Path -ChildPath 'styles/device-health-report.css'
+    Join-Path -Path $repoRoot -ChildPath 'Scripts/styles/device-health-report.css'
 )
 
 $resolvedCss = @()
