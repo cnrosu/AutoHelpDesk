@@ -36,7 +36,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Purpose**: Load collector artifacts, run modular heuristics, and build the Device Health HTML report.
 - **Operation**:
   - Imports `AnalyzerCommon.ps1`, loads every JSON payload, and invokes category-specific heuristic modules.
-  - Calculates scores, merges issues/normals/checks, and renders HTML via `HtmlComposer.ps1`.
+  - Calculates scores, merges issues/normals/checks, and renders HTML via `Reporting/HtmlComposer.ps1`.
 - **Inputs**:
   - `-InputFolder` (required): path to the collector output folder created by `Collect-All.ps1`.
   - `-OutputPath` (optional): override the default `diagnostics-report.html` destination.
@@ -52,7 +52,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
   - **Storage & Events**: Highlight low disk space and noisy event logs.
 
 ## Styling conventions
-- Global foundations live in `styles/base.css` (design tokens/resets) and `styles/layout.css` (reusable layout helpers).
+- Global foundations live in `Reporting/styles/base.css` (design tokens/resets) and `Reporting/styles/layout.css` (reusable layout helpers).
 - Report-specific presentation lives beside each script inside `AutoL1/styles/` (e.g., `device-health-report.css`, `system-diagnostics-report.css`).
 - Use simple, BEM-like class names (e.g., `.report-card`, `.report-card--critical`) and keep selectors low in specificity.
 - When editing CSS, order declarations per block as **layout → typography → color → state** to keep files scannable.
@@ -82,7 +82,7 @@ The snippet above assumes you start in the repository root. Adjust the path in `
 - **Analyzers**:
   - Extend or create heuristic modules under `/Analyzers/Heuristics/` to parse new payloads.
   - Update `Analyzers/Analyze-Diagnostics.ps1` to import the module when adding a new category.
-  - Customize `HtmlComposer.ps1` for new presentation needs.
+  - Customize `Reporting/HtmlComposer.ps1` for new presentation needs.
 - **Scoring & Heuristics**: Tweak severity weights or add category-specific scoring inside the heuristic modules.
 
 ## Assumptions & Limitations
@@ -96,5 +96,5 @@ The snippet above assumes you start in the repository root. Adjust the path in `
 
 ## Safe Modification Points
 - Collector scripts and shared helpers under `/Collectors`.
-- Analyzer heuristic modules, HTML composer, and severity logic under `/Analyzers`.
+- Analyzer heuristic modules and severity logic under `/Analyzers`, with the HTML composer living in `/Reporting`.
 - Device-Report defaults (e.g., `-OutRoot`) and collection/orchestration logic.

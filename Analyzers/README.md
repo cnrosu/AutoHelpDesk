@@ -62,13 +62,13 @@ Refer to the repository root `README.md` for a full catalogue of heuristic behav
 
 ## HTML composition
 
-`HtmlComposer.ps1` accepts the category results and renders:
+`Reporting/HtmlComposer.ps1` accepts the category results and renders:
 
 - A summary tile with score and high-level counts.
 - Detailed tables of issues, normal findings, and health checks.
 - Embedded evidence snippets sourced from the payloads.
 
-Customize the markup or styling by editing `HtmlComposer.ps1` and the CSS files under `/AutoL1/styles/`.
+Customize the markup or styling by editing `Reporting/HtmlComposer.ps1`, `/Reporting/styles/`, and the scenario-specific CSS under `/AutoL1/styles/`.
 
 ## Extending analyzers
 

@@ -5661,8 +5661,8 @@ $reportPath = Join-Path $InputFolder $reportName
 # CSS assets
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $cssSources = @(
-  Join-Path $repoRoot 'styles/base.css'
-  Join-Path $repoRoot 'styles/layout.css'
+  Join-Path $repoRoot 'Reporting/styles/base.css'
+  Join-Path $repoRoot 'Reporting/styles/layout.css'
   Join-Path $PSScriptRoot 'styles/device-health-report.css'
 )
 

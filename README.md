@@ -4,6 +4,7 @@ AutoHelpDesk is a modular PowerShell toolkit that collects Windows device teleme
 
 - **Collectors** – lightweight scripts that gather raw data and emit structured JSON with timestamps and payload metadata.
 - **Analyzers** – parsing and rules engines that load the JSON artifacts, evaluate health heuristics, and generate HTML summaries.
+- **Reporting** – HTML composition scripts and shared CSS that shape the diagnostics report experience.
 - **Reports** – HTML and CSS assets that surface the analyzer results for technicians and customers.
 
 This README documents how the system fits together and enumerates the available heuristics so you can understand what the analyzer looks for out of the box.
@@ -37,7 +38,7 @@ The toolkit is designed to run entirely from PowerShell—no installers required
    ```powershell
    pwsh -File .\Analyzers\Analyze-Diagnostics.ps1 -InputFolder .\artifacts -OutputPath .\artifacts\diagnostics-report.html
    ```
-   The analyzer loads every JSON file under `artifacts`, runs the heuristic catalog, and emits an HTML report. Supporting CSS files are merged into `artifacts\styles\device-health-report.css` alongside the HTML.
+   The analyzer loads every JSON file under `artifacts`, runs the heuristic catalog, and emits an HTML report. Supporting CSS files are merged into `artifacts\styles\device-health-report.css` alongside the HTML, pulling shared assets from `Reporting/styles`.
 
 You can re-run the analyzer against existing collections—only the `-InputFolder` is required if you are happy with the default output path.
 
@@ -50,11 +51,11 @@ Prefer a guided workflow? `AutoL1/Device-Report.ps1` wraps the two commands abov
 | Path | Description |
 | --- | --- |
 | `/Collectors` | Stand-alone data gathering scripts grouped by domain (Network, Security, System, etc.). Each script exports a JSON file to its domain subfolder. |
-| `/Analyzers` | Shared analyzer helpers, heuristic modules, and the orchestrator that renders HTML plus merged CSS assets. |
+| `/Analyzers` | Shared analyzer helpers, heuristic modules, and the orchestrator that renders HTML with merged CSS assets. |
 | `/AutoL1` | Turn-key “Device Health Diagnostics Toolkit” that wraps the collectors and analyzers for L1 support workflows. |
 | `/Reports` | Static HTML/CSS prototypes and assets for presenting analyzer output. |
+| `/Reporting` | HTML composition pipeline (`HtmlComposer.ps1`) and shared CSS consumed by analyzer-generated reports. |
 | `/Modules` | Cross-cutting PowerShell modules that can be imported by collectors, analyzers, or orchestration scripts. |
-| `/styles` | Base CSS and layout primitives merged into the Device Health report output. |
 
 ## Troubleshooting PowerShell warnings
 
@@ -93,7 +94,7 @@ All collector scripts use `CollectorCommon.ps1` helpers to enforce a consistent 
 
 `Analyze-Diagnostics.ps1` looks for `*.json` files beneath an input folder. Artifact names are matched by base filename (e.g., `network.json`, `defender.json`) and normalized to lowercase keys. Analyzer modules retrieve payloads with `Get-AnalyzerArtifact` and `Get-ArtifactPayload`, so keeping filenames descriptive and unique is crucial when adding new collectors.
 
-HTML is produced by `HtmlComposer.ps1`, which receives category results from each heuristic module. The analyzer also returns flattened issue, normal, and check collections for programmatic consumption.
+HTML is produced by `Reporting/HtmlComposer.ps1`, which receives category results from each heuristic module. The analyzer also returns flattened issue, normal, and check collections for programmatic consumption.
 
 ## Heuristic catalogue
 

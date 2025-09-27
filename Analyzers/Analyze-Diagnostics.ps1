@@ -17,7 +17,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$commonModulePath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Modules/Common.psm1'
+$repoRoot = Split-Path -Path $PSScriptRoot -Parent
+$commonModulePath = Join-Path -Path $repoRoot -ChildPath 'Modules/Common.psm1'
 if (Test-Path -Path $commonModulePath) {
     Import-Module $commonModulePath -Force
 }
@@ -35,7 +36,8 @@ if (Test-Path -Path $heuristicsPath) {
     }
 }
 . (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
-. (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
+$reportingPath = Join-Path -Path $repoRoot -ChildPath 'Reporting'
+. (Join-Path -Path $reportingPath -ChildPath 'HtmlComposer.ps1')
 
 $context = New-AnalyzerContext -InputFolder $InputFolder
 
@@ -64,12 +66,13 @@ if (-not (Test-Path -Path $directory)) {
     $null = New-Item -Path $directory -ItemType Directory -Force
 }
 
-$repoRoot = Split-Path $PSScriptRoot -Parent
 $autoL1Path = Join-Path -Path $repoRoot -ChildPath 'AutoL1'
 
+$reportingStylesPath = Join-Path -Path $reportingPath -ChildPath 'styles'
+
 $cssSources = @(
-    Join-Path -Path $repoRoot -ChildPath 'styles/base.css'
-    Join-Path -Path $repoRoot -ChildPath 'styles/layout.css'
+    Join-Path -Path $reportingStylesPath -ChildPath 'base.css'
+    Join-Path -Path $reportingStylesPath -ChildPath 'layout.css'
     Join-Path -Path $autoL1Path -ChildPath 'styles/device-health-report.css'
 )
 
