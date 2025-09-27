@@ -33,7 +33,7 @@ if ($exhaustionEvents) {
     }
 }
 
-$apipaAdapters = @()
+$apipaAdapters = [System.Collections.Generic.List[object]]::new()
 foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     if (-not $adapter) { continue }
     $addresses = Get-AdapterIpv4Addresses $adapter
@@ -42,11 +42,11 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     $gateway = ''
     $gws = Ensure-Array $adapter.DefaultIPGateway | Where-Object { $_ -and $_.Trim() }
     if ($gws) { $gateway = $gws[0].Trim() } else { $gateway = '<none>' }
-    $apipaAdapters += [pscustomobject]@{
-        Adapter = Get-AdapterIdentity $adapter
-        Gateway = $gateway
-        Address = $apipa[0]
-    }
+    $null = $apipaAdapters.Add([pscustomobject]@{
+            Adapter = Get-AdapterIdentity $adapter
+            Gateway = $gateway
+            Address = $apipa[0]
+        })
 }
 
 $apipaGroups = @()
@@ -58,25 +58,25 @@ if (-not $eventEvidence -and -not $apipaGroups) {
     return @()
 }
 
-$messageParts = @()
-if ($eventEvidence) { $messageParts += "detected $($eventEvidence.Count) DHCP scope exhaustion warnings (event ID 1046)" }
+$messageParts = [System.Collections.Generic.List[string]]::new()
+if ($eventEvidence) { $null = $messageParts.Add("detected $($eventEvidence.Count) DHCP scope exhaustion warnings (event ID 1046)") }
 if ($apipaGroups) {
     $affected = ($apipaGroups | ForEach-Object { $_.Count }) -join ', '
-    $messageParts += "found multiple adapters reverting to APIPA under gateway groupings ($affected)"
+    $null = $messageParts.Add("found multiple adapters reverting to APIPA under gateway groupings ($affected)")
 }
 
-$message = "Indicators of DHCP scope depletion: " + ($messageParts -join '; ') + '.'
+$message = "Indicators of DHCP scope depletion: " + ($messageParts.ToArray() -join '; ') + '.'
 
 $evidence = [ordered]@{}
 if ($eventEvidence) { $evidence['Events'] = $eventEvidence }
 if ($apipaGroups) {
-    $adapterEvidence = @()
+    $adapterEvidence = [System.Collections.Generic.List[object]]::new()
     foreach ($group in $apipaGroups) {
-        $adapterEvidence += [pscustomobject]@{
-            Gateway  = $group.Name
-            Adapters = ($group.Group | ForEach-Object { $_.Adapter })
-            Addresses = ($group.Group | ForEach-Object { $_.Address })
-        }
+        $null = $adapterEvidence.Add([pscustomobject]@{
+                Gateway  = $group.Name
+                Adapters = ($group.Group | ForEach-Object { $_.Adapter })
+                Addresses = ($group.Group | ForEach-Object { $_.Address })
+            })
     }
     $evidence['ApipaAdapters'] = $adapterEvidence
 }

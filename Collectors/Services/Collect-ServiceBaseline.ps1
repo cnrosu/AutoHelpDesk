@@ -29,6 +29,52 @@ $ServiceDefinitions = @(
 
 $LegacyServiceNames = @('Dhcp','WlanSvc','LanmanServer','WinDefend')
 
+function Get-AutostartServiceSample {
+    param(
+        [double]$ElapsedSeconds = 0
+    )
+
+    $timestamp = (Get-Date).ToString('o')
+    $roundedElapsed = [math]::Round($ElapsedSeconds, 2)
+
+    try {
+        $services = Get-Service -ErrorAction Stop |
+            Where-Object { $_.StartType -in 'Automatic', 'AutomaticDelayedStart' } |
+            Sort-Object -Property Name |
+            ForEach-Object {
+                $name = ''
+                if ($_.PSObject.Properties['Name']) { $name = [string]$_.Name }
+                $status = ''
+                if ($_.PSObject.Properties['Status']) { $status = [string]$_.Status }
+                elseif ($_.PSObject.Properties['State']) { $status = [string]$_.State }
+                if (-not $status) { $status = 'Unknown' }
+
+                $startType = ''
+                if ($_.PSObject.Properties['StartType']) { $startType = [string]$_.StartType }
+                elseif ($_.PSObject.Properties['StartMode']) { $startType = [string]$_.StartMode }
+                if (-not $startType) { $startType = 'Unknown' }
+
+                [pscustomobject]@{
+                    Name      = $name
+                    Status    = $status
+                    StartType = $startType
+                }
+            }
+
+        return [pscustomobject]@{
+            Timestamp      = $timestamp
+            ElapsedSeconds = $roundedElapsed
+            Services       = $services
+        }
+    } catch {
+        return [pscustomobject]@{
+            Timestamp      = $timestamp
+            ElapsedSeconds = $roundedElapsed
+            Error          = $_.Exception.Message
+        }
+    }
+}
+
 function Normalize-ServiceStatus {
     param([string]$Status)
 
@@ -246,10 +292,18 @@ function Invoke-Main {
     $records = Get-ServiceRecords -Inventory $inventoryResult.Items
     $lookup = Get-RecordLookup -Records $records
 
+    $autostartSamples = @()
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $autostartSamples += Get-AutostartServiceSample -ElapsedSeconds 0
+    Start-Sleep -Seconds 10
+    $autostartSamples += Get-AutostartServiceSample -ElapsedSeconds $stopwatch.Elapsed.TotalSeconds
+    $stopwatch.Stop()
+
     $payload = [ordered]@{
         Services             = $records
         CriticalServices     = Get-CriticalServiceSnapshot -Lookup $lookup -Definitions $ServiceDefinitions
         LegacyCoreServices   = Get-LegacyServiceSnapshot -Lookup $lookup -Names $LegacyServiceNames
+        AutostartServiceSamples = $autostartSamples
     }
 
     if ($inventoryResult.Errors -and $inventoryResult.Errors.Count -gt 0) {

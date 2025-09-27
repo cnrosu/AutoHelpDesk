@@ -29,14 +29,17 @@ function Add-SubcategoryCandidate {
         [System.Collections.Generic.List[string]]$List,
         $Value,
         [string]$BaseCategory,
-        [string]$OriginalCategory
+        [string]$OriginalCategory,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 8
     )
 
     if ($null -eq $Value) { return }
+    if ($Depth -ge $MaxDepth) { return }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
         foreach ($item in $Value) {
-            Add-SubcategoryCandidate -List $List -Value $item -BaseCategory $BaseCategory -OriginalCategory $OriginalCategory
+            Add-SubcategoryCandidate -List $List -Value $item -BaseCategory $BaseCategory -OriginalCategory $OriginalCategory -Depth ($Depth + 1) -MaxDepth $MaxDepth
         }
         return
     }
@@ -105,19 +108,45 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    param(
+        $Value,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 12
+    )
 
     if ($null -eq $Value) { return '' }
+    if ($Depth -ge $MaxDepth) {
+        try {
+            return ($Value | ConvertTo-Json -Depth 4)
+        } catch {
+            return [string]$Value
+        }
+    }
 
     if ($Value -is [string]) { return $Value }
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
-        foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
+    if ($Value -is [System.Collections.IDictionary]) {
+        $entries = New-Object System.Collections.Generic.List[string]
+        foreach ($key in $Value.Keys) {
+            $formatted = Format-AnalyzerEvidence -Value $Value[$key] -Depth ($Depth + 1) -MaxDepth $MaxDepth
+            $entries.Add("$key: $formatted") | Out-Null
         }
-        return ($items -join [Environment]::NewLine)
+        return ($entries -join [Environment]::NewLine)
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $builder = [System.Text.StringBuilder]::new()
+        $first = $true
+        foreach ($item in $Value) {
+            $part = Format-AnalyzerEvidence -Value $item -Depth ($Depth + 1) -MaxDepth $MaxDepth
+            if (-not $first) {
+                $null = $builder.AppendLine()
+            }
+            $null = $builder.Append($part)
+            $first = $false
+        }
+        return $builder.ToString()
     }
 
     try {
@@ -341,8 +370,8 @@ function Get-FailedCollectorReports {
                     } elseif ($payload -is [string]) {
                         if ([string]::IsNullOrWhiteSpace($payload)) { $isEmpty = $true }
                     } elseif ($payload -is [System.Collections.IEnumerable] -and -not ($payload -is [string])) {
-                        $enumerated = @()
-                        foreach ($item in $payload) { $enumerated += $item }
+                        $enumerated = New-Object System.Collections.Generic.List[object]
+                        foreach ($item in $payload) { $null = $enumerated.Add($item) }
                         if ($enumerated.Count -eq 0) { $isEmpty = $true }
                     }
 
@@ -390,10 +419,19 @@ function Build-SummaryCardHtml {
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
 
-    $osParts = @()
-    if ($Summary.OperatingSystem) { $osParts += $Summary.OperatingSystem }
-    if ($Summary.OSVersion) { $osParts += $Summary.OSVersion }
-    if ($Summary.OSBuild) { $osParts += "Build $($Summary.OSBuild)" }    $osText = if ($osParts.Count -gt 0) { ($osParts -join ' | ') } else { 'Unknown' }
+    $osBuilder = [System.Text.StringBuilder]::new()
+    if ($Summary.OperatingSystem) {
+        $null = $osBuilder.Append($Summary.OperatingSystem)
+    }
+    if ($Summary.OSVersion) {
+        if ($osBuilder.Length -gt 0) { $null = $osBuilder.Append(' | ') }
+        $null = $osBuilder.Append($Summary.OSVersion)
+    }
+    if ($Summary.OSBuild) {
+        if ($osBuilder.Length -gt 0) { $null = $osBuilder.Append(' | ') }
+        $null = $osBuilder.Append("Build $($Summary.OSBuild)")
+    }
+    $osText = if ($osBuilder.Length -gt 0) { $osBuilder.ToString() } else { 'Unknown' }
 
     $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
@@ -481,7 +519,8 @@ function Build-GoodSection {
     }
 
     $tabName = 'good-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = [System.Text.StringBuilder]::new()
+    $null = $tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $index = 0
     foreach ($category in $orderedCategories) {
         if (-not $categorized.ContainsKey($category)) { continue }
@@ -496,14 +535,14 @@ function Build-GoodSection {
         $labelText = Encode-Html "$category ($count)"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        $null = $tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        $null = $tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelText</label>")
+        $null = $tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    $null = $tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Build-IssueSection {
@@ -547,13 +586,13 @@ function Build-IssueSection {
         }
     }
 
-    $activeDefinitions = @()
+    $activeDefinitions = New-Object System.Collections.Generic.List[object]
     foreach ($definition in $severityDefinitions) {
-        if ($grouped[$definition.Key].Count -gt 0) { $activeDefinitions += ,$definition }
+        if ($grouped[$definition.Key].Count -gt 0) { $null = $activeDefinitions.Add($definition) }
     }
     if ($other.Count -gt 0) {
         $grouped['other'] = $other
-        $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' }
+        $null = $activeDefinitions.Add(@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' })
     }
 
     if ($activeDefinitions.Count -eq 0) {
@@ -561,7 +600,8 @@ function Build-IssueSection {
     }
 
     $tabName = 'issue-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = [System.Text.StringBuilder]::new()
+    $null = $tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $firstDefinition = $activeDefinitions[0]
     $firstKey = if ($firstDefinition.Key) { [string]$firstDefinition.Key } else { '' }
     $index = 0
@@ -584,14 +624,14 @@ function Build-IssueSection {
         $labelInner = "<span class='report-badge report-badge--$($definition.BadgeClass) report-tabs__label-badge'>$badgeLabel</span><span class='report-tabs__label-count'>$countLabel</span>"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelInner</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        $null = $tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        $null = $tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelInner</label>")
+        $null = $tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    $null = $tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Get-TruncatedText {
@@ -683,13 +723,18 @@ function ConvertTo-RawCard {
     }
 
     $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
-    $metaParts = @()
-    if ($collectedAt) { $metaParts += "Collected: $collectedAt" }
-    if ($path) { $metaParts += "File: $path" }
+    $metaBuilder = [System.Text.StringBuilder]::new()
+    if ($collectedAt) {
+        $null = $metaBuilder.Append("Collected: $collectedAt")
+    }
+    if ($path) {
+        if ($metaBuilder.Length -gt 0) { $null = $metaBuilder.Append(' • ') }
+        $null = $metaBuilder.Append("File: $path")
+    }
 
     $metaHtml = ''
-    if ($metaParts.Count -gt 0) {
-        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaParts -join ' • '))</small></div>"
+    if ($metaBuilder.Length -gt 0) {
+        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
     }
 
     return "<div class='report-card'><b>$(Encode-Html $Key)</b>$metaHtml<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre></div>"
@@ -702,28 +747,31 @@ function Build-DebugSection {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    $lines = @()
+    $lineBuilder = [System.Text.StringBuilder]::new()
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines += "${key}: (no entries)"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: (no entries)")
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines += "${key}: $count file(s); first = $firstPath"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: $count file(s); first = $firstPath")
         } else {
-            $lines += "${key}: $($entries.Path)"
+            if ($lineBuilder.Length -gt 0) { $null = $lineBuilder.AppendLine() }
+            $null = $lineBuilder.Append("${key}: $($entries.Path)")
         }
     }
 
-    if ($lines.Count -eq 0) {
+    if ($lineBuilder.Length -eq 0) {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lines -join [Environment]::NewLine))</pre></div>"
+    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lineBuilder.ToString()))</pre></div>"
 }
 
 function Build-RawSection {
@@ -798,11 +846,14 @@ function New-AnalyzerHtml {
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     foreach ($category in $Categories) {
         if (-not $category) { continue }
         foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
         foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
     }
+    $sw.Stop()
+    Write-Verbose ("[HTML] Cards built in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
 
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
@@ -812,23 +863,36 @@ function New-AnalyzerHtml {
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    $sw.Restart()
     $failedReports = Get-FailedCollectorReports -Context $Context
+    $sw.Stop()
+    Write-Verbose ("[HTML] Failed collectors in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
     } else {
-        $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+        $failedContentBuilder = [System.Text.StringBuilder]::new()
+        $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
-            $detailParts = @()
-            if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
-            if ($entry.Details) { $detailParts += $entry.Details }
-            $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
-            $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+            $detailBuilder = [System.Text.StringBuilder]::new()
+            if ($entry.Path) {
+                $null = $detailBuilder.Append((Encode-Html "File: $($entry.Path)"))
+            }
+            if ($entry.Details) {
+                if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('<br>') }
+                $null = $detailBuilder.Append((Encode-Html ([string]$entry.Details)))
+            }
+            $detailHtml = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { Encode-Html '' }
+            $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
-        $failedContent += "</table></div>"
+        $null = $failedContentBuilder.Append("</table></div>")
+        $failedContent = $failedContentBuilder.ToString()
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
+    $sw.Restart()
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    $sw.Stop()
+    Write-Verbose ("[HTML] Raw section in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 

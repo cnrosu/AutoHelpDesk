@@ -50,11 +50,11 @@ function Ensure-Array {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $results = @()
+        $results = [System.Collections.Generic.List[string]]::new()
         foreach ($item in $Value) {
-            if ($null -ne $item) { $results += [string]$item }
+            if ($null -ne $item) { $null = $results.Add([string]$item) }
         }
-        return $results
+        return $results.ToArray()
     }
     return @([string]$Value)
 }
@@ -64,9 +64,9 @@ function Get-AdapterIdentity {
 
     if ($null -eq $Adapter) { return 'Unknown adapter' }
 
-    $parts = @()
-    if ($Adapter.Description) { $parts += [string]$Adapter.Description }
-    elseif ($Adapter.Caption) { $parts += [string]$Adapter.Caption }
+    $parts = [System.Collections.Generic.List[string]]::new()
+    if ($Adapter.Description) { $null = $parts.Add([string]$Adapter.Description) }
+    elseif ($Adapter.Caption) { $null = $parts.Add([string]$Adapter.Caption) }
 
     $indexValue = $null
     if ($Adapter.PSObject.Properties['InterfaceIndex'] -and $null -ne $Adapter.InterfaceIndex) {
@@ -75,10 +75,10 @@ function Get-AdapterIdentity {
         $indexValue = $Adapter.Index
     }
     if ($null -ne $indexValue) {
-        $parts += "Index $indexValue"
+        $null = $parts.Add("Index $indexValue")
     }
 
-    if ($Adapter.MACAddress) { $parts += "MAC $($Adapter.MACAddress)" }
+    if ($Adapter.MACAddress) { $null = $parts.Add("MAC $($Adapter.MACAddress)") }
 
     if (-not $parts) { return 'Unknown adapter' }
     return ($parts -join ' | ')
@@ -87,7 +87,7 @@ function Get-AdapterIdentity {
 function Get-AdapterIpv4Addresses {
     param($Adapter)
 
-    $addresses = @()
+    $addresses = [System.Collections.Generic.List[string]]::new()
     $raw = $null
     if ($Adapter.PSObject.Properties['IPAddress']) { $raw = $Adapter.IPAddress }
     if (-not $raw) { return @() }
@@ -96,11 +96,11 @@ function Get-AdapterIpv4Addresses {
         if ($value -match '^\s*$') { continue }
         $candidate = $value.Trim()
         if ($candidate -match '^\d+\.\d+\.\d+\.\d+$') {
-            $addresses += $candidate
+            $null = $addresses.Add($candidate)
         }
     }
 
-    return $addresses
+    return $addresses.ToArray()
 }
 
 function Test-IsPrivateIPv4 {
