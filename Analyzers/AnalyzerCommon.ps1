@@ -155,14 +155,22 @@ function Add-CategoryCheck {
         [Parameter(Mandatory)]
         [string]$Status,
 
-        [string]$Details = ''
+        [string]$Details = '',
+
+        [string]$CheckId = $null
     )
 
-    $CategoryResult.Checks.Add([pscustomobject]@{
-            Name    = $Name
-            Status  = $Status
-            Details = $Details
-        }) | Out-Null
+    $entry = [ordered]@{
+        Name    = $Name
+        Status  = $Status
+        Details = $Details
+    }
+
+    if ($PSBoundParameters.ContainsKey('CheckId') -and $CheckId) {
+        $entry['CheckId'] = $CheckId
+    }
+
+    $CategoryResult.Checks.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Merge-AnalyzerResults {
