@@ -18,6 +18,44 @@ function ConvertTo-PrintingArray {
     return @($Value)
 }
 
+function Get-PrintingPlatformInfo {
+    param($Context)
+
+    $isWindowsServer = $null
+    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    if ($systemArtifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+        if ($payload -and $payload.OperatingSystem -and -not $payload.OperatingSystem.Error) {
+            $caption = [string]$payload.OperatingSystem.Caption
+            if ($caption) {
+                $isWindowsServer = ($caption -match '(?i)windows\s+server')
+            }
+        }
+    }
+
+    $isWorkstation = $null
+    if ($isWindowsServer -eq $true) { $isWorkstation = $false }
+    elseif ($isWindowsServer -eq $false) { $isWorkstation = $true }
+
+    return [pscustomobject]@{
+        IsWindowsServer = $isWindowsServer
+        IsWorkstation   = $isWorkstation
+    }
+}
+
+function Normalize-PrintingServiceState {
+    param([string]$Value)
+
+    if (-not $Value) { return 'unknown' }
+    $trimmed = $Value.Trim()
+    if (-not $trimmed) { return 'unknown' }
+
+    $lower = $trimmed.ToLowerInvariant()
+    if ($lower -like 'run*') { return 'running' }
+    if ($lower -like 'stop*') { return 'stopped' }
+    return 'other'
+}
+
 function Invoke-PrintingHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -25,6 +63,8 @@ function Invoke-PrintingHeuristics {
     )
 
     $result = New-CategoryResult -Name 'Printing'
+    $platform = Get-PrintingPlatformInfo -Context $Context
+    $isWorkstation = ($platform.IsWorkstation -eq $true)
 
     $printingArtifact = Get-AnalyzerArtifact -Context $Context -Name 'printing'
     if (-not $printingArtifact) {
@@ -53,13 +93,17 @@ function Invoke-PrintingHeuristics {
         } else {
             $status = if ($spooler.Status) { [string]$spooler.Status } else { 'Unknown' }
             $startMode = if ($spooler.StartMode) { [string]$spooler.StartMode } else { $spooler.StartType }
+            $statusNorm = Normalize-PrintingServiceState -Value $status
             Add-CategoryCheck -CategoryResult $result -Name 'Spooler status' -Status $status -Details ("StartMode: {0}" -f $startMode)
-            if ($status -notmatch '(?i)running') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode) -Subcategory 'Spooler Service'
-            } elseif ($startMode -and $startMode -notmatch '(?i)auto') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Spooler start mode not automatic' -Evidence ("Current mode: {0}" -f $startMode) -Subcategory 'Spooler Service'
+            if ($statusNorm -eq 'running') {
+                if ($isWorkstation) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Print Spooler running — disable if this workstation does not need printing (PrintNightmare).' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode) -Subcategory 'Spooler Service'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Print Spooler running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode) -Subcategory 'Spooler Service'
+                }
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Print Spooler running — disable if this workstation does not need printing.' -Subcategory 'Spooler Service'
+                $note = if ($isWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing will remain offline until the spooler is started.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service'
             }
         }
     }
