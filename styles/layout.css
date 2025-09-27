@@ -4,8 +4,3 @@
   padding: var(--space-lg);
 }
 
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
