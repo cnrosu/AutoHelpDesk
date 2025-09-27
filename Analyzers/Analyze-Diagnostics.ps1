@@ -28,6 +28,11 @@ if (Test-Path -Path $heuristicsPath) {
     Get-ChildItem -Path $heuristicsPath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object {
         . $_.FullName
     }
+
+    $networkModulePath = Join-Path -Path $heuristicsPath -ChildPath 'Network/Network.ps1'
+    if (Test-Path -Path $networkModulePath) {
+        . $networkModulePath
+    }
 }
 . (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
