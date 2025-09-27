@@ -481,7 +481,8 @@ function Build-GoodSection {
     }
 
     $tabName = 'good-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = [System.Text.StringBuilder]::new()
+    $null = $tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $index = 0
     foreach ($category in $orderedCategories) {
         if (-not $categorized.ContainsKey($category)) { continue }
@@ -496,14 +497,14 @@ function Build-GoodSection {
         $labelText = Encode-Html "$category ($count)"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        $null = $tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        $null = $tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelText</label>")
+        $null = $tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    $null = $tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Build-IssueSection {
@@ -561,7 +562,8 @@ function Build-IssueSection {
     }
 
     $tabName = 'issue-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = [System.Text.StringBuilder]::new()
+    $null = $tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $firstDefinition = $activeDefinitions[0]
     $firstKey = if ($firstDefinition.Key) { [string]$firstDefinition.Key } else { '' }
     $index = 0
@@ -584,14 +586,14 @@ function Build-IssueSection {
         $labelInner = "<span class='report-badge report-badge--$($definition.BadgeClass) report-tabs__label-badge'>$badgeLabel</span><span class='report-tabs__label-count'>$countLabel</span>"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelInner</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        $null = $tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        $null = $tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelInner</label>")
+        $null = $tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    $null = $tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Get-TruncatedText {
@@ -817,15 +819,17 @@ function New-AnalyzerHtml {
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
     } else {
-        $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+        $failedContentBuilder = [System.Text.StringBuilder]::new()
+        $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
             $detailParts = @()
             if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
             if ($entry.Details) { $detailParts += $entry.Details }
             $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
-            $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+            $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
-        $failedContent += "</table></div>"
+        $null = $failedContentBuilder.Append("</table></div>")
+        $failedContent = $failedContentBuilder.ToString()
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)

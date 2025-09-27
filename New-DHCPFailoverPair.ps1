@@ -37,11 +37,36 @@ Import-Module DhcpServer
 $ErrorActionPreference='Stop'
 
 # Authorize if needed
+$authorizedServers = @(Get-DhcpServerInDC)
+$authorizedDnsNames = @()
+foreach ($entry in $authorizedServers) {
+  if ($entry -and $entry.PSObject.Properties['DnsName']) {
+    $authorizedDnsNames += [string]$entry.DnsName
+  }
+}
+
 foreach($s in @($Primary,$Partner)){
-  if(-not (Get-DhcpServerInDC | Where-Object {$_.DnsName -ieq "$s"})){
+  $isAuthorized = $false
+  foreach ($authorized in $authorizedDnsNames) {
+    if ([string]::IsNullOrWhiteSpace($authorized)) { continue }
+    if ($authorized.Equals($s, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $isAuthorized = $true
+      break
+    }
+  }
+
+  if(-not $isAuthorized){
     Write-Host "Authorizing $s in AD..."
-    $ip = (Resolve-DnsName $s -Type A -ErrorAction Stop).IPAddress[0]
+    $resolution = Resolve-DnsName $s -Type A -ErrorAction Stop
+    $ip = $resolution.IPAddress[0]
     Add-DhcpServerInDC -DnsName $s -IpAddress $ip
+    if ($resolution.PSObject.Properties['NameHost']) {
+      $authorizedDnsNames += [string]$resolution.NameHost
+    } elseif ($resolution.PSObject.Properties['Name']) {
+      $authorizedDnsNames += [string]$resolution.Name
+    } else {
+      $authorizedDnsNames += $s
+    }
   }
 }
 

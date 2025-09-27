@@ -135,8 +135,7 @@ details.report-card[open] > summary {
   list-style: none;
 }
 
-.report-section > summary::-webkit-details-marker,
-.report-subsection > summary::-webkit-details-marker {
+.report-section > summary::-webkit-details-marker {
   display: none;
 }
 
@@ -159,44 +158,8 @@ details.report-card[open] > summary {
   padding: var(--space-md);
 }
 
-.report-section__content > .report-card:last-child,
-.report-section__content > .report-subsection:last-child {
+.report-section__content > .report-card:last-child {
   margin-bottom: 0;
-}
-
-.report-subsection {
-  margin-bottom: var(--space-md);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background-color: var(--color-surface);
-  overflow: hidden;
-}
-
-.report-subsection > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-xs) var(--space-md);
-  font-weight: 600;
-  color: var(--color-heading);
-  background-color: var(--color-surface-muted);
-  cursor: pointer;
-  list-style: none;
-}
-
-.report-subsection > summary::after {
-  content: '\25BC';
-  font-size: 0.7rem;
-  color: var(--color-text-note);
-  transition: transform 0.2s ease;
-}
-
-.report-subsection[open] > summary::after {
-  transform: rotate(180deg);
-}
-
-.report-subsection__body {
-  padding: var(--space-sm) var(--space-md) var(--space-md);
 }
 
 .report-tabs {
@@ -370,30 +333,6 @@ details.report-card[open] > summary {
   color: var(--color-state-critical-text);
 }
 
-.report-badge--uptime-good {
-  background-color: var(--color-uptime-good-bg);
-  border-color: var(--color-uptime-good-border);
-  color: var(--color-uptime-good-text);
-}
-
-.report-badge--uptime-warning {
-  background-color: var(--color-uptime-warning-bg);
-  border-color: var(--color-uptime-warning-border);
-  color: var(--color-uptime-warning-text);
-}
-
-.report-badge--uptime-bad {
-  background-color: var(--color-uptime-bad-bg);
-  border-color: var(--color-uptime-bad-border);
-  color: var(--color-uptime-bad-text);
-}
-
-.report-badge--uptime-critical {
-  background-color: var(--color-uptime-critical-bg);
-  border-color: var(--color-uptime-critical-border);
-  color: var(--color-uptime-critical-text);
-}
-
 .report-card--good {
   border-color: var(--color-state-good-border);
   background-color: var(--color-state-good-bg);
@@ -405,8 +344,7 @@ details.report-card[open] > summary {
   color: var(--color-state-info-text);
 }
 
-.report-card--low,
-.report-card--ok {
+.report-card--low {
   border-color: var(--color-state-ok-border);
   background-color: var(--color-state-ok-bg);
 }
@@ -421,8 +359,7 @@ details.report-card[open] > summary {
   background-color: var(--color-state-warning-bg);
 }
 
-.report-card--high,
-.report-card--bad {
+.report-card--high {
   border-color: var(--color-state-bad-border);
   background-color: var(--color-state-bad-bg);
 }
@@ -460,33 +397,6 @@ details.report-card[open] > summary {
   text-align: left;
   border: 1px solid var(--color-border-subtle);
   background-color: var(--color-surface);
-}
-
-.report-table--services {
-  margin-top: var(--space-sm);
-}
-
-.report-table--services .service-name-cell {
-  width: 28%;
-  font-weight: 600;
-}
-
-.report-table--services .service-status-cell,
-.report-table--services .service-start-cell,
-.report-table--services .service-tag-cell {
-  white-space: nowrap;
-}
-
-.report-table--services .service-status-cell {
-  font-weight: 600;
-}
-
-.report-table--services .service-tag-cell {
-  text-align: center;
-}
-
-.report-table--services .service-note-cell {
-  width: 32%;
 }
 
 .report-pre {

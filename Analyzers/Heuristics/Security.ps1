@@ -33,6 +33,67 @@ function ConvertTo-IntArray {
     return $list
 }
 
+function ConvertTo-VersionObject {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    try {
+        $text = [string]$Value
+    } catch {
+        $text = $Value
+    }
+
+    if (-not $text) { return $null }
+
+    $trimmed = $text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $parts = $trimmed.Split('.', [System.StringSplitOptions]::RemoveEmptyEntries)
+    if ($parts.Count -eq 0) { return $null }
+
+    $numbers = @()
+    foreach ($part in $parts) {
+        $cleanMatch = [regex]::Match($part, '\d+')
+        if (-not $cleanMatch.Success) { return $null }
+        $parsed = 0
+        if (-not [int]::TryParse($cleanMatch.Value, [ref]$parsed)) { return $null }
+        $numbers += $parsed
+        if ($numbers.Count -ge 4) { break }
+    }
+
+    if ($numbers.Count -eq 0) { return $null }
+
+    try {
+        switch ($numbers.Count) {
+            1 { return [version]::new($numbers[0], 0) }
+            2 { return [version]::new($numbers[0], $numbers[1]) }
+            3 { return [version]::new($numbers[0], $numbers[1], $numbers[2]) }
+            default { return [version]::new($numbers[0], $numbers[1], $numbers[2], $numbers[3]) }
+        }
+    } catch {
+        return $null
+    }
+}
+
+$script:SecurityHeuristicsConfig = $null
+function Get-SecurityHeuristicsConfig {
+    if ($script:SecurityHeuristicsConfig) { return $script:SecurityHeuristicsConfig }
+
+    $configPath = Join-Path -Path $PSScriptRoot -ChildPath 'SecurityConfig.psd1'
+    if (Test-Path -LiteralPath $configPath) {
+        try {
+            $script:SecurityHeuristicsConfig = Import-PowerShellDataFile -Path $configPath -ErrorAction Stop
+        } catch {
+            $script:SecurityHeuristicsConfig = @{}
+        }
+    } else {
+        $script:SecurityHeuristicsConfig = @{}
+    }
+
+    return $script:SecurityHeuristicsConfig
+}
+
 function Get-ObjectPropertyString {
     param(
         $Object,
@@ -158,6 +219,47 @@ function Invoke-SecurityHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title ('Defender signatures present ({0})' -f ($definitions -join ', '))
             }
 
+            $config = Get-SecurityHeuristicsConfig
+            $platformConfig = $null
+            if ($config -and ($config -is [System.Collections.IDictionary]) -and $config.ContainsKey('DefenderPlatform')) {
+                $platformConfig = $config['DefenderPlatform']
+            }
+
+            $minimumProductVersionText = $null
+            if ($platformConfig -and ($platformConfig -is [System.Collections.IDictionary]) -and $platformConfig.ContainsKey('MinimumProductVersion')) {
+                $minimumProductVersionText = [string]$platformConfig['MinimumProductVersion']
+            }
+
+            $productVersionText = if ($status.PSObject.Properties['AMProductVersion']) { [string]$status.AMProductVersion } else { $null }
+            $engineVersionText = if ($status.PSObject.Properties['AntimalwareEngineVersion']) { [string]$status.AntimalwareEngineVersion } else { $null }
+            $nisPlatformVersionText = if ($status.PSObject.Properties['NISPlatformVersion']) { [string]$status.NISPlatformVersion } else { $null }
+
+            $productVersion = ConvertTo-VersionObject $productVersionText
+            $minimumProductVersion = ConvertTo-VersionObject $minimumProductVersionText
+
+            $platformEvidence = @()
+            if ($productVersionText) { $platformEvidence += ("AMProductVersion: {0}" -f $productVersionText) }
+            if ($engineVersionText) { $platformEvidence += ("AntimalwareEngineVersion: {0}" -f $engineVersionText) }
+            if ($nisPlatformVersionText) { $platformEvidence += ("NISPlatformVersion: {0}" -f $nisPlatformVersionText) }
+            if ($minimumProductVersionText) { $platformEvidence += ("Minimum required: {0}" -f $minimumProductVersionText) }
+            if ($operatingSystem -and $operatingSystem.BuildNumber) {
+                $platformEvidence += ("OS Build: {0}" -f $operatingSystem.BuildNumber)
+            }
+
+            $platformEvidenceText = if ($platformEvidence.Count -gt 0) { $platformEvidence -join "`n" } else { 'Defender platform version details unavailable.' }
+
+            if ($minimumProductVersion -and $productVersion) {
+                if ($productVersion -lt $minimumProductVersion) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Defender platform below baseline ({0} < {1}).' -f $productVersionText, $minimumProductVersionText) -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title ('Defender platform meets baseline ({0} ≥ {1}).' -f $productVersionText, $minimumProductVersionText) -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+                }
+            } elseif ($minimumProductVersion -and -not $productVersionText) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to determine Defender platform version' -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+            } elseif ($minimumProductVersionText) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender platform version parsing failed' -Evidence $platformEvidenceText -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderPlatformAge'
+            }
+
             if ($payload.Threats -and $payload.Threats.Count -gt 0 -and -not ($payload.Threats[0] -is [string])) {
                 $threatNames = $payload.Threats | Where-Object { $_.ThreatName } | Select-Object -First 5 -ExpandProperty ThreatName
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Recent threats detected: {0}' -f ($threatNames -join ', ')) -Evidence 'Get-MpThreat returned recent detections; confirm remediation.' -Subcategory 'Microsoft Defender'
@@ -271,32 +373,107 @@ function Invoke-SecurityHeuristics {
     }
 
     $firewallArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
+    $firewallCheckId = 'Security/FirewallProfiles'
+    $firewallProfileEvidence = $null
     if ($firewallArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $firewallArtifact)
-        if ($payload -and $payload.Profiles) {
+        if ($payload -and $payload.Profiles -and $payload.Profiles.PSObject.Properties['Error'] -and $payload.Profiles.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+        } elseif ($payload -and $payload.Profiles) {
+            $profiles = ConvertTo-List $payload.Profiles
             $disabledProfiles = @()
-            foreach ($profile in $payload.Profiles) {
-                if ($profile.PSObject.Properties['Enabled']) {
-                    $enabled = ConvertTo-NullableBool $profile.Enabled
-                    if ($enabled -eq $false) {
-                        $disabledProfiles += $profile.Name
+            $domainProfileDisabled = $false
+            $profileRows = @()
+
+            foreach ($profile in $profiles) {
+                if (-not $profile) { continue }
+                if (-not $profile.PSObject.Properties['Enabled']) { continue }
+
+                $name = if ($profile.PSObject.Properties['Name']) { [string]$profile.Name } else { 'Unknown' }
+                $enabled = ConvertTo-NullableBool $profile.Enabled
+                $statusText = 'Unknown'
+                if ($enabled -eq $true) { $statusText = 'Enabled' }
+                elseif ($enabled -eq $false) { $statusText = 'Disabled' }
+
+                $inbound = Get-ObjectPropertyString -Object $profile -PropertyName 'DefaultInboundAction' -NullPlaceholder 'Unknown'
+                $outbound = Get-ObjectPropertyString -Object $profile -PropertyName 'DefaultOutboundAction' -NullPlaceholder 'Unknown'
+
+                $profileRows += [pscustomobject]@{
+                    Profile = $name
+                    Enabled = $statusText
+                    Inbound = $inbound
+                    Outbound = $outbound
+                }
+
+                Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $name) -Status $statusText -Details ("Inbound: {0}; Outbound: {1}" -f $inbound, $outbound) -CheckId $firewallCheckId
+
+                if ($enabled -eq $false) {
+                    $disabledProfiles += $name
+                    if ($name -match '^(?i)Domain$') {
+                        $domainProfileDisabled = $true
                     }
-                    Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $profile.Name) -Status ($(if ($enabled) { 'Enabled' } elseif ($enabled -eq $false) { 'Disabled' } else { 'Unknown' })) -Details ("Inbound: {0}; Outbound: {1}" -f $profile.DefaultInboundAction, $profile.DefaultOutboundAction)
                 }
             }
 
-            if ($disabledProfiles.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Firewall profiles disabled: {0}' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall'
-            } else {
-                Add-CategoryNormal -CategoryResult $result -Title 'All firewall profiles enabled'
+            if ($profileRows.Count -gt 0) {
+                $firewallProfileEvidence = ($profileRows | Format-Table -AutoSize | Out-String).Trim()
             }
-        } elseif ($payload -and $payload.Profiles -and $payload.Profiles.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
+
+            if ($disabledProfiles.Count -gt 0) {
+                $severity = if ($domainProfileDisabled) { 'high' } else { 'medium' }
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Firewall profiles disabled: {0}' -f ($disabledProfiles -join ', ')) -Evidence $firewallProfileEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+            } elseif ($profileRows.Count -gt 0) {
+                Add-CategoryNormal -CategoryResult $result -Title 'All firewall profiles enabled' -Evidence $firewallProfileEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+            } else {
+                $unstructuredEvidence = $null
+                if ($payload.Profiles -and $payload.Profiles.PSObject -and $payload.Profiles.PSObject.Properties['RawOutput']) {
+                    $unstructuredEvidence = $payload.Profiles.RawOutput
+                }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query returned no structured data' -Evidence $unstructuredEvidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+            }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+        }
+
+        if ($payload -and $payload.Connections) {
+            if (-not ($payload.Connections.PSObject.Properties['Error'] -and $payload.Connections.Error)) {
+                $connections = ConvertTo-List $payload.Connections
+                $domainPublicRows = @()
+
+                foreach ($connection in $connections) {
+                    if (-not $connection) { continue }
+
+                    $category = if ($connection.PSObject.Properties['NetworkCategory']) { [string]$connection.NetworkCategory } else { '' }
+                    $domainAuth = $null
+                    if ($connection.PSObject.Properties['DomainAuthenticationSucceeded']) {
+                        $domainAuth = ConvertTo-NullableBool $connection.DomainAuthenticationSucceeded
+                    }
+
+                    if ($domainAuth -eq $true -and $category -match '^(?i)Public$') {
+                        $domainPublicRows += [pscustomobject]@{
+                            Name                 = if ($connection.PSObject.Properties['Name']) { [string]$connection.Name } else { '' }
+                            Interface            = if ($connection.PSObject.Properties['InterfaceAlias']) { [string]$connection.InterfaceAlias } else { '' }
+                            Category             = $category
+                            DomainAuthenticated = $true
+                        }
+                    }
+                }
+
+                if ($domainPublicRows.Count -gt 0) {
+                    $domainPublicEvidence = ($domainPublicRows | Format-Table -AutoSize | Out-String).Trim()
+                    $evidenceParts = @()
+                    if ($firewallProfileEvidence) {
+                        $evidenceParts += "Firewall profiles:`n$firewallProfileEvidence"
+                    }
+                    $evidenceParts += "Connections:`n$domainPublicEvidence"
+                    $evidence = ($evidenceParts -join ([Environment]::NewLine + [Environment]::NewLine))
+
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain network using Public firewall profile' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
+                }
+            }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall' -CheckId $firewallCheckId
     }
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'
