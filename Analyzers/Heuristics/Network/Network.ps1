@@ -3,7 +3,8 @@
     Network diagnostics heuristics covering connectivity, DNS, proxy, and Outlook health.
 #>
 
-. (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
+$analyzersRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+. (Join-Path -Path $analyzersRoot -ChildPath 'AnalyzerCommon.ps1')
 
 function Test-NetworkPrivateIpv4 {
     param([string]$Address)
@@ -363,7 +364,7 @@ function Invoke-DhcpAnalyzers {
     $inputFolder = Split-Path -Path $firstEntry.Path -Parent
     if (-not $inputFolder -or -not (Test-Path -LiteralPath $inputFolder)) { return }
 
-    $analyzerRoot = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath 'Network/DHCP'
+    $analyzerRoot = Join-Path -Path $PSScriptRoot -ChildPath 'DHCP'
     if (-not (Test-Path -LiteralPath $analyzerRoot)) { return }
 
     $scriptFiles = Get-ChildItem -Path $analyzerRoot -Filter 'Analyze-Dhcp*.ps1' -File -ErrorAction SilentlyContinue | Sort-Object Name

@@ -5,7 +5,7 @@
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
-$systemModuleRoot = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'System'
+$systemModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'System'
 . (Join-Path -Path $systemModuleRoot -ChildPath 'SystemHelpers.ps1')
 . (Join-Path -Path $systemModuleRoot -ChildPath 'OperatingSystem.ps1')
 . (Join-Path -Path $systemModuleRoot -ChildPath 'Uptime.ps1')
