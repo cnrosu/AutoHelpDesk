@@ -85,6 +85,25 @@ function Get-VolumeThreshold {
     }
 }
 
+function Get-StoragePreview {
+    param(
+        [string]$Text,
+        [int]$MaxLines = 12
+    )
+
+    if (-not $Text) { return $null }
+
+    $lines = [regex]::Split($Text, '\r?\n')
+    $preview = $lines | Where-Object { $_ -and $_.Trim() } | Select-Object -First $MaxLines
+    if (-not $preview -or $preview.Count -eq 0) {
+        $preview = $lines | Select-Object -First $MaxLines
+    }
+
+    if (-not $preview -or $preview.Count -eq 0) { return $null }
+
+    return ($preview -join "`n").TrimEnd()
+}
+
 function Invoke-StorageHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -94,6 +113,8 @@ function Invoke-StorageHeuristics {
     $result = New-CategoryResult -Name 'Storage'
 
     $storageArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage'
+    $snapshotArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage-snapshot'
+
     if ($storageArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $storageArtifact)
         if ($payload -and $payload.Disks -and -not $payload.Disks.Error) {
@@ -102,7 +123,7 @@ function Invoke-StorageHeuristics {
                 $details = $unhealthy | ForEach-Object { "Disk $($_.Number): $($_.HealthStatus) ($($_.OperationalStatus))" }
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
-                Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy'
+                Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy' -Subcategory 'Disk Health'
             }
         }
 
@@ -137,11 +158,54 @@ function Invoke-StorageHeuristics {
                     $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
                     Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence -Subcategory 'Free Space'
                 } else {
-                    Add-CategoryNormal -CategoryResult $result -Title ("Volume {0} has {1}% free" -f $label, [math]::Round($freePct,1))
+                    Add-CategoryNormal -CategoryResult $result -Title ("Volume {0} has {1}% free" -f $label, [math]::Round($freePct,1)) -Subcategory 'Free Space'
                 }
             }
         }
-    } else {
+    }
+
+    if ($snapshotArtifact) {
+        $snapshotPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $snapshotArtifact)
+        if ($snapshotPayload -and $snapshotPayload.PSObject.Properties['DiskDrives']) {
+            $smartData = $snapshotPayload.DiskDrives
+            if ($smartData -is [pscustomobject] -and $smartData.PSObject.Properties['Error']) {
+                $errorDetail = $smartData.Error
+                if (-not [string]::IsNullOrWhiteSpace($errorDetail)) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART status unavailable' -Evidence $errorDetail -Subcategory 'SMART'
+                }
+            } else {
+                $smartText = if ($smartData -is [string]) { $smartData } else { [string]$smartData }
+                if (-not [string]::IsNullOrWhiteSpace($smartText)) {
+                    $failurePattern = '(?i)\b(Pred\s*Fail|Fail(?:ed|ing)?|Bad|Caution)\b'
+                    if ($smartText -match $failurePattern) {
+                        $failureMatches = [regex]::Matches($smartText, $failurePattern)
+                        $keywords = $failureMatches | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ } | Sort-Object -Unique
+                        $keywordSummary = if ($keywords) { $keywords -join ', ' } else { $null }
+                        $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Where-Object { $_ -match $failurePattern } | Select-Object -First 12)
+                        if (-not $evidenceLines -or $evidenceLines.Count -eq 0) {
+                            $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Select-Object -First 12)
+                        }
+                        $evidenceText = ($evidenceLines -join "`n").TrimEnd()
+                        $message = if ($keywordSummary) {
+                            "SMART status reports failure indicators ({0})." -f $keywordSummary
+                        } else {
+                            'SMART status reports failure indicators.'
+                        }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title $message -Evidence $evidenceText -Subcategory 'SMART'
+                    } elseif ($smartText -notmatch '(?i)Unknown') {
+                        $preview = Get-StoragePreview -Text $smartText
+                        if ($preview) {
+                            Add-CategoryNormal -CategoryResult $result -Title 'SMART status shows no failure indicators' -Evidence $preview -Subcategory 'SMART'
+                        } else {
+                            Add-CategoryNormal -CategoryResult $result -Title 'SMART status shows no failure indicators' -Subcategory 'SMART'
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (-not $storageArtifact -and -not $snapshotArtifact) {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing' -Subcategory 'Collection'
     }
 
