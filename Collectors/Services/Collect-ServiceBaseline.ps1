@@ -20,6 +20,7 @@ $ServiceDefinitions = @(
     [pscustomobject]@{ Name = 'Dnscache';          Display = 'DNS Client (Dnscache)';                             Note = 'DNS resolution/cache for all apps.' },
     [pscustomobject]@{ Name = 'NlaSvc';            Display = 'Network Location Awareness (NlaSvc)';               Note = 'Network profile changes and detection.' },
     [pscustomobject]@{ Name = 'LanmanWorkstation'; Display = 'Workstation (LanmanWorkstation)';                   Note = 'SMB client for shares and printers.' },
+    [pscustomobject]@{ Name = 'Spooler';           Display = 'Print Spooler (Spooler)';                            Note = 'Disable when not required to reduce PrintNightmare exposure.' },
     [pscustomobject]@{ Name = 'RpcSs';             Display = 'Remote Procedure Call (RPC) (RpcSs)';               Note = 'Core RPC runtime (do not disable).' },
     [pscustomobject]@{ Name = 'RpcEptMapper';      Display = 'RPC Endpoint Mapper (RpcEptMapper)';                Note = 'RPC endpoint directory.' },
     [pscustomobject]@{ Name = 'WinHttpAutoProxySvc'; Display = 'WinHTTP Auto Proxy (WinHttpAutoProxySvc)';        Note = 'WPAD/PAC resolution for system services.' },

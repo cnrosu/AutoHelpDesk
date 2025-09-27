@@ -3922,6 +3922,84 @@ if ($bitlockerText) {
 }
 
 # crucial services snapshot
+$serviceCollectorPayload = $null
+$serviceCollectorLookup = @{}
+$serviceCollectorCriticalMap = @{}
+$serviceCollectorLegacySnapshot = @()
+$serviceCollectorErrors = @()
+
+$serviceCollectorPath = Join-Path $Root 'collectors\services\service-baseline.json'
+if (Test-Path $serviceCollectorPath) {
+  $serviceCollectorRaw = Read-Text $serviceCollectorPath
+  $serviceCollectorDoc = ConvertFrom-JsonSafe $serviceCollectorRaw
+  if ($serviceCollectorDoc) {
+    if ($serviceCollectorDoc.PSObject.Properties['Payload']) {
+      $serviceCollectorPayload = $serviceCollectorDoc.Payload
+    } else {
+      $serviceCollectorPayload = $serviceCollectorDoc
+    }
+  }
+}
+
+if ($serviceCollectorPayload) {
+  if ($serviceCollectorPayload.PSObject.Properties['Services']) {
+    $servicesList = $serviceCollectorPayload.Services
+    if ($servicesList -is [System.Collections.IEnumerable] -and -not ($servicesList -is [string])) {
+      foreach ($entry in $servicesList) {
+        if (-not $entry) { continue }
+        $name = ''
+        if ($entry.PSObject.Properties['Name']) { $name = [string]$entry.Name }
+        if (-not $name) { continue }
+        $serviceCollectorLookup[$name] = $entry
+      }
+    } elseif ($servicesList) {
+      $name = ''
+      if ($servicesList.PSObject.Properties['Name']) { $name = [string]$servicesList.Name }
+      if ($name) { $serviceCollectorLookup[$name] = $servicesList }
+    }
+  }
+
+  if ($serviceCollectorPayload.PSObject.Properties['CriticalServices']) {
+    $criticalList = $serviceCollectorPayload.CriticalServices
+    if ($criticalList -is [System.Collections.IEnumerable] -and -not ($criticalList -is [string])) {
+      foreach ($entry in $criticalList) {
+        if (-not $entry) { continue }
+        $name = ''
+        if ($entry.PSObject.Properties['Name']) { $name = [string]$entry.Name }
+        if (-not $name) { continue }
+        $serviceCollectorCriticalMap[$name] = $entry
+      }
+    } elseif ($criticalList) {
+      $name = ''
+      if ($criticalList.PSObject.Properties['Name']) { $name = [string]$criticalList.Name }
+      if ($name) { $serviceCollectorCriticalMap[$name] = $criticalList }
+    }
+  }
+
+  if ($serviceCollectorPayload.PSObject.Properties['LegacyCoreServices']) {
+    $legacyListRaw = $serviceCollectorPayload.LegacyCoreServices
+    if ($legacyListRaw -is [System.Collections.IEnumerable] -and -not ($legacyListRaw -is [string])) {
+      foreach ($entry in $legacyListRaw) {
+        if ($entry) { $serviceCollectorLegacySnapshot += ,$entry }
+      }
+    } elseif ($legacyListRaw) {
+      $serviceCollectorLegacySnapshot = @($legacyListRaw)
+    }
+  }
+
+  if ($serviceCollectorPayload.PSObject.Properties['CollectionErrors']) {
+    $errorValues = $serviceCollectorPayload.CollectionErrors
+    if ($errorValues -is [System.Collections.IEnumerable] -and -not ($errorValues -is [string])) {
+      foreach ($err in $errorValues) {
+        if ($err) { $serviceCollectorErrors += [string]$err }
+      }
+    } elseif ($errorValues) {
+      $serviceCollectorErrors += [string]$errorValues
+    }
+  }
+}
+
+$servicesCollectorAvailable = ($serviceCollectorLookup.Count -gt 0 -or $serviceCollectorCriticalMap.Count -gt 0)
 $serviceDefinitions = @(
   [pscustomobject]@{ Name='WSearch';            Display='Windows Search (WSearch)';                         Note='Outlook search depends on this.' },
   [pscustomobject]@{ Name='Dnscache';          Display='DNS Client (Dnscache)';                             Note='DNS resolution/cache for all apps.' },
@@ -3960,254 +4038,348 @@ foreach ($svc in $serviceDefinitions) {
     $noteParts += $svc.Note
   }
 
-  if ($servicesTextAvailable) {
-    if ($serviceSnapshot.ContainsKey($svc.Name)) {
-      $record = $serviceSnapshot[$svc.Name]
-      if ($record.RawLine) { $evidenceParts += $record.RawLine }
+  $collectorCriticalRecord = $null
+  $collectorServiceRecord = $null
+  $collectorIndicatesMissing = $false
+  $usedCollectorData = $false
+
+  if ($servicesCollectorAvailable) {
+    if ($serviceCollectorCriticalMap.ContainsKey($svc.Name)) {
+      $collectorCriticalRecord = $serviceCollectorCriticalMap[$svc.Name]
+    }
+    if ($serviceCollectorLookup.ContainsKey($svc.Name)) {
+      $collectorServiceRecord = $serviceCollectorLookup[$svc.Name]
+    }
+  }
+
+  if ($collectorCriticalRecord) {
+    $usedCollectorData = $true
+    if ($collectorCriticalRecord.PSObject.Properties['NormalizedStatus'] -and $collectorCriticalRecord.NormalizedStatus) {
+      try {
+        $collectorIndicatesMissing = ([string]$collectorCriticalRecord.NormalizedStatus).ToLowerInvariant() -eq 'missing'
+      } catch {
+        $collectorIndicatesMissing = $false
+      }
     }
 
-    if ($record) {
-      $statusDisplay = if ($record.Status) { $record.Status } else { 'Unknown' }
-      $rawStartType = if ($record.StartType) { $record.StartType } else { '' }
-      $startDisplay = if ($rawStartType) { $rawStartType } else { 'Unknown' }
-      $startDisplayForTable = $startDisplay
-      $normalizedStatus = Normalize-ServiceStatus $record.Status
-      $normalizedStart = Normalize-ServiceStartType $rawStartType
+    $statusCandidate = ''
+    if ($collectorCriticalRecord.PSObject.Properties['Status']) { $statusCandidate = [string]$collectorCriticalRecord.Status }
+    elseif ($collectorServiceRecord -and $collectorServiceRecord.PSObject.Properties['Status']) { $statusCandidate = [string]$collectorServiceRecord.Status }
+    if (-not $statusCandidate) { $statusCandidate = 'Unknown' }
+    $statusDisplay = $statusCandidate
+
+    $startCandidate = ''
+    if ($collectorCriticalRecord.PSObject.Properties['StartType']) { $startCandidate = [string]$collectorCriticalRecord.StartType }
+    elseif ($collectorServiceRecord -and $collectorServiceRecord.PSObject.Properties['StartType']) { $startCandidate = [string]$collectorServiceRecord.StartType }
+    if (-not $startCandidate) { $startCandidate = 'Unknown' }
+    $startDisplay = $startCandidate
+    $startDisplayForTable = $startCandidate
+
+    if ($collectorCriticalRecord.PSObject.Properties['NormalizedStatus'] -and $collectorCriticalRecord.NormalizedStatus) {
+      $normalizedStatus = [string]$collectorCriticalRecord.NormalizedStatus
+    } elseif ($collectorServiceRecord -and $collectorServiceRecord.PSObject.Properties['NormalizedStatus'] -and $collectorServiceRecord.NormalizedStatus) {
+      $normalizedStatus = [string]$collectorServiceRecord.NormalizedStatus
     } else {
+      $normalizedStatus = Normalize-ServiceStatus $statusDisplay
+    }
+
+    if ($collectorCriticalRecord.PSObject.Properties['NormalizedStartType'] -and $collectorCriticalRecord.NormalizedStartType) {
+      $normalizedStart = [string]$collectorCriticalRecord.NormalizedStartType
+    } elseif ($collectorServiceRecord -and $collectorServiceRecord.PSObject.Properties['NormalizedStartType'] -and $collectorServiceRecord.NormalizedStartType) {
+      $normalizedStart = [string]$collectorServiceRecord.NormalizedStartType
+    } else {
+      $normalizedStart = Normalize-ServiceStartType $startDisplay
+    }
+
+    if (-not $collectorIndicatesMissing -and $collectorServiceRecord) {
+      $rawLine = ''
+      if ($collectorServiceRecord.PSObject.Properties['Raw']) { $rawLine = [string]$collectorServiceRecord.Raw }
+      $record = [pscustomobject]@{
+        Status    = if ($collectorServiceRecord.PSObject.Properties['Status']) { [string]$collectorServiceRecord.Status } else { $statusDisplay }
+        StartType = if ($collectorServiceRecord.PSObject.Properties['StartType']) { [string]$collectorServiceRecord.StartType } else { $startDisplay }
+        RawLine   = if ($rawLine) { $rawLine } else { $null }
+      }
+    }
+  } elseif ($collectorServiceRecord) {
+    $usedCollectorData = $true
+    $statusDisplay = if ($collectorServiceRecord.PSObject.Properties['Status'] -and $collectorServiceRecord.Status) { [string]$collectorServiceRecord.Status } else { 'Unknown' }
+    $startDisplay = if ($collectorServiceRecord.PSObject.Properties['StartType'] -and $collectorServiceRecord.StartType) { [string]$collectorServiceRecord.StartType } else { 'Unknown' }
+    $startDisplayForTable = $startDisplay
+    $normalizedStatus = if ($collectorServiceRecord.PSObject.Properties['NormalizedStatus'] -and $collectorServiceRecord.NormalizedStatus) { [string]$collectorServiceRecord.NormalizedStatus } else { Normalize-ServiceStatus $statusDisplay }
+    $normalizedStart = if ($collectorServiceRecord.PSObject.Properties['NormalizedStartType'] -and $collectorServiceRecord.NormalizedStartType) { [string]$collectorServiceRecord.NormalizedStartType } else { Normalize-ServiceStartType $startDisplay }
+    $rawLine = ''
+    if ($collectorServiceRecord.PSObject.Properties['Raw']) { $rawLine = [string]$collectorServiceRecord.Raw }
+    $record = [pscustomobject]@{
+      Status    = $statusDisplay
+      StartType = $startDisplay
+      RawLine   = if ($rawLine) { $rawLine } else { $null }
+    }
+  }
+
+  if ($collectorServiceRecord -and $collectorServiceRecord.PSObject.Properties['Raw'] -and $collectorServiceRecord.Raw) {
+    $evidenceParts += [string]$collectorServiceRecord.Raw
+  } elseif ($collectorCriticalRecord -and $collectorCriticalRecord.PSObject.Properties['Raw'] -and $collectorCriticalRecord.Raw) {
+    $evidenceParts += [string]$collectorCriticalRecord.Raw
+  }
+
+  if ($collectorIndicatesMissing) {
+    $statusDisplay = 'Not found'
+    $startDisplayForTable = 'Unknown'
+    $normalizedStatus = 'missing'
+    $normalizedStart = 'unknown'
+    $record = $null
+  }
+
+  if ($servicesTextAvailable) {
+    if ($serviceSnapshot.ContainsKey($svc.Name)) {
+      $textRecord = $serviceSnapshot[$svc.Name]
+      if ($textRecord.RawLine) { $evidenceParts += $textRecord.RawLine }
+      if (-not $usedCollectorData) {
+        $record = $textRecord
+        $statusDisplay = if ($textRecord.Status) { $textRecord.Status } else { 'Unknown' }
+        $rawStartType = if ($textRecord.StartType) { $textRecord.StartType } else { '' }
+        $startDisplay = if ($rawStartType) { $rawStartType } else { 'Unknown' }
+        $startDisplayForTable = $startDisplay
+        $normalizedStatus = Normalize-ServiceStatus $textRecord.Status
+        $normalizedStart = Normalize-ServiceStartType $rawStartType
+      }
+    } elseif (-not $usedCollectorData) {
       $statusDisplay = 'Not found'
       $startDisplayForTable = 'Unknown'
     }
+  } elseif (-not $usedCollectorData) {
+    $statusDisplay = 'Not captured'
+  }
 
-    $isAutomatic = ($normalizedStart -eq 'automatic' -or $normalizedStart -eq 'automatic-delayed')
-    $isManual = ($normalizedStart -eq 'manual')
-    $isDisabled = ($normalizedStart -eq 'disabled')
+  $isAutomatic = ($normalizedStart -eq 'automatic' -or $normalizedStart -eq 'automatic-delayed')
+  $isManual = ($normalizedStart -eq 'manual')
+  $isDisabled = ($normalizedStart -eq 'disabled')
 
-    switch ($svc.Name) {
-      'WSearch' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          if ($isAutomatic) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'Windows Search stopped — Outlook search depends on this.'
-          } elseif ($isDisabled) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'Windows Search disabled — Outlook search depends on this.'
-          } elseif ($isManual) {
-            if ($isWorkstationProfile) {
-              $tag = 'warning'
-              $issueSeverity = 'medium'
-              $issueMessage = 'Windows Search stopped (Manual start) — Outlook search depends on this.'
-            } else {
-              $tag = 'info'
-            }
-          }
-        }
-      }
-      'Dnscache' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          $tag = 'critical'
-          $issueSeverity = 'critical'
-          if ($record) {
-            if ($isDisabled) {
-              $issueMessage = 'Dnscache disabled — DNS lookups will fail/intermittent.'
-            } elseif ($normalizedStatus -eq 'stopped') {
-              $issueMessage = 'Dnscache stopped — DNS lookups will fail/intermittent.'
-            } else {
-              $issueMessage = 'Dnscache not running — DNS lookups will fail/intermittent.'
-            }
-          } else {
-            $issueMessage = 'Dnscache service missing — DNS lookups will fail/intermittent.'
-          }
-        }
-      }
-      'NlaSvc' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          if ($isAutomatic) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'NlaSvc stopped — network profile changes; VPN/proxy awareness impacted.'
-          } elseif ($isDisabled) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'NlaSvc disabled — network profile changes; VPN/proxy awareness impacted.'
-          } elseif ($isManual) {
-            if ($isWorkstationProfile) {
-              $tag = 'warning'
-              $issueSeverity = 'medium'
-              $issueMessage = 'NlaSvc stopped (Manual start) — network profile changes; VPN/proxy awareness impacted.'
-            } else {
-              $tag = 'info'
-            }
-          }
-        }
-      }
-      'LanmanWorkstation' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
+  switch ($svc.Name) {
+    'WSearch' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        if ($isAutomatic) {
           $tag = 'bad'
           $issueSeverity = 'high'
-          if ($isDisabled) {
-            $issueMessage = 'LanmanWorkstation disabled — SMB shares/mapped drives broken.'
-          } else {
-            $issueMessage = 'LanmanWorkstation stopped — SMB shares/mapped drives broken.'
-          }
-        }
-      }
-      'Spooler' {
-        $normalArea = 'Services/Printer Spooler'
-        if ($normalizedStatus -eq 'running') {
+          $issueMessage = 'Windows Search stopped — Outlook search depends on this.'
+        } elseif ($isDisabled) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'Windows Search disabled — Outlook search depends on this.'
+        } elseif ($isManual) {
           if ($isWorkstationProfile) {
             $tag = 'warning'
-            $issueSeverity = 'warning'
-            $issueArea = 'Security/Services'
-            $issueMessage = 'Print Spooler running — disable if this workstation does not need printing.'
+            $issueSeverity = 'medium'
+            $issueMessage = 'Windows Search stopped (Manual start) — Outlook search depends on this.'
           } else {
             $tag = 'info'
-            $isHealthy = $true
           }
+        }
+      }
+    }
+    'Dnscache' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        $tag = 'critical'
+        $issueSeverity = 'critical'
+        if ($record) {
+          if ($isDisabled) {
+            $issueMessage = 'Dnscache disabled — DNS lookups will fail/intermittent.'
+          } elseif ($normalizedStatus -eq 'stopped') {
+            $issueMessage = 'Dnscache stopped — DNS lookups will fail/intermittent.'
+          } else {
+            $issueMessage = 'Dnscache not running — DNS lookups will fail/intermittent.'
+          }
+        } else {
+          $issueMessage = 'Dnscache service missing — DNS lookups will fail/intermittent.'
+        }
+      }
+    }
+    'NlaSvc' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        if ($isAutomatic) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'NlaSvc stopped — network profile changes; VPN/proxy awareness impacted.'
+        } elseif ($isDisabled) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'NlaSvc disabled — network profile changes; VPN/proxy awareness impacted.'
+        } elseif ($isManual) {
+          if ($isWorkstationProfile) {
+            $tag = 'warning'
+            $issueSeverity = 'medium'
+            $issueMessage = 'NlaSvc stopped (Manual start) — network profile changes; VPN/proxy awareness impacted.'
+          } else {
+            $tag = 'info'
+          }
+        }
+      }
+    }
+    'LanmanWorkstation' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        $tag = 'bad'
+        $issueSeverity = 'high'
+        if ($isDisabled) {
+          $issueMessage = 'LanmanWorkstation disabled — SMB shares/mapped drives broken.'
+        } else {
+          $issueMessage = 'LanmanWorkstation stopped — SMB shares/mapped drives broken.'
+        }
+      }
+    }
+    'Spooler' {
+      $normalArea = 'Services/Printer Spooler'
+      if ($normalizedStatus -eq 'running') {
+        if ($isWorkstationProfile) {
+          $tag = 'warning'
+          $issueSeverity = 'warning'
+          $issueArea = 'Security/Services'
+          $issueMessage = 'Print Spooler running — disable if this workstation does not need printing.'
         } else {
           $tag = 'info'
-          $issueSeverity = 'info'
-          $issueArea = 'Services/Printer Spooler'
-          $issueMessage = ('Print Spooler not running (Status: {0}, StartType: {1}).' -f $statusDisplay, $startDisplay)
-        }
-      }
-      'RpcSs' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
           $isHealthy = $true
+        }
+      } else {
+        $tag = 'info'
+        $issueSeverity = 'info'
+        $issueArea = 'Services/Printer Spooler'
+        $issueMessage = ('Print Spooler not running (Status: {0}, StartType: {1}).' -f $statusDisplay, $startDisplay)
+      }
+    }
+    'RpcSs' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        $tag = 'critical'
+        $issueSeverity = 'critical'
+        if ($record) {
+          $issueMessage = 'RpcSs not running — system unstable.'
         } else {
-          $tag = 'critical'
-          $issueSeverity = 'critical'
-          if ($record) {
-            $issueMessage = 'RpcSs not running — system unstable.'
-          } else {
-            $issueMessage = 'RpcSs service missing — system unstable.'
-          }
+          $issueMessage = 'RpcSs service missing — system unstable.'
         }
       }
-      'RpcEptMapper' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
+    }
+    'RpcEptMapper' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        $tag = 'critical'
+        $issueSeverity = 'critical'
+        if ($record) {
+          $issueMessage = 'RpcEptMapper not running — RPC endpoint directory unavailable.'
         } else {
-          $tag = 'critical'
-          $issueSeverity = 'critical'
-          if ($record) {
-            $issueMessage = 'RpcEptMapper not running — RPC endpoint directory unavailable.'
-          } else {
-            $issueMessage = 'RpcEptMapper service missing — RPC endpoint directory unavailable.'
-          }
+          $issueMessage = 'RpcEptMapper service missing — RPC endpoint directory unavailable.'
         }
       }
-      'WinHttpAutoProxySvc' {
-        if ($isManual -and $startDisplay) {
-          if ($startDisplay -notmatch '(?i)trigger') {
-            $startDisplayForTable = "$startDisplay (Trigger Start)"
-          } else {
-            $startDisplayForTable = $startDisplay
-          }
+    }
+    'WinHttpAutoProxySvc' {
+      if ($isManual -and $startDisplay) {
+        if ($startDisplay -notmatch '(?i)trigger') {
+          $startDisplayForTable = "$startDisplay (Trigger Start)"
         } else {
           $startDisplayForTable = $startDisplay
         }
-
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          if ($isManual) {
-            if ($systemHasProxy -eq $false) {
-              $tag = 'good'
-              $isHealthy = $true
-              $noteParts += 'No system proxy detected; manual trigger start is expected.'
-            } elseif ($systemHasProxy -eq $true) {
-              $tag = 'warning'
-              $issueSeverity = 'medium'
-              $issueMessage = 'WinHTTP Auto Proxy stopped (proxy configured) — WPAD/PAC for system services will fail.'
-            } else {
-              $tag = 'info'
-            }
-          } elseif ($isAutomatic) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'WinHTTP Auto Proxy stopped — WPAD/PAC for system services unavailable.'
-          } elseif ($isDisabled) {
-            if ($systemHasProxy -eq $true) {
-              $tag = 'bad'
-              $issueSeverity = 'high'
-              $issueMessage = 'WinHTTP Auto Proxy disabled (proxy configured) — WPAD/PAC for system services will fail.'
-            } else {
-              $tag = 'info'
-            }
-          }
-        }
-
-        if ($systemHasProxy -and $winHttpProxyInfo -and $winHttpProxyInfo.Raw) {
-          $evidenceParts += $winHttpProxyInfo.Raw
-        } elseif ($systemHasProxy -eq $false -and $winHttpProxyInfo -and $winHttpProxyInfo.Raw -and $tag -eq 'good') {
-          $evidenceParts += $winHttpProxyInfo.Raw
-        }
+      } else {
+        $startDisplayForTable = $startDisplay
       }
-      'BITS' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          if ($isAutomatic) {
+
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        if ($isManual) {
+          if ($systemHasProxy -eq $false) {
+            $tag = 'good'
+            $isHealthy = $true
+            $noteParts += 'No system proxy detected; manual trigger start is expected.'
+          } elseif ($systemHasProxy -eq $true) {
+            $tag = 'warning'
+            $issueSeverity = 'medium'
+            $issueMessage = 'WinHTTP Auto Proxy stopped (proxy configured) — WPAD/PAC for system services will fail.'
+          } else {
+            $tag = 'info'
+          }
+        } elseif ($isAutomatic) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'WinHTTP Auto Proxy stopped — WPAD/PAC for system services unavailable.'
+        } elseif ($isDisabled) {
+          if ($systemHasProxy -eq $true) {
             $tag = 'bad'
             $issueSeverity = 'high'
-            $issueMessage = 'BITS stopped — background transfers for updates/AV/Office.'
-          } elseif ($isDisabled) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'BITS disabled — background transfers for updates/AV/Office.'
-          } elseif ($isManual) {
-            if ($isWorkstationProfile) {
-              $tag = 'warning'
-              $issueSeverity = 'medium'
-              $issueMessage = 'BITS stopped (Manual start) — background transfers for updates/AV/Office.'
-            } else {
-              $tag = 'info'
-            }
+            $issueMessage = 'WinHTTP Auto Proxy disabled (proxy configured) — WPAD/PAC for system services will fail.'
+          } else {
+            $tag = 'info'
           }
         }
       }
-      'ClickToRunSvc' {
-        if ($normalizedStatus -eq 'running') {
-          $tag = 'good'
-          $isHealthy = $true
-        } else {
-          if ($isAutomatic) {
-            $tag = 'bad'
-            $issueSeverity = 'high'
-            $issueMessage = 'ClickToRunSvc stopped — Office updates and repair blocked.'
-          } elseif ($isManual) {
-            if ($isWorkstationProfile) {
-              $tag = 'warning'
-              $issueSeverity = 'medium'
-              $issueMessage = 'ClickToRunSvc stopped (Manual start) — Office updates and repair blocked.'
-            } else {
-              $tag = 'info'
-            }
-          } elseif ($isDisabled) {
+
+      if ($systemHasProxy -and $winHttpProxyInfo -and $winHttpProxyInfo.Raw) {
+        $evidenceParts += $winHttpProxyInfo.Raw
+      } elseif ($systemHasProxy -eq $false -and $winHttpProxyInfo -and $winHttpProxyInfo.Raw -and $tag -eq 'good') {
+        $evidenceParts += $winHttpProxyInfo.Raw
+      }
+    }
+    'BITS' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        if ($isAutomatic) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'BITS stopped — background transfers for updates/AV/Office.'
+        } elseif ($isDisabled) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'BITS disabled — background transfers for updates/AV/Office.'
+        } elseif ($isManual) {
+          if ($isWorkstationProfile) {
+            $tag = 'warning'
+            $issueSeverity = 'medium'
+            $issueMessage = 'BITS stopped (Manual start) — background transfers for updates/AV/Office.'
+          } else {
             $tag = 'info'
           }
         }
       }
     }
+    'ClickToRunSvc' {
+      if ($normalizedStatus -eq 'running') {
+        $tag = 'good'
+        $isHealthy = $true
+      } else {
+        if ($isAutomatic) {
+          $tag = 'bad'
+          $issueSeverity = 'high'
+          $issueMessage = 'ClickToRunSvc stopped — Office updates and repair blocked.'
+        } elseif ($isManual) {
+          if ($isWorkstationProfile) {
+            $tag = 'warning'
+            $issueSeverity = 'medium'
+            $issueMessage = 'ClickToRunSvc stopped (Manual start) — Office updates and repair blocked.'
+          } else {
+            $tag = 'info'
+          }
+        } elseif ($isDisabled) {
+          $tag = 'info'
+        }
+      }
     }
+  }
 
     if ($svc.Name -eq 'Spooler' -and $isWorkstationProfile) {
       $noteParts += 'Workstations without printers can disable Spooler to shrink the attack surface.'
@@ -4254,7 +4426,57 @@ foreach ($svc in $serviceDefinitions) {
   })
 }
 
-if ($servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
+if ($serviceCollectorErrors.Count -gt 0) {
+  $errorEvidence = ($serviceCollectorErrors | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n"
+  if (-not [string]::IsNullOrWhiteSpace($errorEvidence)) {
+    Add-Issue 'medium' 'Services' 'Service baseline collector reported errors while gathering inventory.' $errorEvidence
+  }
+}
+
+$legacyProcessed = $false
+if ($serviceCollectorLegacySnapshot.Count -gt 0) {
+  $legacyProcessed = $true
+  $legacyRunning = @()
+  foreach ($legacyEntry in $serviceCollectorLegacySnapshot) {
+    if (-not $legacyEntry) { continue }
+    $legacyName = ''
+    if ($legacyEntry.PSObject.Properties['Name']) { $legacyName = [string]$legacyEntry.Name }
+    if (-not $legacyName) { continue }
+
+    $legacyStatusNormalized = 'unknown'
+    if ($legacyEntry.PSObject.Properties['NormalizedStatus'] -and $legacyEntry.NormalizedStatus) {
+      $legacyStatusNormalized = [string]$legacyEntry.NormalizedStatus
+    } else {
+      $legacyStatusNormalized = Normalize-ServiceStatus $legacyEntry.Status
+    }
+
+    try {
+      if ($legacyStatusNormalized) { $legacyStatusNormalized = $legacyStatusNormalized.ToLowerInvariant() }
+    } catch {}
+
+    if ($legacyStatusNormalized -eq 'running') {
+      $legacyRunning += $legacyName
+      continue
+    }
+
+    if ($legacyStatusNormalized -eq 'stopped' -or $legacyStatusNormalized -eq 'missing') {
+      $evidence = ''
+      if ($legacyEntry.PSObject.Properties['Raw'] -and $legacyEntry.Raw) {
+        $evidence = [string]$legacyEntry.Raw
+      } elseif ($legacyEntry.PSObject.Properties['Status'] -and $legacyEntry.Status) {
+        $evidence = "Status: {0}" -f $legacyEntry.Status
+      }
+      $message = if ($legacyStatusNormalized -eq 'missing') { "Core service missing: $legacyName" } else { "Core service stopped: $legacyName" }
+      Add-Issue 'high' 'Services' $message $evidence
+    }
+  }
+
+  if ($legacyRunning.Count -gt 0) {
+    Add-Normal 'Services' ("Core services running: " + ($legacyRunning -join ', ')) ''
+  }
+}
+
+if (-not $legacyProcessed -and $servicesTextAvailable -and $serviceSnapshot.Count -gt 0) {
   $legacyCritical = @('Dhcp','WlanSvc','LanmanServer','WinDefend')
   $legacyRunning = @()
   foreach ($legacyName in $legacyCritical) {
