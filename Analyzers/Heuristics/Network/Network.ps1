@@ -716,6 +716,10 @@ function Invoke-NetworkHeuristics {
         }
     }
 
+    $dhcpFolderPath = if ([string]::IsNullOrWhiteSpace($dhcpFolder)) { $null } else { $dhcpFolder }
+    $dhcpFolderExists = if ($dhcpFolderPath) { Test-Path $dhcpFolderPath } else { $false }
+    $dhcpFileCount = if ($dhcpFolderPath) { (Get-ChildItem -Path $dhcpFolderPath -Filter 'dhcp-*.json' -ErrorAction SilentlyContinue | Measure-Object).Count } else { 'n/a' }
+    Write-Host ("DBG DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolder,$dhcpFolderExists,$dhcpFileCount,($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' } | Measure-Object).Count)
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result
 
     return $result
