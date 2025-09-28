@@ -14,6 +14,25 @@ param(
     [int]$ThrottleLimit = [math]::Max([System.Environment]::ProcessorCount, 1)
 )
 
+$script:CollectorHostSupportsVirtualTerminal = $false
+try {
+    if ($Host -and $Host.UI -and $Host.UI.PSObject.Properties['SupportsVirtualTerminal']) {
+        $script:CollectorHostSupportsVirtualTerminal = [bool]$Host.UI.SupportsVirtualTerminal
+    }
+} catch {
+    $script:CollectorHostSupportsVirtualTerminal = $false
+}
+
+if (-not $script:CollectorHostSupportsVirtualTerminal -and (Test-Path -Path 'variable:PSStyle')) {
+    try {
+        $PSStyle.OutputRendering = 'PlainText'
+    } catch {
+        # Ignore failures when PSStyle is not available (e.g., Windows PowerShell 5).
+    }
+}
+
+$script:CollectorShouldEmitProgress = $script:CollectorHostSupportsVirtualTerminal -or ($PSVersionTable.PSVersion.Major -lt 6)
+
 . (Join-Path -Path $PSScriptRoot -ChildPath 'CollectorCommon.ps1')
 
 function Get-CollectorScripts {
@@ -47,6 +66,7 @@ function Invoke-AllCollectors {
 param($scriptPath, $outputDirectory, $parentVerbosePreference)
 $VerbosePreference = $parentVerbosePreference
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'
 try {
     Write-Verbose ("Starting collector '{0}' with output '{1}'." -f $scriptPath, $outputDirectory)
     $result = & $scriptPath -OutputDirectory $outputDirectory -ErrorAction Stop
@@ -138,7 +158,9 @@ try {
 
                     $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
                     $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
-                    Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                    if ($script:CollectorShouldEmitProgress) {
+                        Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                    }
                     Write-Host $statusMessage
                     Write-Verbose ("Collector '{0}' result recorded. Success: False." -f $entry.Collector.FullName)
                     continue
@@ -200,7 +222,9 @@ try {
 
                 $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
                 $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
-                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                if ($script:CollectorShouldEmitProgress) {
+                    Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                }
                 Write-Host $statusMessage
                 $firstResult = if ($meaningfulOutput.Count -gt 0) { $meaningfulOutput[0] } else { $null }
                 $successState = if ($firstResult) { $firstResult.Success } else { $null }
@@ -212,7 +236,9 @@ try {
             }
         }
 
-        Write-Progress -Activity $activity -Completed
+        if ($script:CollectorShouldEmitProgress) {
+            Write-Progress -Activity $activity -Completed
+        }
 
         $results = $resultsList.ToArray()
 

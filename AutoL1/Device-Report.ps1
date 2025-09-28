@@ -19,6 +19,23 @@ param(
   [string]$InputFolder # optional: analyze an existing folder without collecting
 )
 
+$script:DeviceReportSupportsVirtualTerminal = $false
+try {
+  if ($Host -and $Host.UI -and $Host.UI.PSObject.Properties['SupportsVirtualTerminal']) {
+    $script:DeviceReportSupportsVirtualTerminal = [bool]$Host.UI.SupportsVirtualTerminal
+  }
+} catch {
+  $script:DeviceReportSupportsVirtualTerminal = $false
+}
+
+if (-not $script:DeviceReportSupportsVirtualTerminal -and (Test-Path -Path 'variable:PSStyle')) {
+  try {
+    $PSStyle.OutputRendering = 'PlainText'
+  } catch {
+    # Ignore when PSStyle is unavailable (e.g., Windows PowerShell 5).
+  }
+}
+
 <#
 .SYNOPSIS
   Ensures the script is running with administrator privileges and stops execution when it is not.
