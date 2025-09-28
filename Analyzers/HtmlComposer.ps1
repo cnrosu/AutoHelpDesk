@@ -296,7 +296,7 @@ function Get-FailedCollectorReports {
                 }
 
                 if (-not $resolvedAny -and $missing.Count -gt 0) {
-                    $detailText = "Expected file not found: {0}" -f ($missing -join ', ')
+                    $detailText = "Expected file not found: {0}" -f ($missing.ToArray() -join ', ')
                     $failures.Add([pscustomobject]@{
                             Key     = if ($displayName) { $displayName } else { 'Collector' }
                             Status  = 'Output missing'
@@ -494,7 +494,7 @@ function Build-GoodSection {
         $tabId = "$tabName-$slug"
         $checkedAttr = if ($category -eq $firstNonEmpty) { " checked='checked'" } else { '' }
         $labelText = Encode-Html "$category ($count)"
-        $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
+        $panelContent = if ($count -gt 0) { ($cards.ToArray() -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
         $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
         $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
@@ -582,7 +582,7 @@ function Build-IssueSection {
         $badgeLabel = Encode-Html ($labelText.ToUpperInvariant())
         $countLabel = Encode-Html "($count)"
         $labelInner = "<span class='report-badge report-badge--$($definition.BadgeClass) report-tabs__label-badge'>$badgeLabel</span><span class='report-tabs__label-count'>$countLabel</span>"
-        $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
+        $panelContent = if ($count -gt 0) { ($cards.ToArray() -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
 
         $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
         $tabs += "<label class='report-tabs__label' for='$tabId'>$labelInner</label>"
@@ -780,7 +780,7 @@ function Build-RawSection {
         $cards.Add("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>") | Out-Null
     }
 
-    return ($cards -join '')
+    return ($cards.ToArray() -join '')
 }
 
 function New-AnalyzerHtml {
