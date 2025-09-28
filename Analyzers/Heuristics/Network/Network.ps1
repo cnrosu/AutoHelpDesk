@@ -716,6 +716,7 @@ function Invoke-NetworkHeuristics {
         }
     }
 
+    Write-Host ("DBG DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolder,(Test-Path $dhcpFolder),(Get-ChildItem -Path $dhcpFolder -Filter 'dhcp-*.json' -ErrorAction SilentlyContinue | Measure-Object).Count,($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' } | Measure-Object).Count)
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result
 
     return $result
