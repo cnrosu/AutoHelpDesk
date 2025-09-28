@@ -13,6 +13,7 @@ Import-Module (Join-Path -Path $repoRoot -ChildPath 'Modules/Common.psm1') -Forc
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerCommon.ps1')
 
 $payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-static-configuration.json'
+$ads = Ensure-Array $payload.AdapterConfigurations; Write-Host ("DBG DHCP PAYLOAD: adapters={0} dhcpEnabled={1} gateway={2} dns0={3}" -f $ads.Count,($ads | Select-Object -First 1 -ExpandProperty DHCPEnabled),($ads | Select-Object -First 1 -ExpandProperty DefaultIPGateway | Select-Object -First 1),($ads | Select-Object -First 1 -ExpandProperty DNSServerSearchOrder | Select-Object -First 1))
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'DHCP disabled without static config' -Severity 'warning' -Message "Unable to parse DHCP static configuration collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))
