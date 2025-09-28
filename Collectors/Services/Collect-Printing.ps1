@@ -436,7 +436,11 @@ function Invoke-PortTest {
                 $testResult.PingSucceeded = [bool]$result.PingSucceeded
             }
             if ($result.PSObject.Properties['PingReplyDetails'] -and $result.PingReplyDetails) {
-                try { $testResult.RoundTripTime = $result.PingReplyDetails.RoundtripTime } catch {}
+                try {
+                    $testResult.RoundTripTime = $result.PingReplyDetails.RoundtripTime
+                } catch {
+                    Write-Verbose -Message ("Failed to read PingReplyDetails.RoundtripTime for host {0}: {1}" -f $Host, $_.Exception.Message)
+                }
             }
         }
     } catch {
