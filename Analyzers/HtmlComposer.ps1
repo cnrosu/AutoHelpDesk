@@ -14,6 +14,7 @@ function Resolve-CategoryGroup {
         '^(?i)services'          { return 'Services' }
         '^(?i)office'            { return 'Office' }
         '^(?i)network'           { return 'Network' }
+        '^(?i)dhcp'              { return 'Network' }
         '^(?i)system'            { return 'System' }
         '^(?i)storage|hardware'  { return 'Hardware' }
         '^(?i)security'          { return 'Security' }
@@ -22,6 +23,24 @@ function Resolve-CategoryGroup {
         '^(?i)events'            { return 'Events' }
         default                  { return $trimmed }
     }
+}
+
+function Get-BaseCategoryFromArea {
+    param([string]$Area)
+
+    if ([string]::IsNullOrWhiteSpace($Area)) { return 'General' }
+
+    $trimmed = $Area.Trim()
+    $candidate = $trimmed
+    if ($trimmed.Contains('/')) {
+        $candidate = $trimmed.Split('/', 2)[0].Trim()
+        if (-not $candidate) { $candidate = $trimmed }
+    }
+
+    $resolved = Resolve-CategoryGroup -Name $candidate
+    if ([string]::IsNullOrWhiteSpace($resolved)) { return 'General' }
+
+    return $resolved
 }
 
 function Add-SubcategoryCandidate {
@@ -73,7 +92,7 @@ function Add-SubcategoryCandidate {
     }
 }
 
-function Get-IssueAreaLabel {
+function Get-IssueCategoryInfo {
     param(
         $Category,
         $Entry
@@ -81,6 +100,7 @@ function Get-IssueAreaLabel {
 
     $categoryName = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '' }
     $baseCategory = Resolve-CategoryGroup -Name $categoryName
+    if ([string]::IsNullOrWhiteSpace($baseCategory)) { $baseCategory = 'General' }
 
     $subcategories = New-Object System.Collections.Generic.List[string]
 
@@ -97,11 +117,34 @@ function Get-IssueAreaLabel {
         Add-SubcategoryCandidate -List $subcategories -Value $tail -BaseCategory $baseCategory -OriginalCategory $categoryName
     }
 
+    $subcategory = $null
     if ($subcategories.Count -gt 0) {
-        return ("{0}/{1}" -f $baseCategory, $subcategories[0])
+        $subcategory = $subcategories[0]
     }
 
-    return $baseCategory
+    if ([string]::IsNullOrWhiteSpace($subcategory)) { $subcategory = $null }
+
+    $classification = if ($subcategory) { "{0}/{1}" -f $baseCategory, $subcategory } else { $baseCategory }
+
+    return [pscustomobject]@{
+        Category       = $baseCategory
+        Subcategory    = $subcategory
+        Classification = $classification
+    }
+}
+
+function Get-IssueAreaLabel {
+    param(
+        $Category,
+        $Entry
+    )
+
+    $info = Get-IssueCategoryInfo -Category $Category -Entry $Entry
+    if ($info -and $info.PSObject.Properties['Classification']) {
+        return $info.Classification
+    }
+
+    return 'General'
 }
 
 function Format-AnalyzerEvidence {
@@ -136,12 +179,16 @@ function Convert-ToIssueCard {
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
     $hasNewLines = $detail -match "\r|\n"
+    $classification = Get-IssueCategoryInfo -Category $Category -Entry $Issue
 
     return [pscustomobject]@{
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
-        Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
+        Category    = if ($classification.Category) { $classification.Category } else { 'General' }
+        Subcategory = if ($classification.Subcategory) { $classification.Subcategory } else { $null }
+        Classification = if ($classification.Classification) { $classification.Classification } else { $classification.Category }
+        Area        = if ($classification.Classification) { $classification.Classification } else { $classification.Category }
         Message     = $Issue.Title
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
@@ -155,11 +202,15 @@ function Convert-ToGoodCard {
     )
 
     $detail = Format-AnalyzerEvidence -Value $Normal.Evidence
+    $classification = Get-IssueCategoryInfo -Category $Category -Entry $Normal
 
     return [pscustomobject]@{
         CssClass  = 'good'
         BadgeText = 'GOOD'
-        Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
+        Category    = if ($classification.Category) { $classification.Category } else { 'General' }
+        Subcategory = if ($classification.Subcategory) { $classification.Subcategory } else { $null }
+        Classification = if ($classification.Classification) { $classification.Classification } else { $classification.Category }
+        Area      = if ($classification.Classification) { $classification.Classification } else { $classification.Category }
         Message   = $Normal.Title
         Evidence  = $detail
     }
@@ -451,8 +502,15 @@ function Build-GoodSection {
         $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
 
-    foreach ($entry in $Normals) {
-        $category = Resolve-CategoryGroup -Name $entry.Area
+    foreach ($entry in ($Normals | Sort-Object -Property @(
+                @{ Expression = { if ($_.Classification) { $_.Classification } elseif ($_.Area) { $_.Area } else { '' } } },
+                @{ Expression = { $_.Message } }
+            ))) {
+        $category = if ($entry.Category) { [string]$entry.Category } else { $null }
+        if ([string]::IsNullOrWhiteSpace($category)) {
+            $category = Get-BaseCategoryFromArea -Area $entry.Area
+        }
+        if ([string]::IsNullOrWhiteSpace($category)) { $category = 'General' }
         if (-not $categorized.ContainsKey($category)) {
             $categorized[$category] = New-Object System.Collections.Generic.List[string]
         }
@@ -518,7 +576,7 @@ function Build-IssueSection {
     $severityOrder = @{ critical = 0; high = 1; medium = 2; low = 3; warning = 4; info = 5 }
     $sorted = $Issues | Sort-Object -Stable -Property @(
         @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { [int]::MaxValue } } },
-        @{ Expression = { $_.Area } },
+        @{ Expression = { if ($_.Classification) { $_.Classification } elseif ($_.Area) { $_.Area } else { '' } } },
         @{ Expression = { $_.Message } }
     )
 
@@ -529,7 +587,10 @@ function Build-IssueSection {
     }
 
     foreach ($entry in $sorted) {
-        $category = if ($entry.Area) { Resolve-CategoryGroup -Name $entry.Area } else { 'General' }
+        $category = if ($entry.Category) { [string]$entry.Category } else { $null }
+        if ([string]::IsNullOrWhiteSpace($category)) {
+            $category = Get-BaseCategoryFromArea -Area $entry.Area
+        }
         if ([string]::IsNullOrWhiteSpace($category)) { $category = 'General' }
         if (-not $categorized.ContainsKey($category)) {
             $categorized[$category] = New-Object System.Collections.Generic.List[string]

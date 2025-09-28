@@ -436,7 +436,30 @@ function New-IssueCardHtml {
   $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'info' }
   $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } elseif ($Entry.Severity) { $Entry.Severity.ToUpperInvariant() } else { 'ISSUE' }
   $badgeHtml = Encode-Html $badgeText
-  $areaHtml = Encode-Html $Entry.Area
+  $classificationValue = $null
+  if ($Entry.PSObject.Properties['Classification']) {
+    $classificationValue = [string]$Entry.Classification
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue) -and $Entry.PSObject.Properties['Category']) {
+    $categoryValue = [string]$Entry.Category
+    if (-not [string]::IsNullOrWhiteSpace($categoryValue)) {
+      if ($Entry.PSObject.Properties['Subcategory']) {
+        $subcategoryValue = [string]$Entry.Subcategory
+        if (-not [string]::IsNullOrWhiteSpace($subcategoryValue)) {
+          $classificationValue = "$categoryValue/$subcategoryValue"
+        }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($classificationValue)) {
+        $classificationValue = $categoryValue
+      }
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue) -and $Entry.PSObject.Properties['Area']) {
+    $classificationValue = [string]$Entry.Area
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue)) { $classificationValue = 'General' }
+  $areaHtml = Encode-Html $classificationValue
   $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
   $messageHtml = Encode-Html $messageValue
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
@@ -472,7 +495,30 @@ function New-GoodCardHtml {
   $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'good' }
   $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } else { 'GOOD' }
   $badgeHtml = Encode-Html $badgeText
-  $areaHtml = Encode-Html $Entry.Area
+  $classificationValue = $null
+  if ($Entry.PSObject.Properties['Classification']) {
+    $classificationValue = [string]$Entry.Classification
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue) -and $Entry.PSObject.Properties['Category']) {
+    $categoryValue = [string]$Entry.Category
+    if (-not [string]::IsNullOrWhiteSpace($categoryValue)) {
+      if ($Entry.PSObject.Properties['Subcategory']) {
+        $subcategoryValue = [string]$Entry.Subcategory
+        if (-not [string]::IsNullOrWhiteSpace($subcategoryValue)) {
+          $classificationValue = "$categoryValue/$subcategoryValue"
+        }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($classificationValue)) {
+        $classificationValue = $categoryValue
+      }
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue) -and $Entry.PSObject.Properties['Area']) {
+    $classificationValue = [string]$Entry.Area
+  }
+  if ([string]::IsNullOrWhiteSpace($classificationValue)) { $classificationValue = 'General' }
+  $areaHtml = Encode-Html $classificationValue
   $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
   $messageHtml = Encode-Html $messageValue
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
