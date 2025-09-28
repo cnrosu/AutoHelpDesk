@@ -355,42 +355,159 @@ function Invoke-DhcpAnalyzers {
         [string]$InputFolder
     )
 
-    if (-not $InputFolder) { return }
-    if (-not (Test-Path -LiteralPath $InputFolder)) { return }
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers entry: PSCommandPath={0}; PSScriptRoot={1}; MyInvocation.PSCommandPath={2}" -f $PSCommandPath, $PSScriptRoot, $MyInvocation.PSCommandPath)
+
+    $resolvedInputFolder = $null
+    $inputExists = $false
+    if ($InputFolder) {
+        try {
+            $resolvedInputFolder = (Resolve-Path -LiteralPath $InputFolder -ErrorAction Stop).ProviderPath
+            $inputExists = $true
+        } catch {
+            $resolvedInputFolder = $InputFolder
+            $inputExists = Test-Path -LiteralPath $InputFolder
+        }
+    }
+
+    $inputFolderDisplay = if ($InputFolder) { $InputFolder } else { '[null]' }
+    $resolvedInputDisplay = if ($resolvedInputFolder) { $resolvedInputFolder } else { '[null]' }
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers input: Raw={0}; Resolved={1}; Exists={2}" -f $inputFolderDisplay, $resolvedInputDisplay, [bool]$inputExists)
+
+    if (-not $InputFolder) { Write-Verbose -Message 'Invoke-DhcpAnalyzers exiting: InputFolder not provided'; return }
+    if (-not $inputExists) { Write-Verbose -Message ("Invoke-DhcpAnalyzers exiting: InputFolder missing '{0}'" -f $resolvedInputFolder); return }
+
+    $dhcpFolderPath = Join-Path -Path $resolvedInputFolder -ChildPath 'DHCP'
+    $rootDhcpJsonCount = 0
+    $dhcpSubfolderJsonCount = 0
+    try {
+        $rootDhcpJsonCount = @(Get-ChildItem -Path $resolvedInputFolder -Filter 'dhcp-*.json' -File -ErrorAction SilentlyContinue).Count
+    } catch {
+        $rootDhcpJsonCount = 0
+    }
+    if (Test-Path -LiteralPath $dhcpFolderPath) {
+        $dhcpSubfolderJsonCount = @(Get-ChildItem -Path $dhcpFolderPath -Filter 'dhcp-*.json' -File -ErrorAction SilentlyContinue).Count
+    }
+    $dhcpFolderResolved = $dhcpFolderPath
+    if (Test-Path -LiteralPath $dhcpFolderPath) {
+        try { $dhcpFolderResolved = (Resolve-Path -LiteralPath $dhcpFolderPath -ErrorAction Stop).ProviderPath } catch { $dhcpFolderResolved = $dhcpFolderPath }
+    }
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers artifacts: InputFolder={0}; DHCPFolder={1}; RootDhcpJsonCount={2}; DhcpFolderJsonCount={3}" -f $resolvedInputFolder, $dhcpFolderResolved, $rootDhcpJsonCount, $dhcpSubfolderJsonCount)
 
     $analyzerRoot = Join-Path -Path $PSScriptRoot -ChildPath 'DHCP'
-    if (-not (Test-Path -LiteralPath $analyzerRoot)) { return }
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers analyzer root: {0}" -f $analyzerRoot)
+    if (-not (Test-Path -LiteralPath $analyzerRoot)) { Write-Verbose -Message 'Invoke-DhcpAnalyzers exiting: analyzer root missing'; return }
 
-    $scriptFiles = Get-ChildItem -Path $analyzerRoot -Filter 'Analyze-Dhcp*.ps1' -File -ErrorAction SilentlyContinue | Sort-Object Name
-    if (-not $scriptFiles -or $scriptFiles.Count -eq 0) { return }
+    $scriptPattern = 'Analyze-Dhcp*.ps1'
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers script pattern: {0}" -f $scriptPattern)
+
+    $scriptFiles = @(Get-ChildItem -Path $analyzerRoot -Filter $scriptPattern -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    $foundScriptsCount = if ($scriptFiles) { $scriptFiles.Count } else { 0 }
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers FoundScriptsCount={0}" -f $foundScriptsCount)
+
+    if ($foundScriptsCount -eq 0) {
+        $parentOfScriptRoot = $null
+        try { $parentOfScriptRoot = (Resolve-Path -LiteralPath (Join-Path -Path $PSScriptRoot -ChildPath '..') -ErrorAction Stop).ProviderPath } catch { $parentOfScriptRoot = $null }
+
+        $fallbackBases = @{
+            'SplitPath_PSCommandPath' = Split-Path -Parent $PSCommandPath
+            'SplitPath_PSScriptRoot'  = Split-Path -Parent $PSScriptRoot
+            'ParentOfPSScriptRoot'    = $parentOfScriptRoot
+        }
+
+        foreach ($key in $fallbackBases.Keys) {
+            $basePath = $fallbackBases[$key]
+            if (-not $basePath) { Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[{0}]: base path unavailable" -f $key); continue }
+
+            $expectedPath = [System.IO.Path]::Combine($basePath, 'Analyzers', 'Heuristics', 'Network', 'DHCP')
+            if (-not (Test-Path -LiteralPath $expectedPath)) { Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[{0}]: expected path missing" -f $key); continue }
+
+            $resolvedExpectedPath = $expectedPath
+            try { $resolvedExpectedPath = (Resolve-Path -LiteralPath $expectedPath -ErrorAction Stop).ProviderPath } catch { $resolvedExpectedPath = $expectedPath }
+
+            $fallbackHits = @(Get-ChildItem -Path $resolvedExpectedPath -Filter $scriptPattern -File -ErrorAction SilentlyContinue)
+            if ($fallbackHits.Count -gt 0) {
+                Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[{0}] found {1} script(s): {2}" -f $key, $fallbackHits.Count, [string]::Join('; ', ($fallbackHits | Select-Object -First 5 | ForEach-Object { $_.FullName })))
+            } else {
+                Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[{0}] found 0 script(s) at {1}" -f $key, $resolvedExpectedPath)
+            }
+        }
+
+        $repoRoot = $null
+        $repoRootCandidate = [System.IO.Path]::Combine($PSScriptRoot, '..', '..', '..')
+        if (Test-Path -LiteralPath $repoRootCandidate) {
+            try { $repoRoot = (Resolve-Path -LiteralPath $repoRootCandidate -ErrorAction Stop).ProviderPath } catch { $repoRoot = $repoRootCandidate }
+        }
+        if ($repoRoot) {
+            $repoHits = @(Get-ChildItem -Path $repoRoot -Recurse -Filter $scriptPattern -File -ErrorAction SilentlyContinue | Select-Object -First 5)
+            if ($repoHits.Count -gt 0) {
+                Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[repo] first {0} hit(s): {1}" -f $repoHits.Count, [string]::Join('; ', ($repoHits | ForEach-Object { $_.FullName })))
+            } else {
+                Write-Verbose -Message ("Invoke-DhcpAnalyzers fallback[repo]: no scripts found under {0}" -f $repoRoot)
+            }
+        } else {
+            Write-Verbose -Message 'Invoke-DhcpAnalyzers fallback[repo]: unable to determine repository root'
+        }
+
+        return
+    }
 
     Write-Verbose -Message ("Invoke-DhcpAnalyzers discovered {0} DHCP analyzer script(s)" -f $scriptFiles.Count)
 
     $eligibleAnalyzers = @()
+    $scriptIndex = 0
     foreach ($script in $scriptFiles) {
+        $scriptIndex++
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($script.Name)
         $artifactBase = $null
         $artifactPath = $null
         $artifactExists = $false
+        $chosenCandidate = $null
+
+        Write-Verbose -Message ("Invoke-DhcpAnalyzers script mapping: Index={0}; ScriptName={1}; BaseName={2}" -f $scriptIndex, $script.FullName, $baseName)
 
         if ($baseName.StartsWith('Analyze-')) {
             $suffix = $baseName.Substring(8)
             if ($suffix) {
                 $artifactBase = ConvertTo-KebabCase $suffix
                 if ($artifactBase) {
-                    $artifactPath = Join-Path -Path $InputFolder -ChildPath ($artifactBase + '.json')
-                    $artifactExists = Test-Path -LiteralPath $artifactPath
+                    $artifactCandidates = @(
+                        [pscustomobject]@{
+                            Label = 'DHCPSubfolder'
+                            Path  = Join-Path -Path (Join-Path -Path $resolvedInputFolder -ChildPath 'DHCP') -ChildPath ($artifactBase + '.json')
+                        },
+                        [pscustomobject]@{
+                            Label = 'InputRoot'
+                            Path  = Join-Path -Path $resolvedInputFolder -ChildPath ($artifactBase + '.json')
+                        }
+                    )
+
+                    foreach ($candidate in $artifactCandidates) {
+                        $exists = Test-Path -LiteralPath $candidate.Path
+                        Write-Verbose -Message ("Invoke-DhcpAnalyzers artifact candidate: Script={0}; Base={1}; Label={2}; Path={3}; Exists={4}" -f $script.FullName, $artifactBase, $candidate.Label, $candidate.Path, [bool]$exists)
+                        if (-not $artifactExists -and $exists) {
+                            $artifactExists = $true
+                            $artifactPath = $candidate.Path
+                            $chosenCandidate = $candidate.Label
+                        }
+                    }
                 }
             }
         }
 
-        Write-Verbose -Message ("Invoke-DhcpAnalyzers candidate: Script={0}; BaseName={1}; ArtifactPath={2}; Exists={3}" -f $script.FullName, $baseName, ($artifactPath ? (Resolve-Path -LiteralPath $artifactPath -ErrorAction SilentlyContinue)?.ProviderPath : '[n/a]'), $artifactExists)
+        $artifactResolvedPath = $artifactPath
+        if ($artifactExists) {
+            try { $artifactResolvedPath = (Resolve-Path -LiteralPath $artifactPath -ErrorAction Stop).ProviderPath } catch { $artifactResolvedPath = $artifactPath }
+            Write-Verbose -Message ("Invoke-DhcpAnalyzers artifact selection: Script={0}; Base={1}; Pick={2}; Path={3}" -f $script.FullName, $artifactBase, $chosenCandidate, $artifactResolvedPath)
+        } else {
+            Write-Verbose -Message ("Invoke-DhcpAnalyzers artifact selection: Script={0}; Base={1}; Pick=<none>" -f $script.FullName, $artifactBase)
+        }
 
         if ($artifactExists) {
             $eligibleAnalyzers += [pscustomobject]@{
                 Script       = $script
                 ArtifactBase = $artifactBase
-                ArtifactPath = (Resolve-Path -LiteralPath $artifactPath).ProviderPath
+                ArtifactPath = $artifactResolvedPath
+                Candidate    = $chosenCandidate
             }
         }
     }
@@ -400,24 +517,46 @@ function Invoke-DhcpAnalyzers {
     Write-Verbose -Message ("Invoke-DhcpAnalyzers eligible analyzer count: {0}" -f $eligibleAnalyzers.Count)
 
     $findings = New-Object System.Collections.Generic.List[object]
+    $invokedAnalyzerCount = 0
 
     foreach ($analyzer in $eligibleAnalyzers) {
         try {
+            Write-Verbose -Message ("Invoke-DhcpAnalyzers invoking: Script={0}; Base={1}; Artifact={2}" -f $analyzer.Script.FullName, $analyzer.ArtifactBase, $analyzer.ArtifactPath)
+            $invokedAnalyzerCount++
             $result = & $analyzer.Script.FullName -InputFolder $InputFolder -CategoryResult $CategoryResult -Context $Context
         } catch {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title ("DHCP analyzer failed: {0}" -f $analyzer.Script.Name) -Evidence $_.Exception.Message -Subcategory 'DHCP'
+            Write-Verbose -Message ("Invoke-DhcpAnalyzers invocation failed: Script={0}; Error={1}" -f $analyzer.Script.FullName, $_.Exception.Message)
             continue
         }
 
         if ($null -eq $result) { continue }
 
+        $resultItems = @()
         if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
             foreach ($item in $result) {
-                if ($null -ne $item) { $findings.Add($item) | Out-Null }
+                if ($null -ne $item) { $resultItems += $item }
             }
         } else {
-            $findings.Add($result) | Out-Null
+            if ($null -ne $result) { $resultItems += $result }
         }
+
+        $issueCount = 0
+        $normalCount = 0
+        foreach ($item in $resultItems) {
+            $findings.Add($item) | Out-Null
+            if ($item.PSObject.Properties['Severity'] -and $item.Severity) {
+                if ($item.Severity -in @('good', 'ok', 'normal')) {
+                    $normalCount++
+                } else {
+                    $issueCount++
+                }
+            } else {
+                $issueCount++
+            }
+        }
+
+        Write-Verbose -Message ("Invoke-DhcpAnalyzers returned: Script={0}; Count={1}; Issues={2}; Normals={3}" -f $analyzer.Script.FullName, $resultItems.Count, $issueCount, $normalCount)
     }
 
     Write-Verbose -Message ("Invoke-DhcpAnalyzers produced {0} result(s)" -f $findings.Count)
@@ -451,6 +590,8 @@ function Invoke-DhcpAnalyzers {
 
         Add-CategoryNormal -CategoryResult $CategoryResult -Title ("DHCP diagnostics healthy ({0} checks)" -f $eligibleAnalyzers.Count) -Evidence $evidence -Subcategory 'DHCP'
     }
+
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers summary: Scripts={0}; Eligible={1}; Invoked={2}; TotalFindings={3}" -f $foundScriptsCount, $eligibleAnalyzers.Count, $invokedAnalyzerCount, $findings.Count)
 }
 
 function Invoke-NetworkHeuristics {
