@@ -64,6 +64,20 @@ function Invoke-OfficeHeuristics {
         }
     }
 
+    $connectivityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
+    if ($connectivityArtifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $connectivityArtifact)
+        if ($payload -and $payload.OstFiles) {
+            $largeOst = $payload.OstFiles | Where-Object { $_.Length -gt 25GB }
+            if ($largeOst.Count -gt 0) {
+                $names = $largeOst | Select-Object -ExpandProperty Name
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', ')) -Subcategory 'Outlook Data Files'
+            } elseif ($payload.OstFiles.Count -gt 0) {
+                Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count)
+            }
+        }
+    }
+
     $autodiscoverArtifact = Get-AnalyzerArtifact -Context $Context -Name 'autodiscover-dns'
     if ($autodiscoverArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $autodiscoverArtifact)
