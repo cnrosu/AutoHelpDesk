@@ -101,6 +101,57 @@ function Resolve-Candidates {
     }
 }
 
+function Test-TcpPort {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Target,
+
+        [Parameter(Mandatory)]
+        [int]$Port,
+
+        [int]$TimeoutMs = 2000
+    )
+
+    $result = [ordered]@{
+        Success       = $false
+        RemoteAddress = $null
+        LatencyMs     = $null
+        Error         = $null
+    }
+
+    $client = $null
+    $waitHandle = $null
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $asyncResult = $client.BeginConnect($Target, $Port, $null, $null)
+        $waitHandle = $asyncResult.AsyncWaitHandle
+
+        if (-not $waitHandle.WaitOne($TimeoutMs, $false)) {
+            throw "Connection attempt timed out after $TimeoutMs ms."
+        }
+
+        $client.EndConnect($asyncResult)
+        $stopwatch.Stop()
+        $result.Success = $true
+        $result.LatencyMs = [Math]::Round($stopwatch.Elapsed.TotalMilliseconds, 2)
+
+        $remoteEndpoint = $client.Client.RemoteEndPoint
+        if ($remoteEndpoint -and $remoteEndpoint.Address) {
+            $result.RemoteAddress = $remoteEndpoint.Address.ToString()
+        }
+    } catch {
+        if ($stopwatch.IsRunning) { $stopwatch.Stop() }
+        $result.Error = $_.Exception.Message
+        $result.Success = $false
+    } finally {
+        if ($waitHandle) { $waitHandle.Close() }
+        if ($client) { $client.Close() }
+    }
+
+    return $result
+}
+
 function Get-DomainStatus {
     $result = [ordered]@{
         ComputerName = $env:COMPUTERNAME
@@ -265,15 +316,17 @@ function Test-DomainControllerReachability {
                 Error         = $null
             }
             try {
-                $tnc = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue -ErrorAction Stop
-                $testResult.Success = $tnc.TcpTestSucceeded
-                if ($tnc.PSObject.Properties['RemoteAddress']) { $testResult.RemoteAddress = $tnc.RemoteAddress }
-                if ($tnc.PSObject.Properties['PingSucceeded'] -and $tnc.PingSucceeded -and $tnc.PSObject.Properties['PingReplyDetails']) {
-                    $testResult.LatencyMs = $tnc.PingReplyDetails.RoundtripTime
-                }
+                $probe = Test-TcpPort -Target $host -Port $port -TimeoutMs 2000
+                $testResult.Success = $probe.Success
+                $testResult.RemoteAddress = $probe.RemoteAddress
+                $testResult.LatencyMs = $probe.LatencyMs
+                $testResult.Error = $probe.Error
             } catch {
                 $testResult.Success = $false
                 $testResult.Error = $_.Exception.Message
+            }
+            if (-not $testResult.RemoteAddress -and $candidate.Addresses -and $candidate.Addresses.Count -gt 0) {
+                $testResult.RemoteAddress = $candidate.Addresses[0]
             }
             $tests += $testResult
         }
