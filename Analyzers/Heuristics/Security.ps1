@@ -94,14 +94,24 @@ function Invoke-SecurityHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'Security' -Message 'Starting security heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Security'
 
     $operatingSystem = $null
     $isWindows11 = $false
     $systemPayload = $null
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved system artifact' -Data ([ordered]@{
+        Found = [bool]$systemArtifact
+    })
     if ($systemArtifact) {
         $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating system payload for OS details' -Data ([ordered]@{
+            HasPayload = [bool]$systemPayload
+        })
         if ($systemPayload -and $systemPayload.OperatingSystem -and -not $systemPayload.OperatingSystem.Error) {
             $operatingSystem = $systemPayload.OperatingSystem
             if ($operatingSystem.Caption -and $operatingSystem.Caption -match 'Windows\s*11') {
@@ -116,8 +126,14 @@ function Invoke-SecurityHeuristics {
     $requiredSecurityProperties = @()
 
     $vbshvciArtifact = Get-AnalyzerArtifact -Context $Context -Name 'vbshvci'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved VBS/HVCI artifact' -Data ([ordered]@{
+        Found = [bool]$vbshvciArtifact
+    })
     if ($vbshvciArtifact) {
         $vbPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $vbshvciArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating VBS/HVCI payload' -Data ([ordered]@{
+            HasPayload = [bool]$vbPayload
+        })
         if ($vbPayload -and $vbPayload.DeviceGuard -and -not $vbPayload.DeviceGuard.Error) {
             $dg = $vbPayload.DeviceGuard
             $securityServicesRunning = ConvertTo-IntArray $dg.SecurityServicesRunning
@@ -129,16 +145,28 @@ function Invoke-SecurityHeuristics {
 
     $lsaEntries = @()
     $lsaArtifact = Get-AnalyzerArtifact -Context $Context -Name 'lsa'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved LSA artifact' -Data ([ordered]@{
+        Found = [bool]$lsaArtifact
+    })
     if ($lsaArtifact) {
         $lsaPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $lsaArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating LSA payload' -Data ([ordered]@{
+            HasRegistry = [bool]($lsaPayload -and $lsaPayload.Registry)
+        })
         if ($lsaPayload -and $lsaPayload.Registry) {
             $lsaEntries = ConvertTo-List $lsaPayload.Registry
         }
     }
 
     $defenderArtifact = Get-AnalyzerArtifact -Context $Context -Name 'defender'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved Defender artifact' -Data ([ordered]@{
+        Found = [bool]$defenderArtifact
+    })
     if ($defenderArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $defenderArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating Defender payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         $statusTamper = $null
         if ($payload -and $payload.Status -and -not $payload.Status.Error) {
             $status = $payload.Status
@@ -271,8 +299,14 @@ function Invoke-SecurityHeuristics {
     }
 
     $firewallArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved firewall artifact' -Data ([ordered]@{
+        Found = [bool]$firewallArtifact
+    })
     if ($firewallArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $firewallArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating firewall payload' -Data ([ordered]@{
+            HasProfiles = [bool]($payload -and $payload.Profiles)
+        })
         if ($payload -and $payload.Profiles) {
             $disabledProfiles = @()
             foreach ($profile in $payload.Profiles) {
@@ -300,8 +334,14 @@ function Invoke-SecurityHeuristics {
     }
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved BitLocker artifact' -Data ([ordered]@{
+        Found = [bool]$bitlockerArtifact
+    })
     if ($bitlockerArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $bitlockerArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating BitLocker payload' -Data ([ordered]@{
+            HasVolumes = [bool]($payload -and $payload.Volumes)
+        })
         if ($payload -and $payload.Volumes) {
             $volumes = ConvertTo-List $payload.Volumes
             $osVolumes = @()
@@ -368,8 +408,14 @@ function Invoke-SecurityHeuristics {
     }
 
     $tpmArtifact = Get-AnalyzerArtifact -Context $Context -Name 'tpm'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved TPM artifact' -Data ([ordered]@{
+        Found = [bool]$tpmArtifact
+    })
     if ($tpmArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $tpmArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating TPM payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.Tpm -and -not $payload.Tpm.Error) {
             $tpm = $payload.Tpm
             $present = ConvertTo-NullableBool $tpm.TpmPresent
@@ -387,8 +433,14 @@ function Invoke-SecurityHeuristics {
     }
 
     $kernelDmaArtifact = Get-AnalyzerArtifact -Context $Context -Name 'kerneldma'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved Kernel DMA artifact' -Data ([ordered]@{
+        Found = [bool]$kernelDmaArtifact
+    })
     if ($kernelDmaArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $kernelDmaArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating Kernel DMA payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         $registryValues = $null
         if ($payload -and $payload.Registry -and $payload.Registry.Values) {
             $registryValues = $payload.Registry.Values
@@ -421,8 +473,14 @@ function Invoke-SecurityHeuristics {
     }
 
     $asrArtifact = Get-AnalyzerArtifact -Context $Context -Name 'asr'
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved ASR artifact' -Data ([ordered]@{
+        Found = [bool]$asrArtifact
+    })
     if ($asrArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $asrArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating ASR payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         $ruleMap = @{}
         if ($payload -and $payload.Policy -and -not $payload.Policy.Error -and $payload.Policy.Rules) {
             foreach ($rule in (ConvertTo-List $payload.Policy.Rules)) {
@@ -590,8 +648,14 @@ function Invoke-SecurityHeuristics {
     if (-not $lapsArtifact) {
         $lapsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'laps'
     }
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved LAPS artifact' -Data ([ordered]@{
+        Found = [bool]$lapsArtifact
+    })
     if ($lapsArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $lapsArtifact)
+        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating LAPS payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         $lapsPolicies = $null
         if ($payload -and $payload.LapsPolicies) {
             $lapsPolicies = $payload.LapsPolicies
@@ -633,6 +697,11 @@ function Invoke-SecurityHeuristics {
     if ($runAsPpl -ne $null) { $lsaEvidenceLines += "RunAsPPL: $runAsPpl" }
     if ($runAsPplBoot -ne $null) { $lsaEvidenceLines += "RunAsPPLBoot: $runAsPplBoot" }
     $lsaEvidence = $lsaEvidenceLines -join "`n"
+    Write-HeuristicDebug -Source 'Security' -Message 'Credential Guard evaluation summary' -Data ([ordered]@{
+        CredentialGuardRunning = $credentialGuardRunning
+        RunAsPpl             = $runAsPpl
+        RunAsPplBoot         = $runAsPplBoot
+    })
     if ($credentialGuardRunning -and $runAsPpl -eq 1) {
         Add-CategoryNormal -CategoryResult $result -Title 'Credential Guard with LSA protection enabled' -Evidence $lsaEvidence
     } else {

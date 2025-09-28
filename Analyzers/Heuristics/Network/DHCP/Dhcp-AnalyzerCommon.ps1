@@ -24,6 +24,32 @@ function Get-DhcpCollectorPayload {
     }
 }
 
+function Write-DhcpDebug {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $source = 'Network/DHCP'
+    $arguments = @{ Source = $source; Message = $Message }
+    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
+        $arguments['Data'] = $Data
+    }
+
+    if (Get-Command -Name Write-HeuristicDebug -ErrorAction SilentlyContinue) {
+        Write-HeuristicDebug @arguments
+    } else {
+        $text = "DBG [{0}] {1}" -f $source, $Message
+        if ($arguments.ContainsKey('Data')) {
+            $details = $Data.GetEnumerator() | Sort-Object Name | ForEach-Object { "{0}={1}" -f $_.Key, $_.Value }
+            if ($details) { $text = "{0} :: {1}" -f $text, ($details -join '; ') }
+        }
+        Write-Host $text
+    }
+}
+
 function ConvertFrom-Iso8601 {
     param([string]$Text)
 

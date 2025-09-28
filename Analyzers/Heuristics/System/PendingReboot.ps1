@@ -6,13 +6,21 @@ function Invoke-SystemPendingRebootChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Starting pending reboot checks'
+
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'pendingreboot'
+    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Resolved pendingreboot artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
     if (-not $artifact) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Pending reboot inventory missing' -Subcategory 'Pending Reboot'
         return
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Evaluating pending reboot payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if (-not $payload) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Pending reboot data unavailable' -Subcategory 'Pending Reboot'
         return

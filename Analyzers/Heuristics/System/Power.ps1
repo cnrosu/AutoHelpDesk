@@ -6,10 +6,18 @@ function Invoke-SystemPowerChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/Power' -Message 'Starting power configuration checks'
+
     $powerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'power'
+    Write-HeuristicDebug -Source 'System/Power' -Message 'Resolved power artifact' -Data ([ordered]@{
+        Found = [bool]$powerArtifact
+    })
     if (-not $powerArtifact) { return }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $powerArtifact)
+    Write-HeuristicDebug -Source 'System/Power' -Message 'Evaluating power payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if ($payload -and $payload.FastStartup -and -not $payload.FastStartup.Error) {
         $fast = $payload.FastStartup
         if ($fast.HiberbootEnabled -eq 1) {

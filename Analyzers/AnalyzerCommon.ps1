@@ -49,6 +49,32 @@ function New-AnalyzerContext {
     }
 }
 
+function Write-HeuristicDebug {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Source,
+
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $formatted = "DBG [{0}] {1}" -f $Source, $Message
+
+    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
+        $details = $Data.GetEnumerator() | Sort-Object Name | ForEach-Object {
+            "{0}={1}" -f $_.Name, $_.Value
+        }
+
+        if ($details) {
+            $formatted = "{0} :: {1}" -f $formatted, ($details -join '; ')
+        }
+    }
+
+    Write-Host $formatted
+}
+
 function Get-AnalyzerArtifact {
     param(
         [Parameter(Mandatory)]

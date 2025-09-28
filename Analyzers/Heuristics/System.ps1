@@ -20,6 +20,10 @@ function Invoke-SystemHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'System' -Message 'Starting system heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'System'
 
     Invoke-SystemOperatingSystemChecks -Context $Context -Result $result

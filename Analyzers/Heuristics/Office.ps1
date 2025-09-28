@@ -11,14 +11,27 @@ function Invoke-OfficeHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'Office' -Message 'Starting Office heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Office'
 
     $policiesArtifact = Get-AnalyzerArtifact -Context $Context -Name 'office-policies'
+    Write-HeuristicDebug -Source 'Office' -Message 'Resolved office-policies artifact' -Data ([ordered]@{
+        Found = [bool]$policiesArtifact
+    })
     if ($policiesArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $policiesArtifact)
+        Write-HeuristicDebug -Source 'Office' -Message 'Evaluating Office policies payload' -Data ([ordered]@{
+            HasPolicies = [bool]($payload -and $payload.Policies)
+        })
         if ($payload -and $payload.Policies) {
             $macroBlocked = $false
             foreach ($policy in $payload.Policies) {
+                Write-HeuristicDebug -Source 'Office' -Message 'Processing policy entry' -Data ([ordered]@{
+                    Path = $policy.Path
+                })
                 if ($policy.Values -and $policy.Values.PSObject.Properties['VBAWarnings']) {
                     $value = [int]$policy.Values.VBAWarnings
                     if ($value -ge 4) {
@@ -51,8 +64,14 @@ function Invoke-OfficeHeuristics {
     }
 
     $cacheArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-caches'
+    Write-HeuristicDebug -Source 'Office' -Message 'Resolved outlook-caches artifact' -Data ([ordered]@{
+        Found = [bool]$cacheArtifact
+    })
     if ($cacheArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $cacheArtifact)
+        Write-HeuristicDebug -Source 'Office' -Message 'Evaluating Outlook caches payload' -Data ([ordered]@{
+            CacheCount = if ($payload -and $payload.Caches) { $payload.Caches.Count } else { 0 }
+        })
         if ($payload -and $payload.Caches -and -not $payload.Caches.Error) {
             $largeCaches = $payload.Caches | Where-Object { $_.Length -gt 25GB }
             if ($largeCaches.Count -gt 0) {
@@ -65,8 +84,14 @@ function Invoke-OfficeHeuristics {
     }
 
     $connectivityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
+    Write-HeuristicDebug -Source 'Office' -Message 'Resolved outlook-connectivity artifact' -Data ([ordered]@{
+        Found = [bool]$connectivityArtifact
+    })
     if ($connectivityArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $connectivityArtifact)
+        Write-HeuristicDebug -Source 'Office' -Message 'Evaluating Outlook connectivity payload' -Data ([ordered]@{
+            OstCount = if ($payload -and $payload.OstFiles) { $payload.OstFiles.Count } else { 0 }
+        })
         if ($payload -and $payload.OstFiles) {
             $largeOst = $payload.OstFiles | Where-Object { $_.Length -gt 25GB }
             if ($largeOst.Count -gt 0) {
@@ -79,8 +104,14 @@ function Invoke-OfficeHeuristics {
     }
 
     $autodiscoverArtifact = Get-AnalyzerArtifact -Context $Context -Name 'autodiscover-dns'
+    Write-HeuristicDebug -Source 'Office' -Message 'Resolved autodiscover-dns artifact' -Data ([ordered]@{
+        Found = [bool]$autodiscoverArtifact
+    })
     if ($autodiscoverArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $autodiscoverArtifact)
+        Write-HeuristicDebug -Source 'Office' -Message 'Evaluating autodiscover DNS payload' -Data ([ordered]@{
+            HasResults = [bool]($payload -and $payload.Results)
+        })
         if ($payload -and $payload.Results) {
             $results = if ($payload.Results -is [System.Collections.IEnumerable] -and -not ($payload.Results -is [string])) { @($payload.Results) } else { @($payload.Results) }
             foreach ($domainEntry in $results) {

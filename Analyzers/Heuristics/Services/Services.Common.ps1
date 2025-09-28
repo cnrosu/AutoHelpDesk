@@ -94,6 +94,8 @@ function New-ServiceLookup {
 function Get-DevicePlatformInfo {
     param($Context)
 
+    Write-HeuristicDebug -Source 'Services/Common' -Message 'Determining device platform'
+
     $isWindowsServer = $null
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
     if ($systemArtifact) {
@@ -118,6 +120,8 @@ function Get-DevicePlatformInfo {
 
 function Get-SystemProxyInfo {
     param($Context)
+
+    Write-HeuristicDebug -Source 'Services/Common' -Message 'Evaluating system proxy configuration'
 
     $hasSystemProxy = $false
     $proxyEvidence = $null

@@ -6,13 +6,21 @@ function Invoke-SystemOperatingSystemChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/OS' -Message 'Starting operating system checks'
+
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    Write-HeuristicDebug -Source 'System/OS' -Message 'Resolved system artifact' -Data ([ordered]@{
+        Found = [bool]$systemArtifact
+    })
     if (-not $systemArtifact) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System inventory artifact missing' -Subcategory 'Collection'
         return
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+    Write-HeuristicDebug -Source 'System/OS' -Message 'Evaluating system payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if ($payload -and $payload.OperatingSystem -and -not $payload.OperatingSystem.Error) {
         $os = $payload.OperatingSystem
         $caption = $os.Caption

@@ -169,19 +169,33 @@ function Invoke-StorageHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'Storage' -Message 'Starting storage heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Storage'
 
     $storageArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage'
     $snapshotArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage-snapshot'
+    Write-HeuristicDebug -Source 'Storage' -Message 'Resolved storage artifacts' -Data ([ordered]@{
+        StorageFound  = [bool]$storageArtifact
+        SnapshotFound = [bool]$snapshotArtifact
+    })
 
     if ($storageArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $storageArtifact)
+        Write-HeuristicDebug -Source 'Storage' -Message 'Evaluating storage payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         $diskEntries = @()
         if ($payload -and $payload.PSObject.Properties['Disks']) {
             $diskEntries = ConvertTo-StorageArray $payload.Disks | Where-Object {
                 $_ -and -not ($_ -is [string]) -and $_.PSObject.Properties['HealthStatus']
             }
         }
+        Write-HeuristicDebug -Source 'Storage' -Message 'Disk entries resolved' -Data ([ordered]@{
+            DiskCount = $diskEntries.Count
+        })
 
         if ($diskEntries.Count -gt 0) {
             $unhealthy = $diskEntries | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
@@ -207,6 +221,9 @@ function Invoke-StorageHeuristics {
 
         $thresholdConfig = $null
         $thresholdArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage-thresholds'
+        Write-HeuristicDebug -Source 'Storage' -Message 'Resolved storage-thresholds artifact' -Data ([ordered]@{
+            Found = [bool]$thresholdArtifact
+        })
         if ($thresholdArtifact) {
             $thresholdPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $thresholdArtifact)
             if ($thresholdPayload) { $thresholdConfig = $thresholdPayload }
@@ -218,6 +235,9 @@ function Invoke-StorageHeuristics {
                 $_ -and -not ($_ -is [string]) -and $_.PSObject.Properties['Size'] -and $_.PSObject.Properties['SizeRemaining']
             }
         }
+        Write-HeuristicDebug -Source 'Storage' -Message 'Volume entries resolved' -Data ([ordered]@{
+            VolumeCount = $volumeEntries.Count
+        })
 
         if ($volumeEntries.Count -gt 0) {
             foreach ($volume in $volumeEntries) {
@@ -262,6 +282,7 @@ function Invoke-StorageHeuristics {
 
         if ($payload -and $payload.PSObject.Properties['WearCounters']) {
             $wearNode = $payload.WearCounters
+            Write-HeuristicDebug -Source 'Storage' -Message 'Processing wear counters'
             if ($wearNode -is [pscustomobject] -and $wearNode.PSObject.Properties['Error']) {
                 $errorMessage = [string]$wearNode.Error
                 if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
@@ -316,6 +337,9 @@ function Invoke-StorageHeuristics {
 
     if ($snapshotArtifact) {
         $snapshotPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $snapshotArtifact)
+        Write-HeuristicDebug -Source 'Storage' -Message 'Evaluating storage snapshot payload' -Data ([ordered]@{
+            HasPayload = [bool]$snapshotPayload
+        })
         if ($snapshotPayload -and $snapshotPayload.PSObject.Properties['DiskDrives']) {
             $smartData = $snapshotPayload.DiskDrives
             if ($smartData -is [pscustomobject] -and $smartData.PSObject.Properties['Error']) {

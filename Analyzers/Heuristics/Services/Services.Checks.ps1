@@ -6,6 +6,8 @@ function Invoke-ServiceCheckWindowsSearch {
         [bool]$IsServer
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating Windows Search service'
+
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'WSearch'
     if (-not $service.Exists) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search service missing' -Evidence 'Service entry not found; search and Outlook indexing will fail.' -Subcategory 'Windows Search Service'
@@ -39,6 +41,8 @@ function Invoke-ServiceCheckDnsClient {
         [Parameter(Mandatory)]$Lookup
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating DNS Client service'
+
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'Dnscache'
     if (-not $service.Exists) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'DNS Client (Dnscache) service missing' -Evidence 'Service entry not found; DNS resolution will fail.' -Subcategory 'DNS Client Service'
@@ -59,6 +63,8 @@ function Invoke-ServiceCheckNetworkLocation {
         [Parameter(Mandatory)]$Lookup,
         [bool]$IsWorkstation
     )
+
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating Network Location Awareness service'
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'NlaSvc'
     if (-not $service.Exists) {
@@ -85,6 +91,8 @@ function Invoke-ServiceCheckWorkstation {
         [Parameter(Mandatory)]$Lookup
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating Workstation service'
+
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'LanmanWorkstation'
     if (-not $service.Exists) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Workstation (LanmanWorkstation) service missing' -Evidence 'Service entry not found; SMB client functionality unavailable.' -Subcategory 'Workstation Service'
@@ -107,6 +115,8 @@ function Invoke-ServiceCheckPrintSpooler {
         [Parameter(Mandatory)]$Lookup,
         [bool]$IsWorkstation
     )
+
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating Print Spooler service'
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'Spooler'
     if (-not $service.Exists) {
@@ -135,6 +145,8 @@ function Invoke-ServiceCheckRpc {
         [Parameter(Mandatory)]$Lookup
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating RPC services'
+
     $rpc = Get-ServiceStateInfo -Lookup $Lookup -Name 'RpcSs'
     if (-not $rpc.Exists) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC (RpcSs) service missing' -Evidence 'Service entry not found; Windows cannot operate without RPC.' -Subcategory 'RPC Services'
@@ -162,6 +174,10 @@ function Invoke-ServiceCheckWinHttpAutoProxy {
         [Parameter(Mandatory)]$Lookup,
         [Parameter(Mandatory)]$ProxyInfo
     )
+
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating WinHTTP Auto Proxy service' -Data ([ordered]@{
+        HasProxy = $ProxyInfo.HasSystemProxy
+    })
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'WinHttpAutoProxySvc'
     if (-not $service.Exists) {
@@ -213,6 +229,8 @@ function Invoke-ServiceCheckBits {
         [bool]$IsWorkstation
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating BITS service'
+
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'BITS'
     if (-not $service.Exists) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service missing' -Evidence 'Background transfers for Windows Update, AV, and Office will fail.' -Subcategory 'BITS Service'
@@ -246,6 +264,8 @@ function Invoke-ServiceCheckOfficeClickToRun {
         [bool]$IsWorkstation
     )
 
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating Office Click-to-Run service'
+
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'ClickToRunSvc'
     if (-not $service.Exists) {
         return
@@ -274,6 +294,10 @@ function Invoke-ServiceCheckAutomaticInventory {
         [Parameter(Mandatory)]$Result,
         [Parameter(Mandatory)]$Services
     )
+
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating automatic service inventory' -Data ([ordered]@{
+        ServiceCount = $Services.Count
+    })
 
     $stoppedAuto = $Services | Where-Object {
         ($_.StartMode -eq 'Auto' -or $_.StartType -eq 'Automatic') -and ($_.State -ne 'Running' -and $_.Status -ne 'Running')

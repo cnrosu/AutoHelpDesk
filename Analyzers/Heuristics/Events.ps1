@@ -11,13 +11,24 @@ function Invoke-EventsHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'Events' -Message 'Starting event log heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Events'
 
     $eventsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
+    Write-HeuristicDebug -Source 'Events' -Message 'Resolved events artifact' -Data ([ordered]@{
+        Found = [bool]$eventsArtifact
+    })
     if ($eventsArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $eventsArtifact)
+        Write-HeuristicDebug -Source 'Events' -Message 'Resolved events payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload) {
             foreach ($logName in @('System','Application','GroupPolicy')) {
+                Write-HeuristicDebug -Source 'Events' -Message ('Inspecting {0} log entries' -f $logName)
                 if (-not $payload.PSObject.Properties[$logName]) { continue }
                 $entries = $payload.$logName
                 if ($entries -and -not $entries.Error) {

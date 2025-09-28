@@ -6,13 +6,21 @@ function Invoke-SystemStartupChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/Startup' -Message 'Starting startup checks'
+
     $startupArtifact = Get-AnalyzerArtifact -Context $Context -Name 'startup'
+    Write-HeuristicDebug -Source 'System/Startup' -Message 'Resolved startup artifact' -Data ([ordered]@{
+        Found = [bool]$startupArtifact
+    })
     if (-not $startupArtifact) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program artifact missing' -Subcategory 'Startup Programs'
         return
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $startupArtifact)
+    Write-HeuristicDebug -Source 'System/Startup' -Message 'Evaluating startup payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if (-not $payload) { return }
 
     if ($payload -and $payload.StartupCommands) {
