@@ -16,44 +16,61 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Write-Verbose ("Starting analysis for input folder '{0}'." -f $InputFolder)
 
 $commonModulePath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Modules/Common.psm1'
 if (Test-Path -Path $commonModulePath) {
     Import-Module $commonModulePath -Force
+    Write-Verbose ("Imported common module from '{0}'." -f $commonModulePath)
 }
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'AnalyzerCommon.ps1')
 $heuristicsPath = Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics'
 if (Test-Path -Path $heuristicsPath) {
+    Write-Verbose ("Loading heuristic scripts from '{0}'." -f $heuristicsPath)
     Get-ChildItem -Path $heuristicsPath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object {
         . $_.FullName
+        Write-Verbose ("Loaded heuristic script '{0}'." -f $_.FullName)
     }
 
     $networkModulePath = Join-Path -Path $heuristicsPath -ChildPath 'Network/Network.ps1'
     if (Test-Path -Path $networkModulePath) {
         . $networkModulePath
+        Write-Verbose ("Loaded network heuristic module '{0}'." -f $networkModulePath)
     }
 }
 . (Join-Path -Path $PSScriptRoot -ChildPath 'SummaryBuilder.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'HtmlComposer.ps1')
 
 $context = New-AnalyzerContext -InputFolder $InputFolder
+Write-Verbose ("Analyzer context created with {0} artifact(s)." -f $context.Artifacts.Count)
 
 $categories = @()
 $categories += Invoke-SystemHeuristics   -Context $context
+Write-Verbose 'System heuristics completed.'
 $categories += Invoke-SecurityHeuristics -Context $context
+Write-Verbose 'Security heuristics completed.'
 $categories += Invoke-NetworkHeuristics  -Context $context -InputFolder $InputFolder
+Write-Verbose 'Network heuristics completed.'
 $categories += Invoke-ADHeuristics       -Context $context
+Write-Verbose 'Active Directory heuristics completed.'
 $categories += Invoke-OfficeHeuristics   -Context $context
+Write-Verbose 'Office heuristics completed.'
 $categories += Invoke-StorageHeuristics  -Context $context
+Write-Verbose 'Storage heuristics completed.'
 $categories += Invoke-EventsHeuristics   -Context $context
+Write-Verbose 'Events heuristics completed.'
 $categories += Invoke-ServicesHeuristics -Context $context
+Write-Verbose 'Services heuristics completed.'
 $categories += Invoke-PrintingHeuristics -Context $context
+Write-Verbose 'Printing heuristics completed.'
 
 $merged = Merge-AnalyzerResults -Categories $categories
 $summary = Get-AnalyzerSummary -Context $context
+Write-Verbose ("Merged analyzer results include {0} issue(s) and {1} normal finding(s)." -f $merged.Issues.Count, $merged.Normals.Count)
 
 $html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
+Write-Verbose 'HTML report composed.'
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path -Path $InputFolder -ChildPath 'diagnostics-report.html'
@@ -66,6 +83,7 @@ if ([string]::IsNullOrWhiteSpace($directory)) {
 
 if (-not (Test-Path -Path $directory)) {
     $null = New-Item -Path $directory -ItemType Directory -Force
+    Write-Verbose ("Created output directory '{0}'." -f $directory)
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -80,6 +98,7 @@ $resolvedCss = @()
 foreach ($source in $cssSources) {
     if (Test-Path -LiteralPath $source) {
         $resolvedCss += (Resolve-Path -LiteralPath $source).ProviderPath
+        Write-Verbose ("Resolved CSS source '{0}'." -f $source)
     }
 }
 
@@ -87,14 +106,17 @@ if ($resolvedCss.Count -gt 0) {
     $cssOutputDir = Join-Path -Path $directory -ChildPath 'styles'
     if (-not (Test-Path -LiteralPath $cssOutputDir)) {
         $null = New-Item -Path $cssOutputDir -ItemType Directory -Force
+        Write-Verbose ("Created CSS output directory '{0}'." -f $cssOutputDir)
     }
 
     $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
     $cssContent = $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
     Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
+    Write-Verbose ("Combined CSS written to '{0}'." -f $cssOutputPath)
 }
 
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
+Write-Verbose ("HTML report written to '{0}'." -f $OutputPath)
 
 [pscustomobject]@{
     HtmlPath = (Resolve-Path -Path $OutputPath).ProviderPath
