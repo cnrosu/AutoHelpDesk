@@ -39,11 +39,18 @@ function Invoke-AllCollectors {
     $totalCollectors = $collectors.Count
     $effectiveThrottle = [math]::Max([math]::Min($ThrottleLimit, $totalCollectors), 1)
 
+    Write-Verbose ("Output root resolved to '{0}'" -f $resolvedOutputRoot)
+    Write-Verbose ("Discovered {0} collector script(s)." -f $totalCollectors)
+    Write-Verbose ("Using throttle limit {0}." -f $effectiveThrottle)
+
     $collectorScript = @'
-param($scriptPath, $outputDirectory)
+param($scriptPath, $outputDirectory, $parentVerbosePreference)
+$VerbosePreference = $parentVerbosePreference
 $ErrorActionPreference = "Stop"
 try {
+    Write-Verbose ("Starting collector '{0}' with output '{1}'." -f $scriptPath, $outputDirectory)
     $result = & $scriptPath -OutputDirectory $outputDirectory -ErrorAction Stop
+    Write-Verbose ("Collector '{0}' finished successfully." -f $scriptPath)
     [pscustomobject]@{
         Script  = $scriptPath
         Output  = $result
@@ -51,6 +58,7 @@ try {
         Error   = $null
     }
 } catch {
+    Write-Verbose ("Collector '{0}' reported an exception." -f $scriptPath)
     Write-Warning ("Collector failed: {0} - {1}" -f $scriptPath, $_.Exception.Message)
     [pscustomobject]@{
         Script  = $scriptPath
@@ -80,9 +88,14 @@ try {
             $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
             $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
 
+            Write-Verbose ("Queueing collector '{0}' for area '{1}' with output '{2}'." -f $collector.FullName, $areaName, $areaOutput)
+
             $psInstance = [System.Management.Automation.PowerShell]::Create()
             $psInstance.RunspacePool = $runspacePool
-            $null = $psInstance.AddScript($collectorScript, $true).AddArgument($collector.FullName).AddArgument($areaOutput)
+            $null = $psInstance.AddScript($collectorScript, $true).
+                AddArgument($collector.FullName).
+                AddArgument($areaOutput).
+                AddArgument($VerbosePreference)
 
             $asyncResult = $psInstance.BeginInvoke()
             $pending.Add([pscustomobject]@{
@@ -120,6 +133,9 @@ try {
                 $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
                 Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
                 Write-Host $statusMessage
+                $firstResult = if ($output) { $output | Select-Object -First 1 } else { $null }
+                $successState = if ($firstResult) { $firstResult.Success } else { $null }
+                Write-Verbose ("Collector '{0}' result recorded. Success: {1}." -f $entry.Collector.FullName, $successState)
             }
 
             if ($pending.Count -gt 0) {
@@ -145,6 +161,7 @@ try {
     }
 
     $summaryPath = Export-CollectorResult -OutputDirectory $resolvedOutputRoot -FileName 'collection-summary.json' -Data $summary -Depth 6
+    Write-Verbose ("Summary exported to '{0}'." -f $summaryPath)
     Write-Host "Collection complete. Summary written to $summaryPath"
     Write-Output $summaryPath
 }
