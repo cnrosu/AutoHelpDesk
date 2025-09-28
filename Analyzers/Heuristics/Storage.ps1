@@ -18,6 +18,65 @@ function ConvertTo-StorageArray {
     return @($Value)
 }
 
+function Get-StorageWearLabel {
+    param(
+        $Entry
+    )
+
+    if ($null -eq $Entry) { return 'Unknown disk' }
+
+    if ($Entry.PSObject.Properties['FriendlyName'] -and -not [string]::IsNullOrWhiteSpace([string]$Entry.FriendlyName)) {
+        return [string]$Entry.FriendlyName
+    }
+    if ($Entry.PSObject.Properties['SerialNumber'] -and -not [string]::IsNullOrWhiteSpace([string]$Entry.SerialNumber)) {
+        return "Serial $($Entry.SerialNumber)"
+    }
+    if ($Entry.PSObject.Properties['DeviceId']) {
+        return "Disk $($Entry.DeviceId)"
+    }
+
+    return 'Unknown disk'
+}
+
+function Format-StorageWearDetails {
+    param(
+        [Parameter(Mandatory)]
+        $Entry,
+        [double]$Wear
+    )
+
+    $parts = @()
+    $parts += ("Wear used {0}%" -f ([math]::Round($Wear, 1)))
+
+    $remaining = 100 - $Wear
+    if ($remaining -ge 0) {
+        $parts += ("~{0}% life remaining" -f ([math]::Round([math]::Max($remaining, 0), 1)))
+    }
+
+    if ($Entry.PSObject.Properties['MediaType'] -and -not [string]::IsNullOrWhiteSpace([string]$Entry.MediaType)) {
+        $parts += ("Media type: {0}" -f $Entry.MediaType)
+    }
+
+    if ($Entry.PSObject.Properties['SerialNumber'] -and -not [string]::IsNullOrWhiteSpace([string]$Entry.SerialNumber)) {
+        $parts += ("Serial {0}" -f $Entry.SerialNumber)
+    }
+
+    if ($Entry.PSObject.Properties['DeviceId']) {
+        $parts += ("DeviceId {0}" -f $Entry.DeviceId)
+    }
+
+    if ($Entry.PSObject.Properties['TemperatureCelsius']) {
+        $temperature = $Entry.TemperatureCelsius
+        if ($temperature -is [double] -or $temperature -is [single] -or $temperature -is [int]) {
+            $parts += ("Temperature {0}°C" -f ([math]::Round([double]$temperature, 1)))
+        } elseif ($temperature) {
+            $parts += ("Temperature {0}" -f $temperature)
+        }
+    }
+
+    return ($parts -join '; ')
+}
+
 function Get-VolumeThreshold {
     param(
         [Parameter(Mandatory)]$Volume,
@@ -198,6 +257,59 @@ function Invoke-StorageHeuristics {
                     }
                 }
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Volume inventory unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
+            }
+        }
+
+        if ($payload -and $payload.PSObject.Properties['WearCounters']) {
+            $wearNode = $payload.WearCounters
+            if ($wearNode -is [pscustomobject] -and $wearNode.PSObject.Properties['Error']) {
+                $errorMessage = [string]$wearNode.Error
+                if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable' -Evidence $errorMessage -Subcategory 'SMART Wear'
+                } else {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable' -Subcategory 'SMART Wear'
+                }
+            } else {
+                $wearEntries = ConvertTo-StorageArray $wearNode
+                foreach ($entry in $wearEntries) {
+                    if (-not $entry) { continue }
+
+                    if ($entry.PSObject.Properties['Error'] -and -not [string]::IsNullOrWhiteSpace([string]$entry.Error)) {
+                        $label = Get-StorageWearLabel -Entry $entry
+                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Unable to query SMART wear for {0}" -f $label) -Evidence $entry.Error -Subcategory 'SMART Wear'
+                        continue
+                    }
+
+                    if (-not $entry.PSObject.Properties['Wear']) { continue }
+
+                    $rawWear = $entry.Wear
+                    $wearValue = $null
+                    if ($rawWear -is [double] -or $rawWear -is [single] -or $rawWear -is [int]) {
+                        $wearValue = [double]$rawWear
+                    } elseif ($rawWear) {
+                        $parsedWear = 0.0
+                        if ([double]::TryParse([string]$rawWear, [ref]$parsedWear)) {
+                            $wearValue = [double]$parsedWear
+                        }
+                    }
+
+                    if ($null -eq $wearValue) { continue }
+
+                    if ($wearValue -lt 0) { $wearValue = 0 }
+                    $label = Get-StorageWearLabel -Entry $entry
+                    $details = Format-StorageWearDetails -Entry $entry -Wear $wearValue
+                    $status = "{0}%" -f ([math]::Round($wearValue, 1))
+
+                    Add-CategoryCheck -CategoryResult $result -Name ("SMART wear - {0}" -f $label) -Status $status -Details $details
+
+                    if ($wearValue -ge 95) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("{0} nearing end of rated lifespan ({1}% wear)" -f $label, [math]::Round($wearValue, 1)) -Evidence $details -Subcategory 'SMART Wear'
+                    } elseif ($wearValue -ge 85) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} wear approaching limits ({1}% used)" -f $label, [math]::Round($wearValue, 1)) -Evidence $details -Subcategory 'SMART Wear'
+                    } else {
+                        Add-CategoryNormal -CategoryResult $result -Title ("{0} wear at {1}% used" -f $label, [math]::Round($wearValue, 1)) -Subcategory 'SMART Wear'
+                    }
+                }
             }
         }
     }

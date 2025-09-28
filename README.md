@@ -131,6 +131,7 @@ The following sections list the analysis functions and issue card heuristics gro
 
 ## Storage Heuristics
 - **Storage/SMART** – Critical when SMART output contains failure keywords (Pred Fail, Bad, Caution, etc.).
+- **Storage/SMART Wear** – Surfaces medium issues when SSD wear reaches ~85% of its rated lifetime, high issues once wear exceeds ~95%, and records health checks/normals showing remaining life and temperature for each drive when SMART wear data is available.
 - **Storage/Disks** – Aggregates disk health problems (offline, read-only, non-OK operational/health status) and raises an issue at the worst severity observed across affected disks.
 - **Storage/Volumes** – Collates per-volume health warnings and emits an issue at the worst severity among those volumes.
 - **Storage/Free Space** – Issues critical warnings when free space drops below critical floors and high warnings when volumes fall under warning thresholds.
