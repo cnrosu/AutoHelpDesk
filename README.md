@@ -19,28 +19,6 @@ This README documents how the system fits together and enumerates the available 
 
 ## Quick start
 
-The toolkit is designed to run entirely from PowerShell—no installers required. The commands below assume you are running from the repository root in an elevated shell.
-
-1. **Collect diagnostics**
-   ```powershell
-   pwsh -File .\Collectors\Collect-All.ps1 -OutputRoot .\artifacts
-   ```
-   This script discovers every `Collect-*.ps1` module, executes them in parallel (respecting `-ThrottleLimit` when provided), and writes JSON payloads to the `artifacts` folder (grouped by area). When `-OutputRoot` is omitted the default location is `Collectors\output\<Area>`.
-
-2. **Review collection status (optional)**
-   ```powershell
-   Get-Content .\artifacts\collection-summary.json | ConvertFrom-Json
-   ```
-   The summary lists each collector, whether it succeeded, and the on-disk path of its artifact.
-
-3. **Generate the HTML report**
-   ```powershell
-   pwsh -File .\Analyzers\Analyze-Diagnostics.ps1 -InputFolder .\artifacts -OutputPath .\artifacts\diagnostics-report.html
-   ```
-   The analyzer loads every JSON file under `artifacts`, runs the heuristic catalog, and emits an HTML report. Supporting CSS files are merged into `artifacts\styles\device-health-report.css` alongside the HTML.
-
-You can re-run the analyzer against existing collections—only the `-InputFolder` is required if you are happy with the default output path.
-
 ### One-button orchestration (AutoL1)
 
 Prefer a guided workflow? `AutoL1/Device-Report.ps1` wraps the two commands above: it creates a timestamped output folder (defaulting to `Desktop\DiagReports\<timestamp>`), runs the collectors, executes the analyzer, and opens the resulting HTML report. Supply `-InputFolder` to reuse an existing collection.
