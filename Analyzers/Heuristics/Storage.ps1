@@ -117,13 +117,32 @@ function Invoke-StorageHeuristics {
 
     if ($storageArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $storageArtifact)
-        if ($payload -and $payload.Disks -and -not $payload.Disks.Error) {
-            $unhealthy = $payload.Disks | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
+        $diskEntries = @()
+        if ($payload -and $payload.PSObject.Properties['Disks']) {
+            $diskEntries = ConvertTo-StorageArray $payload.Disks | Where-Object {
+                $_ -and -not ($_ -is [string]) -and $_.PSObject.Properties['HealthStatus']
+            }
+        }
+
+        if ($diskEntries.Count -gt 0) {
+            $unhealthy = $diskEntries | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
             if ($unhealthy.Count -gt 0) {
                 $details = $unhealthy | ForEach-Object { "Disk $($_.Number): $($_.HealthStatus) ($($_.OperationalStatus))" }
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy' -Subcategory 'Disk Health'
+            }
+        } elseif ($payload -and $payload.PSObject.Properties['Disks']) {
+            $diskErrors = ConvertTo-StorageArray $payload.Disks | Where-Object { $_ -and $_.PSObject.Properties['Error'] }
+            if ($diskErrors.Count -gt 0) {
+                $errorDetails = $diskErrors | ForEach-Object {
+                    if ($_.Source) {
+                        "{0}: {1}" -f $_.Source, $_.Error
+                    } else {
+                        $_.Error
+                    }
+                }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Disk health unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health'
             }
         }
 
@@ -134,8 +153,15 @@ function Invoke-StorageHeuristics {
             if ($thresholdPayload) { $thresholdConfig = $thresholdPayload }
         }
 
-        if ($payload -and $payload.Volumes -and -not $payload.Volumes.Error) {
-            foreach ($volume in $payload.Volumes) {
+        $volumeEntries = @()
+        if ($payload -and $payload.PSObject.Properties['Volumes']) {
+            $volumeEntries = ConvertTo-StorageArray $payload.Volumes | Where-Object {
+                $_ -and -not ($_ -is [string]) -and $_.PSObject.Properties['Size'] -and $_.PSObject.Properties['SizeRemaining']
+            }
+        }
+
+        if ($volumeEntries.Count -gt 0) {
+            foreach ($volume in $volumeEntries) {
                 if (-not $volume.Size -or -not $volume.SizeRemaining) { continue }
                 $size = [double]$volume.Size
                 $free = [double]$volume.SizeRemaining
@@ -160,6 +186,18 @@ function Invoke-StorageHeuristics {
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title ("Volume {0} has {1}% free" -f $label, [math]::Round($freePct,1)) -Subcategory 'Free Space'
                 }
+            }
+        } elseif ($payload -and $payload.PSObject.Properties['Volumes']) {
+            $volumeErrors = ConvertTo-StorageArray $payload.Volumes | Where-Object { $_ -and $_.PSObject.Properties['Error'] }
+            if ($volumeErrors.Count -gt 0) {
+                $errorDetails = $volumeErrors | ForEach-Object {
+                    if ($_.Source) {
+                        "{0}: {1}" -f $_.Source, $_.Error
+                    } else {
+                        $_.Error
+                    }
+                }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Volume inventory unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
             }
         }
     }
