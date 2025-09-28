@@ -116,10 +116,32 @@ try {
                     continue
                 }
 
+                $output = $null
                 try {
                     $output = $entry.PowerShell.EndInvoke($entry.AsyncResult)
+                } catch {
+                    $message = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+                    Write-Warning ("Collector runspace failed: {0} - {1}" -f $entry.Collector.FullName, $message)
+                    $resultsList.Add([pscustomobject]@{
+                            Script  = $entry.Collector.FullName
+                            Output  = $null
+                            Success = $false
+                            Error   = $message
+                        })
                 } finally {
                     $entry.PowerShell.Dispose()
+                }
+
+                if ($null -eq $output) {
+                    $pending.RemoveAt($index)
+                    $completed++
+
+                    $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
+                    $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
+                    Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                    Write-Host $statusMessage
+                    Write-Verbose ("Collector '{0}' result recorded. Success: False." -f $entry.Collector.FullName)
+                    continue
                 }
 
                 $meaningfulOutput = @()
