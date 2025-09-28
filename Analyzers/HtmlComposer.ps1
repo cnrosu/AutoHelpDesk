@@ -515,15 +515,6 @@ function Build-IssueSection {
         return "<div class='report-card report-card--good'><span class='report-badge report-badge--good'>GOOD</span> No obvious issues detected from the provided outputs.</div>"
     }
 
-    $severityDefinitions = @(
-        @{ Key = 'critical'; Label = 'Critical'; BadgeClass = 'critical' },
-        @{ Key = 'high';     Label = 'High';     BadgeClass = 'high' },
-        @{ Key = 'medium';   Label = 'Medium';   BadgeClass = 'medium' },
-        @{ Key = 'low';      Label = 'Low';      BadgeClass = 'low' },
-        @{ Key = 'warning';  Label = 'Warning';  BadgeClass = 'warning' },
-        @{ Key = 'info';     Label = 'Info';     BadgeClass = 'info' }
-    )
-
     $severityOrder = @{ critical = 0; high = 1; medium = 2; low = 3; warning = 4; info = 5 }
     $sorted = $Issues | Sort-Object -Stable -Property @(
         @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { [int]::MaxValue } } },
@@ -531,61 +522,63 @@ function Build-IssueSection {
         @{ Expression = { $_.Message } }
     )
 
-    $grouped = [ordered]@{}
-    foreach ($definition in $severityDefinitions) {
-        $grouped[$definition.Key] = New-Object System.Collections.Generic.List[string]
+    $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events','General')
+    $categorized = [ordered]@{}
+    foreach ($category in $categoryOrder) {
+        $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
-    $other = New-Object System.Collections.Generic.List[string]
 
     foreach ($entry in $sorted) {
-        $card = New-IssueCardHtml -Entry $entry
-        $key = if ($entry.Severity) { $entry.Severity } else { 'info' }
-        if ($grouped.ContainsKey($key)) {
-            $grouped[$key].Add($card)
-        } else {
-            $other.Add($card)
+        $category = if ($entry.Area) { Resolve-CategoryGroup -Name $entry.Area } else { 'General' }
+        if ([string]::IsNullOrWhiteSpace($category)) { $category = 'General' }
+        if (-not $categorized.ContainsKey($category)) {
+            $categorized[$category] = New-Object System.Collections.Generic.List[string]
+        }
+
+        $categorized[$category].Add((New-IssueCardHtml -Entry $entry))
+    }
+
+    $orderedCategories = New-Object System.Collections.Generic.List[string]
+    foreach ($category in $categoryOrder) { $null = $orderedCategories.Add($category) }
+    foreach ($category in $categorized.Keys) {
+        if (-not $orderedCategories.Contains($category)) {
+            $null = $orderedCategories.Add($category)
         }
     }
 
-    $activeDefinitions = @()
-    foreach ($definition in $severityDefinitions) {
-        if ($grouped[$definition.Key].Count -gt 0) { $activeDefinitions += ,$definition }
-    }
-    if ($other.Count -gt 0) {
-        $grouped['other'] = $other
-        $activeDefinitions += ,@{ Key = 'other'; Label = 'Other'; BadgeClass = 'info' }
+    $firstNonEmpty = $null
+    foreach ($category in $orderedCategories) {
+        if ($categorized.ContainsKey($category) -and $categorized[$category].Count -gt 0) {
+            $firstNonEmpty = $category
+            break
+        }
     }
 
-    if ($activeDefinitions.Count -eq 0) {
+    if (-not $firstNonEmpty) {
         return ($sorted | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
     }
 
     $tabName = 'issue-tabs'
     $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
-    $firstDefinition = $activeDefinitions[0]
-    $firstKey = if ($firstDefinition.Key) { [string]$firstDefinition.Key } else { '' }
     $index = 0
 
-    foreach ($definition in $activeDefinitions) {
-        $keyValue = if ($definition.Key) { [string]$definition.Key } else { "severity$index" }
-        if (-not $grouped.ContainsKey($keyValue)) { continue }
-        $cards = $grouped[$keyValue]
+    foreach ($category in $orderedCategories) {
+        if (-not $categorized.ContainsKey($category)) { continue }
+        $cards = $categorized[$category]
         $count = $cards.Count
-        $slug = [regex]::Replace($keyValue.ToLowerInvariant(), '[^a-z0-9]+', '-')
+        if ($count -eq 0) { continue }
+
+        $slug = [regex]::Replace($category.ToLowerInvariant(), '[^a-z0-9]+', '-')
         $slug = [regex]::Replace($slug, '^-+|-+$', '')
-        if (-not $slug) { $slug = "severity$index" }
+        if (-not $slug) { $slug = "cat$index" }
 
         $tabId = "$tabName-$slug"
-        $checkedAttr = if ($keyValue.ToLowerInvariant() -eq $firstKey.ToLowerInvariant()) { " checked='checked'" } else { '' }
-
-        $labelText = if ($definition.Label) { [string]$definition.Label } else { $keyValue }
-        $badgeLabel = Encode-Html ($labelText.ToUpperInvariant())
-        $countLabel = Encode-Html "($count)"
-        $labelInner = "<span class='report-badge report-badge--$($definition.BadgeClass) report-tabs__label-badge'>$badgeLabel</span><span class='report-tabs__label-count'>$countLabel</span>"
-        $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
+        $checkedAttr = if ($category -eq $firstNonEmpty) { " checked='checked'" } else { '' }
+        $labelText = Encode-Html "$category ($count)"
+        $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this category.</i></div>" }
 
         $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelInner</label>"
+        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
         $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
         $index++
     }
