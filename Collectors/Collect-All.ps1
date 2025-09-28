@@ -131,6 +131,40 @@ try {
                                 # can surface here when -Verbose is enabled and those objects are not
                                 # serializable to JSON, leading to "Object reference" errors downstream.
                                 $_ -is [System.Management.Automation.PSObject] -and $_.PSObject.Properties['Success']
+                            } |
+                            ForEach-Object {
+                                # Convert the runspace result into a plain PSCustomObject so ConvertTo-Json does not
+                                # trip over live stream record instances (VerboseRecord/ProgressRecord/etc.).
+                                $scriptValue = if ($_.PSObject.Properties['Script']) { $_.Script } else { $null }
+                                $successValue = if ($_.PSObject.Properties['Success']) { [bool]$_.Success } else { $false }
+                                $errorValue = if ($_.PSObject.Properties['Error']) { $_.Error } else { $null }
+                                $outputValue = $null
+
+                                if ($_.PSObject.Properties['Output']) {
+                                    $rawOutput = $_.Output
+                                    if ($null -ne $rawOutput) {
+                                        if ($rawOutput -is [System.Collections.IEnumerable] -and -not ($rawOutput -is [string])) {
+                                            $outputValue = @()
+                                            foreach ($value in $rawOutput) {
+                                                if ($null -eq $value) { continue }
+                                                if ($value -is [string]) {
+                                                    $outputValue += $value
+                                                } else {
+                                                    $outputValue += $value.ToString()
+                                                }
+                                            }
+                                        } else {
+                                            $outputValue = $rawOutput.ToString()
+                                        }
+                                    }
+                                }
+
+                                [pscustomobject]@{
+                                    Script  = $scriptValue
+                                    Output  = $outputValue
+                                    Success = $successValue
+                                    Error   = if ($errorValue) { $errorValue.ToString() } else { $null }
+                                }
                             }
                     )
                 }
