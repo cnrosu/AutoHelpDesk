@@ -22,6 +22,12 @@ powershell.exe -ExecutionPolicy Bypass -File .\Analyzers\Analyze-Diagnostics.ps1
 - `New-CategoryResult`, `Add-CategoryIssue`, `Add-CategoryNormal`, and `Add-CategoryCheck` maintain consistent shapes for analyzer output.
 - `Merge-AnalyzerResults` collapses all category objects into one set of issues/normals/checks for reporting.
 
+### Category and subcategory labeling
+
+`New-CategoryResult` just creates an object that holds the cards for a single analyzer category. It contains three empty lists: one each for issue cards, normal cards, and health checks. Calling `Add-CategoryIssue` or `Add-CategoryNormal` simply appends a new card into the appropriate list on that object. Every card stores the title, severity (for issues), the evidence snippet, and any optional flags such as `-Subcategory` or `-CheckId`.
+
+Because of that split, heuristics only have to say "this finding belongs in **Storage**" once when they call `New-CategoryResult -Name 'Storage'`. Any subcategory text stays attached to the specific card (`Add-CategoryIssue -Subcategory 'SMB Shares'`). When the HTML composer builds the report it walks the category objects, combines the category name with each card's subcategory, and renders the familiar `Category \ Subcategory` label. The composer can also normalize category names (for example mapping `Active Directory Health` to **Active Directory**) without the heuristics needing to know the UI rules. The end result is still the simple Issue/Normal card experience—the helper functions just keep the data grouped until the renderer flattens it for display.
+
 ### Expected JSON shape
 
 Analyzers assume each artifact follows the collector contract:
