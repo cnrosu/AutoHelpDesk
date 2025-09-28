@@ -393,6 +393,8 @@ function Invoke-DhcpAnalyzers {
     }
     Write-Verbose -Message ("Invoke-DhcpAnalyzers artifacts: InputFolder={0}; DHCPFolder={1}; RootDhcpJsonCount={2}; DhcpFolderJsonCount={3}" -f $resolvedInputFolder, $dhcpFolderResolved, $rootDhcpJsonCount, $dhcpSubfolderJsonCount)
 
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers PSScriptRoot resolved to: {0}" -f $PSScriptRoot)
+
     $analyzerRoot = Join-Path -Path $PSScriptRoot -ChildPath 'DHCP'
     Write-Verbose -Message ("Invoke-DhcpAnalyzers analyzer root: {0}" -f $analyzerRoot)
     if (-not (Test-Path -LiteralPath $analyzerRoot)) { Write-Verbose -Message 'Invoke-DhcpAnalyzers exiting: analyzer root missing'; return }
