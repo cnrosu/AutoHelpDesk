@@ -16,28 +16,30 @@ function New-AnalyzerContext {
     $resolved = (Resolve-Path -LiteralPath $InputFolder).ProviderPath
     $artifactMap = @{}
 
-    Get-ChildItem -Path $resolved -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
-        $content = Get-Content -Path $_.FullName -Raw -ErrorAction SilentlyContinue
+    $files = Get-ChildItem -Path $resolved -File -Recurse -ErrorAction SilentlyContinue
+    foreach ($file in $files) {
         $data = $null
-        if ($content) {
-            try {
-                $data = $content | ConvertFrom-Json -ErrorAction Stop
-            } catch {
-                $data = [pscustomobject]@{ Error = $_.Exception.Message }
+        if ($file.Extension -ieq '.json') {
+            $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content) {
+                try {
+                    $data = $content | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                    $data = [pscustomobject]@{ Error = $_.Exception.Message }
+                }
             }
         }
 
-        $key = $_.BaseName.ToLowerInvariant()
+        $entry = [pscustomobject]@{
+            Path = $file.FullName
+            Data = $data
+        }
+
+        $key = $file.Name.ToLowerInvariant()
         if ($artifactMap.ContainsKey($key)) {
-            $artifactMap[$key] = @($artifactMap[$key]) + ,([pscustomobject]@{
-                    Path = $_.FullName
-                    Data = $data
-                })
+            $artifactMap[$key] = @($artifactMap[$key]) + ,$entry
         } else {
-            $artifactMap[$key] = @([pscustomobject]@{
-                    Path = $_.FullName
-                    Data = $data
-                })
+            $artifactMap[$key] = @($entry)
         }
     }
 
@@ -57,10 +59,21 @@ function Get-AnalyzerArtifact {
     )
 
     if (-not $Context -or -not $Context.Artifacts) { return $null }
-    $key = $Name.ToLowerInvariant()
-    if (-not $Context.Artifacts.ContainsKey($key)) { return $null }
 
-    $entries = $Context.Artifacts[$key]
+    $key = $Name.ToLowerInvariant()
+    $lookupKeys = @($key)
+    if ($key -notmatch '\.') {
+        $lookupKeys += ($key + '.json')
+    }
+
+    $entries = $null
+    foreach ($candidate in $lookupKeys) {
+        if ($Context.Artifacts.ContainsKey($candidate)) {
+            $entries = $Context.Artifacts[$candidate]
+            break
+        }
+    }
+
     if (-not $entries) { return $null }
 
     if ($entries.Count -gt 1) { return $entries }

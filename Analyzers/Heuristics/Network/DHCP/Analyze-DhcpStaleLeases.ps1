@@ -5,7 +5,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InputFolder
+    [string]$InputFolder,
+
+    [Parameter(Mandatory)]
+    [pscustomobject]$CategoryResult,
+
+    [Parameter(Mandatory)]
+    [pscustomobject]$Context
 )
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
