@@ -48,15 +48,12 @@ function Ensure-Array {
     param($Value)
 
     if ($null -eq $Value) { return @() }
-    if ($Value -is [string]) { return @($Value) }
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $results = @()
-        foreach ($item in $Value) {
-            if ($null -ne $item) { $results += [string]$item }
-        }
-        return $results
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $out = @()
+        foreach ($item in $Value) { if ($null -ne $item) { $out += $item } }
+        return $out
     }
-    return @([string]$Value)
+    return @($Value)
 }
 
 function Get-AdapterIdentity {
