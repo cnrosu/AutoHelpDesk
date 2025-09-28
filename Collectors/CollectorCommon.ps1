@@ -32,7 +32,38 @@ function Export-CollectorResult {
 
     $resolved = Resolve-CollectorOutputDirectory -RequestedPath $OutputDirectory
     $path = Join-Path -Path $resolved -ChildPath $FileName
-    $Data | ConvertTo-Json -Depth $Depth | Out-File -FilePath $path -Encoding UTF8
+
+    # ConvertTo-Json is not thread-safe on Windows PowerShell when invoked concurrently from
+    # multiple runspaces. Use an AppDomain-scoped lock so collectors can safely serialize in
+    # parallel without triggering sporadic "Object reference" failures.
+    $syncRootKey = 'AutoHelpDesk.CollectorCommon.JsonSyncRoot'
+    $syncRoot = [System.AppDomain]::CurrentDomain.GetData($syncRootKey)
+    if (-not $syncRoot) {
+        $newRoot = New-Object object
+        [System.AppDomain]::CurrentDomain.SetData($syncRootKey, $newRoot)
+        $syncRoot = [System.AppDomain]::CurrentDomain.GetData($syncRootKey)
+    }
+
+    $lockTaken = $false
+    try {
+        if ($syncRoot) {
+            [System.Threading.Monitor]::Enter($syncRoot, [ref]$lockTaken)
+        }
+
+        try {
+            $json = $Data | ConvertTo-Json -Depth $Depth
+        } catch {
+            $message = "Failed to serialize collector data for '$FileName' into JSON. " + $_.Exception.Message
+            throw (New-Object System.InvalidOperationException($message, $_.Exception))
+        }
+
+        $json | Out-File -FilePath $path -Encoding UTF8
+    } finally {
+        if ($syncRoot -and $lockTaken) {
+            [System.Threading.Monitor]::Exit($syncRoot)
+        }
+    }
+
     return $path
 }
 
