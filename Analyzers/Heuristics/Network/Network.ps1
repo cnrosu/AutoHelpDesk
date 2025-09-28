@@ -364,18 +364,29 @@ function Invoke-DhcpAnalyzers {
     $scriptFiles = Get-ChildItem -Path $analyzerRoot -Filter 'Analyze-Dhcp*.ps1' -File -ErrorAction SilentlyContinue | Sort-Object Name
     if (-not $scriptFiles -or $scriptFiles.Count -eq 0) { return }
 
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers discovered {0} DHCP analyzer script(s)" -f $scriptFiles.Count)
+
     $eligibleAnalyzers = @()
     foreach ($script in $scriptFiles) {
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($script.Name)
-        if (-not $baseName.StartsWith('Analyze-')) { continue }
-        $suffix = $baseName.Substring(8)
-        if (-not $suffix) { continue }
+        $artifactBase = $null
+        $artifactPath = $null
+        $artifactExists = $false
 
-        $artifactBase = ConvertTo-KebabCase $suffix
-        if (-not $artifactBase) { continue }
+        if ($baseName.StartsWith('Analyze-')) {
+            $suffix = $baseName.Substring(8)
+            if ($suffix) {
+                $artifactBase = ConvertTo-KebabCase $suffix
+                if ($artifactBase) {
+                    $artifactPath = Join-Path -Path $InputFolder -ChildPath ($artifactBase + '.json')
+                    $artifactExists = Test-Path -LiteralPath $artifactPath
+                }
+            }
+        }
 
-        $artifactPath = Join-Path -Path $InputFolder -ChildPath ($artifactBase + '.json')
-        if (Test-Path -LiteralPath $artifactPath) {
+        Write-Verbose -Message ("Invoke-DhcpAnalyzers candidate: Script={0}; BaseName={1}; ArtifactPath={2}; Exists={3}" -f $script.FullName, $baseName, ($artifactPath ? (Resolve-Path -LiteralPath $artifactPath -ErrorAction SilentlyContinue)?.ProviderPath : '[n/a]'), $artifactExists)
+
+        if ($artifactExists) {
             $eligibleAnalyzers += [pscustomobject]@{
                 Script       = $script
                 ArtifactBase = $artifactBase
@@ -385,6 +396,8 @@ function Invoke-DhcpAnalyzers {
     }
 
     if ($eligibleAnalyzers.Count -eq 0) { return }
+
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers eligible analyzer count: {0}" -f $eligibleAnalyzers.Count)
 
     $findings = New-Object System.Collections.Generic.List[object]
 
@@ -406,6 +419,8 @@ function Invoke-DhcpAnalyzers {
             $findings.Add($result) | Out-Null
         }
     }
+
+    Write-Verbose -Message ("Invoke-DhcpAnalyzers produced {0} result(s)" -f $findings.Count)
 
     if ($findings.Count -gt 0) {
         foreach ($finding in $findings) {
