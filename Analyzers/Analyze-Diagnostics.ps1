@@ -60,6 +60,10 @@ if (-not $OutputPath) {
 }
 
 $directory = Split-Path -Path $OutputPath -Parent
+if ([string]::IsNullOrWhiteSpace($directory)) {
+    $directory = (Get-Location).ProviderPath
+}
+
 if (-not (Test-Path -Path $directory)) {
     $null = New-Item -Path $directory -ItemType Directory -Force
 }
