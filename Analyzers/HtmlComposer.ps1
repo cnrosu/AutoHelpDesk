@@ -14,6 +14,7 @@ function Resolve-CategoryGroup {
         '^(?i)services'          { return 'Services' }
         '^(?i)office'            { return 'Office' }
         '^(?i)network'           { return 'Network' }
+        '^(?i)dhcp'              { return 'Network' }
         '^(?i)system'            { return 'System' }
         '^(?i)storage|hardware'  { return 'Hardware' }
         '^(?i)security'          { return 'Security' }
@@ -22,6 +23,24 @@ function Resolve-CategoryGroup {
         '^(?i)events'            { return 'Events' }
         default                  { return $trimmed }
     }
+}
+
+function Get-BaseCategoryFromArea {
+    param([string]$Area)
+
+    if ([string]::IsNullOrWhiteSpace($Area)) { return 'General' }
+
+    $trimmed = $Area.Trim()
+    $candidate = $trimmed
+    if ($trimmed.Contains('/')) {
+        $candidate = $trimmed.Split('/', 2)[0].Trim()
+        if (-not $candidate) { $candidate = $trimmed }
+    }
+
+    $resolved = Resolve-CategoryGroup -Name $candidate
+    if ([string]::IsNullOrWhiteSpace($resolved)) { return 'General' }
+
+    return $resolved
 }
 
 function Add-SubcategoryCandidate {
@@ -451,8 +470,11 @@ function Build-GoodSection {
         $categorized[$category] = New-Object System.Collections.Generic.List[string]
     }
 
-    foreach ($entry in $Normals) {
-        $category = Resolve-CategoryGroup -Name $entry.Area
+    foreach ($entry in ($Normals | Sort-Object -Property @(
+                @{ Expression = { $_.Area } },
+                @{ Expression = { $_.Message } }
+            ))) {
+        $category = Get-BaseCategoryFromArea -Area $entry.Area
         if (-not $categorized.ContainsKey($category)) {
             $categorized[$category] = New-Object System.Collections.Generic.List[string]
         }
@@ -529,8 +551,7 @@ function Build-IssueSection {
     }
 
     foreach ($entry in $sorted) {
-        $category = if ($entry.Area) { Resolve-CategoryGroup -Name $entry.Area } else { 'General' }
-        if ([string]::IsNullOrWhiteSpace($category)) { $category = 'General' }
+        $category = Get-BaseCategoryFromArea -Area $entry.Area
         if (-not $categorized.ContainsKey($category)) {
             $categorized[$category] = New-Object System.Collections.Generic.List[string]
         }
