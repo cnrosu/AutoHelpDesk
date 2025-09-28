@@ -31,7 +31,9 @@ function Get-CandidateDomains {
         if ($cs -and $cs.PartOfDomain -eq $true -and $cs.Domain) {
             $domains.Add([string]$cs.Domain) | Out-Null
         }
-    } catch { }
+    } catch {
+        Write-Verbose -Message ("Win32_ComputerSystem query failed while discovering domains: {0}" -f $_.Exception.Message)
+    }
 
     try {
         $regPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Identity'
@@ -43,7 +45,9 @@ function Get-CandidateDomains {
                 }
             }
         }
-    } catch { }
+    } catch {
+        Write-Verbose -Message ("Failed to read Office identity registry for domain discovery: {0}" -f $_.Exception.Message)
+    }
 
     return @($domains | Where-Object { $_ })
 }

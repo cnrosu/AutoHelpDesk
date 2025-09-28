@@ -12,9 +12,12 @@ function ConvertTo-Iso8601String {
         $dt = [datetime]::Parse($Value.ToString())
         return $dt.ToString('o')
     } catch {
+        Write-Verbose -Message ("ConvertTo-Iso8601String failed to parse value '{0}': {1}" -f $Value, $_.Exception.Message)
         try {
             if ($Value -is [datetime]) { return $Value.ToString('o') }
-        } catch { }
+        } catch {
+            Write-Verbose -Message ("ConvertTo-Iso8601String failed to treat value '{0}' as DateTime: {1}" -f $Value, $_.Exception.Message)
+        }
     }
 
     return $null
@@ -24,6 +27,7 @@ function Get-DhcpAdapterConfigurations {
     try {
         $instances = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -Filter "IPEnabled = True" -ErrorAction Stop
     } catch {
+        Write-Verbose -Message ("Win32_NetworkAdapterConfiguration query failed: {0}" -f $_.Exception.Message)
         return @([pscustomobject]@{
             Source = 'Get-CimInstance Win32_NetworkAdapterConfiguration'
             Error  = $_.Exception.Message
@@ -61,6 +65,7 @@ function Get-DhcpIpconfigAll {
         $raw = & ipconfig.exe /all 2>$null | Out-String
         return $raw.TrimEnd()
     } catch {
+        Write-Verbose -Message ("ipconfig.exe /all execution failed: {0}" -f $_.Exception.Message)
         return "ipconfig.exe /all failed: $($_.Exception.Message)"
     }
 }
@@ -78,6 +83,7 @@ function Get-DhcpClientEvents {
         }
         $events = Get-WinEvent -FilterHashtable $filter -MaxEvents $MaxEvents -ErrorAction Stop
     } catch {
+        Write-Verbose -Message ("Get-WinEvent for Microsoft-Windows-Dhcp-Client failed: {0}" -f $_.Exception.Message)
         return @([pscustomobject]@{
             Source = 'Get-WinEvent Microsoft-Windows-Dhcp-Client'
             Error  = $_.Exception.Message

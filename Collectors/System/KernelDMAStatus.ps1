@@ -154,11 +154,12 @@ function Get-KernelDmaMsInfoFallback {
     try {
         $completed = $process.WaitForExit($timeoutMilliseconds)
     } catch {
+        Write-Verbose -Message ("WaitForExit on msinfo32.exe failed: {0}" -f $_.Exception.Message)
         $completed = $false
     }
 
     if (-not $completed) {
-        try { $process.Kill() | Out-Null } catch {}
+        try { $process.Kill() | Out-Null } catch { Write-Verbose -Message ("Failed to terminate msinfo32.exe after timeout: {0}" -f $_.Exception.Message) }
         return [pscustomobject]@{
             Status  = 'Timeout'
             Message = "msinfo32.exe exceeded ${TimeoutSeconds}s timeout"
@@ -177,6 +178,7 @@ function Get-KernelDmaMsInfoFallback {
     try {
         $content = Get-Content -Path $tempPath -ErrorAction Stop
     } catch {
+        Write-Verbose -Message ("Failed to read msinfo32.exe output from '{0}': {1}" -f $tempPath, $_.Exception.Message)
         $content = @()
     }
 

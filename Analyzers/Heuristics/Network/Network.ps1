@@ -315,7 +315,9 @@ function ConvertTo-NetworkAddressString {
 
         if ($addressValue -is [string] -and $addressValue) { return $addressValue }
         if ($addressValue -is [byte[]] -and $addressValue.Length -gt 0) {
-            try { return ([System.Net.IPAddress]::new($addressValue)).ToString() } catch {}
+            try { return ([System.Net.IPAddress]::new($addressValue)).ToString() } catch {
+                Write-Verbose -Message ("Failed to convert byte[] network address to string: {0}" -f $_.Exception.Message)
+            }
         }
 
         try {
@@ -323,6 +325,7 @@ function ConvertTo-NetworkAddressString {
                 return ([System.Net.IPAddress]::new([int64]$addressValue)).ToString()
             }
         } catch {
+            Write-Verbose -Message ("Failed to convert numeric network address to string: {0}" -f $_.Exception.Message)
             # fall through to default conversion
         }
     }

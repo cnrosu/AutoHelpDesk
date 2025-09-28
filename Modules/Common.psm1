@@ -8,7 +8,8 @@ if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Wher
       return $this.Contains($Key)
     } -ErrorAction Stop
   } catch {
-    # If type data registration fails, continue without interrupting import.
+    # If type data registration fails, continue without interrupting import, but capture the reason for verbose diagnostics.
+    Write-Verbose -Message ("Failed to extend OrderedDictionary with ContainsKey: {0}" -f $_.Exception.Message)
   }
 }
 

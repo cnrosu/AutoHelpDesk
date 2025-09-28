@@ -19,6 +19,7 @@ function Get-WmicDiskDriveOutput {
     try {
         $wmic = Get-Command -Name 'wmic.exe' -ErrorAction Stop
     } catch {
+        Write-Verbose -Message ("wmic.exe not available for disk drive query: {0}" -f $_.Exception.Message)
         return $null
     }
 
@@ -27,6 +28,7 @@ function Get-WmicDiskDriveOutput {
         if ($output) { return $output.TrimEnd() }
         return $null
     } catch {
+        Write-Verbose -Message ("wmic.exe diskdrive query failed: {0}" -f $_.Exception.Message)
         return $null
     }
 }
@@ -53,13 +55,16 @@ function Get-DiskInventory {
         if ($text) { return $text.TrimEnd() }
     } catch {
         $errorMessage = $_.Exception.Message
+        Write-Verbose -Message ("Get-Disk failed, attempting Win32_DiskDrive fallback: {0}" -f $errorMessage)
         try {
             $cim = Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction Stop
             if ($cim) {
                 $fallback = ($cim | Select-Object DeviceID, Model, SerialNumber, InterfaceType, Status | Format-List * | Out-String -Width 200).TrimEnd()
                 return $fallback
             }
-        } catch {}
+        } catch {
+            Write-Verbose -Message ("Win32_DiskDrive fallback failed: {0}" -f $_.Exception.Message)
+        }
         return [pscustomobject]@{
             Source = 'Get-Disk'
             Error  = $errorMessage
@@ -76,13 +81,16 @@ function Get-VolumeSummary {
         return ($volumes | Select-Object DriveLetter, FileSystem, HealthStatus, SizeRemaining, Size | Format-Table -AutoSize | Out-String -Width 200).TrimEnd()
     } catch {
         $errorMessage = $_.Exception.Message
+        Write-Verbose -Message ("Get-Volume failed, attempting Win32_Volume fallback: {0}" -f $errorMessage)
         try {
             $cim = Get-CimInstance -ClassName Win32_Volume -ErrorAction Stop
             if ($cim) {
                 $fallback = ($cim | Select-Object DriveLetter, FileSystem, Status, Capacity, FreeSpace | Format-Table -AutoSize | Out-String -Width 200).TrimEnd()
                 return $fallback
             }
-        } catch {}
+        } catch {
+            Write-Verbose -Message ("Win32_Volume fallback failed: {0}" -f $_.Exception.Message)
+        }
         return [pscustomobject]@{
             Source = 'Get-Volume'
             Error  = $errorMessage
@@ -96,6 +104,7 @@ function Get-PhysicalDiskSnapshot {
         if (-not $disks) { return 'No physical disk data returned.' }
         return ($disks | Select-Object DeviceId, FriendlyName, MediaType, CanPool, HealthStatus, OperationalStatus, Size | Format-Table -AutoSize | Out-String -Width 200).TrimEnd()
     } catch {
+        Write-Verbose -Message ("Get-PhysicalDisk failed: {0}" -f $_.Exception.Message)
         return $null
     }
 }
@@ -104,6 +113,7 @@ function Get-StorageWearSnapshot {
     try {
         [void](Get-Command -Name 'Get-StorageReliabilityCounter' -ErrorAction Stop)
     } catch {
+        Write-Verbose -Message ("Get-StorageReliabilityCounter not available: {0}" -f $_.Exception.Message)
         return $null
     }
 
