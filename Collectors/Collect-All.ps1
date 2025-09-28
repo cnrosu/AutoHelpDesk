@@ -122,7 +122,20 @@ try {
                     $entry.PowerShell.Dispose()
                 }
 
-                foreach ($item in $output) {
+                $meaningfulOutput = @()
+                if ($output) {
+                    $meaningfulOutput = @(
+                        $output |
+                            Where-Object {
+                                # Only keep the orchestrator status objects. Streams such as Verbose output
+                                # can surface here when -Verbose is enabled and those objects are not
+                                # serializable to JSON, leading to "Object reference" errors downstream.
+                                $_ -is [System.Management.Automation.PSObject] -and $_.PSObject.Properties['Success']
+                            }
+                    )
+                }
+
+                foreach ($item in $meaningfulOutput) {
                     $resultsList.Add($item)
                 }
 
@@ -133,7 +146,7 @@ try {
                 $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
                 Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
                 Write-Host $statusMessage
-                $firstResult = if ($output) { $output | Select-Object -First 1 } else { $null }
+                $firstResult = if ($meaningfulOutput.Count -gt 0) { $meaningfulOutput[0] } else { $null }
                 $successState = if ($firstResult) { $firstResult.Success } else { $null }
                 Write-Verbose ("Collector '{0}' result recorded. Success: {1}." -f $entry.Collector.FullName, $successState)
             }
