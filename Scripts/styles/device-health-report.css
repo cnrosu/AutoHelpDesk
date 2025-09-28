@@ -437,6 +437,15 @@ details.report-card[open] > summary {
   background-color: var(--color-surface);
 }
 
+.security-checks__table .security-checks__status {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.security-checks__table .security-checks__label {
+  width: 32%;
+}
+
 .report-pre {
   margin-top: var(--space-sm);
   padding: var(--space-sm);

@@ -506,6 +506,196 @@ function Build-GoodSection {
     return $tabs
 }
 
+function Get-SecurityBaselineDefinitions {
+    $definitions = New-Object System.Collections.Generic.List[pscustomobject]
+
+    $definitions.Add([pscustomobject]@{ Id = 'Security/KernelDMA'; Label = 'Kernel DMA protection' }) | Out-Null
+
+    $asrLabels = @(
+        'Block Office macros from Internet',
+        'Block Win32 API calls from Office',
+        'Block executable content from email/WebDAV',
+        'Block credential stealing from LSASS'
+    )
+    foreach ($label in $asrLabels) {
+        $slug = [regex]::Replace($label, '[^A-Za-z0-9]+', '')
+        if (-not $slug) { $slug = 'Rule' }
+        $definitions.Add([pscustomobject]@{ Id = "Security/ASR/$slug"; Label = "ASR: $label" }) | Out-Null
+    }
+
+    $definitions.Add([pscustomobject]@{ Id = 'Security/ExploitProtection'; Label = 'Exploit protection (CFG/DEP/ASLR)' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/WDAC'; Label = 'WDAC enforcement' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/SmartAppControl'; Label = 'Smart App Control' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/LAPS'; Label = 'LAPS/PLAP policy' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/CredentialGuard'; Label = 'Credential Guard / LSA protection' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/HVCI'; Label = 'Memory integrity (HVCI)' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/UAC'; Label = 'UAC secure prompts' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/PowerShellLogging'; Label = 'PowerShell logging policies' }) | Out-Null
+    $definitions.Add([pscustomobject]@{ Id = 'Security/NTLMHardening'; Label = 'NTLM hardening policies' }) | Out-Null
+
+    return $definitions
+}
+
+function Get-BaselineSeverityPriority {
+    param(
+        [string]$Severity,
+        [switch]$IsIssue
+    )
+
+    if (-not $IsIssue) { return 0 }
+
+    $normalized = ConvertTo-NormalizedSeverity $Severity
+    switch ($normalized) {
+        'critical' { return 6 }
+        'high'     { return 5 }
+        'medium'   { return 4 }
+        'low'      { return 3 }
+        'warning'  { return 2 }
+        'info'     { return 1 }
+        default    { return 1 }
+    }
+}
+
+function Get-BadgeClassForSeverity {
+    param([string]$Severity)
+
+    switch ($Severity) {
+        'critical' { return 'critical' }
+        'high'     { return 'high' }
+        'medium'   { return 'medium' }
+        'low'      { return 'low' }
+        'warning'  { return 'warning' }
+        'info'     { return 'info' }
+        default    { return 'info' }
+    }
+}
+
+function Collect-SecurityBaselineStatuses {
+    param(
+        [System.Collections.Generic.IEnumerable[object]]$Categories,
+        [System.Collections.Generic.IEnumerable[pscustomobject]]$Definitions
+    )
+
+    $map = @{}
+    foreach ($definition in $Definitions) {
+        if (-not $definition) { continue }
+        $id = [string]$definition.Id
+        if (-not $id) { continue }
+        $map[$id] = [pscustomobject]@{
+            Id       = $id
+            Label    = [string]$definition.Label
+            Severity = ''
+            Message  = ''
+            Evidence = ''
+            Priority = -1
+        }
+    }
+
+    foreach ($category in $Categories) {
+        if (-not $category) { continue }
+
+        foreach ($issue in $category.Issues) {
+            if (-not $issue -or -not $issue.PSObject.Properties['CheckId']) { continue }
+            $checkId = [string]$issue.CheckId
+            if (-not $checkId -or -not $map.ContainsKey($checkId)) { continue }
+
+            $severity = ConvertTo-NormalizedSeverity $issue.Severity
+            if (-not $severity) { $severity = 'info' }
+            $priority = Get-BaselineSeverityPriority -Severity $severity -IsIssue
+            $current = $map[$checkId]
+            if ($priority -ge $current.Priority) {
+                $message = if ($issue.Title) { [string]$issue.Title } else { '' }
+                $evidence = if ($issue.Evidence) { [string]$issue.Evidence } else { '' }
+                $map[$checkId] = [pscustomobject]@{
+                    Id       = $checkId
+                    Label    = $current.Label
+                    Severity = $severity
+                    Message  = $message
+                    Evidence = $evidence
+                    Priority = $priority
+                }
+            }
+        }
+
+        foreach ($normal in $category.Normals) {
+            if (-not $normal -or -not $normal.PSObject.Properties['CheckId']) { continue }
+            $checkId = [string]$normal.CheckId
+            if (-not $checkId -or -not $map.ContainsKey($checkId)) { continue }
+
+            $priority = Get-BaselineSeverityPriority -IsIssue:$false
+            $current = $map[$checkId]
+            if ($priority -ge $current.Priority) {
+                $message = if ($normal.Title) { [string]$normal.Title } else { '' }
+                $evidence = if ($normal.Evidence) { [string]$normal.Evidence } else { '' }
+                $map[$checkId] = [pscustomobject]@{
+                    Id       = $checkId
+                    Label    = $current.Label
+                    Severity = 'good'
+                    Message  = $message
+                    Evidence = $evidence
+                    Priority = $priority
+                }
+            }
+        }
+    }
+
+    return $map
+}
+
+function Build-SecurityBaselineSection {
+    param(
+        [System.Collections.Generic.IEnumerable[object]]$Categories
+    )
+
+    $definitions = Get-SecurityBaselineDefinitions
+    if (-not $definitions -or $definitions.Count -eq 0) {
+        return "<div class='report-card'><i>No security checks defined.</i></div>"
+    }
+
+    $statusMap = Collect-SecurityBaselineStatuses -Categories $Categories -Definitions $definitions
+    $rows = New-Object System.Collections.Generic.List[string]
+
+    foreach ($definition in $definitions) {
+        if (-not $definition) { continue }
+        $id = [string]$definition.Id
+        $label = if ($definition.Label) { [string]$definition.Label } else { $id }
+        $labelHtml = Encode-Html $label
+        $status = if ($statusMap.ContainsKey($id)) { $statusMap[$id] } else { $null }
+
+        if ($status -and $status.Priority -ge 0) {
+            if ($status.Severity -eq 'good') {
+                $badgeHtml = "<span class='report-badge report-badge--good'>GOOD</span>"
+            } else {
+                $badgeClass = Get-BadgeClassForSeverity -Severity $status.Severity
+                $badgeLabel = if ($status.Severity) { [string]$status.Severity } else { 'ISSUE' }
+                $badgeHtml = "<span class='report-badge report-badge--$badgeClass'>$(Encode-Html ($badgeLabel.ToUpperInvariant()))</span>"
+            }
+            $messageValue = if ($status.Message) { [string]$status.Message } else { '' }
+            $messageHtml = Encode-Html $messageValue
+            $evidenceHtml = ''
+            if ($status.Evidence) {
+                $normalizedEvidence = ($status.Evidence -replace '\r?\n', '; ').Trim()
+                if ($normalizedEvidence) {
+                    $evidenceHtml = "<div><small class='report-note'>$(Encode-Html $normalizedEvidence)</small></div>"
+                }
+            }
+            $detailsHtml = if ($messageHtml) { "$messageHtml$evidenceHtml" } else { "<i>No details recorded.</i>$evidenceHtml" }
+        } else {
+            $badgeHtml = "<span class='report-badge report-badge--warning'>UNKNOWN</span>"
+            $detailsHtml = '<i>No data collected.</i>'
+        }
+
+        $rows.Add("<tr><td class='security-checks__label'>$labelHtml</td><td class='security-checks__status'>$badgeHtml</td><td>$detailsHtml</td></tr>") | Out-Null
+    }
+
+    if ($rows.Count -eq 0) {
+        return "<div class='report-card'><i>No security baseline data available.</i></div>"
+    }
+
+    $tableRows = $rows -join ''
+    return "<div class='report-card'><table class='report-table report-table--list security-checks__table'><tr><th>Check</th><th>Status</th><th>Details</th></tr>$tableRows</table></div>"
+}
+
 function Build-IssueSection {
     param(
         [System.Collections.Generic.List[pscustomobject]]$Issues
@@ -810,6 +1000,7 @@ function New-AnalyzerHtml {
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
+    $securityHtml = New-ReportSection -Title 'Security Baseline Checks' -ContentHtml (Build-SecurityBaselineSection -Categories $Categories) -Open
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedReports = Get-FailedCollectorReports -Context $Context
@@ -832,5 +1023,5 @@ function New-AnalyzerHtml {
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
-    return ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    return ($head + $summaryHtml + $securityHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
 }
