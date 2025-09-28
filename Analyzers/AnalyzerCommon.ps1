@@ -92,15 +92,32 @@ function Get-AnalyzerArtifact {
         $lookupKeys += ($key + '.json')
     }
 
+    Write-HeuristicDebug -Source 'AnalyzerCommon' -Message 'Resolving analyzer artifact' -Data ([ordered]@{
+        RequestedName = $Name
+        LookupKeys    = ($lookupKeys -join ', ')
+    })
+
     $entries = $null
     foreach ($candidate in $lookupKeys) {
         if ($Context.Artifacts.ContainsKey($candidate)) {
+            Write-HeuristicDebug -Source 'AnalyzerCommon' -Message 'Matched analyzer artifact key' -Data ([ordered]@{
+                RequestedName = $Name
+                MatchedKey    = $candidate
+                MatchCount    = $Context.Artifacts[$candidate].Count
+            })
+
             $entries = $Context.Artifacts[$candidate]
             break
         }
     }
 
-    if (-not $entries) { return $null }
+    if (-not $entries) {
+        Write-HeuristicDebug -Source 'AnalyzerCommon' -Message 'No analyzer artifact match found' -Data ([ordered]@{
+            RequestedName = $Name
+            LookupKeys    = ($lookupKeys -join ', ')
+        })
+        return $null
+    }
 
     if ($entries.Count -gt 1) { return $entries }
     return $entries[0]
