@@ -443,6 +443,11 @@ function Invoke-NetworkHeuristics {
         [string]$InputFolder
     )
 
+    Write-HeuristicDebug -Source 'Network' -Message 'Starting network heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        InputFolder   = $InputFolder
+    })
+
     $rootCandidate = $null
     if ($PSBoundParameters.ContainsKey('InputFolder') -and -not [string]::IsNullOrWhiteSpace($InputFolder)) {
         $rootCandidate = $InputFolder
@@ -468,8 +473,14 @@ function Invoke-NetworkHeuristics {
 
     $computerSystem = $null
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved system artifact' -Data ([ordered]@{
+        Found = [bool]$systemArtifact
+    })
     if ($systemArtifact) {
         $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating system payload for network context' -Data ([ordered]@{
+            HasPayload = [bool]$systemPayload
+        })
         if ($systemPayload -and $systemPayload.ComputerSystem -and -not $systemPayload.ComputerSystem.Error) {
             $computerSystem = $systemPayload.ComputerSystem
         }
@@ -478,14 +489,26 @@ function Invoke-NetworkHeuristics {
     $adapterPayload = $null
     $adapterInventory = $null
     $adapterArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-adapters'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-adapters artifact' -Data ([ordered]@{
+        Found = [bool]$adapterArtifact
+    })
     if ($adapterArtifact) {
         $adapterPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $adapterArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating adapter payload' -Data ([ordered]@{
+            HasPayload = [bool]$adapterPayload
+        })
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
 
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
+        Found = [bool]$networkArtifact
+    })
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.IpConfig) {
             $ipText = if ($payload.IpConfig -is [string[]]) { $payload.IpConfig -join "`n" } else { [string]$payload.IpConfig }
             if ($ipText -match 'IPv4 Address') {
@@ -506,8 +529,14 @@ function Invoke-NetworkHeuristics {
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved dns artifact' -Data ([ordered]@{
+        Found = [bool]$dnsArtifact
+    })
     if ($dnsArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $dnsArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating DNS payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.Resolution) {
             $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
@@ -645,8 +674,14 @@ function Invoke-NetworkHeuristics {
     }
 
     $outlookArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved outlook-connectivity artifact' -Data ([ordered]@{
+        Found = [bool]$outlookArtifact
+    })
     if ($outlookArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $outlookArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating Outlook connectivity payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.Connectivity) {
             $conn = $payload.Connectivity
             if ($conn.PSObject.Properties['TcpTestSucceeded']) {
@@ -663,8 +698,14 @@ function Invoke-NetworkHeuristics {
     }
 
     $autodiscoverArtifact = Get-AnalyzerArtifact -Context $Context -Name 'autodiscover-dns'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved autodiscover-dns artifact' -Data ([ordered]@{
+        Found = [bool]$autodiscoverArtifact
+    })
     if ($autodiscoverArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $autodiscoverArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating autodiscover payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.Results) {
             foreach ($domainEntry in (ConvertTo-NetworkArray $payload.Results)) {
                 if (-not $domainEntry) { continue }
@@ -709,8 +750,14 @@ function Invoke-NetworkHeuristics {
     }
 
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved proxy artifact' -Data ([ordered]@{
+        Found = [bool]$proxyArtifact
+    })
     if ($proxyArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $proxyArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating proxy payload' -Data ([ordered]@{
+            HasPayload = [bool]$payload
+        })
         if ($payload -and $payload.Internet) {
             $internet = $payload.Internet
             if ($internet.ProxyEnable -eq 1 -and $internet.ProxyServer) {

@@ -6,10 +6,18 @@ function Invoke-SystemUptimeChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/Uptime' -Message 'Starting uptime checks'
+
     $uptimeArtifact = Get-AnalyzerArtifact -Context $Context -Name 'uptime'
+    Write-HeuristicDebug -Source 'System/Uptime' -Message 'Resolved uptime artifact' -Data ([ordered]@{
+        Found = [bool]$uptimeArtifact
+    })
     if (-not $uptimeArtifact) { return }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $uptimeArtifact)
+    Write-HeuristicDebug -Source 'System/Uptime' -Message 'Evaluating uptime payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if ($payload -and $payload.Uptime -and -not $payload.Uptime.Error) {
         $uptimeRecord = $payload.Uptime
         $uptimeText = $uptimeRecord.Uptime

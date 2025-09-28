@@ -6,10 +6,18 @@ function Invoke-SystemPerformanceChecks {
         $Result
     )
 
+    Write-HeuristicDebug -Source 'System/Performance' -Message 'Starting performance checks'
+
     $performanceArtifact = Get-AnalyzerArtifact -Context $Context -Name 'performance'
+    Write-HeuristicDebug -Source 'System/Performance' -Message 'Resolved performance artifact' -Data ([ordered]@{
+        Found = [bool]$performanceArtifact
+    })
     if (-not $performanceArtifact) { return }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $performanceArtifact)
+    Write-HeuristicDebug -Source 'System/Performance' -Message 'Evaluating performance payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if ($payload -and $payload.Memory -and -not $payload.Memory.Error) {
         $memory = $payload.Memory
         if ($memory.TotalVisibleMemory -and $memory.FreePhysicalMemory) {

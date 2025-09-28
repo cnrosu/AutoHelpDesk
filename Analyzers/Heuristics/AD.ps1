@@ -34,9 +34,16 @@ function Invoke-ADHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'AD' -Message 'Starting Active Directory heuristics evaluation' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Active Directory Health'
 
     $adArtifact = Get-AnalyzerArtifact -Context $Context -Name 'ad-health'
+    Write-HeuristicDebug -Source 'AD' -Message 'Resolved ad-health artifact' -Data ([ordered]@{
+        Found = [bool]$adArtifact
+    })
     $adPayload = Get-ArtifactPayloadValue -Artifact $adArtifact -Property $null
 
     $domainStatus = $null
@@ -45,6 +52,7 @@ function Invoke-ADHeuristics {
     }
 
     if (-not $domainStatus) {
+        Write-HeuristicDebug -Source 'AD' -Message 'Falling back to system artifact for domain status'
         $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
         if ($systemArtifact) {
             $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
@@ -59,6 +67,7 @@ function Invoke-ADHeuristics {
     }
 
     if (-not $domainStatus) {
+        Write-HeuristicDebug -Source 'AD' -Message 'Domain status unavailable; reporting collection issue'
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable' -Subcategory 'Collection'
         return $result
     }
@@ -69,6 +78,7 @@ function Invoke-ADHeuristics {
     }
 
     if (-not $domainJoined) {
+        Write-HeuristicDebug -Source 'AD' -Message 'System not domain joined; marking AD as not applicable'
         Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable'
         return $result
     }

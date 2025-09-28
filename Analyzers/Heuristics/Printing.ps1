@@ -62,17 +62,31 @@ function Invoke-PrintingHeuristics {
         $Context
     )
 
+    Write-HeuristicDebug -Source 'Printing' -Message 'Starting printing heuristics' -Data ([ordered]@{
+        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    })
+
     $result = New-CategoryResult -Name 'Printing'
     $platform = Get-PrintingPlatformInfo -Context $Context
     $isWorkstation = ($platform.IsWorkstation -eq $true)
+    Write-HeuristicDebug -Source 'Printing' -Message 'Resolved platform information' -Data ([ordered]@{
+        IsServer      = $platform.IsWindowsServer
+        IsWorkstation = $platform.IsWorkstation
+    })
 
     $printingArtifact = Get-AnalyzerArtifact -Context $Context -Name 'printing'
+    Write-HeuristicDebug -Source 'Printing' -Message 'Resolved printing artifact' -Data ([ordered]@{
+        Found = [bool]$printingArtifact
+    })
     if (-not $printingArtifact) {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing artifact not collected' -Subcategory 'Collection'
         return $result
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $printingArtifact)
+    Write-HeuristicDebug -Source 'Printing' -Message 'Resolved printing payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
     if (-not $payload) {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing payload missing' -Subcategory 'Collection'
         return $result
@@ -113,6 +127,10 @@ function Invoke-PrintingHeuristics {
     $wsdPrinters = @()
     $stuckJobs = @()
     $printers = ConvertTo-PrintingArray $payload.Printers
+    Write-HeuristicDebug -Source 'Printing' -Message 'Analyzing printer inventory' -Data ([ordered]@{
+        PrinterCount = $printers.Count
+        Default      = $defaultPrinter
+    })
 
     foreach ($printer in $printers) {
         if (-not $printer) { continue }
@@ -150,6 +168,12 @@ function Invoke-PrintingHeuristics {
             }
         }
     }
+
+    Write-HeuristicDebug -Source 'Printing' -Message 'Printer analysis summary' -Data ([ordered]@{
+        OfflineCount = $offlinePrinters.Count
+        WsdCount     = $wsdPrinters.Count
+        StaleJobs    = $stuckJobs.Count
+    })
 
     if ($stuckJobs.Count -gt 0) {
         Add-CategoryCheck -CategoryResult $result -Name 'Stale print jobs' -Status ([string]$stuckJobs.Count) -Details ($stuckJobs -join '; ')
