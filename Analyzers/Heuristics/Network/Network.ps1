@@ -335,8 +335,8 @@ function ConvertTo-KebabCase {
 
     if (-not $Text) { return $Text }
 
-    $normalized = $Text -replace '([a-z0-9])([A-Z])', '$1-$2'
-    $normalized = $normalized -replace '([A-Z]+)([A-Z][a-z])', '$1-$2'
+    $normalized = $Text -creplace '([a-z0-9])([A-Z])', '$1-$2'
+    $normalized = $normalized -creplace '([A-Z]+)([A-Z][a-z])', '$1-$2'
 
     return $normalized.ToLowerInvariant()
 }
