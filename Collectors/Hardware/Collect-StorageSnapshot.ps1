@@ -100,6 +100,56 @@ function Get-PhysicalDiskSnapshot {
     }
 }
 
+function Get-StorageWearSnapshot {
+    try {
+        [void](Get-Command -Name 'Get-StorageReliabilityCounter' -ErrorAction Stop)
+    } catch {
+        return $null
+    }
+
+    try {
+        $physical = Get-PhysicalDisk -ErrorAction Stop
+    } catch {
+        return [pscustomobject]@{
+            Source = 'Get-PhysicalDisk'
+            Error  = $_.Exception.Message
+        }
+    }
+
+    if (-not $physical) { return 'No physical disks found for reliability counters.' }
+
+    $rows = @()
+    foreach ($disk in $physical) {
+        $row = [ordered]@{
+            DeviceId     = $disk.DeviceId
+            FriendlyName = $disk.FriendlyName
+            SerialNumber = if ($disk.PSObject.Properties['SerialNumber']) { $disk.SerialNumber } else { $null }
+            MediaType    = if ($disk.PSObject.Properties['MediaType']) { $disk.MediaType } else { $null }
+            Wear         = $null
+            Temperature  = $null
+            Error        = $null
+        }
+
+        try {
+            $counter = Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction Stop
+            if ($counter) {
+                if ($counter.PSObject.Properties['Wear']) { $row['Wear'] = $counter.Wear }
+                if ($counter.PSObject.Properties['Temperature']) { $row['Temperature'] = $counter.Temperature }
+            } else {
+                $row['Error'] = 'No reliability data returned.'
+            }
+        } catch {
+            $row['Error'] = $_.Exception.Message
+        }
+
+        $rows += [pscustomobject]$row
+    }
+
+    if ($rows.Count -eq 0) { return 'No reliability data returned.' }
+
+    return ($rows | Format-Table DeviceId, FriendlyName, SerialNumber, MediaType, Wear, Temperature, Error -AutoSize | Out-String -Width 200).TrimEnd()
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         DiskDrives    = Get-DiskDriveStatus
@@ -110,6 +160,11 @@ function Invoke-Main {
     $physical = Get-PhysicalDiskSnapshot
     if ($physical) {
         $payload['PhysicalDisks'] = $physical
+    }
+
+    $wearSnapshot = Get-StorageWearSnapshot
+    if ($wearSnapshot) {
+        $payload['ReliabilityCounters'] = $wearSnapshot
     }
 
     $result = New-CollectorMetadata -Payload $payload
