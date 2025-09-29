@@ -386,7 +386,14 @@ function Invoke-SecurityHeuristics {
             }
 
             if ($osUnprotected.Count -gt 0) {
-                $mountList = ($osUnprotected | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+                $mountPoints = [System.Collections.Generic.List[string]]::new()
+                foreach ($volume in $osUnprotected) {
+                    if ($volume.MountPoint) {
+                        $null = $mountPoints.Add([string]$volume.MountPoint)
+                    }
+                }
+
+                $mountList = ($mountPoints | Sort-Object -Unique) -join ', '
                 if (-not $mountList) { $mountList = 'Unknown volume' }
                 $evidence = ($osUnprotected | ForEach-Object { Format-BitLockerVolume $_ }) -join "`n"
                 Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title ("BitLocker is OFF for system volume(s): {0}." -f $mountList) -Evidence $evidence -Subcategory 'BitLocker'
@@ -732,7 +739,13 @@ function Invoke-SecurityHeuristics {
             $enableLua = ConvertTo-NullableInt $policy.EnableLUA
             $consentPrompt = ConvertTo-NullableInt $policy.ConsentPromptBehaviorAdmin
             $secureDesktop = ConvertTo-NullableInt $policy.PromptOnSecureDesktop
-            $evidence = ($policy.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object { "{0} = {1}" -f $_.Name, $_.Value }) -join "`n"
+            $policyProperties = $policy.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' }
+            $policyEvidence = [System.Collections.Generic.List[string]]::new()
+            foreach ($property in $policyProperties) {
+                $null = $policyEvidence.Add(("{0} = {1}" -f $property.Name, $property.Value))
+            }
+
+            $evidence = ($policyEvidence -join "`n")
             if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -and ($consentPrompt -eq $null -or $consentPrompt -ge 2)) {
                 Add-CategoryNormal -CategoryResult $result -Title 'UAC configured with secure prompts' -Evidence $evidence
             } else {

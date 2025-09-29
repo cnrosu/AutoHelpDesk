@@ -576,7 +576,12 @@ function Build-IssueSection {
     }
 
     if (-not $firstNonEmpty) {
-        return ($sorted | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
+        $issueCards = [System.Collections.Generic.List[string]]::new()
+        foreach ($entry in $sorted) {
+            $null = $issueCards.Add((New-IssueCardHtml -Entry $entry))
+        }
+
+        return ($issueCards -join '')
     }
 
     $tabName = 'issue-tabs'
@@ -836,7 +841,16 @@ function New-AnalyzerHtml {
             $detailParts = @()
             if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
             if ($entry.Details) { $detailParts += $entry.Details }
-            $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
+            $detailHtml = if ($detailParts.Count -gt 0) {
+                $encodedDetails = [System.Collections.Generic.List[string]]::new()
+                foreach ($detail in $detailParts) {
+                    $null = $encodedDetails.Add((Encode-Html $detail))
+                }
+
+                ($encodedDetails -join '<br>')
+            } else {
+                Encode-Html ''
+            }
             $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
         }
         $failedContent += "</table></div>"

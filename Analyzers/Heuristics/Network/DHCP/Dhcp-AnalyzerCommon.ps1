@@ -43,8 +43,13 @@ function Write-DhcpDebug {
     } else {
         $text = "DBG [{0}] {1}" -f $source, $Message
         if ($arguments.ContainsKey('Data')) {
-            $details = $Data.GetEnumerator() | Sort-Object Name | ForEach-Object { "{0}={1}" -f $_.Key, $_.Value }
-            if ($details) { $text = "{0} :: {1}" -f $text, ($details -join '; ') }
+            $detailEntries = $Data.GetEnumerator() | Sort-Object Name
+            $details = [System.Collections.Generic.List[string]]::new()
+            foreach ($entry in $detailEntries) {
+                $null = $details.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+            }
+
+            if ($details.Count -gt 0) { $text = "{0} :: {1}" -f $text, ($details -join '; ') }
         }
         Write-Host $text
     }
@@ -150,7 +155,13 @@ function Format-StringList {
     $array = Ensure-Array $Values
     $clean = $array | Where-Object { $_ -and $_.Trim() }
     if (-not $clean) { return '' }
-    return ($clean | ForEach-Object { $_.Trim() }) -join ', '
+
+    $trimmedValues = [System.Collections.Generic.List[string]]::new()
+    foreach ($value in $clean) {
+        $null = $trimmedValues.Add($value.Trim())
+    }
+
+    return ($trimmedValues -join ', ')
 }
 
 function New-DhcpFinding {

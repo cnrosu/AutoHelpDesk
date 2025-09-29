@@ -304,7 +304,13 @@ function Invoke-ServiceCheckAutomaticInventory {
     }
 
     if ($stoppedAuto.Count -gt 0) {
-        $summary = $stoppedAuto | Select-Object -First 5 | ForEach-Object { "{0} ({1})" -f $_.DisplayName, ($_.State ? $_.State : $_.Status) }
+        $topStoppedAuto = $stoppedAuto | Select-Object -First 5
+        $summary = [System.Collections.Generic.List[string]]::new()
+        foreach ($service in $topStoppedAuto) {
+            $serviceState = if ($service.State) { $service.State } else { $service.Status }
+            $null = $summary.Add(("{0} ({1})" -f $service.DisplayName, $serviceState))
+        }
+
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
     } else {
         Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running'

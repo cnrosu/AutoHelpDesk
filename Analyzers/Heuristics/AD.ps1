@@ -315,7 +315,13 @@ function Invoke-ADHeuristics {
             } elseif ($noDcReachable) {
                 $message += '; DC unreachable'
             }
-            $failureSummary = ($failureEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
+            $failureGroups = $failureEvents | Group-Object -Property Id
+            $failureSummaryParts = [System.Collections.Generic.List[string]]::new()
+            foreach ($group in $failureGroups) {
+                $null = $failureSummaryParts.Add(("{0}x{1}" -f $group.Count, $group.Name))
+            }
+
+            $failureSummary = ($failureSummaryParts -join ', ')
             Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $message -Evidence $failureSummary -Subcategory 'Kerberos'
         }
     }
@@ -343,7 +349,13 @@ function Invoke-ADHeuristics {
             if ($gpResult -and $gpResult.Output) { $evidence += (($gpResult.Output | Select-Object -First 3) -join ' | ') }
             if ($gpResult -and $gpResult.Error) { $evidence += $gpResult.Error }
             if ($gpoEvents.Count -gt 0) {
-                $eventSummary = ($gpoEvents | Group-Object -Property Id | ForEach-Object { "{0}x{1}" -f $_.Count, $_.Name }) -join ', '
+                $eventGroups = $gpoEvents | Group-Object -Property Id
+                $eventSummaryParts = [System.Collections.Generic.List[string]]::new()
+                foreach ($group in $eventGroups) {
+                    $null = $eventSummaryParts.Add(("{0}x{1}" -f $group.Count, $group.Name))
+                }
+
+                $eventSummary = ($eventSummaryParts -join ', ')
                 if ($eventSummary) { $evidence += $eventSummary }
             }
             if (-not $evidence) { $evidence = @('GPO data unavailable') }
@@ -373,13 +385,25 @@ function Invoke-ADHeuristics {
                 $entries = if ($groupPolicyLog -is [System.Collections.IEnumerable] -and -not ($groupPolicyLog -is [string])) { @($groupPolicyLog) } else { @($groupPolicyLog) }
                 $sysvolMatches = $entries | Where-Object { $_.Message -match '(?i)\\\\[^\r\n]+\\(SYSVOL|NETLOGON)' -or $_.Message -match '(?i)The network path was not found' -or $_.Message -match '(?i)The system cannot find the path specified' }
                 if ($sysvolMatches.Count -gt 0) {
-                    $evidence = ($sysvolMatches | Select-Object -First 3 | ForEach-Object { "[{0}] {1}" -f $_.Id, $_.Message }) -join "`n"
+                    $selectedSysvolMatches = $sysvolMatches | Select-Object -First 3
+                    $sysvolEvidence = [System.Collections.Generic.List[string]]::new()
+                    foreach ($entry in $selectedSysvolMatches) {
+                        $null = $sysvolEvidence.Add(("[{0}] {1}" -f $entry.Id, $entry.Message))
+                    }
+
+                    $evidence = ($sysvolEvidence -join "`n")
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Group Policy errors accessing SYSVOL/NETLOGON' -Evidence $evidence -Subcategory 'Group Policy'
                 }
 
                 $gpoFailures = $entries | Where-Object { $_.Id -in 1058, 1030, 1502, 1503 }
                 if ($gpoFailures.Count -gt 0) {
-                    $evidence = ($gpoFailures | Select-Object -First 3 | ForEach-Object { "[{0}] {1}" -f $_.Id, $_.Message }) -join "`n"
+                    $selectedGpoFailures = $gpoFailures | Select-Object -First 3
+                    $gpoFailureEvidence = [System.Collections.Generic.List[string]]::new()
+                    foreach ($entry in $selectedGpoFailures) {
+                        $null = $gpoFailureEvidence.Add(("[{0}] {1}" -f $entry.Id, $entry.Message))
+                    }
+
+                    $evidence = ($gpoFailureEvidence -join "`n")
                     Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy processing failures detected' -Evidence $evidence -Subcategory 'Group Policy'
                 }
             }

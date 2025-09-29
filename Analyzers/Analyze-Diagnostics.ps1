@@ -28,9 +28,10 @@ if (Test-Path -Path $commonModulePath) {
 $heuristicsPath = Join-Path -Path $PSScriptRoot -ChildPath 'Heuristics'
 if (Test-Path -Path $heuristicsPath) {
     Write-Verbose ("Loading heuristic scripts from '{0}'." -f $heuristicsPath)
-    Get-ChildItem -Path $heuristicsPath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object {
-        . $_.FullName
-        Write-Verbose ("Loaded heuristic script '{0}'." -f $_.FullName)
+    $heuristicScripts = Get-ChildItem -Path $heuristicsPath -Filter '*.ps1' -File | Sort-Object Name
+    foreach ($script in $heuristicScripts) {
+        . $script.FullName
+        Write-Verbose ("Loaded heuristic script '{0}'." -f $script.FullName)
     }
 
     $networkModulePath = Join-Path -Path $heuristicsPath -ChildPath 'Network/Network.ps1'
@@ -110,7 +111,11 @@ if ($resolvedCss.Count -gt 0) {
     }
 
     $cssOutputPath = Join-Path -Path $cssOutputDir -ChildPath 'device-health-report.css'
-    $cssContent = $resolvedCss | ForEach-Object { Get-Content -LiteralPath $_ -Raw }
+    $cssContent = [System.Collections.Generic.List[string]]::new()
+    foreach ($cssPath in $resolvedCss) {
+        $null = $cssContent.Add((Get-Content -LiteralPath $cssPath -Raw))
+    }
+
     Set-Content -LiteralPath $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
     Write-Verbose ("Combined CSS written to '{0}'." -f $cssOutputPath)
 }

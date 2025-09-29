@@ -63,8 +63,14 @@ function Write-HeuristicDebug {
     $formatted = "DBG [{0}] {1}" -f $Source, $Message
 
     if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
-        $details = $Data.GetEnumerator() | Sort-Object Name | ForEach-Object {
-            "{0}={1}" -f $_.Name, $_.Value
+        $detailEntries = $Data.GetEnumerator() | Sort-Object Name
+        $details = [System.Collections.Generic.List[string]]::new()
+        foreach ($entry in $detailEntries) {
+            if ($entry -is [System.Collections.DictionaryEntry]) {
+                $null = $details.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+            } else {
+                $null = $details.Add(("{0}={1}" -f $entry.Name, $entry.Value))
+            }
         }
 
         if ($details) {
@@ -237,7 +243,12 @@ function Get-ArtifactPayload {
     if (-not $Artifact) { return $null }
 
     if ($Artifact -is [System.Collections.IEnumerable] -and -not ($Artifact -is [string])) {
-        return $Artifact | ForEach-Object { $_.Data.Payload }
+        $payloads = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Artifact) {
+            $null = $payloads.Add($item.Data.Payload)
+        }
+
+        return $payloads
     }
 
     if ($Artifact.Data -and $Artifact.Data.PSObject.Properties['Payload']) {

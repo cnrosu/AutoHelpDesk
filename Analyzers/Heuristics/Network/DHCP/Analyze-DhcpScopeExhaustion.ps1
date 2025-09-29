@@ -69,7 +69,12 @@ if (-not $eventEvidence -and -not $apipaGroups) {
 $messageParts = @()
 if ($eventEvidence) { $messageParts += "detected $($eventEvidence.Count) DHCP scope exhaustion warnings (event ID 1046)" }
 if ($apipaGroups) {
-    $affected = ($apipaGroups | ForEach-Object { $_.Count }) -join ', '
+    $affectedCounts = [System.Collections.Generic.List[int]]::new()
+    foreach ($group in $apipaGroups) {
+        $null = $affectedCounts.Add([int]$group.Count)
+    }
+
+    $affected = ($affectedCounts -join ', ')
     $messageParts += "found multiple adapters reverting to APIPA under gateway groupings ($affected)"
 }
 
@@ -78,13 +83,23 @@ $message = "Indicators of DHCP scope depletion: " + ($messageParts -join '; ') +
 $evidence = [ordered]@{}
 if ($eventEvidence) { $evidence['Events'] = $eventEvidence }
 if ($apipaGroups) {
-    $adapterEvidence = @()
+    $adapterEvidence = New-Object System.Collections.Generic.List[pscustomobject]
     foreach ($group in $apipaGroups) {
-        $adapterEvidence += [pscustomobject]@{
-            Gateway  = $group.Name
-            Adapters = ($group.Group | ForEach-Object { $_.Adapter })
-            Addresses = ($group.Group | ForEach-Object { $_.Address })
+        $groupAdapters = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $group.Group) {
+            $null = $groupAdapters.Add($item.Adapter)
         }
+
+        $groupAddresses = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $group.Group) {
+            $null = $groupAddresses.Add($item.Address)
+        }
+
+        $null = $adapterEvidence.Add([pscustomobject]@{
+            Gateway   = $group.Name
+            Adapters  = $groupAdapters
+            Addresses = $groupAddresses
+        })
     }
     $evidence['ApipaAdapters'] = $adapterEvidence
 }

@@ -317,11 +317,14 @@ $capturePlan = @(
           }
       }
 
-      $domains = $domains |
-        Where-Object { $_ } |
-        ForEach-Object { $_.Trim().ToLowerInvariant() } |
-        Where-Object { $_ } |
-        Sort-Object -Unique
+      $normalizedDomains = [System.Collections.Generic.List[string]]::new()
+      foreach ($domain in $domains) {
+        if (-not $domain) { continue }
+        $trimmed = $domain.Trim().ToLowerInvariant()
+        if ($trimmed) { $null = $normalizedDomains.Add($trimmed) }
+      }
+
+      $domains = $normalizedDomains | Sort-Object -Unique
 
       if (-not $domains -or $domains.Count -eq 0) {
         "No domain candidates identified for autodiscover lookup."
@@ -1246,13 +1249,23 @@ if (Test-Path $printingCollectorScript) {
 # Simple parser: extract key fields from ipconfig /all
 Write-Host "Building quick summary from ipconfig_all.txt..."
 $ipOut = Get-Content (Join-Path $reportDir "ipconfig_all.txt") -Raw
+$dnsMatches = [regex]::Matches($ipOut,'DNS Servers[.\s]*?:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
+$dnsSummaryValues = [System.Collections.Generic.List[string]]::new()
+foreach ($match in $dnsMatches) { $null = $dnsSummaryValues.Add($match.Groups[1].Value) }
+$dnsSummary = $dnsSummaryValues -join ", "
+
+$macMatches = [regex]::Matches($ipOut,'Physical Address[.\s]*?:\s*([0-9A-Fa-f:-]{17}|[0-9A-Fa-f:]{14})')
+$macSummaryValues = [System.Collections.Generic.List[string]]::new()
+foreach ($match in $macMatches) { $null = $macSummaryValues.Add($match.Groups[1].Value) }
+$macSummary = $macSummaryValues -join ", "
+
 $Summary = @{
   Hostname = $env:COMPUTERNAME
   Timestamp = $timestamp
   IPv4 = ([regex]::Matches($ipOut,'IPv4 Address[.\s]*?:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') | Select-Object -First 1).Groups[1].Value
   DefaultGateway = ([regex]::Matches($ipOut,'Default Gateway[.\s]*?:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') | Select-Object -First 1).Groups[1].Value
-  DNS = ([regex]::Matches($ipOut,'DNS Servers[.\s]*?:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') | ForEach-Object { $_.Groups[1].Value }) -join ", "
-  MACs = ([regex]::Matches($ipOut,'Physical Address[.\s]*?:\s*([0-9A-Fa-f:-]{17}|[0-9A-Fa-f:]{14})') | ForEach-Object { $_.Groups[1].Value }) -join ", "
+  DNS = $dnsSummary
+  MACs = $macSummary
 }
 $summaryFile = Join-Path $reportDir "summary.json"
 $Summary | ConvertTo-Json | Out-File -FilePath $summaryFile -Encoding UTF8

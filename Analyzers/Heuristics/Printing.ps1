@@ -190,7 +190,12 @@ function Invoke-PrintingHeuristics {
             Add-CategoryCheck -CategoryResult $result -Name 'PrintService/Admin errors' -Status ([string]$admin.ErrorCount)
             if ($admin.ErrorCount -gt 0) {
                 $severity = if ($admin.ErrorCount -ge 5) { 'high' } else { 'medium' }
-                $evidence = "Errors: {0}; Driver crash IDs: {1}" -f $admin.ErrorCount, (($admin.DriverCrashCount.GetEnumerator() | ForEach-Object { "{0}={1}" -f $_.Key, $_.Value }) -join ', ')
+                $driverCrashSummaries = [System.Collections.Generic.List[string]]::new()
+                foreach ($entry in $admin.DriverCrashCount.GetEnumerator()) {
+                    $null = $driverCrashSummaries.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+                }
+
+                $evidence = "Errors: {0}; Driver crash IDs: {1}" -f $admin.ErrorCount, ($driverCrashSummaries -join ', ')
                 Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'PrintService Admin log reporting errors' -Evidence $evidence -Subcategory 'Event Logs'
             }
         }
