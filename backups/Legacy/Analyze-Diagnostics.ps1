@@ -2953,7 +2953,16 @@ if ($raw['office_security']) {
 
     $hasIssue = $false
 
-    $blockCompliant = @($appContexts | Where-Object { $_.BlockValue -eq 1 })
+    $blockCompliant = @()
+    $pvDisabledContexts = @()
+    foreach ($context in $appContexts) {
+      if ($context.BlockValue -eq 1) {
+        $blockCompliant += $context
+      }
+      if (($context.PvInternetValue -eq 1) -or ($context.PvUnsafeValue -eq 1)) {
+        $pvDisabledContexts += $context
+      }
+    }
     $blockFullyEnforced = ($appContexts.Count -gt 0 -and $blockCompliant.Count -eq $appContexts.Count)
     if ($blockCompliant.Count -eq 0) {
       $blockEvidence = ($appContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
@@ -2988,7 +2997,6 @@ if ($raw['office_security']) {
       $hasIssue = $true
     }
 
-    $pvDisabledContexts = @($appContexts | Where-Object { ($_.PvInternetValue -eq 1) -or ($_.PvUnsafeValue -eq 1) })
     if ($pvDisabledContexts.Count -gt 0) {
       $pvReasons = @()
       foreach ($ctx in $pvDisabledContexts) {
