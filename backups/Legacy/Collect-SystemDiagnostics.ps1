@@ -1298,7 +1298,8 @@ if (-not $NoHtml) {
   $cssContent = $cssSources | ForEach-Object { Get-Content -Raw -Path $_ }
   Set-Content -Path $cssOutputPath -Value ($cssContent -join "`n`n") -Encoding UTF8
 
-  $html = @"
+  $htmlBuilder = [System.Text.StringBuilder]::new()
+  $null = $htmlBuilder.Append(@"
 <!doctype html>
 <html>
 <head><meta charset='utf-8'><title>Diagnostics Report - $timestamp</title><link rel='stylesheet' href='styles/system-diagnostics-report.css'></head>
@@ -1316,17 +1317,17 @@ if (-not $NoHtml) {
   </div>
   <div class='diagnostics-section'>
     <h2>Raw outputs</h2>
-"@
+"@)
 
   foreach ($f in Get-ChildItem -Path $reportDir -Filter *.txt | Sort-Object Name) {
     $name = $f.BaseName
     $content = Get-Content $f.FullName -Raw
     $contentEscaped = [System.Web.HttpUtility]::HtmlEncode($content)
-    $html += "<h3>$name</h3>`n<pre class='diagnostics-pre'>$contentEscaped</pre>`n"
+    $null = $htmlBuilder.Append("<h3>$name</h3>`n<pre class='diagnostics-pre'>$contentEscaped</pre>`n")
   }
 
-  $html += "</body></html>"
-  $html | Out-File -FilePath $htmlFile -Encoding UTF8
+  $null = $htmlBuilder.Append("</body></html>")
+  $htmlBuilder.ToString() | Out-File -FilePath $htmlFile -Encoding UTF8
   Write-Host "HTML report written to: $htmlFile"
 } else {
   Write-Host "Skipping HTML report generation (-NoHtml specified)."
