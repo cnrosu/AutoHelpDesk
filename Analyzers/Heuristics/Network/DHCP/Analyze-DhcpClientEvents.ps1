@@ -16,15 +16,8 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP client events' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-try {
-    $repoRoot = (Resolve-Path -LiteralPath (Join-Path -Path $PSScriptRoot -ChildPath '..\\..\\..\\..')).ProviderPath
-} catch {
-    $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
-}
-$commonModulePath = if ($repoRoot) { Join-Path -Path $repoRoot -ChildPath 'Modules/Common.psm1' } else { $null }
-if ($commonModulePath -and (Test-Path -LiteralPath $commonModulePath)) {
-    Import-Module $commonModulePath -Force
-}
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+Import-Module (Join-Path -Path $repoRoot -ChildPath 'Modules/Common.psm1') -Force
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerCommon.ps1')
 
 $payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-client-events.json'
