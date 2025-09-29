@@ -27,6 +27,68 @@ $script:RegexKeyValueLine = [System.Text.RegularExpressions.Regex]::new(
   [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
+# Shim for DHCP analyzers that expect Write-DhcpDebug to be available. Prefer the
+# analyzer-wide logger when present and gracefully fall back to Write-Verbose.
+if (-not (Get-Command Write-DhcpDebug -ErrorAction SilentlyContinue)) {
+  function Write-DhcpDebug {
+    [CmdletBinding()]
+    param(
+      # Main debug message. If omitted but -Data is supplied, the data will be logged.
+      [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+      $Message,
+
+      # Tag the area for your common logger
+      [string] $Area = 'DHCP',
+
+      # Optional structured object to include alongside the message
+      [Alias('Object')]
+      [object] $Data,
+
+      # When falling back (no Write-AnalyzerDebug), emit Data as JSON instead of table text
+      [switch] $AsJson
+    )
+    begin {
+      $analyzerCmd = Get-Command Write-AnalyzerDebug -ErrorAction SilentlyContinue
+      $supportsData = $false
+      if ($analyzerCmd) {
+        try { $supportsData = $analyzerCmd.Parameters.ContainsKey('Data') } catch { $supportsData = $false }
+      }
+    }
+    process {
+      $msg = if ($PSBoundParameters.ContainsKey('Message') -and $null -ne $Message) {
+        [string]$Message
+      } elseif ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
+        # If no explicit message, derive a compact one from Data
+        try { ($Data | ConvertTo-Json -Depth 3 -Compress) } catch { ($Data | Out-String).Trim() }
+      } else {
+        ''
+      }
+
+      if ($analyzerCmd) {
+        # Prefer centralized analyzer logger
+        $splat = @{ Area = $Area; Message = $msg }
+        if ($supportsData -and $PSBoundParameters.ContainsKey('Data')) { $splat.Data = $Data }
+        & $analyzerCmd @splat
+        return
+      }
+
+      # Fallback: Write-Verbose lines
+      if ($msg) { Write-Verbose ("[${Area}] {0}" -f $msg) }
+      if ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
+        try {
+          if ($AsJson) {
+            Write-Verbose ("[${Area}] DATA: {0}" -f ($Data | ConvertTo-Json -Depth 3 -Compress))
+          } else {
+            Write-Verbose ("[${Area}] DATA:`n{0}" -f (($Data | Out-String).Trim()))
+          }
+        } catch {
+          Write-Verbose ("[${Area}] DATA: {0}" -f ($Data.ToString()))
+        }
+      }
+    }
+  }
+}
+
 function ConvertTo-NormalizedSeverity {
   param($Severity)
 
