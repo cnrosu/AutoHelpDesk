@@ -170,12 +170,13 @@ function Get-ServiceRecord {
 function Get-ServiceRecords {
     param([object[]]$Inventory)
 
-    $records = @()
+    $records = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($service in $Inventory) {
         $record = Get-ServiceRecord -Service $service
-        if ($record) { $records += $record }
+        if ($record) { $null = $records.Add($record) }
     }
-    return $records | Sort-Object -Property Name
+    $recordsArray = $records.ToArray()
+    return $recordsArray | Sort-Object -Property Name
 }
 
 function Get-RecordLookup {
@@ -195,7 +196,7 @@ function Get-CriticalServiceSnapshot {
         [object[]]$Definitions
     )
 
-    $snapshot = @()
+    $snapshot = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($definition in $Definitions) {
         $name = $definition.Name
         $display = $definition.Display
@@ -205,7 +206,7 @@ function Get-CriticalServiceSnapshot {
             $record = $Lookup[$name]
         }
 
-        $snapshot += [pscustomobject]@{
+        $null = $snapshot.Add([pscustomobject]@{
             Name                = $name
             Display             = $display
             Note                = $note
@@ -214,9 +215,9 @@ function Get-CriticalServiceSnapshot {
             StartType           = if ($record) { $record.StartType } else { 'Unknown' }
             NormalizedStartType = if ($record) { $record.NormalizedStartType } else { 'unknown' }
             Raw                 = if ($record) { $record.Raw } else { $null }
-        }
+        })
     }
-    return $snapshot
+    return $snapshot.ToArray()
 }
 
 function Get-LegacyServiceSnapshot {
@@ -225,20 +226,20 @@ function Get-LegacyServiceSnapshot {
         [string[]]$Names
     )
 
-    $snapshot = @()
+    $snapshot = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($name in $Names) {
         if (-not $name) { continue }
         $record = $null
         if ($Lookup.ContainsKey($name)) { $record = $Lookup[$name] }
 
-        $snapshot += [pscustomobject]@{
+        $null = $snapshot.Add([pscustomobject]@{
             Name             = $name
             Status           = if ($record) { $record.Status } else { 'Not Found' }
             NormalizedStatus = if ($record) { $record.NormalizedStatus } else { 'missing' }
             Raw              = if ($record) { $record.Raw } else { $null }
-        }
+        })
     }
-    return $snapshot
+    return $snapshot.ToArray()
 }
 
 function Invoke-Main {

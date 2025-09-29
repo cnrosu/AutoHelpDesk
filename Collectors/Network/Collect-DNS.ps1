@@ -15,24 +15,24 @@ function Test-DnsResolution {
         [string[]]$Names = @('www.microsoft.com','outlook.office365.com','autodiscover.outlook.com')
     )
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($name in $Names) {
         try {
             $records = Resolve-DnsName -Name $name -ErrorAction Stop
-            $results += [PSCustomObject]@{
+            $null = $results.Add([PSCustomObject]@{
                 Name    = $name
                 Success = $true
                 Records = $records | Select-Object Name, Type, IPAddress
-            }
+            })
         } catch {
-            $results += [PSCustomObject]@{
+            $null = $results.Add([PSCustomObject]@{
                 Name    = $name
                 Success = $false
                 Error   = $_.Exception.Message
-            }
+            })
         }
     }
-    return $results
+    return $results.ToArray()
 }
 
 function Trace-NetworkPath {
@@ -59,31 +59,32 @@ function Test-Latency {
     $testConnectionCmd = Get-Command -Name 'Test-Connection' -ErrorAction SilentlyContinue
 
     if ($null -ne $testConnectionCmd) {
-        $attemptDetails = @()
+        $attemptDetails = [System.Collections.Generic.List[pscustomobject]]::new()
         for ($i = 1; $i -le $attempts; $i++) {
             try {
                 $reply = Test-Connection -ComputerName $Target -Count 1 -ErrorAction Stop
                 $latency = $reply | Select-Object -First 1 -ExpandProperty ResponseTime
-                $attemptDetails += [PSCustomObject]@{
+                $null = $attemptDetails.Add([PSCustomObject]@{
                     Attempt   = $i
                     Success   = $true
                     LatencyMs = $latency
-                }
+                })
             } catch {
-                $attemptDetails += [PSCustomObject]@{
+                $null = $attemptDetails.Add([PSCustomObject]@{
                     Attempt = $i
                     Success = $false
                     Error   = $_.Exception.Message
-                }
+                })
             }
         }
 
-        $summary.AttemptsDetail = $attemptDetails
-        $summary.SuccessCount = ($attemptDetails | Where-Object { $_.Success }).Count
+        $attemptDetailsArray = $attemptDetails.ToArray()
+        $summary.AttemptsDetail = $attemptDetailsArray
+        $summary.SuccessCount = ($attemptDetailsArray | Where-Object { $_.Success }).Count
         $summary.FailureCount = $attempts - $summary.SuccessCount
 
         if ($summary.SuccessCount -gt 0) {
-            $latencies = $attemptDetails | Where-Object { $_.Success } | Select-Object -ExpandProperty LatencyMs
+            $latencies = $attemptDetailsArray | Where-Object { $_.Success } | Select-Object -ExpandProperty LatencyMs
             $measure = $latencies | Measure-Object -Average -Minimum -Maximum
             $summary.AverageLatencyMs = [Math]::Round($measure.Average, 2)
             $summary.MinimumLatencyMs = $measure.Minimum
@@ -148,23 +149,23 @@ function Resolve-AutodiscoverRecords {
         [string[]]$Domains = @('autodiscover', 'enterpriseenrollment', 'enterpriseregistration')
     )
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($domain in $Domains) {
         try {
             $records = Resolve-DnsName -Type CNAME -Name "$domain.outlook.com" -ErrorAction Stop
-            $results += [PSCustomObject]@{
+            $null = $results.Add([PSCustomObject]@{
                 Query   = "$domain.outlook.com"
                 Records = $records | Select-Object Name, Type, NameHost
-            }
+            })
         } catch {
-            $results += [PSCustomObject]@{
+            $null = $results.Add([PSCustomObject]@{
                 Query = "$domain.outlook.com"
                 Error = $_.Exception.Message
-            }
+            })
         }
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Get-DnsClientServerInventory {
