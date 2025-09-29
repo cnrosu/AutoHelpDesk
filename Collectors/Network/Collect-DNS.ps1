@@ -42,11 +42,105 @@ function Trace-NetworkPath {
 
 function Test-Latency {
     param([string]$Target = '8.8.8.8')
-    try {
-        return Test-NetConnection -ComputerName $Target -WarningAction SilentlyContinue
-    } catch {
-        return Invoke-CollectorNativeCommand -FilePath 'ping.exe' -ArgumentList $Target -ErrorMetadata @{ Target = $Target }
+
+    $attempts = 4
+    $summary = [ordered]@{
+        Target            = $Target
+        Attempts          = $attempts
+        SuccessCount      = 0
+        FailureCount      = 0
+        Status            = 'Unknown'
+        AverageLatencyMs  = $null
+        MinimumLatencyMs  = $null
+        MaximumLatencyMs  = $null
+        AttemptsDetail    = @()
     }
+
+    $testConnectionCmd = Get-Command -Name 'Test-Connection' -ErrorAction SilentlyContinue
+
+    if ($null -ne $testConnectionCmd) {
+        $attemptDetails = @()
+        for ($i = 1; $i -le $attempts; $i++) {
+            try {
+                $reply = Test-Connection -ComputerName $Target -Count 1 -ErrorAction Stop
+                $latency = $reply | Select-Object -First 1 -ExpandProperty ResponseTime
+                $attemptDetails += [PSCustomObject]@{
+                    Attempt   = $i
+                    Success   = $true
+                    LatencyMs = $latency
+                }
+            } catch {
+                $attemptDetails += [PSCustomObject]@{
+                    Attempt = $i
+                    Success = $false
+                    Error   = $_.Exception.Message
+                }
+            }
+        }
+
+        $summary.AttemptsDetail = $attemptDetails
+        $summary.SuccessCount = ($attemptDetails | Where-Object { $_.Success }).Count
+        $summary.FailureCount = $attempts - $summary.SuccessCount
+
+        if ($summary.SuccessCount -gt 0) {
+            $latencies = $attemptDetails | Where-Object { $_.Success } | Select-Object -ExpandProperty LatencyMs
+            $measure = $latencies | Measure-Object -Average -Minimum -Maximum
+            $summary.AverageLatencyMs = [Math]::Round($measure.Average, 2)
+            $summary.MinimumLatencyMs = $measure.Minimum
+            $summary.MaximumLatencyMs = $measure.Maximum
+        }
+
+        $summary.Status = if ($summary.SuccessCount -eq $attempts) {
+            'Success'
+        } elseif ($summary.SuccessCount -gt 0) {
+            'Partial'
+        } else {
+            'Failed'
+        }
+
+        return [PSCustomObject]$summary
+    }
+
+    $pingOutput = Invoke-CollectorNativeCommand -FilePath 'ping.exe' -ArgumentList @('-n', $attempts, $Target) -ErrorMetadata @{ Target = $Target }
+
+    if ($pingOutput -isnot [System.Array]) {
+        return $pingOutput
+    }
+
+    $summary.AttemptsDetail = $pingOutput
+
+    $packetLine = $pingOutput | Where-Object { $_ -match 'Packets: Sent = (\d+), Received = (\d+), Lost = (\d+)' } | Select-Object -Last 1
+    if ($packetLine) {
+        $packetMatch = [regex]::Match($packetLine, 'Packets: Sent = (\d+), Received = (\d+), Lost = (\d+)')
+        if ($packetMatch.Success) {
+            $summary.Attempts = [int]$packetMatch.Groups[1].Value
+            $summary.SuccessCount = [int]$packetMatch.Groups[2].Value
+            $summary.FailureCount = [int]$packetMatch.Groups[3].Value
+        }
+    } else {
+        $summary.SuccessCount = 0
+        $summary.FailureCount = $attempts
+    }
+
+    $latencyLine = $pingOutput | Where-Object { $_ -match 'Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms' } | Select-Object -Last 1
+    if ($latencyLine) {
+        $latencyMatch = [regex]::Match($latencyLine, 'Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms')
+        if ($latencyMatch.Success) {
+            $summary.MinimumLatencyMs = [int]$latencyMatch.Groups[1].Value
+            $summary.MaximumLatencyMs = [int]$latencyMatch.Groups[2].Value
+            $summary.AverageLatencyMs = [int]$latencyMatch.Groups[3].Value
+        }
+    }
+
+    $summary.Status = if ($summary.SuccessCount -eq $summary.Attempts) {
+        'Success'
+    } elseif ($summary.SuccessCount -gt 0) {
+        'Partial'
+    } else {
+        'Failed'
+    }
+
+    return [PSCustomObject]$summary
 }
 
 function Resolve-AutodiscoverRecords {
