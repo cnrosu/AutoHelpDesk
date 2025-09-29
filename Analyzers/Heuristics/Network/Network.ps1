@@ -352,14 +352,35 @@ function Invoke-DhcpAnalyzers {
         [string]$InputFolder
     )
 
-    if (-not $InputFolder) { return }
-    if (-not (Test-Path -LiteralPath $InputFolder)) { return }
+    Write-HeuristicDebug -Source 'Network' -Message 'Entering Invoke-DhcpAnalyzers' -Data ([ordered]@{
+        InputFolder = $InputFolder
+    })
+
+    if (-not $InputFolder) {
+        Write-Host 'DHCP analyzers skipped: no InputFolder provided.'
+        return
+    }
+    if (-not (Test-Path -LiteralPath $InputFolder)) {
+        Write-Host ("DHCP analyzers skipped: folder '{0}' not found." -f $InputFolder)
+        return
+    }
 
     $analyzerRoot = Join-Path -Path $PSScriptRoot -ChildPath 'DHCP'
-    if (-not (Test-Path -LiteralPath $analyzerRoot)) { return }
+    if (-not (Test-Path -LiteralPath $analyzerRoot)) {
+        Write-Host ("DHCP analyzers skipped: analyzer root '{0}' not found." -f $analyzerRoot)
+        return
+    }
 
     $scriptFiles = Get-ChildItem -Path $analyzerRoot -Filter 'Analyze-Dhcp*.ps1' -File -ErrorAction SilentlyContinue | Sort-Object Name
-    if (-not $scriptFiles -or $scriptFiles.Count -eq 0) { return }
+    if (-not $scriptFiles -or $scriptFiles.Count -eq 0) {
+        Write-Host ("DHCP analyzers missing scripts: searched '{0}' for pattern 'Analyze-Dhcp*.ps1'." -f $analyzerRoot)
+        return
+    }
+
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved DHCP analyzer scripts' -Data ([ordered]@{
+        AnalyzerRoot = $analyzerRoot
+        ScriptCount  = $scriptFiles.Count
+    })
 
     $eligibleAnalyzers = @()
     foreach ($script in $scriptFiles) {
@@ -378,10 +399,25 @@ function Invoke-DhcpAnalyzers {
                 ArtifactBase = $artifactBase
                 ArtifactPath = (Resolve-Path -LiteralPath $artifactPath).ProviderPath
             }
+        } else {
+            Write-Host (
+                "DHCP analyzer '{0}' skipped: artifact '{1}.json' not found in '{2}'." -f 
+                $script.Name,
+                $artifactBase,
+                $InputFolder
+            )
         }
     }
 
-    if ($eligibleAnalyzers.Count -eq 0) { return }
+    if ($eligibleAnalyzers.Count -eq 0) {
+        Write-Host ("DHCP analyzers skipped: no eligible artifacts discovered in '{0}'." -f $InputFolder)
+        return
+    }
+
+    Write-HeuristicDebug -Source 'Network' -Message 'Eligible DHCP analyzers' -Data ([ordered]@{
+        EligibleCount = $eligibleAnalyzers.Count
+        Artifacts     = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
+    })
 
     $findings = New-Object System.Collections.Generic.List[object]
 
@@ -454,11 +490,18 @@ function Invoke-NetworkHeuristics {
     })
 
     $rootCandidate = $null
+    $rootCandidateSource = 'context'
     if ($PSBoundParameters.ContainsKey('InputFolder') -and -not [string]::IsNullOrWhiteSpace($InputFolder)) {
         $rootCandidate = $InputFolder
+        $rootCandidateSource = 'parameter'
     } elseif ($Context -and $Context.PSObject.Properties['InputFolder'] -and $Context.InputFolder) {
         $rootCandidate = $Context.InputFolder
     }
+
+    Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network collection root candidate' -Data ([ordered]@{
+        Source        = $rootCandidateSource
+        RootCandidate = $rootCandidate
+    })
 
     $resolvedRoot = $null
     if ($rootCandidate) {
@@ -472,7 +515,19 @@ function Invoke-NetworkHeuristics {
         Write-Warning 'Network: missing InputFolder'
     }
 
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved network collection root' -Data ([ordered]@{
+        RequestedRoot = $rootCandidate
+        ResolvedRoot  = $resolvedRoot
+        Resolved      = [bool]$resolvedRoot
+    })
+
     $dhcpFolder = if ($resolvedRoot) { Join-Path -Path $resolvedRoot -ChildPath 'DHCP' } else { $null }
+
+    Write-HeuristicDebug -Source 'Network' -Message 'Computed DHCP folder path' -Data ([ordered]@{
+        CollectionRoot = $resolvedRoot
+        DhcpFolder     = $dhcpFolder
+        Exists         = if ($dhcpFolder) { Test-Path -LiteralPath $dhcpFolder } else { $false }
+    })
 
     $result = New-CategoryResult -Name 'Network'
 
