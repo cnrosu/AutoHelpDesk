@@ -170,25 +170,41 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    [CmdletBinding()]
+    param(
+        $Value,
+        [int]$MaxDepth = 4,
+        [int]$Depth = 0
+    )
 
     if ($null -eq $Value) { return '' }
+    if ($Depth -ge $MaxDepth) { return ($Value -as [string]) }
 
-    if ($Value -is [string]) { return $Value }
-    if ($Value -is [ValueType]) { return $Value.ToString() }
-
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
-        foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
+    switch ($Value) {
+        { $_ -is [string] }    { return $_ }
+        { $_ -is [ValueType] } { return $_.ToString() }
+        { $_ -is [System.Collections.IDictionary] } {
+            $parts = New-Object System.Collections.Generic.List[string]
+            foreach ($k in $_.Keys) {
+                $v = $_[$k]
+                $parts.Add(('{0}={1}' -f [string]$k, (Format-AnalyzerEvidence -Value $v -MaxDepth $MaxDepth -Depth ($Depth+1))))
+            }
+            return ($parts -join [Environment]::NewLine)
         }
-        return ($items -join [Environment]::NewLine)
-    }
-
-    try {
-        return ($Value | ConvertTo-Json -Depth 6)
-    } catch {
-        return [string]$Value
+        { $_ -is [System.Collections.IEnumerable] -and -not ($_ -is [string]) } {
+            $parts = New-Object System.Collections.Generic.List[string]
+            foreach ($item in $_) {
+                $parts.Add((Format-AnalyzerEvidence -Value $item -MaxDepth $MaxDepth -Depth ($Depth+1)))
+            }
+            return ($parts -join [Environment]::NewLine)
+        }
+        default {
+            try {
+                return ($Value | ConvertTo-Json -Depth 2)
+            } catch {
+                return [string]$Value
+            }
+        }
     }
 }
 

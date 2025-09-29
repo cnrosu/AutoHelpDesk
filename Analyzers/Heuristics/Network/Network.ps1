@@ -470,14 +470,14 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
-        $eligibleArtifactBases = [System.Collections.Generic.List[object]]::new()
+        $eligibleArtifactBases = @()
         foreach ($analyzer in $eligibleAnalyzers) {
-            $null = $eligibleArtifactBases.Add($analyzer.ArtifactBase)
+            $eligibleArtifactBases += [string]$analyzer.ArtifactBase
         }
 
         $evidence = [ordered]@{
-            Checks = $eligibleArtifactBases
-            Folder = $inputFolder
+            Checks = ($eligibleArtifactBases -join [Environment]::NewLine)
+            Folder = [string]$InputFolder
         }
 
         Add-CategoryNormal -CategoryResult $CategoryResult -Title ("DHCP diagnostics healthy ({0} checks)" -f $eligibleAnalyzers.Count) -Evidence $evidence -Subcategory 'DHCP'
