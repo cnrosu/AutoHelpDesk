@@ -99,7 +99,7 @@ function Get-LocalAdminInventory {
             $localUsers = @()
         }
 
-        $inventory = @()
+        $inventory = [System.Collections.Generic.List[pscustomobject]]::new()
 
 
         foreach ($member in $members) {
@@ -147,35 +147,35 @@ function Get-LocalAdminInventory {
             }
 
             # Keep the full membership row (local + non-local), with enrichment only for local user members
-            $inventory += [pscustomobject]@{
+            $null = $inventory.Add([pscustomobject]@{
                 Name             = $member.Name
                 ObjectClass      = $member.ObjectClass
                 PrincipalSource  = $member.PrincipalSource
                 IsLocalUser      = [bool]$isLocalUser
                 LocalUserDetails = $userDetails
-            }
+            })
         }
 
-        return $inventory
+        return $inventory.ToArray()
 
 
     } catch {
         # Fallback: legacy tool to at least capture membership text
         try {
             $output = net.exe localgroup administrators 2>&1
-            return @(
-                [pscustomobject]@{
-                    Source    = 'net localgroup administrators'
-                    RawOutput = ($output -join "`r`n")
-                }
-            )
+            $fallback = [System.Collections.Generic.List[pscustomobject]]::new()
+            $null = $fallback.Add([pscustomobject]@{
+                Source    = 'net localgroup administrators'
+                RawOutput = ($output -join "`r`n")
+            })
+            return $fallback.ToArray()
         } catch {
-            return @(
-                [pscustomobject]@{
-                    Source = 'LocalAdministrators'
-                    Error  = $_.Exception.Message
-                }
-            )
+            $fallbackError = [System.Collections.Generic.List[pscustomobject]]::new()
+            $null = $fallbackError.Add([pscustomobject]@{
+                Source = 'LocalAdministrators'
+                Error  = $_.Exception.Message
+            })
+            return $fallbackError.ToArray()
         }
     }
 }
