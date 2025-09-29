@@ -421,11 +421,11 @@ function Build-SummaryCardHtml {
     $dnsText = if ($Summary.DnsServers -and $Summary.DnsServers.Count -gt 0) { ($Summary.DnsServers -join ', ') } else { 'Unknown' }
 
     $sb = New-Object System.Text.StringBuilder
-    $null = $sb.AppendLine('<h1>Device Health Report</h1>')
-    $null = $sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
-    $null = $sb.AppendLine("<div class='report-card'>")
-    $null = $sb.AppendLine("  <div class='report-badge-group'>")
-    $null = $sb.AppendLine("    <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>")
+    [void]$sb.AppendLine('<h1>Device Health Report</h1>')
+    [void]$sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
+    [void]$sb.AppendLine("<div class='report-card'>")
+    [void]$sb.AppendLine("  <div class='report-badge-group'>")
+    [void]$sb.AppendLine("    <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>")
     foreach ($badge in @(
             @{ Key = 'critical'; Label = 'CRITICAL'; Class = 'critical' },
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
@@ -436,21 +436,21 @@ function Build-SummaryCardHtml {
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
         $labelHtml = Encode-Html $badge.Label
-        $null = $sb.AppendLine("    <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
+        [void]$sb.AppendLine("    <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
-    $null = $sb.AppendLine('  </div>')
+    [void]$sb.AppendLine('  </div>')
 
-    $null = $sb.AppendLine("  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Windows Server</td><td>$(Encode-Html $serverText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
-    $null = $sb.AppendLine('  </table>')
-    $null = $sb.AppendLine("  <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>")
-    $null = $sb.AppendLine('</div>')
+    [void]$sb.AppendLine("  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    [void]$sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>Windows Server</td><td>$(Encode-Html $serverText)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
+    [void]$sb.AppendLine("    <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
+    [void]$sb.AppendLine('  </table>')
+    [void]$sb.AppendLine("  <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>")
+    [void]$sb.AppendLine('</div>')
 
     return $sb.ToString()
 }
@@ -503,7 +503,8 @@ function Build-GoodSection {
     }
 
     $tabName = 'good-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = New-Object System.Text.StringBuilder
+    [void]$tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $index = 0
     foreach ($category in $orderedCategories) {
         if (-not $categorized.ContainsKey($category)) { continue }
@@ -518,14 +519,14 @@ function Build-GoodSection {
         $labelText = Encode-Html "$category ($count)"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        [void]$tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        [void]$tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelText</label>")
+        [void]$tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    [void]$tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Build-IssueSection {
@@ -580,7 +581,8 @@ function Build-IssueSection {
     }
 
     $tabName = 'issue-tabs'
-    $tabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $tabsBuilder = New-Object System.Text.StringBuilder
+    [void]$tabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $index = 0
 
     foreach ($category in $orderedCategories) {
@@ -598,14 +600,14 @@ function Build-IssueSection {
         $labelText = Encode-Html "$category ($count)"
         $panelContent = if ($count -gt 0) { ($cards -join '') } else { "<div class='report-card'><i>No issues captured for this category.</i></div>" }
 
-        $tabs += "<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>"
-        $tabs += "<label class='report-tabs__label' for='$tabId'>$labelText</label>"
-        $tabs += "<div class='report-tabs__panel'>$panelContent</div>"
+        [void]$tabsBuilder.Append("<input type='radio' name='$tabName' id='$tabId' class='report-tabs__radio'$checkedAttr>")
+        [void]$tabsBuilder.Append("<label class='report-tabs__label' for='$tabId'>$labelText</label>")
+        [void]$tabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
         $index++
     }
 
-    $tabs += "</div></div>"
-    return $tabs
+    [void]$tabsBuilder.Append("</div></div>")
+    return $tabsBuilder.ToString()
 }
 
 function Get-TruncatedText {
@@ -831,15 +833,17 @@ function New-AnalyzerHtml {
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
     } else {
-        $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+        $failedContentBuilder = New-Object System.Text.StringBuilder
+        [void]$failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
             $detailParts = @()
             if ($entry.Path) { $detailParts += "File: $($entry.Path)" }
             if ($entry.Details) { $detailParts += $entry.Details }
             $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
-            $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+            [void]$failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
-        $failedContent += "</table></div>"
+        [void]$failedContentBuilder.Append("</table></div>")
+        $failedContent = $failedContentBuilder.ToString()
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
