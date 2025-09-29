@@ -71,139 +71,55 @@ function Invoke-AllCollectors {
     }
 
     $totalCollectors = $collectors.Count
-    $effectiveThrottle = [math]::Max([math]::Min($ThrottleLimit, $totalCollectors), 1)
-
     Write-Verbose ("Output root resolved to '{0}'" -f $resolvedOutputRoot)
     Write-Verbose ("Discovered {0} collector script(s)." -f $totalCollectors)
-    Write-Verbose ("Using throttle limit {0}." -f $effectiveThrottle)
+    Write-Verbose "Executing collectors sequentially."
 
-    $collectorScript = @'
-param($scriptPath, $outputDirectory, $parentVerbosePreference, $ansiEnabled)
-$VerbosePreference = $parentVerbosePreference
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = "Stop"
+    $resultsList = [System.Collections.Generic.List[object]]::new()
+    $completed = 0
+    $activity = 'Running collector scripts'
 
-function Disable-AnsiOutput {
-    try {
-        if ($PSStyle -and $PSStyle.PSObject.Properties['OutputRendering']) {
-            $PSStyle.OutputRendering = 'PlainText'
+    foreach ($collector in $collectors) {
+        $areaName = Split-Path -Path $collector.DirectoryName -Leaf
+        if ($areaName -eq 'Collectors') {
+            $areaName = 'Misc'
         }
-    } catch {
-        # Ignore when PSStyle is unavailable.
-    }
-}
 
-if (-not $ansiEnabled) {
-    Disable-AnsiOutput
-}
+        $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
+        $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
 
-try {
-    Write-Verbose ("Starting collector '{0}' with output '{1}'." -f $scriptPath, $outputDirectory)
-    $result = & $scriptPath -OutputDirectory $outputDirectory -ErrorAction Stop
-    Write-Verbose ("Collector '{0}' finished successfully." -f $scriptPath)
-    [pscustomobject]@{
-        Script  = $scriptPath
-        Output  = $result
-        Success = $true
-        Error   = $null
-    }
-} catch {
-    Write-Verbose ("Collector '{0}' reported an exception." -f $scriptPath)
-    Write-Warning ("Collector failed: {0} - {1}" -f $scriptPath, $_.Exception.Message)
-    [pscustomobject]@{
-        Script  = $scriptPath
-        Output  = $null
-        Success = $false
-        Error   = $_.Exception.Message
-    }
-}
-'@
+        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $collector.FullName, $areaName, $areaOutput)
 
-    $initialSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-    $runspacePool = $null
-    $results = @()
-
-    try {
-        $runspacePool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $effectiveThrottle, $initialSessionState, $Host)
-        $runspacePool.Open()
-
-        $pending = [System.Collections.Generic.List[object]]::new()
-
-        foreach ($collector in $collectors) {
-            $areaName = Split-Path -Path $collector.DirectoryName -Leaf
-            if ($areaName -eq 'Collectors') {
-                $areaName = 'Misc'
-            }
-
-            $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
-            $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
-
-            Write-Verbose ("Queueing collector '{0}' for area '{1}' with output '{2}'." -f $collector.FullName, $areaName, $areaOutput)
-
-            $psInstance = [System.Management.Automation.PowerShell]::Create()
-            $psInstance.RunspacePool = $runspacePool
-            $null = $psInstance.AddScript($collectorScript, $true).
-                AddArgument($collector.FullName).
-                AddArgument($areaOutput).
-                AddArgument($VerbosePreference).
-                AddArgument($ansiSupported)
-
-            $asyncResult = $psInstance.BeginInvoke()
-            $pending.Add([pscustomobject]@{
-                PowerShell  = $psInstance
-                AsyncResult = $asyncResult
-                Collector   = $collector
+        try {
+            $result = & $collector.FullName -OutputDirectory $areaOutput -ErrorAction Stop
+            Write-Verbose ("Collector '{0}' finished successfully." -f $collector.FullName)
+            $resultsList.Add([pscustomobject]@{
+                Script  = $collector.FullName
+                Output  = $result
+                Success = $true
+                Error   = $null
+            })
+        } catch {
+            Write-Verbose ("Collector '{0}' reported an exception." -f $collector.FullName)
+            Write-Warning ("Collector failed: {0} - {1}" -f $collector.FullName, $_.Exception.Message)
+            $resultsList.Add([pscustomobject]@{
+                Script  = $collector.FullName
+                Output  = $null
+                Success = $false
+                Error   = $_.Exception.Message
             })
         }
 
-        $resultsList = [System.Collections.Generic.List[object]]::new()
-        $completed = 0
-        $activity = 'Running collector scripts'
-
-        while ($pending.Count -gt 0) {
-            for ($index = $pending.Count - 1; $index -ge 0; $index--) {
-                $entry = $pending[$index]
-                if (-not $entry.AsyncResult.IsCompleted) {
-                    continue
-                }
-
-                try {
-                    $output = $entry.PowerShell.EndInvoke($entry.AsyncResult)
-                } finally {
-                    $entry.PowerShell.Dispose()
-                }
-
-                if ($output) {
-                    $resultsList.AddRange($output)
-                }
-
-                $pending.RemoveAt($index)
-                $completed++
-
-                $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
-                $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
-                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
-                Write-Host $statusMessage
-                $firstResult = if ($output) { $output | Select-Object -First 1 } else { $null }
-                $successState = if ($firstResult) { $firstResult.Success } else { $null }
-                Write-Verbose ("Collector '{0}' result recorded. Success: {1}." -f $entry.Collector.FullName, $successState)
-            }
-
-            if ($pending.Count -gt 0) {
-                Start-Sleep -Milliseconds 100
-            }
-        }
-
-        Write-Progress -Activity $activity -Completed
-
-        $results = $resultsList.ToArray()
-
-    } finally {
-        if ($runspacePool) {
-            $runspacePool.Close()
-            $runspacePool.Dispose()
-        }
+        $completed++
+        $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $collector.FullName
+        $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
+        Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+        Write-Host $statusMessage
     }
+
+    Write-Progress -Activity $activity -Completed
+
+    $results = $resultsList.ToArray()
 
     $summary = [ordered]@{
         CollectedAt = (Get-Date).ToString('o')
