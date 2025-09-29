@@ -18,7 +18,11 @@ param(
 
 function Test-AnsiOutputSupport {
     try {
-        if ($PSVersionTable -and $PSVersionTable.PSVersion -and $PSVersionTable.PSVersion.Major -lt 6) {
+        if ($PSVersionTable -and $PSVersionTable.PSVersion) {
+            if ($PSVersionTable.PSVersion.Major -lt 6) {
+                return $false
+            }
+        } else {
             return $false
         }
 
@@ -26,6 +30,14 @@ function Test-AnsiOutputSupport {
             $property = $Host.UI.PSObject.Properties['SupportsVirtualTerminal']
             if ($property) {
                 return [bool]$property.Value
+            }
+
+            $rawUiProperty = $Host.UI.PSObject.Properties['RawUI']
+            if ($rawUiProperty -and $rawUiProperty.Value) {
+                $rawProperty = $rawUiProperty.Value.PSObject.Properties['SupportsVirtualTerminal']
+                if ($rawProperty) {
+                    return [bool]$rawProperty.Value
+                }
             }
         }
     } catch {
@@ -46,8 +58,11 @@ function Disable-AnsiOutput {
 }
 
 $ansiSupported = Test-AnsiOutputSupport
+$progressEnabled = $true
 if (-not $ansiSupported) {
     Disable-AnsiOutput
+    $ProgressPreference = 'SilentlyContinue'
+    $progressEnabled = $false
 }
 
 function Get-CollectorScripts {
@@ -182,7 +197,9 @@ try {
 
                 $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $entry.Collector.FullName
                 $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
-                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                if ($progressEnabled) {
+                    Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
+                }
                 Write-Host $statusMessage
                 $firstResult = if ($output) { $output | Select-Object -First 1 } else { $null }
                 $successState = if ($firstResult) { $firstResult.Success } else { $null }
@@ -194,7 +211,9 @@ try {
             }
         }
 
-        Write-Progress -Activity $activity -Completed
+        if ($progressEnabled) {
+            Write-Progress -Activity $activity -Completed
+        }
 
         $results = $resultsList.ToArray()
 

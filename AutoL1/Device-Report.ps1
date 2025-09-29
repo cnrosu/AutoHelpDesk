@@ -21,13 +21,21 @@ param(
 
 function Test-AnsiOutputSupport {
   try {
-    if ($PSVersionTable -and $PSVersionTable.PSVersion -and $PSVersionTable.PSVersion.Major -lt 6) {
+    if ($PSVersionTable -and $PSVersionTable.PSVersion) {
+      if ($PSVersionTable.PSVersion.Major -lt 6) { return $false }
+    } else {
       return $false
     }
 
     if ($Host -and $Host.UI) {
       $property = $Host.UI.PSObject.Properties['SupportsVirtualTerminal']
       if ($property) { return [bool]$property.Value }
+
+      $rawUiProperty = $Host.UI.PSObject.Properties['RawUI']
+      if ($rawUiProperty -and $rawUiProperty.Value) {
+        $rawProperty = $rawUiProperty.Value.PSObject.Properties['SupportsVirtualTerminal']
+        if ($rawProperty) { return [bool]$rawProperty.Value }
+      }
     }
   } catch {
     # Default to allowing ANSI when detection fails.
@@ -49,6 +57,7 @@ function Disable-AnsiOutput {
 $ansiSupported = Test-AnsiOutputSupport
 if (-not $ansiSupported) {
   Disable-AnsiOutput
+  $ProgressPreference = 'SilentlyContinue'
 }
 
 <#
