@@ -279,20 +279,9 @@ function Get-NetworkDnsInterfaceInventory {
         $normalizedStatus = if ($statusText) { $statusText.ToLowerInvariant() } else { '' }
         $isUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
 
-        $hasIpv4 = $false
-        foreach ($address in $info.IPv4) {
-            if (Test-NetworkValidIpv4Address $address) { $hasIpv4 = $true; break }
-        }
-
-        $hasIpv6 = $false
-        foreach ($address in $info.IPv6) {
-            if (Test-NetworkValidIpv6Address $address) { $hasIpv6 = $true; break }
-        }
-
-        $hasGateway = $false
-        foreach ($gateway in $info.Gateways) {
-            if (Test-NetworkValidIpv4Address $gateway) { $hasGateway = $true; break }
-        }
+        $hasIpv4 = ($info.IPv4 | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+        $hasIpv6 = ($info.IPv6 | Where-Object { Test-NetworkValidIpv6Address $_ }).Count -gt 0
+        $hasGateway = ($info.Gateways | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
         $isPseudo = Test-NetworkPseudoInterface -Alias $info.Alias -Description $info.Description
 
         $info.IsUp = $isUp
@@ -437,13 +426,8 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
-        $checks = @()
-        foreach ($analyzer in $eligibleAnalyzers) {
-            $checks += $analyzer.ArtifactBase
-        }
-
         $evidence = [ordered]@{
-            Checks = $checks
+            Checks = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
             Folder = $inputFolder
         }
 
@@ -554,21 +538,9 @@ function Invoke-NetworkHeuristics {
             HasPayload = [bool]$payload
         })
         if ($payload -and $payload.Resolution) {
-            $failures = @()
-            foreach ($resolution in $payload.Resolution) {
-                if ($resolution -and -not $resolution.Success) {
-                    $failures += $resolution
-                }
-            }
-
+            $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
-                $names = @()
-                foreach ($failure in $failures) {
-                    if ($failure.Name) {
-                        $names += $failure.Name
-                    }
-                }
-
+                $names = $failures | Select-Object -ExpandProperty Name
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0}' -f ($names -join ', ')) -Subcategory 'DNS Resolution'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'DNS lookups succeeded'
@@ -591,22 +563,9 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($payload -and $payload.Autodiscover) {
-            $autoErrors = @()
-            foreach ($entry in $payload.Autodiscover) {
-                if ($entry.Error) {
-                    $autoErrors += $entry
-                }
-            }
-
+            $autoErrors = $payload.Autodiscover | Where-Object { $_.Error }
             if ($autoErrors.Count -gt 0) {
-                $details = @()
-                foreach ($errorEntry in $autoErrors) {
-                    if ($errorEntry.Error) {
-                        $details += $errorEntry.Error
-                    }
-                    if ($details.Count -ge 3) { break }
-                }
-
+                $details = $autoErrors | Select-Object -ExpandProperty Error -First 3
                 Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover'
             }
         }
@@ -630,10 +589,7 @@ function Invoke-NetworkHeuristics {
                 }
 
                 $alias = if ($entry.InterfaceAlias) { [string]$entry.InterfaceAlias } else { 'Interface' }
-                $addresses = @()
-                foreach ($serverAddress in (ConvertTo-NetworkArray $entry.ServerAddresses)) {
-                    if ($serverAddress) { $addresses += $serverAddress }
-                }
+                $addresses = ConvertTo-NetworkArray $entry.ServerAddresses | Where-Object { $_ }
                 $aliasKey = $null
                 if ($alias) {
                     try { $aliasKey = $alias.ToLowerInvariant() } catch { $aliasKey = $alias }
@@ -755,21 +711,12 @@ function Invoke-NetworkHeuristics {
                 if (-not $domainEntry) { continue }
                 $domain = $domainEntry.Domain
                 $lookups = ConvertTo-NetworkArray $domainEntry.Lookups
-                $autoRecord = $null
-                foreach ($lookup in $lookups) {
-                    if ($lookup.Label -eq 'Autodiscover') {
-                        $autoRecord = $lookup
-                        break
-                    }
-                }
+                $autoRecord = $lookups | Where-Object { $_.Label -eq 'Autodiscover' } | Select-Object -First 1
                 if (-not $autoRecord) { continue }
 
                 $targetsRaw = ConvertTo-NetworkArray $autoRecord.Targets
                 if ($autoRecord.Success -eq $true -and $targetsRaw.Count -gt 0) {
-                    $targets = @()
-                    foreach ($target in $targetsRaw) {
-                        if ($target) { $targets += $target }
-                    }
+                    $targets = ($targetsRaw | Where-Object { $_ })
                     $targetText = $targets -join ', '
                     if ($targets -match 'autodiscover\.outlook\.com') {
                         Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover healthy for {0}" -f $domain) -Evidence $targetText
@@ -783,10 +730,10 @@ function Invoke-NetworkHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}" -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS'
                 }
 
-                foreach ($lookup in $lookups) {
-                    if (-not $lookup -or $lookup.Label -eq 'Autodiscover') { continue }
-                    if ($lookup.Success -eq $false -and $lookup.Error) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}" -f $lookup.Label, $domain) -Evidence $lookup.Error -Subcategory 'Autodiscover DNS'
+                foreach ($additional in ($lookups | Where-Object { $_.Label -ne 'Autodiscover' })) {
+                    if (-not $additional) { continue }
+                    if ($additional.Success -eq $false -and $additional.Error) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}" -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS'
                     }
                 }
             }
@@ -794,21 +741,9 @@ function Invoke-NetworkHeuristics {
     }
 
     if ($adapterPayload -and $adapterPayload.Adapters -and -not $adapterPayload.Adapters.Error) {
-        $upAdapters = @()
-        foreach ($adapter in $adapterPayload.Adapters) {
-            if ($adapter.Status -eq 'Up') {
-                $upAdapters += $adapter
-            }
-        }
+        $upAdapters = $adapterPayload.Adapters | Where-Object { $_.Status -eq 'Up' }
         if ($upAdapters.Count -gt 0) {
-            $adapterNames = @()
-            foreach ($adapter in $upAdapters) {
-                if ($adapter.Name) {
-                    $adapterNames += $adapter.Name
-                }
-            }
-
-            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($adapterNames -join ', '))
+            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters | Select-Object -ExpandProperty Name -join ', '))
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported' -Subcategory 'Network Adapters'
         }
@@ -845,12 +780,7 @@ function Invoke-NetworkHeuristics {
     $dhcpFolderPath = if ($dhcpFolder) { $dhcpFolder } else { $null }
     $dhcpFolderExists = if ($dhcpFolderPath) { Test-Path -LiteralPath $dhcpFolderPath } else { $false }
     $dhcpFileCount = if ($dhcpFolderExists) { (Get-ChildItem -Path $dhcpFolderPath -Filter 'dhcp-*.json' -ErrorAction SilentlyContinue | Measure-Object).Count } else { 'n/a' }
-    $dhcpKeyCount = 0
-    foreach ($artifactKey in $Context.Artifacts.Keys) {
-        if ($artifactKey -like 'dhcp-*.json') { $dhcpKeyCount++ }
-    }
-
-    Write-Host ("DBG DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolderPath,$dhcpFolderExists,$dhcpFileCount,$dhcpKeyCount)
+    Write-Host ("DBG DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolderPath,$dhcpFolderExists,$dhcpFileCount,($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' } | Measure-Object).Count)
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result -InputFolder $dhcpFolderPath
 
     return $result
