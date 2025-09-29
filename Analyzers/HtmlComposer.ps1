@@ -184,11 +184,20 @@ function Convert-ToIssueCard {
         $Issue
     )
 
+    if (-not $Issue) {
+        Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        return $null
+    }
+
+    $issueTitle = if ($Issue.PSObject.Properties['Title']) { [string]$Issue.Title } else { '(no title)' }
+    $issueSeverity = if ($Issue.PSObject.Properties['Severity']) { [string]$Issue.Severity } else { '(none)' }
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data @{ Title = $issueTitle; Severity = $issueSeverity }
+
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
     $hasNewLines = $detail -match "\r|\n"
 
-    return [pscustomobject]@{
+    $card = [pscustomobject]@{
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
@@ -197,6 +206,9 @@ function Convert-ToIssueCard {
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
     }
+
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue card generated.' -Data @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    return $card
 }
 
 function Convert-ToGoodCard {
@@ -205,15 +217,26 @@ function Convert-ToGoodCard {
         $Normal
     )
 
+    if (-not $Normal) {
+        Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        return $null
+    }
+
+    $normalTitle = if ($Normal.PSObject.Properties['Title']) { [string]$Normal.Title } else { '(no title)' }
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Converting positive finding entry to card.' -Data @{ Title = $normalTitle }
+
     $detail = Format-AnalyzerEvidence -Value $Normal.Evidence
 
-    return [pscustomobject]@{
+    $card = [pscustomobject]@{
         CssClass  = 'good'
         BadgeText = 'GOOD'
         Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
         Message   = $Normal.Title
         Evidence  = $detail
     }
+
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding card generated.' -Data @{ Title = $card.Message; HasEvidence = [bool]$card.Evidence }
+    return $card
 }
 
 function Get-CollectorDisplayName {
@@ -878,10 +901,55 @@ function New-AnalyzerHtml {
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
+    $categoryIndex = 0
     foreach ($category in $Categories) {
-        if (-not $category) { continue }
-        foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
-        foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
+        $categoryIndex++
+
+        if (-not $category) {
+            Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Encountered null category entry during flattening.' -Data @{ Index = $categoryIndex }
+            continue
+        }
+
+        $categoryName = if ($category.PSObject.Properties['Name']) { [string]$category.Name } else { '(unnamed)' }
+        $issueSet = if ($category.PSObject.Properties['Issues']) { $category.Issues } else { $null }
+        $normalSet = if ($category.PSObject.Properties['Normals']) { $category.Normals } else { $null }
+
+        $issueCandidates = if ($issueSet -is [System.Collections.IEnumerable] -and -not ($issueSet -is [string])) { $issueSet } elseif ($issueSet) { @($issueSet) } else { @() }
+        $normalCandidates = if ($normalSet -is [System.Collections.IEnumerable] -and -not ($normalSet -is [string])) { $normalSet } elseif ($normalSet) { @($normalSet) } else { @() }
+
+        Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Processing category.' -Data @{ Index = $categoryIndex; Name = $categoryName; Issues = ($issueCandidates | Measure-Object).Count; Normals = ($normalCandidates | Measure-Object).Count }
+
+        $issueIndex = 0
+        foreach ($issue in $issueCandidates) {
+            $issueIndex++
+            if (-not $issue) {
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Skipping null issue entry.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+                continue
+            }
+
+            $card = Convert-ToIssueCard -Category $category -Issue $issue
+            if ($card) {
+                $issues.Add($card) | Out-Null
+            } else {
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Issue conversion returned no card.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+            }
+        }
+
+        $normalIndex = 0
+        foreach ($normal in $normalCandidates) {
+            $normalIndex++
+            if (-not $normal) {
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Skipping null positive entry.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+                continue
+            }
+
+            $card = Convert-ToGoodCard -Category $category -Normal $normal
+            if ($card) {
+                $normals.Add($card) | Out-Null
+            } else {
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Positive finding conversion returned no card.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+            }
+        }
     }
 
     Write-HtmlDebug -Stage 'Composer' -Message 'Category flattening complete.' -Data @{ Issues = $issues.Count; Normals = $normals.Count }
