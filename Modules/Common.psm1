@@ -14,6 +14,19 @@ if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Wher
 
 $script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
+$script:RegexSplitWhitespaceComma = [System.Text.RegularExpressions.Regex]::new(
+  '[\s,]+',
+  [System.Text.RegularExpressions.RegexOptions]::Compiled
+)
+$script:RegexNewLine = [System.Text.RegularExpressions.Regex]::new(
+  '\r?\n',
+  [System.Text.RegularExpressions.RegexOptions]::Compiled
+)
+$script:RegexKeyValueLine = [System.Text.RegularExpressions.Regex]::new(
+  '^\s*([^:]+?)\s*:\s*(.*)$',
+  [System.Text.RegularExpressions.RegexOptions]::Compiled
+)
+
 function ConvertTo-NormalizedSeverity {
   param($Severity)
 
@@ -185,7 +198,7 @@ function ConvertTo-IntArray {
     $trimmed = $Value.Trim()
     if (-not $trimmed) { return @() }
     $clean = ($trimmed -replace '^\{','') -replace '\}$',''
-    $parts = [regex]::Split($clean,'[\s,]+') | Where-Object { $_ }
+    $parts = $script:RegexSplitWhitespaceComma.Split($clean) | Where-Object { $_ }
     $result = @()
     foreach ($part in $parts) {
       $parsed = 0
@@ -224,7 +237,7 @@ function Get-TopLines {
 
   if (-not $Text) { return '' }
 
-  $lines = [regex]::Split($Text,'\r?\n')
+  $lines = $script:RegexNewLine.Split($Text)
   return ($lines | Select-Object -First $Count) -join "`n"
 }
 
@@ -234,11 +247,11 @@ function Parse-KeyValueBlock {
   $map = @{}
   if (-not $Text) { return $map }
 
-  $lines = [regex]::Split($Text,'\r?\n')
+  $lines = $script:RegexNewLine.Split($Text)
   $currentKey = $null
   foreach ($line in $lines) {
     if ($null -eq $line) { continue }
-    $match = [regex]::Match($line,'^\s*([^:]+?)\s*:\s*(.*)$')
+    $match = $script:RegexKeyValueLine.Match($line)
     if ($match.Success) {
       $key = $match.Groups[1].Value.Trim()
       $value = $match.Groups[2].Value.Trim()
@@ -302,7 +315,7 @@ function Parse-DiskList {
   $results = @()
   if (-not $Text) { return $results }
 
-  $lines = [regex]::Split($Text,'\r?\n')
+  $lines = $script:RegexNewLine.Split($Text)
   $current = @()
 
   foreach ($line in $lines) {
@@ -375,7 +388,7 @@ function Parse-ServiceSnapshot {
   $map = @{}
   if (-not $Text) { return $map }
 
-  $lines = [regex]::Split($Text,'\r?\n')
+  $lines = $script:RegexNewLine.Split($Text)
   foreach ($line in $lines) {
     if (-not $line) { continue }
     $trimmed = $line.Trim()
