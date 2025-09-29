@@ -5,6 +5,35 @@
 
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
+function Write-HtmlDebug {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $formatted = "DBG [Html] {0}" -f $Message
+
+    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
+        $entries = $Data.GetEnumerator() | Sort-Object Name
+        $parts = New-Object System.Collections.Generic.List[string]
+        foreach ($entry in $entries) {
+            if ($entry -is [System.Collections.DictionaryEntry]) {
+                $null = $parts.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+            } else {
+                $null = $parts.Add(("{0}={1}" -f $entry.Name, $entry.Value))
+            }
+        }
+
+        if ($parts.Count -gt 0) {
+            $formatted = "{0} :: {1}" -f $formatted, ($parts -join '; ')
+        }
+    }
+
+    Write-Host $formatted
+}
+
 function Resolve-CategoryGroup {
     param([string]$Name)
 
@@ -244,6 +273,10 @@ function Get-CollectorOutputCandidates {
 function Get-FailedCollectorReports {
     param($Context)
 
+    Write-HtmlDebug -Message 'Evaluating failed collector reports' -Data ([ordered]@{
+            HasContext = [bool]$Context
+        })
+
     $failures = New-Object System.Collections.Generic.List[pscustomobject]
 
     if (-not $Context) { return $failures }
@@ -377,6 +410,10 @@ function Get-FailedCollectorReports {
             }
         }
     }
+
+    Write-HtmlDebug -Message 'Failed collector evaluation complete' -Data ([ordered]@{
+            FailureCount = $failures.Count
+        })
 
     return $failures
 }
@@ -755,6 +792,11 @@ function Build-RawSection {
         [int]$MaxChars = 2000
     )
 
+    Write-HtmlDebug -Message 'Building raw artifact section' -Data ([ordered]@{
+            HasContext   = [bool]$Context
+            ArtifactKeys = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        })
+
     if (-not $Context -or -not $Context.Artifacts -or $Context.Artifacts.Count -eq 0) {
         return "<div class='report-card'><i>No raw payloads available.</i></div>"
     }
@@ -801,6 +843,11 @@ function Build-RawSection {
         $cards.Add("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>") | Out-Null
     }
 
+    Write-HtmlDebug -Message 'Raw artifact section complete' -Data ([ordered]@{
+            Processed = $processed
+            Available = $items.Count
+        })
+
     return ($cards -join '')
 }
 
@@ -816,6 +863,13 @@ function New-AnalyzerHtml {
         $Context
     )
 
+    $categoryCount = if ($Categories) { $Categories.Count } else { 0 }
+    Write-HtmlDebug -Message 'Starting HTML composition' -Data ([ordered]@{
+            Categories     = $categoryCount
+            SummaryPresent = [bool]$Summary
+            HasContext     = [bool]$Context
+        })
+
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
@@ -825,15 +879,40 @@ function New-AnalyzerHtml {
         foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
     }
 
+    Write-HtmlDebug -Message 'Converted categories to cards' -Data ([ordered]@{
+            IssueCards  = $issues.Count
+            NormalCards = $normals.Count
+        })
+
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
     }
 
+    Write-HtmlDebug -Message 'Rendering summary section' -Data ([ordered]@{
+            IssueCardCount  = $issues.Count
+            NormalCardCount = $normals.Count
+        })
+
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
+    Write-HtmlDebug -Message 'Summary section rendered' -Data ([ordered]@{
+            SummaryLength = if ($summaryHtml) { $summaryHtml.Length } else { 0 }
+        })
+
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
+    Write-HtmlDebug -Message 'Good section rendered' -Data ([ordered]@{
+            SectionLength = if ($goodHtml) { $goodHtml.Length } else { 0 }
+        })
+
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    Write-HtmlDebug -Message 'Issue section rendered' -Data ([ordered]@{
+            SectionLength = if ($issuesHtml) { $issuesHtml.Length } else { 0 }
+        })
+
     $failedReports = Get-FailedCollectorReports -Context $Context
+    Write-HtmlDebug -Message 'Failed collector results ready' -Data ([ordered]@{
+            FailureCount = $failedReports.Count
+        })
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
@@ -860,9 +939,24 @@ function New-AnalyzerHtml {
         $failedContent = $failedContentBuilder.ToString()
     }
     $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
+    Write-HtmlDebug -Message 'Failed collector section rendered' -Data ([ordered]@{
+            SectionLength = if ($failedHtml) { $failedHtml.Length } else { 0 }
+        })
+
     $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    Write-HtmlDebug -Message 'Raw section rendered' -Data ([ordered]@{
+            SectionLength = if ($rawHtml) { $rawHtml.Length } else { 0 }
+        })
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
+    Write-HtmlDebug -Message 'Debug section rendered' -Data ([ordered]@{
+            SectionLength = if ($debugHtml) { $debugHtml.Length } else { 0 }
+        })
     $tail = '</body></html>'
 
-    return ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    $html = $head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail
+    Write-HtmlDebug -Message 'HTML composition complete' -Data ([ordered]@{
+            Length = if ($html) { $html.Length } else { 0 }
+        })
+
+    return $html
 }
