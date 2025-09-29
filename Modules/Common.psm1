@@ -275,12 +275,22 @@ function Convert-DiskBlock {
 
   $operStatuses = @()
   if ($operRaw) {
-    $operStatuses = ($operRaw -split '\r?\n|,') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    foreach ($operStatus in ($operRaw -split '\r?\n|,')) {
+      $trimmed = $operStatus.Trim()
+      if ($trimmed) {
+        $operStatuses += $trimmed
+      }
+    }
   }
 
   $healthStatuses = @()
   if ($healthRaw) {
-    $healthStatuses = ($healthRaw -split '\r?\n|,') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    foreach ($healthStatus in ($healthRaw -split '\r?\n|,')) {
+      $trimmed = $healthStatus.Trim()
+      if ($trimmed) {
+        $healthStatuses += $trimmed
+      }
+    }
   }
 
   return [pscustomobject]@{
