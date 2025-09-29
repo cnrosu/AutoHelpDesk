@@ -335,16 +335,8 @@ function ConvertTo-KebabCase {
 
     if (-not $Text) { return $Text }
 
-    $normalized = [System.Text.RegularExpressions.Regex]::Replace(
-        $Text,
-        '([a-z0-9])([A-Z])',
-        '$1-$2'
-    )
-    $normalized = [System.Text.RegularExpressions.Regex]::Replace(
-        $normalized,
-        '([A-Z]+)([A-Z][a-z])',
-        '$1-$2'
-    )
+    $normalized = $Text -replace '([a-z0-9])([A-Z])', '$1-$2'
+    $normalized = $normalized -replace '([A-Z]+)([A-Z][a-z])', '$1-$2'
 
     return $normalized.ToLowerInvariant()
 }
