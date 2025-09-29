@@ -11,9 +11,9 @@ function ConvertTo-StorageArray {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $items = @()
-        foreach ($item in $Value) { $items += $item }
-        return $items
+        $itemsList = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) { $itemsList.Add($item) | Out-Null }
+        return $itemsList.ToArray()
     }
     return @($Value)
 }
