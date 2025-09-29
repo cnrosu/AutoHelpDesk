@@ -642,7 +642,12 @@ function Parse-IpconfigAdapters {
 
     $dhcpServers = @()
     if ($map.ContainsKey('DHCP Server')) {
-      $dhcpServers = ([regex]::Split($map['DHCP Server'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      $dhcpServerCandidates = [regex]::Split($map['DHCP Server'],'\r?\n')
+      $dhcpServers = New-Object System.Collections.Generic.List[string]
+      foreach ($candidate in $dhcpServerCandidates) {
+        $trimmed = $candidate.Trim()
+        if ($trimmed) { $null = $dhcpServers.Add($trimmed) }
+      }
     }
 
     $leaseObtainedText = if ($map.ContainsKey('Lease Obtained')) { $map['Lease Obtained'] } else { '' }
@@ -652,12 +657,22 @@ function Parse-IpconfigAdapters {
 
     $gatewayList = @()
     if ($map.ContainsKey('Default Gateway')) {
-      $gatewayList = ([regex]::Split($map['Default Gateway'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      $gatewayCandidates = [regex]::Split($map['Default Gateway'],'\r?\n')
+      $gatewayList = New-Object System.Collections.Generic.List[string]
+      foreach ($candidate in $gatewayCandidates) {
+        $trimmed = $candidate.Trim()
+        if ($trimmed) { $null = $gatewayList.Add($trimmed) }
+      }
     }
 
     $dnsList = @()
     if ($map.ContainsKey('DNS Servers')) {
-      $dnsList = ([regex]::Split($map['DNS Servers'],'\r?\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      $dnsCandidates = [regex]::Split($map['DNS Servers'],'\r?\n')
+      $dnsList = New-Object System.Collections.Generic.List[string]
+      foreach ($candidate in $dnsCandidates) {
+        $trimmed = $candidate.Trim()
+        if ($trimmed) { $null = $dnsList.Add($trimmed) }
+      }
     }
 
     $ipv4 = New-Object System.Collections.Generic.List[string]
@@ -1180,7 +1195,12 @@ $dhcpAdapterDiagnostics = Combine-DhcpAdapterData -IpconfigAdapters $ipconfigAda
 $observedDhcpServers = @()
  $dhcpApipaGatewayClusters = @()
 if ($dhcpAdapterDiagnostics) {
-  $observedDhcpServers = @($dhcpAdapterDiagnostics | ForEach-Object { $_.DhcpServers } | Where-Object { $_ } | Select-Object -Unique)
+  $dhcpServerCandidates = [System.Collections.Generic.List[object]]::new()
+  foreach ($diagnostic in $dhcpAdapterDiagnostics) {
+    $null = $dhcpServerCandidates.Add($diagnostic.DhcpServers)
+  }
+
+  $observedDhcpServers = @($dhcpServerCandidates | Where-Object { $_ } | Select-Object -Unique)
 }
 
 # issues list
@@ -1976,10 +1996,19 @@ $outlookOstDomains = @()
 
 # ipconfig
 if ($raw['ipconfig']){
-  $ipv4s = [regex]::Matches($raw['ipconfig'],'IPv4 Address[^\d]*([\d\.]+)') | ForEach-Object { $_.Groups[1].Value }
-  if (-not $ipv4s){ $ipv4s = [regex]::Matches($raw['ipconfig'],'IP(v4)? Address[^\d]*([\d\.]+)') | ForEach-Object { $_.Groups[2].Value } }
-  $gws   = [regex]::Matches($raw['ipconfig'],'Default Gateway[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
-  $dns   = [regex]::Matches($raw['ipconfig'],'DNS Servers[^\d]*(\d+\.\d+\.\d+\.\d+)') | ForEach-Object { $_.Groups[1].Value }
+  $ipv4s = New-Object System.Collections.Generic.List[string]
+  $ipv4Matches = [regex]::Matches($raw['ipconfig'],'IPv4 Address[^\d]*([\d\.]+)')
+  foreach ($match in $ipv4Matches) { $null = $ipv4s.Add($match.Groups[1].Value) }
+  if ($ipv4s.Count -eq 0){
+    $ipv4FallbackMatches = [regex]::Matches($raw['ipconfig'],'IP(v4)? Address[^\d]*([\d\.]+)')
+    foreach ($match in $ipv4FallbackMatches) { $null = $ipv4s.Add($match.Groups[2].Value) }
+  }
+  $gws = New-Object System.Collections.Generic.List[string]
+  $gatewayMatches = [regex]::Matches($raw['ipconfig'],'Default Gateway[^\d]*(\d+\.\d+\.\d+\.\d+)')
+  foreach ($match in $gatewayMatches) { $null = $gws.Add($match.Groups[1].Value) }
+  $dns = New-Object System.Collections.Generic.List[string]
+  $dnsMatches = [regex]::Matches($raw['ipconfig'],'DNS Servers[^\d]*(\d+\.\d+\.\d+\.\d+)')
+  foreach ($match in $dnsMatches) { $null = $dns.Add($match.Groups[1].Value) }
 
   $uniqueIPv4 = @()
   foreach ($ip in $ipv4s) {
@@ -2165,7 +2194,14 @@ if ($raw['ipconfig']){
 
       $normalizedAllow = @()
       if ($AnycastDnsAllow) {
-        $normalizedAllow = $AnycastDnsAllow | Where-Object { $_ } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique
+        $allowCandidates = [System.Collections.Generic.List[string]]::new()
+        foreach ($entry in $AnycastDnsAllow) {
+          if (-not $entry) { continue }
+          $trimmed = $entry.Trim()
+          if ($trimmed) { $null = $allowCandidates.Add($trimmed) }
+        }
+
+        $normalizedAllow = $allowCandidates | Select-Object -Unique
       }
       $anycastOverrideMatch = $false
       $primaryServer = $dnsServers | Select-Object -First 1
@@ -2939,7 +2975,13 @@ if ($raw['office_security']) {
         }
       })
     if ($laxContexts.Count -gt 0) {
-      $warnValues = ($laxContexts | ForEach-Object { if ($_.WarningsRaw) { $_.WarningsRaw } else { 'NotConfigured' } } | Sort-Object -Unique) -join ', '
+    $warnValueCandidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($context in $laxContexts) {
+      $value = if ($context.WarningsRaw) { $context.WarningsRaw } else { 'NotConfigured' }
+      $null = $warnValueCandidates.Add($value)
+    }
+
+    $warnValues = ($warnValueCandidates | Sort-Object -Unique) -join ', '
       if (-not $warnValues) { $warnValues = 'NotConfigured' }
       $warnEvidence = ($laxContexts | ForEach-Object { Format-MacroContextEvidence $_ }) -join "`n`n"
       Add-Issue "medium" "Office/Macros" ("{0} macro notification policy allows macros ({1}). Fix: Enforce via GPO/MDM." -f $appInfo.Name, $warnValues) $warnEvidence
@@ -3116,7 +3158,12 @@ if ($raw['firewall']){
     }
   }
   if ($profiles.Count -gt 0){
-    $profileStates = $profiles.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, ($(if ($_.Value) {"ON"} else {"OFF"})) }
+    $profileEntries = $profiles.GetEnumerator()
+    $profileStates = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $profileEntries) {
+      $statusText = if ($entry.Value) { "ON" } else { "OFF" }
+      $null = $profileStates.Add(("{0}: {1}" -f $entry.Key, $statusText))
+    }
     $profileSummary = $profileStates -join "; "
     if (-not ($profiles.Values -contains $false)){
       Add-Normal "Security/Firewall" "All firewall profiles ON" $profileSummary
@@ -3168,13 +3215,23 @@ if ($raw['bitlocker']) {
         $unknown = @($osArray | Where-Object { $null -eq $_.ProtectionEnabled -and $_.ProtectionStatus })
 
         if ($unprotected.Count -gt 0) {
-          $mountList = ($unprotected | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          $unprotectedMounts = [System.Collections.Generic.List[string]]::new()
+          foreach ($volume in $unprotected) {
+            if ($volume.MountPoint) { $null = $unprotectedMounts.Add([string]$volume.MountPoint) }
+          }
+
+          $mountList = ($unprotectedMounts | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($unprotected | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
           Add-Issue "critical" "Security/BitLocker" ("BitLocker is OFF for system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($partial.Count -gt 0) {
-          $mountList = ($partial | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          $partialMounts = [System.Collections.Generic.List[string]]::new()
+          foreach ($volume in $partial) {
+            if ($volume.MountPoint) { $null = $partialMounts.Add([string]$volume.MountPoint) }
+          }
+
+          $mountList = ($partialMounts | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($partial | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
           # Industry guidance such as CIS Controls and Microsoft security baselines
@@ -3183,7 +3240,12 @@ if ($raw['bitlocker']) {
           Add-Issue "high" "Security/BitLocker" ("BitLocker encryption incomplete on system volume(s): {0}." -f ($mountList)) $evidence
           $summary.BitLockerSystemProtected = $false
         } elseif ($unknown.Count -gt 0) {
-          $mountList = ($unknown | ForEach-Object { $_.MountPoint } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+          $unknownMounts = [System.Collections.Generic.List[string]]::new()
+          foreach ($volume in $unknown) {
+            if ($volume.MountPoint) { $null = $unknownMounts.Add([string]$volume.MountPoint) }
+          }
+
+          $mountList = ($unknownMounts | Sort-Object -Unique) -join ', '
           if (-not $mountList) { $mountList = 'Unknown volume' }
           $evidence = ($unknown | ForEach-Object { & $FormatBitLockerEntry $_ }) -join "`n"
           Add-Issue "low" "Security/BitLocker" ("BitLocker protection state unclear for system volume(s): {0}." -f ($mountList)) $evidence
@@ -3461,7 +3523,12 @@ if ($smartScreenMap.Count -gt 0) {
   if ($explorerValue -and $explorerValue.ToString().Trim().ToLowerInvariant() -match 'off|0|disable') { $smartScreenDisabled = $true }
   $policyValue = $smartScreenMap['Policy.System.EnableSmartScreen']
   if ($policyValue -ne $null -and (ConvertTo-NullableInt $policyValue) -eq 0) { $smartScreenDisabled = $true }
-  $smartScreenSummary = ($smartScreenMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+$smartScreenEntries = $smartScreenMap.GetEnumerator()
+$smartScreenSummaryParts = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $smartScreenEntries) {
+  $null = $smartScreenSummaryParts.Add(("{0} = {1}" -f $entry.Key, $entry.Value))
+}
+$smartScreenSummary = ($smartScreenSummaryParts -join "`n")
   if ($smartScreenDisabled) {
     Add-SecurityHeuristic 'SmartScreen' 'Disabled' 'warning' 'SmartScreen policy not enforced.' $smartScreenSummary -SkipIssue
     Add-Issue 'medium' 'Security/SmartScreen' 'SmartScreen is disabled. Enable SmartScreen for app and URL protection.' $smartScreenSummary
@@ -3605,7 +3672,12 @@ if ($wdacData -and $wdacData.PSObject.Properties['Registry']) {
       if ($smartAppEntry -and $smartAppEntry.PSObject.Properties['Enabled']) {
         $smartAppState = ConvertTo-NullableInt $smartAppEntry.Enabled
       }
-      $smartAppEvidence = ($smartAppEntry.PSObject.Properties | ForEach-Object { "{0}: {1}" -f $_.Name, $_.Value }) -join "`n"
+  $smartAppProperties = $smartAppEntry.PSObject.Properties
+  $smartAppEvidenceParts = [System.Collections.Generic.List[string]]::new()
+  foreach ($property in $smartAppProperties) {
+    $null = $smartAppEvidenceParts.Add(("{0}: {1}" -f $property.Name, $property.Value))
+  }
+  $smartAppEvidence = ($smartAppEvidenceParts -join "`n")
     }
   }
 }
@@ -3699,7 +3771,14 @@ if ($lapsDoc -and $lapsDoc.Checks) {
     }
   }
 
-  $otherEnabledNames = if ($otherEnabled.Count -gt 0) { $otherEnabled | ForEach-Object { $_.Name } } else { @() }
+$otherEnabledNames = @()
+if ($otherEnabled.Count -gt 0) {
+  $names = [System.Collections.Generic.List[string]]::new()
+  foreach ($entry in $otherEnabled) {
+    $null = $names.Add($entry.Name)
+  }
+  $otherEnabledNames = $names
+}
   $otherEnabledSummary = if ($otherEnabledNames.Count -gt 0) { $otherEnabledNames -join ', ' } else { 'None' }
 
   $userLines = @()
@@ -3772,7 +3851,12 @@ if ($lapsDoc -and $lapsDoc.Checks) {
 $enableLua = ConvertTo-NullableInt $uacMap['EnableLUA']
 $consentPrompt = ConvertTo-NullableInt $uacMap['ConsentPromptBehaviorAdmin']
 $secureDesktop = ConvertTo-NullableInt $uacMap['PromptOnSecureDesktop']
-$uacEvidence = ($uacMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+$uacEntries = $uacMap.GetEnumerator()
+$uacEvidenceParts = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $uacEntries) {
+  $null = $uacEvidenceParts.Add(("{0} = {1}" -f $entry.Key, $entry.Value))
+}
+$uacEvidence = ($uacEvidenceParts -join "`n")
 if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -and ($consentPrompt -eq $null -or $consentPrompt -ge 2)) {
   Add-SecurityHeuristic 'UAC' 'Secure' 'good' '' $uacEvidence
 } else {
@@ -3835,7 +3919,12 @@ if ($scriptBlockEnabled -and $moduleLoggingEnabled) {
 $ldapClientIntegrity = ConvertTo-NullableInt $ldapMap['LDAPClientIntegrity']
 $ldapChannelBinding = ConvertTo-NullableInt $ldapMap['LdapEnforceChannelBinding']
 $ldapServerIntegrity = ConvertTo-NullableInt $ldapMap['LDAPServerIntegrity']
-$ldapEvidence = ($ldapMap.GetEnumerator() | ForEach-Object { "{0} = {1}" -f $_.Key, $_.Value }) -join "`n"
+$ldapEntries = $ldapMap.GetEnumerator()
+$ldapEvidenceParts = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $ldapEntries) {
+  $null = $ldapEvidenceParts.Add(("{0} = {1}" -f $entry.Key, $entry.Value))
+}
+$ldapEvidence = ($ldapEvidenceParts -join "`n")
 $ldapSigningOk = ($ldapClientIntegrity -ge 1) -or ($ldapServerIntegrity -ge 1)
 $channelBindingOk = ($ldapChannelBinding -ge 1)
 if ($isDomainJoinedProfile) {
@@ -3890,9 +3979,17 @@ if ($macroSecurityStatus.Count -gt 0) {
   $blockOk = ($allBlock.Count -eq $macroSecurityStatus.Count)
   $warnOk = ($allStrict.Count -eq $macroSecurityStatus.Count)
   $pvOk = ($allPvGood.Count -eq $macroSecurityStatus.Count)
-  $blockEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: Block={1}" -f $_.App, $_.BlockEnforced }) -join "`n"
-  $warnEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: WarningsStrict={1}" -f $_.App, $_.WarningsStrict }) -join "`n"
-  $pvEvidence = ($macroSecurityStatus | ForEach-Object { "{0}: ProtectedViewGood={1}" -f $_.App, $_.ProtectedViewGood }) -join "`n"
+$blockEvidenceParts = [System.Collections.Generic.List[string]]::new()
+$warnEvidenceParts = [System.Collections.Generic.List[string]]::new()
+$pvEvidenceParts = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $macroSecurityStatus) {
+  $null = $blockEvidenceParts.Add(("{0}: Block={1}" -f $entry.App, $entry.BlockEnforced))
+  $null = $warnEvidenceParts.Add(("{0}: WarningsStrict={1}" -f $entry.App, $entry.WarningsStrict))
+  $null = $pvEvidenceParts.Add(("{0}: ProtectedViewGood={1}" -f $entry.App, $entry.ProtectedViewGood))
+}
+$blockEvidence = ($blockEvidenceParts -join "`n")
+$warnEvidence = ($warnEvidenceParts -join "`n")
+$pvEvidence = ($pvEvidenceParts -join "`n")
   Add-SecurityHeuristic 'Office MOTW macro blocking' (if ($blockOk) { 'Enforced' } else { 'Gaps detected' }) (if ($blockOk) { 'good' } else { 'warning' }) '' $blockEvidence -Area 'Security/Office'
   Add-SecurityHeuristic 'Office macro notifications' (if ($warnOk) { 'Strict' } else { 'Allows macros' }) (if ($warnOk) { 'good' } else { 'warning' }) '' $warnEvidence -Area 'Security/Office'
   Add-SecurityHeuristic 'Office Protected View' (if ($pvOk) { 'Active' } else { 'Disabled contexts' }) (if ($pvOk) { 'good' } else { 'warning' }) '' $pvEvidence -Area 'Security/Office'
@@ -4366,7 +4463,9 @@ if ($printingPayload) {
     }
     $offlineEvidence = $offlineEvidenceLines -join "`n"
     if ($offlinePrinters.Count -gt 1) {
-      Add-Issue 'high' 'Printing/Queues' ('Multiple print queues are offline: {0}' -f (($offlinePrinters | ForEach-Object { $_.Name }) -join ', ')) $offlineEvidence
+      $offlineNames = [System.Collections.Generic.List[string]]::new()
+      foreach ($printer in $offlinePrinters) { $null = $offlineNames.Add($printer.Name) }
+      Add-Issue 'high' 'Printing/Queues' ('Multiple print queues are offline: {0}' -f ($offlineNames -join ', ')) $offlineEvidence
     } else {
       Add-Issue 'medium' 'Printing/Queues' ('Print queue offline: {0}' -f $offlinePrinters[0].Name) $offlineEvidence
     }
@@ -4382,7 +4481,9 @@ if ($printingPayload) {
     $defaultName = if ($defaultPrinter.PSObject.Properties['Name']) { [string]$defaultPrinter.Name } else { '(unknown)' }
     $defaultOffline = $offlinePrinters | Where-Object { $_.Name -eq $defaultName }
     if ($defaultOffline) {
-      Add-Issue 'low' 'Printing/Queues' ("Default printer '{0}' is offline." -f $defaultName) (($defaultOffline | ForEach-Object { $_.Name + ' => ' + $_.PrinterStatus }) -join "`n")
+      $defaultOfflineLines = [System.Collections.Generic.List[string]]::new()
+      foreach ($entry in $defaultOffline) { $null = $defaultOfflineLines.Add(($entry.Name + ' => ' + $entry.PrinterStatus)) }
+      Add-Issue 'low' 'Printing/Queues' ("Default printer '{0}' is offline." -f $defaultName) ($defaultOfflineLines -join "`n")
     }
   }
 
@@ -4427,7 +4528,13 @@ if ($printingPayload) {
     $maxAge = ($stuckJobs | Measure-Object -Property Age -Maximum).Maximum
     $severity = 'medium'
     if ($stuckJobs.Count -gt 1 -and $maxAge -ge 60) { $severity = 'high' }
-    $stuckEvidence = ($stuckJobs | ForEach-Object { "{0}: {1} min (Status={2}; Doc={3})" -f $_.Printer, [math]::Round($_.Age,2), (if ($_.Status) { $_.Status } else { 'Unknown' }), (if ($_.Document) { $_.Document } else { 'N/A' }) }) -join "`n"
+    $stuckEvidenceParts = [System.Collections.Generic.List[string]]::new()
+    foreach ($job in $stuckJobs) {
+      $statusText = if ($job.Status) { $job.Status } else { 'Unknown' }
+      $documentText = if ($job.Document) { $job.Document } else { 'N/A' }
+      $null = $stuckEvidenceParts.Add(("{0}: {1} min (Status={2}; Doc={3})" -f $job.Printer, [math]::Round($job.Age,2), $statusText, $documentText))
+    }
+    $stuckEvidence = ($stuckEvidenceParts -join "`n")
     Add-Issue $severity 'Printing/Queues' ('Stuck print job(s) detected ({0}).' -f ($stuckJobs.Count)) $stuckEvidence
   }
 
@@ -4599,7 +4706,15 @@ if ($printingPayload) {
       }
     }
   }
-  $defaultHostsLower = $defaultHosts | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
+$defaultHostsLower = @()
+if ($defaultHosts) {
+  $lowerHosts = [System.Collections.Generic.List[string]]::new()
+  foreach ($host in $defaultHosts) {
+    if (-not $host) { continue }
+    $null = $lowerHosts.Add($host.ToLowerInvariant())
+  }
+  $defaultHostsLower = $lowerHosts
+}
 
   $allHostsReachable = $true
   $networkEvidenceLines = @()
@@ -4720,7 +4835,11 @@ if ($printingPayload) {
       }
     }
     if ($recurringCrashes.Count -gt 0) {
-      $crashSummary = ($recurringCrashes | ForEach-Object { "ID $($_.Id) ($($_.Count)x)" }) -join '; '
+$crashSummaryParts = [System.Collections.Generic.List[string]]::new()
+foreach ($crash in $recurringCrashes) {
+  $null = $crashSummaryParts.Add(("ID {0} ({1}x)" -f $crash.Id, $crash.Count))
+}
+$crashSummary = ($crashSummaryParts -join '; ')
       Add-Issue 'high' 'Printing/Events' ("Recurring print driver crash events detected: {0}." -f $crashSummary) $eventsEvidence
     }
   }
@@ -5391,7 +5510,12 @@ if ($raw['diskdrives']){
   $failurePattern = '(?i)\b(Pred\s*Fail|Fail(?:ed|ing)?|Bad|Caution)\b'
   if ($smartText -match $failurePattern) {
     $failureMatches = [regex]::Matches($smartText, $failurePattern)
-    $keywords = $failureMatches | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ } | Sort-Object -Unique
+$keywordCandidates = [System.Collections.Generic.List[string]]::new()
+foreach ($match in $failureMatches) {
+  $trimmed = $match.Value.Trim()
+  if ($trimmed) { $null = $keywordCandidates.Add($trimmed) }
+}
+$keywords = $keywordCandidates | Sort-Object -Unique
     $keywordSummary = if ($keywords) { $keywords -join ', ' } else { $null }
     $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Where-Object { $_ -match $failurePattern } | Select-Object -First 12)
     if (-not $evidenceLines -or $evidenceLines.Count -eq 0) {

@@ -377,8 +377,17 @@ function Collect-PrintEvents {
         }
     }
 
-    $adminConverted = $adminEvents | Sort-Object TimeCreated -Descending | Select-Object -First 100 | ForEach-Object { Convert-Event $_ }
-    $operationalConverted = $operationalEvents | Sort-Object TimeCreated -Descending | Select-Object -First 100 | ForEach-Object { Convert-Event $_ }
+    $recentAdminEvents = $adminEvents | Sort-Object TimeCreated -Descending | Select-Object -First 100
+    $adminConverted = [System.Collections.Generic.List[object]]::new()
+    foreach ($event in $recentAdminEvents) {
+        $null = $adminConverted.Add((Convert-Event $event))
+    }
+
+    $recentOperationalEvents = $operationalEvents | Sort-Object TimeCreated -Descending | Select-Object -First 100
+    $operationalConverted = [System.Collections.Generic.List[object]]::new()
+    foreach ($event in $recentOperationalEvents) {
+        $null = $operationalConverted.Add((Convert-Event $event))
+    }
 
     return [ordered]@{
         Admin = [ordered]@{

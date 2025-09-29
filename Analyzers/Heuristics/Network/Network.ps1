@@ -426,8 +426,13 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
+        $eligibleArtifactBases = [System.Collections.Generic.List[object]]::new()
+        foreach ($analyzer in $eligibleAnalyzers) {
+            $null = $eligibleArtifactBases.Add($analyzer.ArtifactBase)
+        }
+
         $evidence = [ordered]@{
-            Checks = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
+            Checks = $eligibleArtifactBases
             Folder = $inputFolder
         }
 

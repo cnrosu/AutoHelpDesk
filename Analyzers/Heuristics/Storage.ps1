@@ -200,7 +200,11 @@ function Invoke-StorageHeuristics {
         if ($diskEntries.Count -gt 0) {
             $unhealthy = $diskEntries | Where-Object { $_.HealthStatus -and $_.HealthStatus -ne 'Healthy' }
             if ($unhealthy.Count -gt 0) {
-                $details = $unhealthy | ForEach-Object { "Disk $($_.Number): $($_.HealthStatus) ($($_.OperationalStatus))" }
+                $details = [System.Collections.Generic.List[string]]::new()
+                foreach ($disk in $unhealthy) {
+                    $null = $details.Add(("Disk {0}: {1} ({2})" -f $disk.Number, $disk.HealthStatus, $disk.OperationalStatus))
+                }
+
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy' -Subcategory 'Disk Health'
@@ -208,13 +212,15 @@ function Invoke-StorageHeuristics {
         } elseif ($payload -and $payload.PSObject.Properties['Disks']) {
             $diskErrors = ConvertTo-StorageArray $payload.Disks | Where-Object { $_ -and $_.PSObject.Properties['Error'] }
             if ($diskErrors.Count -gt 0) {
-                $errorDetails = $diskErrors | ForEach-Object {
-                    if ($_.Source) {
-                        "{0}: {1}" -f $_.Source, $_.Error
+                $errorDetails = [System.Collections.Generic.List[string]]::new()
+                foreach ($diskError in $diskErrors) {
+                    if ($diskError.Source) {
+                        $null = $errorDetails.Add(("{0}: {1}" -f $diskError.Source, $diskError.Error))
                     } else {
-                        $_.Error
+                        $null = $errorDetails.Add($diskError.Error)
                     }
                 }
+
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Disk health unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health'
             }
         }
@@ -353,7 +359,13 @@ function Invoke-StorageHeuristics {
                     $failurePattern = '(?i)\b(Pred\s*Fail|Fail(?:ed|ing)?|Bad|Caution)\b'
                     if ($smartText -match $failurePattern) {
                         $failureMatches = [regex]::Matches($smartText, $failurePattern)
-                        $keywords = $failureMatches | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ } | Sort-Object -Unique
+                        $keywordCandidates = [System.Collections.Generic.List[string]]::new()
+                        foreach ($match in $failureMatches) {
+                            $trimmed = $match.Value.Trim()
+                            if ($trimmed) { $null = $keywordCandidates.Add($trimmed) }
+                        }
+
+                        $keywords = $keywordCandidates | Sort-Object -Unique
                         $keywordSummary = if ($keywords) { $keywords -join ', ' } else { $null }
                         $evidenceLines = ([regex]::Split($smartText,'\r?\n') | Where-Object { $_ -match $failurePattern } | Select-Object -First 12)
                         if (-not $evidenceLines -or $evidenceLines.Count -eq 0) {

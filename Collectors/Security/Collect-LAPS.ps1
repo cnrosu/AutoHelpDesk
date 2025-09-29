@@ -43,7 +43,16 @@ function ConvertTo-IsoUtc {
     try {
         ($Date).ToUniversalTime().ToString('o')
     } catch {
-        try { [DateTime]$Date | ForEach-Object { $_.ToUniversalTime().ToString('o') } } catch { $null }
+        try {
+            $convertedValues = @([DateTime]$Date)
+            $utcValues = [System.Collections.Generic.List[string]]::new()
+            foreach ($value in $convertedValues) {
+                $null = $utcValues.Add($value.ToUniversalTime().ToString('o'))
+            }
+
+            if ($utcValues.Count -eq 1) { return $utcValues[0] }
+            return $utcValues
+        } catch { $null }
     }
 }
 
