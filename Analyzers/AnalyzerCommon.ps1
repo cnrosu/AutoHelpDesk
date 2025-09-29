@@ -3,6 +3,40 @@
     Shared helper functions for analyzer modules.
 #>
 
+function Get-HeuristicSourceContext {
+    $stack = Get-PSCallStack
+    if (-not $stack) { return $null }
+
+    foreach ($frame in $stack) {
+        if (-not $frame) { continue }
+
+        $scriptName = $null
+        if ($frame.PSObject.Properties['ScriptName']) { $scriptName = $frame.ScriptName }
+        if (-not $scriptName) { continue }
+
+        if ($scriptName -like '*AnalyzerCommon.ps1') { continue }
+
+        $functionName = $null
+        if ($frame.PSObject.Properties['FunctionName']) { $functionName = $frame.FunctionName }
+        elseif ($frame.PSObject.Properties['Command']) { $functionName = $frame.Command }
+
+        if ($functionName -and ($functionName -like 'Add-Category*' -or $functionName -eq 'New-CategoryResult')) {
+            continue
+        }
+
+        $line = $null
+        if ($frame.PSObject.Properties['ScriptLineNumber']) { $line = $frame.ScriptLineNumber }
+
+        return [ordered]@{
+            Script   = $scriptName
+            Function = $functionName
+            Line     = $line
+        }
+    }
+
+    return $null
+}
+
 function New-AnalyzerContext {
     param(
         [Parameter(Mandatory)]
@@ -118,12 +152,27 @@ function New-CategoryResult {
         [string]$Name
     )
 
-    return [pscustomobject]@{
+    $category = [pscustomobject]@{
         Name    = $Name
         Issues  = New-Object System.Collections.Generic.List[pscustomobject]
         Normals = New-Object System.Collections.Generic.List[pscustomobject]
         Checks  = New-Object System.Collections.Generic.List[pscustomobject]
     }
+
+    $source = Get-HeuristicSourceContext
+    if ($source) {
+        if ($source.Script) {
+            $category | Add-Member -NotePropertyName 'SourceScript' -NotePropertyValue $source.Script -Force
+        }
+        if ($source.Function) {
+            $category | Add-Member -NotePropertyName 'SourceFunction' -NotePropertyValue $source.Function -Force
+        }
+        if ($null -ne $source.Line) {
+            $category | Add-Member -NotePropertyName 'SourceLine' -NotePropertyValue $source.Line -Force
+        }
+    }
+
+    return $category
 }
 
 function Add-CategoryIssue {
@@ -153,6 +202,23 @@ function Add-CategoryIssue {
 
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
         $entry['CheckId'] = $CheckId
+    }
+
+    $source = Get-HeuristicSourceContext
+    if ($source) {
+        if ($source.Script -and -not $entry.Contains('SourceScript')) { $entry['SourceScript'] = $source.Script }
+        if ($source.Function -and -not $entry.Contains('SourceFunction')) { $entry['SourceFunction'] = $source.Function }
+        if ($null -ne $source.Line -and -not $entry.Contains('SourceLine')) { $entry['SourceLine'] = $source.Line }
+
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceScript']) {
+            if ($source.Script) { $CategoryResult | Add-Member -NotePropertyName 'SourceScript' -NotePropertyValue $source.Script -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceFunction']) {
+            if ($source.Function) { $CategoryResult | Add-Member -NotePropertyName 'SourceFunction' -NotePropertyValue $source.Function -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceLine']) {
+            if ($null -ne $source.Line) { $CategoryResult | Add-Member -NotePropertyName 'SourceLine' -NotePropertyValue $source.Line -Force }
+        }
     }
 
     $CategoryResult.Issues.Add([pscustomobject]$entry) | Out-Null
@@ -186,6 +252,23 @@ function Add-CategoryNormal {
         $entry['CheckId'] = $CheckId
     }
 
+    $source = Get-HeuristicSourceContext
+    if ($source) {
+        if ($source.Script -and -not $entry.Contains('SourceScript')) { $entry['SourceScript'] = $source.Script }
+        if ($source.Function -and -not $entry.Contains('SourceFunction')) { $entry['SourceFunction'] = $source.Function }
+        if ($null -ne $source.Line -and -not $entry.Contains('SourceLine')) { $entry['SourceLine'] = $source.Line }
+
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceScript']) {
+            if ($source.Script) { $CategoryResult | Add-Member -NotePropertyName 'SourceScript' -NotePropertyValue $source.Script -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceFunction']) {
+            if ($source.Function) { $CategoryResult | Add-Member -NotePropertyName 'SourceFunction' -NotePropertyValue $source.Function -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceLine']) {
+            if ($null -ne $source.Line) { $CategoryResult | Add-Member -NotePropertyName 'SourceLine' -NotePropertyValue $source.Line -Force }
+        }
+    }
+
     $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
 }
 
@@ -203,11 +286,30 @@ function Add-CategoryCheck {
         [string]$Details = ''
     )
 
-    $CategoryResult.Checks.Add([pscustomobject]@{
-            Name    = $Name
-            Status  = $Status
-            Details = $Details
-        }) | Out-Null
+    $entry = [ordered]@{
+        Name    = $Name
+        Status  = $Status
+        Details = $Details
+    }
+
+    $source = Get-HeuristicSourceContext
+    if ($source) {
+        if ($source.Script -and -not $entry.Contains('SourceScript')) { $entry['SourceScript'] = $source.Script }
+        if ($source.Function -and -not $entry.Contains('SourceFunction')) { $entry['SourceFunction'] = $source.Function }
+        if ($null -ne $source.Line -and -not $entry.Contains('SourceLine')) { $entry['SourceLine'] = $source.Line }
+
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceScript']) {
+            if ($source.Script) { $CategoryResult | Add-Member -NotePropertyName 'SourceScript' -NotePropertyValue $source.Script -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceFunction']) {
+            if ($source.Function) { $CategoryResult | Add-Member -NotePropertyName 'SourceFunction' -NotePropertyValue $source.Function -Force }
+        }
+        if ($CategoryResult -and $CategoryResult.PSObject -and -not $CategoryResult.PSObject.Properties['SourceLine']) {
+            if ($null -ne $source.Line) { $CategoryResult | Add-Member -NotePropertyName 'SourceLine' -NotePropertyValue $source.Line -Force }
+        }
+    }
+
+    $CategoryResult.Checks.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Merge-AnalyzerResults {

@@ -5,6 +5,76 @@
 
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
+function Write-HtmlDebug {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Stage,
+
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $formatted = "HTML [{0}] {1}" -f $Stage, $Message
+
+    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
+        $detailEntries = $Data.GetEnumerator() | Sort-Object Name
+        $details = [System.Collections.Generic.List[string]]::new()
+        foreach ($entry in $detailEntries) {
+            if ($entry -is [System.Collections.DictionaryEntry]) {
+                $null = $details.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+            } elseif ($entry.PSObject.Properties['Name']) {
+                $null = $details.Add(("{0}={1}" -f $entry.Name, $entry.Value))
+            }
+        }
+
+        if ($details.Count -gt 0) {
+            $formatted = "{0} :: {1}" -f $formatted, ($details -join '; ')
+        }
+    }
+
+    Write-Verbose $formatted
+}
+
+function Get-EntrySourceMetadata {
+    param(
+        $Category,
+        $Entry
+    )
+
+    $metadata = [ordered]@{}
+
+    $script = $null
+    if ($Entry -and $Entry.PSObject.Properties['SourceScript']) {
+        $script = [string]$Entry.SourceScript
+    } elseif ($Category -and $Category.PSObject.Properties['SourceScript']) {
+        $script = [string]$Category.SourceScript
+    }
+
+    if ($script) { $metadata['SourceScript'] = $script }
+
+    $function = $null
+    if ($Entry -and $Entry.PSObject.Properties['SourceFunction']) {
+        $function = [string]$Entry.SourceFunction
+    } elseif ($Category -and $Category.PSObject.Properties['SourceFunction']) {
+        $function = [string]$Category.SourceFunction
+    }
+
+    if ($function) { $metadata['SourceFunction'] = $function }
+
+    $line = $null
+    if ($Entry -and $Entry.PSObject.Properties['SourceLine']) {
+        $line = $Entry.SourceLine
+    } elseif ($Category -and $Category.PSObject.Properties['SourceLine']) {
+        $line = $Category.SourceLine
+    }
+
+    if ($line -ne $null) { $metadata['SourceLine'] = $line }
+
+    return $metadata
+}
+
 function Resolve-CategoryGroup {
     param([string]$Name)
 
@@ -124,23 +194,65 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    param(
+        $Value,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 6,
+        [int]$MaxItems = 25
+    )
 
     if ($null -eq $Value) { return '' }
 
+    if ($Depth -ge $MaxDepth) {
+        return '… (max depth reached)'
+    }
+
     if ($Value -is [string]) { return $Value }
+
+    if ($Value -is [System.Collections.DictionaryEntry]) {
+        $keyText = Format-AnalyzerEvidence -Value $Value.Key -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxItems $MaxItems
+        $valueText = Format-AnalyzerEvidence -Value $Value.Value -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxItems $MaxItems
+        return "{0}: {1}" -f $keyText, $valueText
+    }
+
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
-        foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
+    if ($Value -is [System.Collections.IDictionary]) {
+        $lines = New-Object System.Collections.Generic.List[string]
+        $index = 0
+        foreach ($key in $Value.Keys) {
+            $index++
+            if ($index -gt $MaxItems) {
+                $null = $lines.Add("… (truncated after $MaxItems entries)")
+                break
+            }
+
+            $formattedKey = Format-AnalyzerEvidence -Value $key -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxItems $MaxItems
+            $formattedValue = Format-AnalyzerEvidence -Value $Value[$key] -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxItems $MaxItems
+            $null = $lines.Add("{0}: {1}" -f $formattedKey, $formattedValue)
         }
+
+        return ($lines -join [Environment]::NewLine)
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $items = New-Object System.Collections.Generic.List[string]
+        $index = 0
+        foreach ($item in $Value) {
+            $index++
+            if ($index -gt $MaxItems) {
+                $null = $items.Add("… (truncated after $MaxItems entries)")
+                break
+            }
+
+            $null = $items.Add((Format-AnalyzerEvidence -Value $item -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxItems $MaxItems))
+        }
+
         return ($items -join [Environment]::NewLine)
     }
 
     try {
-        return ($Value | ConvertTo-Json -Depth 6)
+        return ($Value | ConvertTo-Json -Depth 6 -Compress)
     } catch {
         return [string]$Value
     }
@@ -152,11 +264,23 @@ function Convert-ToIssueCard {
         $Issue
     )
 
+    if (-not $Issue) {
+        Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        return $null
+    }
+
+    $issueTitle = if ($Issue.PSObject.Properties['Title']) { [string]$Issue.Title } else { '(no title)' }
+    $issueSeverity = if ($Issue.PSObject.Properties['Severity']) { [string]$Issue.Severity } else { '(none)' }
+    $issueMetadata = Get-EntrySourceMetadata -Category $Category -Entry $Issue
+    $issueDebugData = [ordered]@{ Title = $issueTitle; Severity = $issueSeverity }
+    foreach ($key in $issueMetadata.Keys) { $issueDebugData[$key] = $issueMetadata[$key] }
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data $issueDebugData
+
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
     $hasNewLines = $detail -match "\r|\n"
 
-    return [pscustomobject]@{
+    $card = [pscustomobject]@{
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
@@ -165,6 +289,12 @@ function Convert-ToIssueCard {
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
     }
+
+    $issueResultMetadata = Get-EntrySourceMetadata -Category $Category -Entry $Issue
+    $issueResultData = [ordered]@{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    foreach ($key in $issueResultMetadata.Keys) { $issueResultData[$key] = $issueResultMetadata[$key] }
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue card generated.' -Data $issueResultData
+    return $card
 }
 
 function Convert-ToGoodCard {
@@ -173,15 +303,32 @@ function Convert-ToGoodCard {
         $Normal
     )
 
+    if (-not $Normal) {
+        Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        return $null
+    }
+
+    $normalTitle = if ($Normal.PSObject.Properties['Title']) { [string]$Normal.Title } else { '(no title)' }
+    $normalMetadata = Get-EntrySourceMetadata -Category $Category -Entry $Normal
+    $normalDebugData = [ordered]@{ Title = $normalTitle }
+    foreach ($key in $normalMetadata.Keys) { $normalDebugData[$key] = $normalMetadata[$key] }
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Converting positive finding entry to card.' -Data $normalDebugData
+
     $detail = Format-AnalyzerEvidence -Value $Normal.Evidence
 
-    return [pscustomobject]@{
+    $card = [pscustomobject]@{
         CssClass  = 'good'
         BadgeText = 'GOOD'
         Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
         Message   = $Normal.Title
         Evidence  = $detail
     }
+
+    $normalResultMetadata = Get-EntrySourceMetadata -Category $Category -Entry $Normal
+    $normalResultData = [ordered]@{ Title = $card.Message; HasEvidence = [bool]$card.Evidence }
+    foreach ($key in $normalResultMetadata.Keys) { $normalResultData[$key] = $normalResultMetadata[$key] }
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding card generated.' -Data $normalResultData
+    return $card
 }
 
 function Get-CollectorDisplayName {
@@ -246,14 +393,23 @@ function Get-FailedCollectorReports {
 
     $failures = New-Object System.Collections.Generic.List[pscustomobject]
 
-    if (-not $Context) { return $failures }
+    if (-not $Context) {
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'No analyzer context supplied; skipping collector evaluation.'
+        return $failures
+    }
 
     $summaryArtifact = Get-AnalyzerArtifact -Context $Context -Name 'collection-summary'
+    if (-not $summaryArtifact) {
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'Collection summary artifact unavailable; assuming no failures.'
+    }
+
     if ($summaryArtifact -and $summaryArtifact.Data -and $summaryArtifact.Data.PSObject.Properties['Results']) {
         $results = $summaryArtifact.Data.Results
         if (-not ($results -is [System.Collections.IEnumerable] -and -not ($results -is [string]))) {
             $results = @($results)
         }
+
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'Evaluating collector results.' -Data @{ Count = $results.Count }
 
         foreach ($result in $results) {
             if (-not $result) { continue }
@@ -283,6 +439,7 @@ function Get-FailedCollectorReports {
                         Details = $detail
                         Path    = $scriptPath
                     }) | Out-Null
+                Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector execution failed.' -Data @{ Collector = $displayName; Path = $scriptPath }
                 continue
             }
 
@@ -294,6 +451,7 @@ function Get-FailedCollectorReports {
                             Details = 'Collector did not return a path or payload reference.'
                             Path    = $scriptPath
                         }) | Out-Null
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector succeeded but returned no output.' -Data @{ Collector = $displayName; Path = $scriptPath }
                     continue
                 }
 
@@ -322,9 +480,12 @@ function Get-FailedCollectorReports {
                             Details = $detailText
                             Path    = $scriptPath
                         }) | Out-Null
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector output references missing files.' -Data @{ Collector = $displayName; Missing = ($missing -join ', ') }
                 }
             }
         }
+    } else {
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'Collection summary missing result entries.'
     }
 
     if ($Context.Artifacts) {
@@ -348,6 +509,7 @@ function Get-FailedCollectorReports {
                             Details = [string]$data.Error
                             Path    = $path
                         }) | Out-Null
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Artifact parsing failed.' -Data @{ Key = $key; Path = $path }
                     continue
                 }
 
@@ -372,12 +534,14 @@ function Get-FailedCollectorReports {
                                 Details = 'Captured file contained no payload.'
                                 Path    = $path
                             }) | Out-Null
+                        Write-HtmlDebug -Stage 'FailedReports' -Message 'Artifact payload empty.' -Data @{ Key = $key; Path = $path }
                     }
                 }
             }
         }
     }
 
+    Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector evaluation complete.' -Data @{ Failures = $failures.Count }
     return $failures
 }
 
@@ -755,7 +919,11 @@ function Build-RawSection {
         [int]$MaxChars = 2000
     )
 
+    $artifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+    Write-HtmlDebug -Stage 'RawSection' -Message 'Starting raw artifact rendering.' -Data @{ Artifacts = $artifactCount; MaxArtifacts = $MaxArtifacts }
+
     if (-not $Context -or -not $Context.Artifacts -or $Context.Artifacts.Count -eq 0) {
+        Write-HtmlDebug -Stage 'RawSection' -Message 'No artifacts available; returning placeholder.'
         return "<div class='report-card'><i>No raw payloads available.</i></div>"
     }
 
@@ -776,6 +944,7 @@ function Build-RawSection {
     }
 
     if ($items.Count -eq 0) {
+        Write-HtmlDebug -Stage 'RawSection' -Message 'Artifacts resolved but none produced renderable entries.'
         return "<div class='report-card'><i>No raw payloads available.</i></div>"
     }
 
@@ -793,6 +962,7 @@ function Build-RawSection {
     }
 
     if ($processed -eq 0) {
+        Write-HtmlDebug -Stage 'RawSection' -Message 'Artifacts located but all entries were filtered out.' -Data @{ Candidates = $items.Count }
         return "<div class='report-card'><i>No raw payload excerpts available.</i></div>"
     }
 
@@ -801,6 +971,7 @@ function Build-RawSection {
         $cards.Add("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>") | Out-Null
     }
 
+    Write-HtmlDebug -Stage 'RawSection' -Message 'Raw artifact section built.' -Data @{ Rendered = $processed; Remaining = [Math]::Max($items.Count - $processed, 0) }
     return ($cards -join '')
 }
 
@@ -816,17 +987,84 @@ function New-AnalyzerHtml {
         $Context
     )
 
+    $categoryCount = if ($Categories) { ($Categories | Measure-Object).Count } else { 0 }
+    Write-HtmlDebug -Stage 'Composer' -Message 'Beginning HTML composition.' -Data @{ Categories = $categoryCount; HasSummary = [bool]$Summary; HasContext = [bool]$Context }
+
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
+    $categoryIndex = 0
     foreach ($category in $Categories) {
-        if (-not $category) { continue }
-        foreach ($issue in $category.Issues) { $issues.Add((Convert-ToIssueCard -Category $category -Issue $issue)) | Out-Null }
-        foreach ($normal in $category.Normals) { $normals.Add((Convert-ToGoodCard -Category $category -Normal $normal)) | Out-Null }
+        $categoryIndex++
+
+        if (-not $category) {
+            Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Encountered null category entry during flattening.' -Data @{ Index = $categoryIndex }
+            continue
+        }
+
+        $categoryName = if ($category.PSObject.Properties['Name']) { [string]$category.Name } else { '(unnamed)' }
+        $issueSet = if ($category.PSObject.Properties['Issues']) { $category.Issues } else { $null }
+        $normalSet = if ($category.PSObject.Properties['Normals']) { $category.Normals } else { $null }
+
+        $issueCandidates = if ($issueSet -is [System.Collections.IEnumerable] -and -not ($issueSet -is [string])) { $issueSet } elseif ($issueSet) { @($issueSet) } else { @() }
+        $normalCandidates = if ($normalSet -is [System.Collections.IEnumerable] -and -not ($normalSet -is [string])) { $normalSet } elseif ($normalSet) { @($normalSet) } else { @() }
+
+        $categoryMetadata = Get-EntrySourceMetadata -Category $category -Entry $null
+        $categoryDebugData = [ordered]@{
+            Index  = $categoryIndex
+            Name   = $categoryName
+            Issues = ($issueCandidates | Measure-Object).Count
+            Normals = ($normalCandidates | Measure-Object).Count
+        }
+        foreach ($key in $categoryMetadata.Keys) { $categoryDebugData[$key] = $categoryMetadata[$key] }
+        Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Processing category.' -Data $categoryDebugData
+
+        $issueIndex = 0
+        foreach ($issue in $issueCandidates) {
+            $issueIndex++
+            if (-not $issue) {
+                $nullIssueData = [ordered]@{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+                foreach ($key in $categoryMetadata.Keys) { $nullIssueData[$key] = $categoryMetadata[$key] }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Skipping null issue entry.' -Data $nullIssueData
+                continue
+            }
+
+            $card = Convert-ToIssueCard -Category $category -Issue $issue
+            if ($card) {
+                $issues.Add($card) | Out-Null
+            } else {
+                $issueMissingData = [ordered]@{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+                foreach ($key in $categoryMetadata.Keys) { $issueMissingData[$key] = $categoryMetadata[$key] }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Issue conversion returned no card.' -Data $issueMissingData
+            }
+        }
+
+        $normalIndex = 0
+        foreach ($normal in $normalCandidates) {
+            $normalIndex++
+            if (-not $normal) {
+                $nullNormalData = [ordered]@{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+                foreach ($key in $categoryMetadata.Keys) { $nullNormalData[$key] = $categoryMetadata[$key] }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Skipping null positive entry.' -Data $nullNormalData
+                continue
+            }
+
+            $card = Convert-ToGoodCard -Category $category -Normal $normal
+            if ($card) {
+                $normals.Add($card) | Out-Null
+            } else {
+                $normalMissingData = [ordered]@{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+                foreach ($key in $categoryMetadata.Keys) { $normalMissingData[$key] = $categoryMetadata[$key] }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Positive finding conversion returned no card.' -Data $normalMissingData
+            }
+        }
     }
+
+    Write-HtmlDebug -Stage 'Composer' -Message 'Category flattening complete.' -Data @{ Issues = $issues.Count; Normals = $normals.Count }
 
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
+        Write-HtmlDebug -Stage 'Composer' -Message 'No summary provided; synthesized default summary.'
     }
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
@@ -835,6 +1073,7 @@ function New-AnalyzerHtml {
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedReports = Get-FailedCollectorReports -Context $Context
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
+    Write-HtmlDebug -Stage 'Composer' -Message 'Failed collector section prepared.' -Data @{ Count = $failedReports.Count }
     if ($failedReports.Count -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
     } else {
@@ -864,5 +1103,7 @@ function New-AnalyzerHtml {
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
-    return ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    $html = ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    Write-HtmlDebug -Stage 'Composer' -Message 'HTML composition complete.' -Data @{ Length = $html.Length }
+    return $html
 }

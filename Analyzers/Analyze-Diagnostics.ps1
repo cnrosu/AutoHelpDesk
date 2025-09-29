@@ -47,30 +47,69 @@ $context = New-AnalyzerContext -InputFolder $InputFolder
 Write-Verbose ("Analyzer context created with {0} artifact(s)." -f $context.Artifacts.Count)
 
 $categories = @()
-$categories += Invoke-SystemHeuristics   -Context $context
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking System heuristics.'
+$systemCategories = Invoke-SystemHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'System heuristics completed.' -Data @{ Count = ($systemCategories | Measure-Object).Count }
 Write-Verbose 'System heuristics completed.'
-$categories += Invoke-SecurityHeuristics -Context $context
+$categories += $systemCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Security heuristics.'
+$securityCategories = Invoke-SecurityHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Security heuristics completed.' -Data @{ Count = ($securityCategories | Measure-Object).Count }
 Write-Verbose 'Security heuristics completed.'
-$categories += Invoke-NetworkHeuristics  -Context $context -InputFolder $InputFolder
+$categories += $securityCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Network heuristics.'
+$networkCategories = Invoke-NetworkHeuristics -Context $context -InputFolder $InputFolder
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Network heuristics completed.' -Data @{ Count = ($networkCategories | Measure-Object).Count }
 Write-Verbose 'Network heuristics completed.'
-$categories += Invoke-ADHeuristics       -Context $context
+$categories += $networkCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Active Directory heuristics.'
+$adCategories = Invoke-ADHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Active Directory heuristics completed.' -Data @{ Count = ($adCategories | Measure-Object).Count }
 Write-Verbose 'Active Directory heuristics completed.'
-$categories += Invoke-OfficeHeuristics   -Context $context
+$categories += $adCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Office heuristics.'
+$officeCategories = Invoke-OfficeHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Office heuristics completed.' -Data @{ Count = ($officeCategories | Measure-Object).Count }
 Write-Verbose 'Office heuristics completed.'
-$categories += Invoke-StorageHeuristics  -Context $context
+$categories += $officeCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Storage heuristics.'
+$storageCategories = Invoke-StorageHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Storage heuristics completed.' -Data @{ Count = ($storageCategories | Measure-Object).Count }
 Write-Verbose 'Storage heuristics completed.'
-$categories += Invoke-EventsHeuristics   -Context $context
+$categories += $storageCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Events heuristics.'
+$eventsCategories = Invoke-EventsHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Events heuristics completed.' -Data @{ Count = ($eventsCategories | Measure-Object).Count }
 Write-Verbose 'Events heuristics completed.'
-$categories += Invoke-ServicesHeuristics -Context $context
+$categories += $eventsCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Services heuristics.'
+$servicesCategories = Invoke-ServicesHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Services heuristics completed.' -Data @{ Count = ($servicesCategories | Measure-Object).Count }
 Write-Verbose 'Services heuristics completed.'
-$categories += Invoke-PrintingHeuristics -Context $context
+$categories += $servicesCategories
+
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Invoking Printing heuristics.'
+$printingCategories = Invoke-PrintingHeuristics -Context $context
+Write-HtmlDebug -Stage 'Orchestrator.Heuristics' -Message 'Printing heuristics completed.' -Data @{ Count = ($printingCategories | Measure-Object).Count }
 Write-Verbose 'Printing heuristics completed.'
+$categories += $printingCategories
 
 $merged = Merge-AnalyzerResults -Categories $categories
 $summary = Get-AnalyzerSummary -Context $context
 Write-Verbose ("Merged analyzer results include {0} issue(s) and {1} normal finding(s)." -f $merged.Issues.Count, $merged.Normals.Count)
 
+$categoryCount = if ($categories) { ($categories | Measure-Object).Count } else { 0 }
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'Invoking New-AnalyzerHtml.' -Data @{ Categories = $categoryCount; Issues = $merged.Issues.Count; Normals = $merged.Normals.Count }
 $html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'New-AnalyzerHtml completed.' -Data @{ Length = $html.Length }
 Write-Verbose 'HTML report composed.'
 
 if (-not $OutputPath) {
@@ -120,7 +159,9 @@ if ($resolvedCss.Count -gt 0) {
     Write-Verbose ("Combined CSS written to '{0}'." -f $cssOutputPath)
 }
 
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'Writing HTML report to disk.' -Data @{ Path = $OutputPath }
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'HTML report write complete.' -Data @{ Path = $OutputPath }
 Write-Verbose ("HTML report written to '{0}'." -f $OutputPath)
 
 [pscustomobject]@{
