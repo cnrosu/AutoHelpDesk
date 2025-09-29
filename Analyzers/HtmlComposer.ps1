@@ -37,6 +37,20 @@ function Write-HtmlDebug {
     Write-Verbose $formatted
 }
 
+function Get-SourceLogData {
+    param($Source)
+
+    $data = @{}
+    if (-not $Source) { return $data }
+
+    if ($Source.PSObject.Properties['Script'] -and $Source.Script) { $data['SourceScript'] = [string]$Source.Script }
+    if ($Source.PSObject.Properties['Function'] -and $Source.Function) { $data['SourceFunction'] = [string]$Source.Function }
+    if ($Source.PSObject.Properties['Command'] -and $Source.Command) { $data['SourceCommand'] = [string]$Source.Command }
+    if ($Source.PSObject.Properties['Line'] -and ($null -ne $Source.Line)) { $data['SourceLine'] = [string]$Source.Line }
+
+    return $data
+}
+
 function Resolve-CategoryGroup {
     param([string]$Name)
 
@@ -191,7 +205,13 @@ function Convert-ToIssueCard {
 
     $issueTitle = if ($Issue.PSObject.Properties['Title']) { [string]$Issue.Title } else { '(no title)' }
     $issueSeverity = if ($Issue.PSObject.Properties['Severity']) { [string]$Issue.Severity } else { '(none)' }
-    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data @{ Title = $issueTitle; Severity = $issueSeverity }
+    $issueSource = if ($Issue.PSObject.Properties['Source']) { $Issue.Source } else { $null }
+    $issueSourceData = Get-SourceLogData -Source $issueSource
+    $convertData = @{ Title = $issueTitle; Severity = $issueSeverity }
+    foreach ($key in $issueSourceData.Keys) {
+        $convertData[$key] = $issueSourceData[$key]
+    }
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data $convertData
 
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
@@ -205,9 +225,14 @@ function Convert-ToIssueCard {
         Message     = $Issue.Title
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
+        Source     = $issueSource
     }
 
-    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue card generated.' -Data @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    foreach ($key in $issueSourceData.Keys) {
+        $generatedData[$key] = $issueSourceData[$key]
+    }
+    Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue card generated.' -Data $generatedData
     return $card
 }
 
@@ -223,7 +248,13 @@ function Convert-ToGoodCard {
     }
 
     $normalTitle = if ($Normal.PSObject.Properties['Title']) { [string]$Normal.Title } else { '(no title)' }
-    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Converting positive finding entry to card.' -Data @{ Title = $normalTitle }
+    $normalSource = if ($Normal.PSObject.Properties['Source']) { $Normal.Source } else { $null }
+    $normalSourceData = Get-SourceLogData -Source $normalSource
+    $goodConvertData = @{ Title = $normalTitle }
+    foreach ($key in $normalSourceData.Keys) {
+        $goodConvertData[$key] = $normalSourceData[$key]
+    }
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Converting positive finding entry to card.' -Data $goodConvertData
 
     $detail = Format-AnalyzerEvidence -Value $Normal.Evidence
 
@@ -233,9 +264,14 @@ function Convert-ToGoodCard {
         Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
         Message   = $Normal.Title
         Evidence  = $detail
+        Source    = $normalSource
     }
 
-    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding card generated.' -Data @{ Title = $card.Message; HasEvidence = [bool]$card.Evidence }
+    $goodGeneratedData = @{ Title = $card.Message; HasEvidence = [bool]$card.Evidence }
+    foreach ($key in $normalSourceData.Keys) {
+        $goodGeneratedData[$key] = $normalSourceData[$key]
+    }
+    Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding card generated.' -Data $goodGeneratedData
     return $card
 }
 
@@ -917,7 +953,13 @@ function New-AnalyzerHtml {
         $issueCandidates = if ($issueSet -is [System.Collections.IEnumerable] -and -not ($issueSet -is [string])) { $issueSet } elseif ($issueSet) { @($issueSet) } else { @() }
         $normalCandidates = if ($normalSet -is [System.Collections.IEnumerable] -and -not ($normalSet -is [string])) { $normalSet } elseif ($normalSet) { @($normalSet) } else { @() }
 
-        Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Processing category.' -Data @{ Index = $categoryIndex; Name = $categoryName; Issues = ($issueCandidates | Measure-Object).Count; Normals = ($normalCandidates | Measure-Object).Count }
+        $categorySource = if ($category.PSObject.Properties['Source']) { $category.Source } else { $null }
+        $categorySourceData = Get-SourceLogData -Source $categorySource
+        $categoryData = @{ Index = $categoryIndex; Name = $categoryName; Issues = ($issueCandidates | Measure-Object).Count; Normals = ($normalCandidates | Measure-Object).Count }
+        foreach ($key in $categorySourceData.Keys) {
+            $categoryData[$key] = $categorySourceData[$key]
+        }
+        Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Processing category.' -Data $categoryData
 
         $issueIndex = 0
         foreach ($issue in $issueCandidates) {
@@ -931,7 +973,13 @@ function New-AnalyzerHtml {
             if ($card) {
                 $issues.Add($card) | Out-Null
             } else {
-                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Issue conversion returned no card.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+                $issueSource = if ($issue.PSObject.Properties['Source']) { $issue.Source } else { $null }
+                $issueSourceData = Get-SourceLogData -Source $issueSource
+                $issueNoCardData = @{ Category = $categoryName; CategoryIndex = $categoryIndex; IssueIndex = $issueIndex }
+                foreach ($key in $issueSourceData.Keys) {
+                    $issueNoCardData[$key] = $issueSourceData[$key]
+                }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Issue conversion returned no card.' -Data $issueNoCardData
             }
         }
 
@@ -947,7 +995,13 @@ function New-AnalyzerHtml {
             if ($card) {
                 $normals.Add($card) | Out-Null
             } else {
-                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Positive finding conversion returned no card.' -Data @{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+                $normalSource = if ($normal.PSObject.Properties['Source']) { $normal.Source } else { $null }
+                $normalSourceData = Get-SourceLogData -Source $normalSource
+                $normalNoCardData = @{ Category = $categoryName; CategoryIndex = $categoryIndex; NormalIndex = $normalIndex }
+                foreach ($key in $normalSourceData.Keys) {
+                    $normalNoCardData[$key] = $normalSourceData[$key]
+                }
+                Write-HtmlDebug -Stage 'Composer.Categories' -Message 'Positive finding conversion returned no card.' -Data $normalNoCardData
             }
         }
     }
