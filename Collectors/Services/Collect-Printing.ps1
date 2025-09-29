@@ -68,21 +68,18 @@ function ConvertTo-OrderedDictionary {
 }
 
 function Get-PrinterDictionaries {
-    $result = [ordered]@{
-        Printers       = @()
-        DefaultPrinter = $null
-        Errors         = @()
-    }
+    $errors = [System.Collections.Generic.List[string]]::new()
+    $defaultPrinterName = $null
 
     $printersRaw = @()
     try {
         $printersRaw = Get-Printer -ErrorAction Stop
     } catch {
-        $result.Errors += "Get-Printer failed: $($_.Exception.Message)"
+        [void]$errors.Add("Get-Printer failed: $($_.Exception.Message)")
         try {
             $printersRaw = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
         } catch {
-            $result.Errors += "Win32_Printer fallback failed: $($_.Exception.Message)"
+            [void]$errors.Add("Win32_Printer fallback failed: $($_.Exception.Message)")
             $printersRaw = @()
         }
     }
@@ -95,7 +92,7 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors += "Get-PrinterPort failed: $($_.Exception.Message)"
+        [void]$errors.Add("Get-PrinterPort failed: $($_.Exception.Message)")
     }
 
     $driversByName = @{}
@@ -106,11 +103,11 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors += "Get-PrinterDriver failed: $($_.Exception.Message)"
+        [void]$errors.Add("Get-PrinterDriver failed: $($_.Exception.Message)")
     }
 
     $now = Get-Date
-    $printerDictionaries = @()
+    $printerDictionaries = [System.Collections.Generic.List[object]]::new()
     foreach ($printer in $printersRaw) {
         if (-not $printer) { continue }
 
@@ -128,7 +125,7 @@ function Get-PrinterDictionaries {
         if ($printer.PSObject.Properties['Default']) {
             try { $defaultPrinter = [bool]$printer.Default } catch { $defaultPrinter = $false }
         }
-        if ($defaultPrinter) { $result.DefaultPrinter = $printerName }
+        if ($defaultPrinter) { $defaultPrinterName = $printerName }
 
         $portObject = $null
         if ($portName -and $portsByName.ContainsKey($portName)) {
@@ -150,10 +147,10 @@ function Get-PrinterDictionaries {
             }
             if ($configRaw) { $configuration = ConvertTo-OrderedDictionary $configRaw }
         } catch {
-            $result.Errors += "Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)"
+            [void]$errors.Add("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
         }
 
-        $jobs = @()
+        $jobs = [System.Collections.Generic.List[object]]::new()
         try {
             $jobsRaw = $null
             if ($printer.PSObject.Properties['ComputerName'] -and $printer.ComputerName) {
@@ -171,7 +168,7 @@ function Get-PrinterDictionaries {
                 if ($submitted) {
                     $ageMinutes = [math]::Round(($now - $submitted).TotalMinutes,2)
                 }
-                $jobs += [ordered]@{
+                [void]$jobs.Add([ordered]@{
                     Id            = $job.Id
                     DocumentName  = [string]$job.DocumentName
                     JobStatus     = [string]$job.JobStatus
@@ -181,10 +178,10 @@ function Get-PrinterDictionaries {
                     SubmittedBy   = if ($job.PSObject.Properties['UserName']) { [string]$job.UserName } else { $null }
                     SubmittedTime = if ($submitted) { $submitted.ToString('o') } else { $null }
                     AgeMinutes    = $ageMinutes
-                }
+                })
             }
         } catch {
-            $result.Errors += "Get-PrintJob ($printerName) failed: $($_.Exception.Message)"
+            [void]$errors.Add("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
         }
 
         $portDict = $null
@@ -222,15 +219,18 @@ function Get-PrinterDictionaries {
             Port           = $portDict
             Driver         = $driverDict
             Configuration  = $configuration
-            Jobs           = $jobs
+            Jobs           = $jobs.ToArray()
             Connection     = $connectionInfo
         }
 
-        $printerDictionaries += $printerDict
+        [void]$printerDictionaries.Add($printerDict)
     }
 
-    $result.Printers = $printerDictionaries
-    return $result
+    return [ordered]@{
+        Printers       = $printerDictionaries.ToArray()
+        DefaultPrinter = $defaultPrinterName
+        Errors         = $errors.ToArray()
+    }
 }
 
 function Normalize-HostName {
@@ -277,9 +277,9 @@ function Get-PrinterConnectionInfo {
     }
 
     $candidates = New-Object System.Collections.Generic.List[string]
-    if ($portName) { $candidates.Add($portName) | Out-Null }
+    if ($portName) { [void]$candidates.Add($portName) }
     if ($Port -and $Port.PSObject.Properties['Name']) {
-        $candidates.Add([string]$Port.Name) | Out-Null
+        [void]$candidates.Add([string]$Port.Name)
     }
 
     foreach ($candidate in $candidates) {
@@ -353,19 +353,19 @@ function Collect-PrintEvents {
     $startTime = (Get-Date).AddDays(-7)
     $adminEvents = @()
     $operationalEvents = @()
-    $errors = @()
+    $errors = [System.Collections.Generic.List[string]]::new()
 
     try {
         $adminEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Admin'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors += "Admin log query failed: $($_.Exception.Message)"
+        [void]$errors.Add("Admin log query failed: $($_.Exception.Message)")
         $adminEvents = @()
     }
 
     try {
         $operationalEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Operational'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors += "Operational log query failed: $($_.Exception.Message)"
+        [void]$errors.Add("Operational log query failed: $($_.Exception.Message)")
         $operationalEvents = @()
     }
 
@@ -394,7 +394,7 @@ function Collect-PrintEvents {
             WarningCount = ($operationalEvents | Where-Object { $_.LevelDisplayName -eq 'Warning' }).Count
             Events       = $operationalConverted
         }
-        Errors = $errors
+        Errors = $errors.ToArray()
     }
 }
 
@@ -470,39 +470,39 @@ function Get-NetworkTestsForPrinters {
         }
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     foreach ($entry in $hostMap.Values) {
-        $definitions = @()
+        $definitions = [System.Collections.Generic.List[hashtable]]::new()
         switch ($entry.Kind) {
             'ServerQueue' {
-                $definitions += @{ Name='SMB'; Type='Common'; Common='SMB' }
-                $definitions += @{ Name='TCP135'; Port=135; Type='Tcp' }
-                $definitions += @{ Name='TCP445'; Port=445; Type='Tcp' }
+                [void]$definitions.Add(@{ Name='SMB'; Type='Common'; Common='SMB' })
+                [void]$definitions.Add(@{ Name='TCP135'; Port=135; Type='Tcp' })
+                [void]$definitions.Add(@{ Name='TCP445'; Port=445; Type='Tcp' })
             }
             'DirectIp' {
-                $definitions += @{ Name='TCP9100'; Port=9100; Type='Tcp' }
-                $definitions += @{ Name='TCP631'; Port=631; Type='Tcp' }
+                [void]$definitions.Add(@{ Name='TCP9100'; Port=9100; Type='Tcp' })
+                [void]$definitions.Add(@{ Name='TCP631'; Port=631; Type='Tcp' })
             }
             default {
-                $definitions += @{ Name='TCP9100'; Port=9100; Type='Tcp' }
-                $definitions += @{ Name='TCP631'; Port=631; Type='Tcp' }
+                [void]$definitions.Add(@{ Name='TCP9100'; Port=9100; Type='Tcp' })
+                [void]$definitions.Add(@{ Name='TCP631'; Port=631; Type='Tcp' })
             }
         }
 
-        $tests = @()
+        $tests = [System.Collections.Generic.List[object]]::new()
         foreach ($definition in $definitions) {
-            $tests += Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition
+            [void]$tests.Add(Invoke-PortTest -Host $entry.Host -Kind $entry.Kind -Definition $definition)
         }
 
-        $results += [ordered]@{
+        [void]$results.Add([ordered]@{
             Host     = $entry.Host
             Kind     = $entry.Kind
             Printers = $entry.Printers.ToArray()
-            Tests    = $tests
-        }
+            Tests    = $tests.ToArray()
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-Main {
