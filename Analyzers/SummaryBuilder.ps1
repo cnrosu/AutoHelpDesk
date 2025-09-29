@@ -70,94 +70,49 @@ function Convert-ToUniqueStringArray {
     return $ordered.ToArray()
 }
 
-function Convert-NetworkFieldToString {
+function Get-AllStrings {
     param(
-        [Parameter(ValueFromPipeline)]
-        $Value,
-
-        [string[]]$PreferredProperties = @()
+        [Parameter(Mandatory)]
+        $Value
     )
 
-    $ordered = New-Object System.Collections.Generic.List[string]
-    $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+    $results = New-Object System.Collections.Generic.List[string]
 
-    function Add-NetworkString {
-        param([string]$Candidate)
+    function Add-StringRecursive {
+        param($InputValue)
 
-        if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
-        $trimmed = $Candidate.Trim()
-        if (-not $trimmed) { return }
-        if ($seen.Add($trimmed)) {
-            $ordered.Add($trimmed) | Out-Null
+        if ($null -eq $InputValue) { return }
+        if ($InputValue -is [string]) {
+            $text = $InputValue.Trim()
+            if ($text) { $results.Add($text) | Out-Null }
+            return
         }
+
+        if ($InputValue -is [ValueType]) {
+            $text = $InputValue.ToString().Trim()
+            if ($text) { $results.Add($text) | Out-Null }
+            return
+        }
+
+        if ($InputValue -is [System.Collections.IEnumerable] -and -not ($InputValue -is [string])) {
+            foreach ($item in $InputValue) { Add-StringRecursive -InputValue $item }
+            return
+        }
+
+        foreach ($prop in 'IPAddress','Address','NextHop','Value','DisplayValue','Name','ServerAddresses') {
+            if ($InputValue.PSObject.Properties[$prop]) {
+                Add-StringRecursive -InputValue $InputValue.$prop
+                return
+            }
+        }
+
+        $fallback = [string]$InputValue
+        $fallback = $fallback.Trim()
+        if ($fallback) { $results.Add($fallback) | Out-Null }
     }
 
-    function Extract-NetworkValues {
-        param($Item)
-
-        if ($null -eq $Item) { return }
-
-        if ($Item -is [string]) {
-            Add-NetworkString -Candidate $Item
-            return
-        }
-
-        if ($Item -is [ValueType]) {
-            Add-NetworkString -Candidate ($Item.ToString())
-            return
-        }
-
-        if ($Item -is [System.Collections.IDictionary]) {
-            foreach ($value in $Item.Values) { Extract-NetworkValues -Item $value }
-            return
-        }
-
-        if ($Item -is [System.Collections.IEnumerable] -and -not ($Item -is [string])) {
-            foreach ($element in $Item) { Extract-NetworkValues -Item $element }
-            return
-        }
-
-        if ($Item.PSObject) {
-            $propertiesToCheck = New-Object System.Collections.Generic.List[string]
-            if ($PreferredProperties -and $PreferredProperties.Count -gt 0) {
-                foreach ($prop in $PreferredProperties) {
-                    if ($prop -and -not $propertiesToCheck.Contains($prop)) {
-                        $propertiesToCheck.Add($prop) | Out-Null
-                    }
-                }
-            }
-
-            foreach ($prop in @('IPAddress','NextHop','ServerAddresses','DNSServerSearchOrder','DefaultIPGateway','Address','Value','DisplayValue')) {
-                if (-not $propertiesToCheck.Contains($prop)) {
-                    $propertiesToCheck.Add($prop) | Out-Null
-                }
-            }
-
-            foreach ($prop in @('IPv4Address','IPv4DefaultGateway','DNSServer')) {
-                if (-not $propertiesToCheck.Contains($prop)) {
-                    $propertiesToCheck.Add($prop) | Out-Null
-                }
-            }
-
-            $handled = $false
-            foreach ($prop in $propertiesToCheck) {
-                if (-not $prop) { continue }
-                if ($Item.PSObject.Properties[$prop]) {
-                    $handled = $true
-                    Extract-NetworkValues -Item $Item.$prop
-                }
-            }
-
-            if ($handled) { return }
-        }
-
-        Add-NetworkString -Candidate ([string]$Item)
-    }
-
-    Extract-NetworkValues -Item $Value
-
-    if ($ordered.Count -eq 0) { return '' }
-    return ($ordered -join ', ')
+    Add-StringRecursive -InputValue $Value
+    return ($results | Select-Object -Unique)
 }
 
 function Parse-IpConfigNetworkValues {
@@ -398,30 +353,18 @@ function Get-AnalyzerSummary {
 
             foreach ($entry in $configEntries) {
                 if ($entry.PSObject.Properties['IPv4Address']) {
-                    $ipv4Text = Convert-NetworkFieldToString -Value $entry.IPv4Address -PreferredProperties @('IPAddress','Address','Value')
-                    if ($ipv4Text) {
-                        foreach ($value in ($ipv4Text -split '\s*,\s*')) {
-                            $trimmed = $value.Trim()
-                            if ($trimmed -and $trimmed -notmatch '^169\.254\.') { $ipv4.Add($trimmed) | Out-Null }
-                        }
+                    foreach ($value in Get-AllStrings -Value $entry.IPv4Address) {
+                        if ($value -and $value -notmatch '^169\.254\.') { $ipv4.Add($value) | Out-Null }
                     }
                 }
                 if ($entry.PSObject.Properties['IPv4DefaultGateway']) {
-                    $gatewayText = Convert-NetworkFieldToString -Value $entry.IPv4DefaultGateway -PreferredProperties @('NextHop','IPAddress','Address','DefaultIPGateway','Value')
-                    if ($gatewayText) {
-                        foreach ($value in ($gatewayText -split '\s*,\s*')) {
-                            $trimmed = $value.Trim()
-                            if ($trimmed) { $gateways.Add($trimmed) | Out-Null }
-                        }
+                    foreach ($value in Get-AllStrings -Value $entry.IPv4DefaultGateway) {
+                        if ($value) { $gateways.Add($value) | Out-Null }
                     }
                 }
                 if ($entry.PSObject.Properties['DNSServer']) {
-                    $dnsText = Convert-NetworkFieldToString -Value $entry.DNSServer -PreferredProperties @('ServerAddresses','Address','IPAddress','DNSServerSearchOrder','Value')
-                    if ($dnsText) {
-                        foreach ($value in ($dnsText -split '\s*,\s*')) {
-                            $trimmed = $value.Trim()
-                            if ($trimmed) { $dns.Add($trimmed) | Out-Null }
-                        }
+                    foreach ($value in Get-AllStrings -Value $entry.DNSServer) {
+                        if ($value) { $dns.Add($value) | Out-Null }
                     }
                 }
             }
