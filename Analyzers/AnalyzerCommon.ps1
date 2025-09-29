@@ -18,18 +18,21 @@ function New-AnalyzerContext {
 
     $files = Get-ChildItem -Path $resolved -File -Recurse -ErrorAction SilentlyContinue
     foreach ($file in $files) {
-        $entry = [pscustomobject]@{
-            Path = $file.FullName
-            Data = $null
+        $data = $null
+        if ($file.Extension -ieq '.json') {
+            $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content) {
+                try {
+                    $data = $content | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                    $data = [pscustomobject]@{ Error = $_.Exception.Message }
+                }
+            }
         }
 
-        if ($file.Extension -ieq '.json') {
-            try {
-                $content = Get-Content -Raw -LiteralPath $file.FullName
-                $entry.Data = @{ Payload = ($content | ConvertFrom-Json -ErrorAction Stop) }
-            } catch {
-                $entry.Data = @{ Error = $_.Exception.Message }
-            }
+        $entry = [pscustomobject]@{
+            Path = $file.FullName
+            Data = $data
         }
 
         $key = $file.Name.ToLowerInvariant()
