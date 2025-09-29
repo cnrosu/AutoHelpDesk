@@ -170,26 +170,65 @@ function Get-IssueAreaLabel {
 }
 
 function Format-AnalyzerEvidence {
-    param($Value)
+    param(
+        $Value,
+        [int]$Depth = 0,
+        [System.Collections.Generic.HashSet[int]]$Visited
+    )
 
     if ($null -eq $Value) { return '' }
+
+    if (-not $Visited) {
+        $Visited = [System.Collections.Generic.HashSet[int]]::new()
+    }
+
+    if ($Depth -ge 32) { return '[…]' }
 
     if ($Value -is [string]) { return $Value }
     if ($Value -is [ValueType]) { return $Value.ToString() }
 
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
-        foreach ($item in $Value) {
-            $items += Format-AnalyzerEvidence -Value $item
-        }
-        return ($items -join [Environment]::NewLine)
+    $objectId = $null
+    $added = $false
+    try {
+        $objectId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($Value)
+    } catch {
+        $objectId = $null
     }
 
-    try {
-        return ($Value | ConvertTo-Json -Depth 6)
-    } catch {
-        return [string]$Value
+    if ($null -ne $objectId) {
+        if ($Visited.Contains($objectId)) { return '[…]' }
+        $Visited.Add($objectId) | Out-Null
+        $added = $true
     }
+
+    $result = $null
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $pairs = @()
+        foreach ($key in $Value.Keys) {
+            $formatted = Format-AnalyzerEvidence -Value $Value[$key] -Depth ($Depth + 1) -Visited $Visited
+            $pairs += ('{0}: {1}' -f $key, $formatted)
+        }
+        $result = ($pairs -join [Environment]::NewLine)
+    } elseif ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $items = @()
+        foreach ($item in $Value) {
+            $items += Format-AnalyzerEvidence -Value $item -Depth ($Depth + 1) -Visited $Visited
+        }
+        $result = ($items -join [Environment]::NewLine)
+    } else {
+        try {
+            $result = ($Value | ConvertTo-Json -Depth 6)
+        } catch {
+            $result = [string]$Value
+        }
+    }
+
+    if ($added -and ($null -ne $objectId)) {
+        $Visited.Remove($objectId) | Out-Null
+    }
+
+    return $result
 }
 
 function Convert-ToIssueCard {
