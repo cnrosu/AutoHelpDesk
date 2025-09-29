@@ -469,7 +469,14 @@ function Invoke-DhcpAnalyzers {
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory
             }
         }
-    } else {
+    }
+
+    $existingDhcpIssues = @()
+    if ($CategoryResult -and $CategoryResult.PSObject.Properties['Issues'] -and $CategoryResult.Issues) {
+        $existingDhcpIssues = @($CategoryResult.Issues | Where-Object { $_ -and $_.PSObject.Properties['Subcategory'] -and $_.Subcategory -eq 'DHCP' })
+    }
+
+    if ($existingDhcpIssues.Count -eq 0) {
         $eligibleArtifactBases = @()
         foreach ($analyzer in $eligibleAnalyzers) {
             $eligibleArtifactBases += [string]$analyzer.ArtifactBase
