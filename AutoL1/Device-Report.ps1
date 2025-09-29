@@ -19,6 +19,38 @@ param(
   [string]$InputFolder # optional: analyze an existing folder without collecting
 )
 
+function Test-AnsiOutputSupport {
+  try {
+    if ($PSVersionTable -and $PSVersionTable.PSVersion -and $PSVersionTable.PSVersion.Major -lt 6) {
+      return $false
+    }
+
+    if ($Host -and $Host.UI) {
+      $property = $Host.UI.PSObject.Properties['SupportsVirtualTerminal']
+      if ($property) { return [bool]$property.Value }
+    }
+  } catch {
+    # Default to allowing ANSI when detection fails.
+  }
+
+  return $true
+}
+
+function Disable-AnsiOutput {
+  try {
+    if ($PSStyle -and $PSStyle.PSObject.Properties['OutputRendering']) {
+      $PSStyle.OutputRendering = 'PlainText'
+    }
+  } catch {
+    # Ignore errors if PSStyle is not available (Windows PowerShell 5, for example).
+  }
+}
+
+$ansiSupported = Test-AnsiOutputSupport
+if (-not $ansiSupported) {
+  Disable-AnsiOutput
+}
+
 <#
 .SYNOPSIS
   Ensures the script is running with administrator privileges and stops execution when it is not.
