@@ -261,6 +261,7 @@ function Get-ArtifactPayload {
 function Resolve-SinglePayload {
     param(
         [Parameter(Mandatory)]
+        [AllowNull()]
         $Payload
     )
 
