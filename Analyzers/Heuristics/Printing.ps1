@@ -11,9 +11,9 @@ function ConvertTo-PrintingArray {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $items = @()
-        foreach ($item in $Value) { $items += $item }
-        return $items
+        $itemsList = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) { $itemsList.Add($item) | Out-Null }
+        return $itemsList.ToArray()
     }
     return @($Value)
 }
@@ -123,9 +123,9 @@ function Invoke-PrintingHeuristics {
     }
 
     $defaultPrinter = $payload.DefaultPrinter
-    $offlinePrinters = @()
-    $wsdPrinters = @()
-    $stuckJobs = @()
+    $offlinePrintersList = New-Object System.Collections.Generic.List[object]
+    $wsdPrintersList = New-Object System.Collections.Generic.List[object]
+    $stuckJobsList = New-Object System.Collections.Generic.List[object]
     $printers = ConvertTo-PrintingArray $payload.Printers
     Write-HeuristicDebug -Source 'Printing' -Message 'Analyzing printer inventory' -Data ([ordered]@{
         PrinterCount = $printers.Count
@@ -143,7 +143,7 @@ function Invoke-PrintingHeuristics {
         }
         if (-not $offline -and ($status -match '(?i)offline' -or $queueStatus -match '(?i)offline')) { $offline = $true }
         if ($offline) {
-            $offlinePrinters += $name
+            $offlinePrintersList.Add($name) | Out-Null
             if ($defaultPrinter -and $name -eq $defaultPrinter) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Default printer offline' -Evidence $name -Subcategory 'Printers'
             } else {
@@ -152,7 +152,7 @@ function Invoke-PrintingHeuristics {
         }
 
         if ($printer.Connection -and $printer.Connection.Kind -eq 'WSD') {
-            $wsdPrinters += $name
+            $wsdPrintersList.Add($name) | Out-Null
         }
 
         if ($printer.Jobs) {
@@ -162,12 +162,16 @@ function Invoke-PrintingHeuristics {
                     $severity = if ($job.AgeMinutes -ge 240) { 'high' } else { 'medium' }
                     $jobName = if ($job.DocumentName) { [string]$job.DocumentName } elseif ($job.PSObject.Properties['Id']) { "Job $($job.Id)" } else { 'Print job' }
                     $ageRounded = [math]::Round($job.AgeMinutes,1)
-                    $stuckJobs += ("{0} ({1} min old)" -f $jobName, $ageRounded)
+                    $stuckJobsList.Add(("{0} ({1} min old)" -f $jobName, $ageRounded)) | Out-Null
                     Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Stale print job detected on {0}' -f $name) -Evidence (("{0} age {1} minutes" -f $jobName, $ageRounded)) -Subcategory 'Queues'
                 }
             }
         }
     }
+
+    $offlinePrinters = $offlinePrintersList.ToArray()
+    $wsdPrinters = $wsdPrintersList.ToArray()
+    $stuckJobs = $stuckJobsList.ToArray()
 
     Write-HeuristicDebug -Source 'Printing' -Message 'Printer analysis summary' -Data ([ordered]@{
         OfflineCount = $offlinePrinters.Count

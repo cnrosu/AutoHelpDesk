@@ -34,7 +34,7 @@ function Invoke-SystemPendingRebootChecks {
         }
     }
 
-    $presentIndicators = @()
+    $presentIndicatorsList = New-Object System.Collections.Generic.List[object]
     foreach ($entry in $indicatorEntries) {
         if (-not $entry) { continue }
         $present = $false
@@ -42,9 +42,10 @@ function Invoke-SystemPendingRebootChecks {
             $present = [bool]$entry.Present
         }
         if ($present) {
-            $presentIndicators += $entry
+            $presentIndicatorsList.Add($entry) | Out-Null
         }
     }
+    $presentIndicators = $presentIndicatorsList.ToArray()
 
     $fileRenameEvidence = New-Object System.Collections.Generic.List[string]
     $fileRenameErrors = New-Object System.Collections.Generic.List[string]
