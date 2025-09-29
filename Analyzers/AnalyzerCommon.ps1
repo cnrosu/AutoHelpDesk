@@ -81,6 +81,70 @@ function Write-HeuristicDebug {
     Write-Host $formatted
 }
 
+function Get-HeuristicSourceMetadata {
+    param(
+        [string[]]$SkipCommands = @(
+            'Get-HeuristicSourceMetadata',
+            'New-CategoryResult',
+            'Add-CategoryIssue',
+            'Add-CategoryNormal',
+            'Add-CategoryCheck'
+        )
+    )
+
+    try {
+        $stack = Get-PSCallStack
+    } catch {
+        return $null
+    }
+
+    if (-not $stack) { return $null }
+
+    foreach ($frame in $stack) {
+        if (-not $frame) { continue }
+
+        $command = if ($frame.PSObject.Properties['Command']) { [string]$frame.Command } else { $null }
+        if ($command -and $SkipCommands -contains $command) { continue }
+
+        $script = if ($frame.PSObject.Properties['ScriptName']) { [string]$frame.ScriptName } else { $null }
+        if (-not $script) { continue }
+
+        $resolvedScript = $script
+        try {
+            if (Test-Path -LiteralPath $script) {
+                $resolvedScript = (Resolve-Path -LiteralPath $script -ErrorAction Stop).ProviderPath
+            }
+        } catch {
+        }
+
+        if ($resolvedScript -and $resolvedScript.EndsWith('AnalyzerCommon.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $functionName = if ($frame.PSObject.Properties['FunctionName'] -and $frame.FunctionName) {
+            [string]$frame.FunctionName
+        } elseif ($command) {
+            $command
+        } else {
+            $null
+        }
+
+        $lineNumber = $null
+        if ($frame.PSObject.Properties['ScriptLineNumber'] -and $frame.ScriptLineNumber -gt 0) {
+            $lineNumber = [int]$frame.ScriptLineNumber
+        }
+
+        return [pscustomobject]@{
+            Script   = $resolvedScript
+            Function = $functionName
+            Command  = $command
+            Line     = $lineNumber
+        }
+    }
+
+    return $null
+}
+
 function Get-AnalyzerArtifact {
     param(
         [Parameter(Mandatory)]
@@ -118,11 +182,14 @@ function New-CategoryResult {
         [string]$Name
     )
 
+    $source = Get-HeuristicSourceMetadata
+
     return [pscustomobject]@{
         Name    = $Name
         Issues  = New-Object System.Collections.Generic.List[pscustomobject]
         Normals = New-Object System.Collections.Generic.List[pscustomobject]
         Checks  = New-Object System.Collections.Generic.List[pscustomobject]
+        Source  = $source
     }
 }
 
@@ -144,6 +211,8 @@ function Add-CategoryIssue {
         [string]$CheckId = $null
     )
 
+    $source = Get-HeuristicSourceMetadata
+
     $entry = [ordered]@{
         Severity    = $Severity
         Title       = $Title
@@ -154,6 +223,8 @@ function Add-CategoryIssue {
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
         $entry['CheckId'] = $CheckId
     }
+
+    if ($source) { $entry['Source'] = $source }
 
     $CategoryResult.Issues.Add([pscustomobject]$entry) | Out-Null
 }
@@ -173,6 +244,8 @@ function Add-CategoryNormal {
         [string]$CheckId = $null
     )
 
+    $source = Get-HeuristicSourceMetadata
+
     $entry = [ordered]@{
         Title    = $Title
         Evidence = $Evidence
@@ -185,6 +258,8 @@ function Add-CategoryNormal {
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
         $entry['CheckId'] = $CheckId
     }
+
+    if ($source) { $entry['Source'] = $source }
 
     $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
 }
@@ -203,11 +278,17 @@ function Add-CategoryCheck {
         [string]$Details = ''
     )
 
-    $CategoryResult.Checks.Add([pscustomobject]@{
-            Name    = $Name
-            Status  = $Status
-            Details = $Details
-        }) | Out-Null
+    $source = Get-HeuristicSourceMetadata
+
+    $entry = [ordered]@{
+        Name    = $Name
+        Status  = $Status
+        Details = $Details
+    }
+
+    if ($source) { $entry['Source'] = $source }
+
+    $CategoryResult.Checks.Add([pscustomobject]$entry) | Out-Null
 }
 
 function Merge-AnalyzerResults {
