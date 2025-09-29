@@ -16,6 +16,40 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'CollectorCommon.ps1')
 
+function Test-AnsiOutputSupport {
+    try {
+        if ($PSVersionTable -and $PSVersionTable.PSVersion -and $PSVersionTable.PSVersion.Major -lt 6) {
+            return $false
+        }
+
+        if ($Host -and $Host.UI) {
+            $property = $Host.UI.PSObject.Properties['SupportsVirtualTerminal']
+            if ($property) {
+                return [bool]$property.Value
+            }
+        }
+    } catch {
+        # Fall back to assuming support when the environment cannot be queried.
+    }
+
+    return $true
+}
+
+function Disable-AnsiOutput {
+    try {
+        if ($PSStyle -and $PSStyle.PSObject.Properties['OutputRendering']) {
+            $PSStyle.OutputRendering = 'PlainText'
+        }
+    } catch {
+        # Older PowerShell versions do not expose PSStyle – ignore errors here.
+    }
+}
+
+$ansiSupported = Test-AnsiOutputSupport
+if (-not $ansiSupported) {
+    Disable-AnsiOutput
+}
+
 function Get-CollectorScripts {
     param([string]$Root)
     Get-ChildItem -Path $Root -Filter 'Collect-*.ps1' -Recurse |
@@ -44,9 +78,25 @@ function Invoke-AllCollectors {
     Write-Verbose ("Using throttle limit {0}." -f $effectiveThrottle)
 
     $collectorScript = @'
-param($scriptPath, $outputDirectory, $parentVerbosePreference)
+param($scriptPath, $outputDirectory, $parentVerbosePreference, $ansiEnabled)
 $VerbosePreference = $parentVerbosePreference
+$ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = "Stop"
+
+function Disable-AnsiOutput {
+    try {
+        if ($PSStyle -and $PSStyle.PSObject.Properties['OutputRendering']) {
+            $PSStyle.OutputRendering = 'PlainText'
+        }
+    } catch {
+        # Ignore when PSStyle is unavailable.
+    }
+}
+
+if (-not $ansiEnabled) {
+    Disable-AnsiOutput
+}
+
 try {
     Write-Verbose ("Starting collector '{0}' with output '{1}'." -f $scriptPath, $outputDirectory)
     $result = & $scriptPath -OutputDirectory $outputDirectory -ErrorAction Stop
@@ -95,7 +145,8 @@ try {
             $null = $psInstance.AddScript($collectorScript, $true).
                 AddArgument($collector.FullName).
                 AddArgument($areaOutput).
-                AddArgument($VerbosePreference)
+                AddArgument($VerbosePreference).
+                AddArgument($ansiSupported)
 
             $asyncResult = $psInstance.BeginInvoke()
             $pending.Add([pscustomobject]@{
