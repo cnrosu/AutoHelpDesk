@@ -333,21 +333,47 @@ function ConvertTo-NetworkAddressString {
 function ConvertTo-KebabCase {
     param([string]$Text)
 
+    # Preserve your current null/empty behavior
     if (-not $Text) { return $Text }
 
-    $normalized = [System.Text.RegularExpressions.Regex]::Replace(
-        $Text,
-        '([a-z0-9])([A-Z])',
-        '$1-$2'
-    )
-    $normalized = [System.Text.RegularExpressions.Regex]::Replace(
-        $normalized,
-        '([A-Z]+)([A-Z][a-z])',
-        '$1-$2'
-    )
+    # Cache compiled regexes once per session for speed
+    if (-not $script:__kebab_inited) {
+        $opt = [System.Text.RegularExpressions.RegexOptions]::Compiled
+        $script:rxCombiningMarks = [regex]::new('\p{Mn}+', $opt)                     # nonspacing marks (after FormD)
+        $script:rxApostrophes    = [regex]::new("[\u2019']", $opt)                   # ’ and '
+        $script:rxAcronymBreak   = [regex]::new('([A-Z]+)([A-Z][a-z])', $opt)        # ABCWord -> ABC-Word
+        $script:rxLowerUpper     = [regex]::new('([a-z0-9])([A-Z])', $opt)           # fooBar -> foo-Bar, 1A -> 1-A
+        $script:rxNonAlnum       = [regex]::new('[^A-Za-z0-9]+', $opt)               # any run of non-alnum -> -
+        $script:rxTrimHyphens    = [regex]::new('^-+|-+$', $opt)                     # trim leading/trailing -
+        $script:__kebab_inited   = $true
+    }
 
-    return $normalized.ToLowerInvariant()
+    $s = [string]$Text
+
+    # 1) Unicode normalize + strip diacritics
+    $s = $s.Normalize([Text.NormalizationForm]::FormD)
+    $s = $script:rxCombiningMarks.Replace($s, '')
+
+    # Optional ligatures / special letters (kept minimal and predictable)
+    $s = $s -replace 'ß','ss' -replace 'æ','ae' -replace 'Æ','AE' -replace 'œ','oe' -replace 'Œ','OE'
+
+    # 2) Remove apostrophes so they don't create separators
+    $s = $script:rxApostrophes.Replace($s, '')
+
+    # 3) Insert boundaries for acronym→word and lower→Upper transitions
+    $s = $script:rxAcronymBreak.Replace($s, '$1-$2')
+    $s = $script:rxLowerUpper.Replace($s,  '$1-$2')
+
+    # 4) Collapse non-alphanumerics to single hyphens
+    $s = $script:rxNonAlnum.Replace($s, '-')
+
+    # 5) Trim stray hyphens and lowercase invariantly
+    $s = $script:rxTrimHyphens.Replace($s, '')
+    $s = $s.ToLowerInvariant()
+
+    return $s
 }
+
 
 function Invoke-DhcpAnalyzers {
     param(
@@ -470,14 +496,14 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
-        $eligibleArtifactBases = @()
+        $eligibleArtifactBases = [System.Collections.Generic.List[object]]::new()
         foreach ($analyzer in $eligibleAnalyzers) {
-            $eligibleArtifactBases += [string]$analyzer.ArtifactBase
+            $null = $eligibleArtifactBases.Add($analyzer.ArtifactBase)
         }
 
         $evidence = [ordered]@{
-            Checks = ($eligibleArtifactBases -join [Environment]::NewLine)
-            Folder = [string]$InputFolder
+            Checks = $eligibleArtifactBases
+            Folder = $inputFolder
         }
 
         Add-CategoryNormal -CategoryResult $CategoryResult -Title ("DHCP diagnostics healthy ({0} checks)" -f $eligibleAnalyzers.Count) -Evidence $evidence -Subcategory 'DHCP'
