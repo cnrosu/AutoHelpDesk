@@ -545,7 +545,7 @@ function Invoke-NetworkHeuristics {
         if ($payload -and $payload.Resolution) {
             $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
-                $names = $failures | Select-Object -ExpandProperty Name
+                $names = $failures.Name
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0}' -f ($names -join ', ')) -Subcategory 'DNS Resolution'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'DNS lookups succeeded'
@@ -748,7 +748,7 @@ function Invoke-NetworkHeuristics {
     if ($adapterPayload -and $adapterPayload.Adapters -and -not $adapterPayload.Adapters.Error) {
         $upAdapters = $adapterPayload.Adapters | Where-Object { $_.Status -eq 'Up' }
         if ($upAdapters.Count -gt 0) {
-            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters | Select-Object -ExpandProperty Name -join ', '))
+            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters.Name -join ', '))
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported' -Subcategory 'Network Adapters'
         }

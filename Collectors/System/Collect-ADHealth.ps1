@@ -359,7 +359,7 @@ function Test-DomainShares {
                 if (Test-Path -Path $path) {
                     $test.Success = $true
                     try {
-                        $items = Get-ChildItem -Path $path -ErrorAction Stop | Select-Object -First 5 -ExpandProperty Name
+                        $items = (Get-ChildItem -Path $path -ErrorAction Stop | Select-Object -First 5).Name
                         if ($items) {
                             $test.Items = @($items)
                         }
