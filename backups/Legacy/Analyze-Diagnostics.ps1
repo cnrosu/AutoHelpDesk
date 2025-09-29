@@ -5791,12 +5791,12 @@ $reportName = "DeviceHealth_Report_{0}.html" -f (Get-Date -Format "yyyyMMdd_HHmm
 $reportPath = Join-Path $InputFolder $reportName
 
 # CSS assets
-  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-  $cssSources = @(
-    Join-Path $repoRoot 'styles/base.css'
-    Join-Path $repoRoot 'styles/layout.css'
-    Join-Path $repoRoot 'Scripts/styles/device-health-report.css'
-  )
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$cssSources = @(
+  Join-Path $repoRoot 'styles/base.css'
+  Join-Path $repoRoot 'styles/layout.css'
+  Join-Path $PSScriptRoot 'styles/device-health-report.css'
+)
 
 foreach ($source in $cssSources) {
   if (-not (Test-Path $source)) {
