@@ -14,11 +14,9 @@ param(
     [pscustomobject]$Context
 )
 
-Write-DhcpDebug -Message 'Analyzing DHCP unexpected servers' -Data ([ordered]@{ InputFolder = $InputFolder })
+. (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerHelper.ps1')
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-Import-Module (Join-Path -Path $repoRoot -ChildPath 'Modules/Common.psm1') -Force
-. (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerCommon.ps1')
+Write-DhcpDebug -Message 'Analyzing DHCP unexpected servers' -Data ([ordered]@{ InputFolder = $InputFolder })
 
 $payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-unexpected-servers.json'
 if ($null -eq $payload) { return @() }
