@@ -3,6 +3,36 @@
     Shared helper functions for DHCP analyzers.
 #>
 
+$script:DhcpCommonModuleImported = $false
+
+function Import-DhcpCommonModule {
+    if ($script:DhcpCommonModuleImported) { return }
+
+    $current = $PSScriptRoot
+    $modulePath = $null
+
+    while ($current) {
+        $candidate = Join-Path -Path $current -ChildPath 'Modules/Common.psm1'
+        if (Test-Path -LiteralPath $candidate) {
+            $modulePath = (Resolve-Path -LiteralPath $candidate).ProviderPath
+            break
+        }
+
+        $parent = Split-Path -Parent $current
+        if (-not $parent -or $parent -eq $current) { break }
+        $current = $parent
+    }
+
+    if (-not $modulePath) {
+        throw "Unable to locate Modules/Common.psm1 relative to DHCP analyzer root."
+    }
+
+    Import-Module -Name $modulePath -Force
+    $script:DhcpCommonModuleImported = $true
+}
+
+Import-DhcpCommonModule
+
 function Get-DhcpCollectorPayload {
     param(
         [Parameter(Mandatory)]
