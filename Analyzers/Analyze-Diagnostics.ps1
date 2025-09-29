@@ -70,7 +70,10 @@ $merged = Merge-AnalyzerResults -Categories $categories
 $summary = Get-AnalyzerSummary -Context $context
 Write-Verbose ("Merged analyzer results include {0} issue(s) and {1} normal finding(s)." -f $merged.Issues.Count, $merged.Normals.Count)
 
+$categoryCount = if ($categories) { ($categories | Measure-Object).Count } else { 0 }
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'Invoking New-AnalyzerHtml.' -Data @{ Categories = $categoryCount; Issues = $merged.Issues.Count; Normals = $merged.Normals.Count }
 $html = New-AnalyzerHtml -Categories $categories -Summary $summary -Context $context
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'New-AnalyzerHtml completed.' -Data @{ Length = $html.Length }
 Write-Verbose 'HTML report composed.'
 
 if (-not $OutputPath) {
@@ -120,7 +123,9 @@ if ($resolvedCss.Count -gt 0) {
     Write-Verbose ("Combined CSS written to '{0}'." -f $cssOutputPath)
 }
 
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'Writing HTML report to disk.' -Data @{ Path = $OutputPath }
 $html | Out-File -FilePath $OutputPath -Encoding UTF8
+Write-HtmlDebug -Stage 'Orchestrator' -Message 'HTML report write complete.' -Data @{ Path = $OutputPath }
 Write-Verbose ("HTML report written to '{0}'." -f $OutputPath)
 
 [pscustomobject]@{
