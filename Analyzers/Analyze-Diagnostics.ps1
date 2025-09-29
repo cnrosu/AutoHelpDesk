@@ -92,7 +92,7 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 $cssSources = @(
     Join-Path -Path $repoRoot -ChildPath 'styles/base.css'
     Join-Path -Path $repoRoot -ChildPath 'styles/layout.css'
-    Join-Path -Path $repoRoot -ChildPath 'Scripts/styles/device-health-report.css'
+    Join-Path -Path $repoRoot -ChildPath 'styles/device-health-report.css'
 )
 
 $resolvedCss = @()
