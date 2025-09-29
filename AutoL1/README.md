@@ -53,7 +53,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 
 ## Styling conventions
 - Global foundations live in `styles/base.css` (design tokens/resets) and `styles/layout.css` (reusable layout helpers).
-- Report-specific presentation lives beside each script inside `Scripts/styles/` (e.g., `device-health-report.css`, `system-diagnostics-report.css`).
+- Report-specific presentation lives alongside shared assets inside `styles/` (e.g., `device-health-report.css`, `system-diagnostics-report.css`).
 - Use simple, BEM-like class names (e.g., `.report-card`, `.report-card--critical`) and keep selectors low in specificity.
 - When editing CSS, order declarations per block as **layout → typography → color → state** to keep files scannable.
 - Each HTML report links a single combined stylesheet per page; keep additions lean so reports stay fast to load offline.
