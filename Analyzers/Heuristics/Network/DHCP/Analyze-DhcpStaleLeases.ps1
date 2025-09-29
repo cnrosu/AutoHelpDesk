@@ -5,9 +5,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InputFolder,
-
-    [Parameter(Mandatory)]
     [pscustomobject]$CategoryResult,
 
     [Parameter(Mandatory)]
@@ -16,9 +13,9 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerHelper.ps1')
 
-Write-DhcpDebug -Message 'Analyzing DHCP stale leases' -Data ([ordered]@{ InputFolder = $InputFolder })
+Write-DhcpDebug -Message 'Analyzing DHCP stale leases' -Data ([ordered]@{ FileName = 'dhcp-stale-leases.json' })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-stale-leases.json'
+$payload = Get-DhcpCollectorPayload -Context $Context -FileName 'dhcp-stale-leases.json'
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'Stale DHCP leases' -Severity 'warning' -Message "Unable to parse DHCP stale lease collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

@@ -5,9 +5,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InputFolder,
-
-    [Parameter(Mandatory)]
     [pscustomobject]$CategoryResult,
 
     [Parameter(Mandatory)]
@@ -16,10 +13,14 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerHelper.ps1')
 
-Write-DhcpDebug -Message 'Analyzing DHCP static configuration' -Data ([ordered]@{ InputFolder = $InputFolder })
+$fileName = 'dhcp-static-configuration.json'
+Write-DhcpDebug -Message 'Analyzing DHCP static configuration' -Data ([ordered]@{ FileName = $fileName })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-static-configuration.json'
-$ads = Ensure-Array $payload.AdapterConfigurations
+$payload = Get-DhcpCollectorPayload -Context $Context -FileName $fileName
+if ($null -eq $payload) { return @() }
+
+$ads = if ($payload) { Ensure-Array $payload.AdapterConfigurations } else { @() }
+Write-Host ("DBG DHCP PAYLOAD: adapters={0}" -f $ads.Count)
 $firstAdapter = $ads | Select-Object -First 1
 $dhcpEnabled = if ($firstAdapter -and $firstAdapter.PSObject.Properties['DHCPEnabled']) { $firstAdapter.DHCPEnabled } else { 'n/a' }
 $gateway = if ($firstAdapter -and $firstAdapter.PSObject.Properties['DefaultIPGateway']) { ($firstAdapter.DefaultIPGateway | Select-Object -First 1) } else { 'n/a' }
@@ -30,13 +31,12 @@ Write-DhcpDebug -Message 'DHCP static configuration payload resolved' -Data ([or
     Gateway      = $gateway
     DnsServer    = $dns0
 })
-if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'DHCP disabled without static config' -Severity 'warning' -Message "Unable to parse DHCP static configuration collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))
 }
 
 $findings = @()
-foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
+foreach ($adapter in $ads) {
     if (-not $adapter) { continue }
 
     $dhcpEnabled = ConvertTo-NullableBool $adapter.DHCPEnabled

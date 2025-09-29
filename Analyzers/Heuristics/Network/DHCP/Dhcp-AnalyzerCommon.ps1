@@ -4,24 +4,17 @@
 #>
 
 function Get-DhcpCollectorPayload {
+    [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [string]$InputFolder,
-
-        [Parameter(Mandatory)]
-        [string]$FileName
+        [Parameter(Mandatory)][pscustomobject]$Context,
+        [Parameter(Mandatory)][string]$FileName
     )
 
-    $path = Join-Path -Path $InputFolder -ChildPath $FileName
-    if (-not (Test-Path -Path $path)) { return $null }
+    $payload = Get-PayloadFromArtifacts -Context $Context -FileName $FileName -PreferFolderSubstring 'DHCP'
+    if ($null -eq $payload) { return $null }
 
-    try {
-        $text = Get-Content -Path $path -Raw -ErrorAction Stop
-        $json = $text | ConvertFrom-Json -ErrorAction Stop
-        return $json.Payload
-    } catch {
-        return [pscustomobject]@{ Error = $_.Exception.Message; File = $path }
-    }
+    if ($payload.PSObject.Properties['Payload']) { return $payload.Payload }
+    return $payload
 }
 
 function Write-DhcpDebug {

@@ -5,9 +5,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InputFolder,
-
-    [Parameter(Mandatory)]
     [pscustomobject]$CategoryResult,
 
     [Parameter(Mandatory)]
@@ -16,9 +13,9 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerHelper.ps1')
 
-Write-DhcpDebug -Message 'Analyzing DHCP client events' -Data ([ordered]@{ InputFolder = $InputFolder })
+Write-DhcpDebug -Message 'Analyzing DHCP client events' -Data ([ordered]@{ FileName = 'dhcp-client-events.json' })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-client-events.json'
+$payload = Get-DhcpCollectorPayload -Context $Context -FileName 'dhcp-client-events.json'
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'DHCP client event failures' -Severity 'warning' -Message "Unable to parse DHCP client event collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

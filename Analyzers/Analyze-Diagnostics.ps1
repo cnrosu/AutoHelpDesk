@@ -45,26 +45,71 @@ if (Test-Path -Path $heuristicsPath) {
 
 $context = New-AnalyzerContext -InputFolder $InputFolder
 Write-Verbose ("Analyzer context created with {0} artifact(s)." -f $context.Artifacts.Count)
+Write-Host ("DBG INDEX: keys={0} dhcpKeys={1}" -f $context.Artifacts.Count, (($context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' }).Count))
 
 $categories = @()
-$categories += Invoke-SystemHeuristics   -Context $context
-Write-Verbose 'System heuristics completed.'
-$categories += Invoke-SecurityHeuristics -Context $context
-Write-Verbose 'Security heuristics completed.'
-$categories += Invoke-NetworkHeuristics  -Context $context -InputFolder $InputFolder
-Write-Verbose 'Network heuristics completed.'
-$categories += Invoke-ADHeuristics       -Context $context
-Write-Verbose 'Active Directory heuristics completed.'
-$categories += Invoke-OfficeHeuristics   -Context $context
-Write-Verbose 'Office heuristics completed.'
-$categories += Invoke-StorageHeuristics  -Context $context
-Write-Verbose 'Storage heuristics completed.'
-$categories += Invoke-EventsHeuristics   -Context $context
-Write-Verbose 'Events heuristics completed.'
-$categories += Invoke-ServicesHeuristics -Context $context
-Write-Verbose 'Services heuristics completed.'
-$categories += Invoke-PrintingHeuristics -Context $context
-Write-Verbose 'Printing heuristics completed.'
+try {
+    $categories += Invoke-SystemHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'System heuristics completed.'
+} catch {
+    Write-Warning ("System heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-SecurityHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Security heuristics completed.'
+} catch {
+    Write-Warning ("Security heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-NetworkHeuristics -Context $context -InputFolder $InputFolder -ErrorAction Stop
+    Write-Verbose 'Network heuristics completed.'
+} catch {
+    Write-Warning ("Network heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-ADHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Active Directory heuristics completed.'
+} catch {
+    Write-Warning ("AD heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-OfficeHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Office heuristics completed.'
+} catch {
+    Write-Warning ("Office heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-StorageHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Storage heuristics completed.'
+} catch {
+    Write-Warning ("Storage heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-EventsHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Events heuristics completed.'
+} catch {
+    Write-Warning ("Events heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-ServicesHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Services heuristics completed.'
+} catch {
+    Write-Warning ("Services heuristics failed: {0}" -f $_.Exception.Message)
+}
+
+try {
+    $categories += Invoke-PrintingHeuristics -Context $context -ErrorAction Stop
+    Write-Verbose 'Printing heuristics completed.'
+} catch {
+    Write-Warning ("Printing heuristics failed: {0}" -f $_.Exception.Message)
+}
 
 $merged = Merge-AnalyzerResults -Categories $categories
 $summary = Get-AnalyzerSummary -Context $context

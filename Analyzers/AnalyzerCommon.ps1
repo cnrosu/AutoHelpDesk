@@ -16,37 +16,35 @@ function New-AnalyzerContext {
     $resolved = (Resolve-Path -LiteralPath $InputFolder).ProviderPath
     $artifactMap = @{}
 
-    $files = Get-ChildItem -Path $resolved -File -Recurse -ErrorAction SilentlyContinue
-    foreach ($file in $files) {
-        $data = $null
+    Get-ChildItem -Path $resolved -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $file = $_
+        $entry = [pscustomobject]@{
+            Path = $file.FullName
+            Data = $null
+        }
+
         if ($file.Extension -ieq '.json') {
-            $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
-            if ($content) {
-                try {
-                    $data = $content | ConvertFrom-Json -ErrorAction Stop
-                } catch {
-                    $data = [pscustomobject]@{ Error = $_.Exception.Message }
-                }
+            try {
+                $content = Get-Content -Raw -LiteralPath $file.FullName
+                $entry.Data = @{ Payload = ($content | ConvertFrom-Json -ErrorAction Stop) }
+            } catch {
+                $entry.Data = @{ Error = $_.Exception.Message }
             }
         }
 
-        $entry = [pscustomobject]@{
-            Path = $file.FullName
-            Data = $data
-        }
-
         $key = $file.Name.ToLowerInvariant()
-        if ($artifactMap.ContainsKey($key)) {
-            $artifactMap[$key] = @($artifactMap[$key]) + ,$entry
-        } else {
-            $artifactMap[$key] = @($entry)
-        }
+        if ($artifactMap.ContainsKey($key)) { $artifactMap[$key] = @($artifactMap[$key]) + ,$entry }
+        else { $artifactMap[$key] = @($entry) }
     }
 
-    return [pscustomobject]@{
+    $context = [pscustomobject]@{
         InputFolder = $resolved
         Artifacts   = $artifactMap
     }
+
+    Write-Host ("DBG INDEX: keys={0} dhcpKeys={1}" -f $context.Artifacts.Count, (($context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' }).Count))
+
+    return $context
 }
 
 function Write-HeuristicDebug {
@@ -353,4 +351,50 @@ function Resolve-SinglePayload {
     }
 
     return $Payload
+}
+
+function Resolve-ArtifactPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][pscustomobject]$Context,
+        [Parameter(Mandatory)][string]$FileName,
+        [string]$PreferFolderSubstring
+    )
+
+    $key = $FileName.ToLowerInvariant()
+    if (-not $Context.Artifacts.ContainsKey($key)) { return $null }
+    $candidates = $Context.Artifacts[$key]
+    if (-not $candidates) { return $null }
+
+    if ($PreferFolderSubstring) {
+        $pref = $candidates | Where-Object { $_.Path -match [regex]::Escape($PreferFolderSubstring) }
+        if ($pref) { return ($pref | Select-Object -First 1).Path }
+    }
+
+    return (
+        $candidates |
+            Sort-Object { (Get-Item $_.Path).LastWriteTimeUtc } -Descending |
+            Select-Object -First 1
+    ).Path
+}
+
+function Get-PayloadFromArtifacts {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][pscustomobject]$Context,
+        [Parameter(Mandatory)][string]$FileName,
+        [string]$PreferFolderSubstring
+    )
+
+    $path = Resolve-ArtifactPath -Context $Context -FileName $FileName -PreferFolderSubstring $PreferFolderSubstring
+    if (-not $path) { return $null }
+
+    try {
+        return (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json)
+    } catch {
+        return [pscustomobject]@{
+            Error = $_.Exception.Message
+            File  = $path
+        }
+    }
 }

@@ -5,9 +5,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InputFolder,
-
-    [Parameter(Mandatory)]
     [pscustomobject]$CategoryResult,
 
     [Parameter(Mandatory)]
@@ -16,9 +13,9 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'Dhcp-AnalyzerHelper.ps1')
 
-Write-DhcpDebug -Message 'Analyzing DHCP unexpected servers' -Data ([ordered]@{ InputFolder = $InputFolder })
+Write-DhcpDebug -Message 'Analyzing DHCP unexpected servers' -Data ([ordered]@{ FileName = 'dhcp-unexpected-servers.json' })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-unexpected-servers.json'
+$payload = Get-DhcpCollectorPayload -Context $Context -FileName 'dhcp-unexpected-servers.json'
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'Unexpected DHCP servers' -Severity 'warning' -Message "Unable to parse DHCP unexpected server collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))
