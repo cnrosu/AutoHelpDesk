@@ -173,8 +173,8 @@ try {
                     $entry.PowerShell.Dispose()
                 }
 
-                foreach ($item in $output) {
-                    $resultsList.Add($item)
+                if ($output) {
+                    $resultsList.AddRange($output)
                 }
 
                 $pending.RemoveAt($index)
