@@ -34,26 +34,75 @@ function Invoke-ServicesHeuristics {
         HasProxyInfo  = [bool]$proxyInfo
     })
 
-    $servicesArtifact = Get-AnalyzerArtifact -Context $Context -Name 'services'
+    $artifactCandidates = @('service-baseline', 'services')
+    $servicesArtifact = $null
+    $servicesPayload = $null
+    $servicesNode = $null
+    $artifactSource = $null
+    $artifactError = $null
+
+    foreach ($candidate in $artifactCandidates) {
+        $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidate
+        if (-not $artifact) { continue }
+
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+        if (-not $payload) { continue }
+
+        $candidateNode = $null
+        if ($payload.PSObject.Properties['Services']) {
+            $candidateNode = $payload.Services
+        }
+
+        if (-not $candidateNode) { continue }
+
+        $candidateError = $null
+        if ($candidateNode.PSObject.Properties['Error']) {
+            $candidateError = [string]$candidateNode.Error
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($candidateError)) {
+            if (-not $artifactError) {
+                $artifactError = [pscustomobject]@{
+                    Source  = $candidate
+                    Message = $candidateError
+                }
+            }
+            continue
+        }
+
+        $servicesArtifact = $artifact
+        $servicesPayload = $payload
+        $servicesNode = $candidateNode
+        $artifactSource = $candidate
+        break
+    }
+
     Write-HeuristicDebug -Source 'Services' -Message 'Resolved services artifact' -Data ([ordered]@{
-        Found = [bool]$servicesArtifact
+        Found     = [bool]$servicesArtifact
+        Candidates = ($artifactCandidates -join ', ')
+        Selected  = if ($artifactSource) { $artifactSource } else { '(none)' }
     })
+
     if (-not $servicesArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Services artifact missing' -Subcategory 'Collection'
+        if ($artifactError -and $artifactError.Message) {
+            $evidence = if ($artifactError.Source) {
+                "{0}: {1}" -f $artifactError.Source, $artifactError.Message
+            } else {
+                $artifactError.Message
+            }
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $evidence -Subcategory 'Service Inventory'
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Services artifact missing' -Subcategory 'Collection'
+        }
         return $result
     }
 
-    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $servicesArtifact)
+    $payload = $servicesPayload
     Write-HeuristicDebug -Source 'Services' -Message 'Resolved services payload' -Data ([ordered]@{
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
         return $result
-    }
-
-    $servicesNode = $null
-    if ($payload.PSObject.Properties['Services']) {
-        $servicesNode = $payload.Services
     }
 
     if ($servicesNode -and -not $servicesNode.Error) {
@@ -73,6 +122,12 @@ function Invoke-ServicesHeuristics {
         Invoke-ServiceCheckBits               -Result $result -Lookup $lookup -IsWorkstation $isWorkstation
         Invoke-ServiceCheckOfficeClickToRun   -Result $result -Lookup $lookup -IsWorkstation $isWorkstation
         Invoke-ServiceCheckAutomaticInventory -Result $result -Services $services
+        if ($payload.PSObject.Properties['CollectionErrors']) {
+            $collectionErrors = @($payload.CollectionErrors | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+            if ($collectionErrors.Count -gt 0) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Service inventory reported collection errors' -Evidence ($collectionErrors -join "`n") -Subcategory 'Service Inventory'
+            }
+        }
     } elseif ($servicesNode -and $servicesNode.Error) {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $servicesNode.Error -Subcategory 'Service Inventory'
     }
