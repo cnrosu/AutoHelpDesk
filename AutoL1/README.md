@@ -25,7 +25,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Inputs**:
   - `-OutputRoot` (optional): folder that will receive the area subfolders (`Network`, `Security`, etc.).
 - **Outputs**:
-  - Timestamped folder tree created by `Device-Report.ps1` (for example, `DiagReports\<YYYYMMDD_HHMMSS>\Network\network.json`).
+  - Collector output written under the folder supplied to `-OutputRoot`. When `Device-Report.ps1` launches the collector it passes a timestamped directory (for example, `DiagReports\<YYYYMMDD_HHMMSS>\Network\network.json`).
 - **Why JSON artifacts?**: Analyzers can deterministically parse payloads without relying on regex heuristics against raw text files.
 
 ### Collect-SystemDiagnostics.ps1 (Legacy collector)
