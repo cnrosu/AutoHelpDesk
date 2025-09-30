@@ -183,14 +183,14 @@ function Invoke-SecurityHeuristics {
 
             $definitions = @($status.AntivirusSignatureVersion, $status.AntispywareSignatureVersion) | Where-Object { $_ }
             if ($definitions.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('Defender signatures present ({0})' -f ($definitions -join ', '))
+                Add-CategoryNormal -CategoryResult $result -Title ('Defender signatures present ({0})' -f ($definitions -join ', ')) -Subcategory 'Microsoft Defender'
             }
 
             if ($payload.Threats -and $payload.Threats.Count -gt 0 -and -not ($payload.Threats[0] -is [string])) {
                 $threatNames = $payload.Threats | Where-Object { $_.ThreatName } | Select-Object -First 5 -ExpandProperty ThreatName
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Recent threats detected: {0}' -f ($threatNames -join ', ')) -Evidence 'Get-MpThreat returned recent detections; confirm remediation.' -Subcategory 'Microsoft Defender'
             } else {
-                Add-CategoryNormal -CategoryResult $result -Title 'No recent Defender detections'
+                Add-CategoryNormal -CategoryResult $result -Title 'No recent Defender detections' -Subcategory 'Microsoft Defender'
             }
         } elseif ($payload -and $payload.Status -and $payload.Status.Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender status' -Evidence $payload.Status.Error -Subcategory 'Microsoft Defender'
