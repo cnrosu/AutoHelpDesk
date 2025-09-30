@@ -55,16 +55,16 @@ function Invoke-ServicesHeuristics {
 
         if (-not $candidateNode) { continue }
 
-        $candidateError = $null
+        $candidateErrorMessages = @()
         if ($candidateNode.PSObject.Properties['Error']) {
-            $candidateError = [string]$candidateNode.Error
+            $candidateErrorMessages = ConvertTo-ServiceErrorMessages -Value $candidateNode.Error
         }
 
-        if (-not [string]::IsNullOrWhiteSpace($candidateError)) {
+        if ($candidateErrorMessages.Count -gt 0) {
             if (-not $artifactError) {
                 $artifactError = [pscustomobject]@{
                     Source  = $candidate
-                    Message = $candidateError
+                    Message = ($candidateErrorMessages -join "`n")
                 }
             }
             continue
@@ -105,7 +105,12 @@ function Invoke-ServicesHeuristics {
         return $result
     }
 
-    if ($servicesNode -and -not $servicesNode.Error) {
+    $servicesNodeErrorProperty = $null
+    if ($servicesNode -and $servicesNode.PSObject -and $servicesNode.PSObject.Properties['Error']) {
+        $servicesNodeErrorProperty = $servicesNode.PSObject.Properties['Error']
+    }
+
+    if ($servicesNode -and -not $servicesNodeErrorProperty) {
         $services = ConvertTo-ServiceCollection -Value $servicesNode
         Write-HeuristicDebug -Source 'Services' -Message 'Evaluating service inventory' -Data ([ordered]@{
             ServiceCount = $services.Count
@@ -128,8 +133,12 @@ function Invoke-ServicesHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Service inventory reported collection errors' -Evidence ($collectionErrors -join "`n") -Subcategory 'Service Inventory'
             }
         }
-    } elseif ($servicesNode -and $servicesNode.Error) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence $servicesNode.Error -Subcategory 'Service Inventory'
+    } elseif ($servicesNodeErrorProperty) {
+        $errorMessages = ConvertTo-ServiceErrorMessages -Value $servicesNodeErrorProperty.Value
+        if ($errorMessages.Count -eq 0) {
+            $errorMessages = @('Service query failed with an unknown error.')
+        }
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to query services' -Evidence ($errorMessages -join "`n") -Subcategory 'Service Inventory'
     }
 
     return $result

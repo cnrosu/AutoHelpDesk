@@ -77,6 +77,61 @@ function ConvertTo-ServiceCollection {
     return @($Value)
 }
 
+function ConvertTo-ServiceErrorMessages {
+    param($Value)
+
+    $messages = [System.Collections.Generic.List[string]]::new()
+    if ($null -eq $Value) { return $messages.ToArray() }
+
+    $queue = [System.Collections.Queue]::new()
+    $null = $queue.Enqueue($Value)
+
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if ($null -eq $current) { continue }
+
+        if (
+            $current -is [System.Collections.IEnumerable] -and
+            -not ($current -is [string]) -and
+            -not ($current -is [System.Collections.IDictionary])
+        ) {
+            foreach ($item in $current) {
+                $null = $queue.Enqueue($item)
+            }
+            continue
+        }
+
+        $text = $null
+
+        if ($current -is [System.Management.Automation.ErrorRecord]) {
+            if ($current.Exception -and $current.Exception.Message) {
+                $text = [string]$current.Exception.Message
+            } else {
+                $text = [string]$current.ToString()
+            }
+        } elseif ($current.PSObject -and $current.PSObject.Properties['Message']) {
+            $text = [string]$current.Message
+        } elseif ($current.PSObject -and $current.PSObject.Properties['Exception']) {
+            $exception = $current.Exception
+            if ($exception -and $exception.Message) {
+                $text = [string]$exception.Message
+            } elseif ($exception) {
+                $text = [string]$exception.ToString()
+            }
+        }
+
+        if (-not $text) {
+            $text = [string]$current
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            $null = $messages.Add($text.Trim())
+        }
+    }
+
+    return $messages.ToArray()
+}
+
 function New-ServiceLookup {
     param([array]$Services)
 
