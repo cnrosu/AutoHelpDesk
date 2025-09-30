@@ -21,9 +21,70 @@ function Get-AdapterConfigurations {
     }
 }
 
+function Convert-ToNetworkStringArray {
+    param($Value)
+
+    $results = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addText = {
+        param([string]$Text)
+
+        if (-not $Text) { return }
+        $trimmed = $Text.Trim()
+        if (-not $trimmed) { return }
+        if ($seen.Add($trimmed)) { $results.Add($trimmed) | Out-Null }
+    }
+
+    $addNetworkValue = $null
+    $addNetworkValue = {
+        param($InputValue)
+
+        if ($null -eq $InputValue) { return }
+
+        if ($InputValue -is [string]) {
+            & $addText $InputValue
+            return
+        }
+
+        if ($InputValue -is [ValueType]) {
+            & $addText ($InputValue.ToString())
+            return
+        }
+
+        if ($InputValue -is [System.Collections.IEnumerable] -and -not ($InputValue -is [string])) {
+            foreach ($item in $InputValue) { & $addNetworkValue $item }
+            return
+        }
+
+        foreach ($prop in 'IPAddress','IPv4Address','IPv6Address','Address','NextHop','ServerAddresses','DisplayValue','Value','Name') {
+            if ($InputValue.PSObject.Properties[$prop]) {
+                & $addNetworkValue $InputValue.$prop
+                return
+            }
+        }
+
+        & $addText ([string]$InputValue)
+    }
+
+    & $addNetworkValue $Value
+    return $results.ToArray()
+}
+
 function Get-NetIPAssignments {
     try {
-        return Get-NetIPConfiguration -ErrorAction Stop | Select-Object InterfaceAlias, InterfaceDescription, IPv4Address, IPv6Address, DNSServer, IPv4DefaultGateway
+        $configurations = Get-NetIPConfiguration -ErrorAction Stop
+
+        return $configurations | ForEach-Object {
+            [PSCustomObject]@{
+                InterfaceAlias       = $_.InterfaceAlias
+                InterfaceDescription = $_.InterfaceDescription
+                IPv4Address          = Convert-ToNetworkStringArray -Value $_.IPv4Address
+                IPv6Address          = Convert-ToNetworkStringArray -Value $_.IPv6Address
+                DNSServer            = Convert-ToNetworkStringArray -Value $_.DNSServer
+                IPv4DefaultGateway   = Convert-ToNetworkStringArray -Value $_.IPv4DefaultGateway
+            }
+        }
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-NetIPConfiguration'
