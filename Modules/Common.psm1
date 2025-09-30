@@ -27,65 +27,222 @@ $script:RegexKeyValueLine = [System.Text.RegularExpressions.Regex]::new(
   [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
-# Shim for DHCP analyzers that expect Write-DhcpDebug to be available. Prefer the
-# analyzer-wide logger when present and gracefully fall back to Write-Verbose.
-if (-not (Get-Command Write-DhcpDebug -ErrorAction SilentlyContinue)) {
-  function Write-DhcpDebug {
-    [CmdletBinding()]
-    param(
-      # Main debug message. If omitted but -Data is supplied, the data will be logged.
-      [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
-      $Message,
+# DHCP analyzers expect Write-DhcpDebug and related helpers. Prefer the central
+# analyzer logger when available but gracefully fall back to verbose output so
+# the helpers remain useful when executed standalone.
+function Write-DhcpDebug {
+  [CmdletBinding()]
+  param(
+    # Main debug message. If omitted but -Data is supplied, the data will be logged.
+    [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+    $Message,
 
-      # Tag the area for your common logger
-      [string] $Area = 'DHCP',
+    # Tag the area for your common logger
+    [string] $Area = 'Network/DHCP',
 
-      # Optional structured object to include alongside the message
-      [Alias('Object')]
-      [object] $Data,
+    # Optional structured object to include alongside the message
+    [Alias('Object')]
+    [object] $Data,
 
-      # When falling back (no Write-AnalyzerDebug), emit Data as JSON instead of table text
-      [switch] $AsJson
-    )
-    begin {
-      $analyzerCmd = Get-Command Write-AnalyzerDebug -ErrorAction SilentlyContinue
-      $supportsData = $false
-      if ($analyzerCmd) {
-        try { $supportsData = $analyzerCmd.Parameters.ContainsKey('Data') } catch { $supportsData = $false }
-      }
+    # When falling back (no Write-AnalyzerDebug), emit Data as JSON instead of table text
+    [switch] $AsJson
+  )
+
+  begin {
+    $heuristicCmd = Get-Command Write-HeuristicDebug -ErrorAction SilentlyContinue
+    $analyzerCmd = Get-Command Write-AnalyzerDebug -ErrorAction SilentlyContinue
+    $supportsData = $false
+    if ($analyzerCmd) {
+      try { $supportsData = $analyzerCmd.Parameters.ContainsKey('Data') } catch { $supportsData = $false }
     }
-    process {
-      $msg = if ($PSBoundParameters.ContainsKey('Message') -and $null -ne $Message) {
-        [string]$Message
-      } elseif ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
-        # If no explicit message, derive a compact one from Data
-        try { ($Data | ConvertTo-Json -Depth 3 -Compress) } catch { ($Data | Out-String).Trim() }
-      } else {
-        ''
-      }
+  }
 
-      if ($analyzerCmd) {
-        # Prefer centralized analyzer logger
-        $splat = @{ Area = $Area; Message = $msg }
-        if ($supportsData -and $PSBoundParameters.ContainsKey('Data')) { $splat.Data = $Data }
-        & $analyzerCmd @splat
-        return
-      }
+  process {
+    $msg = if ($PSBoundParameters.ContainsKey('Message') -and $null -ne $Message) {
+      [string]$Message
+    } elseif ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
+      # If no explicit message, derive a compact one from Data
+      try { ($Data | ConvertTo-Json -Depth 3 -Compress) } catch { ($Data | Out-String).Trim() }
+    } else {
+      ''
+    }
 
-      # Fallback: Write-Verbose lines
-      if ($msg) { Write-Verbose ("[${Area}] {0}" -f $msg) }
-      if ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
-        try {
-          if ($AsJson) {
-            Write-Verbose ("[${Area}] DATA: {0}" -f ($Data | ConvertTo-Json -Depth 3 -Compress))
-          } else {
-            Write-Verbose ("[${Area}] DATA:`n{0}" -f (($Data | Out-String).Trim()))
-          }
-        } catch {
-          Write-Verbose ("[${Area}] DATA: {0}" -f ($Data.ToString()))
+    if ($heuristicCmd) {
+      $arguments = @{ Source = $Area; Message = $msg }
+      if ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) { $arguments.Data = $Data }
+      & $heuristicCmd @arguments
+      return
+    }
+
+    if ($analyzerCmd) {
+      # Prefer centralized analyzer logger
+      $splat = @{ Area = $Area; Message = $msg }
+      if ($supportsData -and $PSBoundParameters.ContainsKey('Data')) { $splat.Data = $Data }
+      & $analyzerCmd @splat
+      return
+    }
+
+    # Fallback: Write-Verbose lines
+    if ($msg) { Write-Verbose ("[{0}] {1}" -f $Area, $msg) }
+    if ($PSBoundParameters.ContainsKey('Data') -and $null -ne $Data) {
+      try {
+        if ($AsJson) {
+          Write-Verbose ("[{0}] DATA: {1}" -f $Area, ($Data | ConvertTo-Json -Depth 3 -Compress))
+        } else {
+          Write-Verbose ("[{0}] DATA:`n{1}" -f $Area, (($Data | Out-String).Trim()))
         }
+      } catch {
+        Write-Verbose ("[{0}] DATA: {1}" -f $Area, ($Data.ToString()))
       }
     }
+  }
+}
+
+function Get-DhcpCollectorPayload {
+  param(
+    [Parameter(Mandatory)]
+    [string]$InputFolder,
+
+    [Parameter(Mandatory)]
+    [string]$FileName
+  )
+
+  $path = Join-Path -Path $InputFolder -ChildPath $FileName
+  if (-not (Test-Path -Path $path)) { return $null }
+
+  try {
+    $text = Get-Content -Path $path -Raw -ErrorAction Stop
+    $json = $text | ConvertFrom-Json -ErrorAction Stop
+    return $json.Payload
+  } catch {
+    return [pscustomobject]@{ Error = $_.Exception.Message; File = $path }
+  }
+}
+
+function ConvertFrom-Iso8601 {
+  param([string]$Text)
+
+  if (-not $Text) { return $null }
+
+  $trimmed = $Text.Trim()
+  if (-not $trimmed) { return $null }
+
+  $result = [datetime]::MinValue
+  if ([datetime]::TryParse($trimmed, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeLocal, [ref]$result)) {
+    return $result
+  }
+
+  try {
+    return [datetime]::Parse($trimmed)
+  } catch {
+    return $null
+  }
+}
+
+function Ensure-Array {
+  param($Value)
+
+  if ($null -eq $Value) { return @() }
+  if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+    $out = @()
+    foreach ($item in $Value) { if ($null -ne $item) { $out += $item } }
+    return $out
+  }
+  return @($Value)
+}
+
+function Get-AdapterIdentity {
+  param($Adapter)
+
+  if ($null -eq $Adapter) { return 'Unknown adapter' }
+
+  $parts = @()
+  if ($Adapter.Description) { $parts += [string]$Adapter.Description }
+  elseif ($Adapter.Caption) { $parts += [string]$Adapter.Caption }
+
+  $indexValue = $null
+  if ($Adapter.PSObject.Properties['InterfaceIndex'] -and $null -ne $Adapter.InterfaceIndex) {
+    $indexValue = $Adapter.InterfaceIndex
+  } elseif ($Adapter.PSObject.Properties['Index'] -and $null -ne $Adapter.Index) {
+    $indexValue = $Adapter.Index
+  }
+  if ($null -ne $indexValue) {
+    $parts += "Index $indexValue"
+  }
+
+  if ($Adapter.MACAddress) { $parts += "MAC $($Adapter.MACAddress)" }
+
+  if (-not $parts) { return 'Unknown adapter' }
+  return ($parts -join ' | ')
+}
+
+function Get-AdapterIpv4Addresses {
+  param($Adapter)
+
+  $addresses = @()
+  $raw = $null
+  if ($Adapter.PSObject.Properties['IPAddress']) { $raw = $Adapter.IPAddress }
+  if (-not $raw) { return @() }
+
+  foreach ($value in (Ensure-Array $raw)) {
+    if ($value -match '^\s*$') { continue }
+    $candidate = $value.Trim()
+    if ($candidate -match '^\d+\.\d+\.\d+\.\d+$') {
+      $addresses += $candidate
+    }
+  }
+
+  return $addresses
+}
+
+function Test-IsPrivateIPv4 {
+  param([string]$Address)
+
+  if (-not $Address) { return $false }
+
+  if ($Address -match '^10\.') { return $true }
+  if ($Address -match '^192\.168\.') { return $true }
+  if ($Address -match '^172\.(1[6-9]|2[0-9]|3[0-1])\.') { return $true }
+  return $false
+}
+
+function Test-IsApipaIPv4 {
+  param([string]$Address)
+
+  if (-not $Address) { return $false }
+  return $Address -match '^169\.254\.'
+}
+
+function Format-StringList {
+  param($Values)
+
+  $array = Ensure-Array $Values
+  $clean = $array | Where-Object { $_ -and $_.Trim() }
+  if (-not $clean) { return '' }
+
+  $trimmedValues = [System.Collections.Generic.List[string]]::new()
+  foreach ($value in $clean) {
+    $null = $trimmedValues.Add($value.Trim())
+  }
+
+  return ($trimmedValues -join ', ')
+}
+
+function New-DhcpFinding {
+  param(
+    [string]$Check,
+    [string]$Severity,
+    [string]$Message,
+    [hashtable]$Evidence
+  )
+
+  return [pscustomobject]@{
+    Category    = 'Network'
+    Subcategory = 'DHCP'
+    Check       = $Check
+    Severity    = $Severity
+    Message     = $Message
+    Evidence    = $Evidence
   }
 }
 

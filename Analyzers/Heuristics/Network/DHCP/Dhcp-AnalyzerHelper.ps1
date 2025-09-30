@@ -3,8 +3,8 @@
     Ensures DHCP analyzer dependencies are loaded.
 .DESCRIPTION
     Walks up from the DHCP analyzer directory to locate Modules/Common.psm1 and imports
-    it if it is not already available. Afterwards, the shared DHCP analyzer helpers are
-    dot-sourced so that analyzer scripts can assume the environment is ready.
+    it if it is not already available so DHCP-specific helper functions exposed by the
+    common module are ready for use.
 #>
 
 function Import-DhcpAnalyzerDependencies {
@@ -31,12 +31,9 @@ function Import-DhcpAnalyzerDependencies {
         }
     }
 
-    if (-not $commonModuleLoaded -and -not (Get-Command -Name 'Ensure-Array' -ErrorAction SilentlyContinue)) {
+    if (-not $commonModuleLoaded -and -not (Get-Command -Name 'Get-DhcpCollectorPayload' -ErrorAction SilentlyContinue)) {
         throw "Unable to locate Modules/Common.psm1 relative to '$ScriptRoot'."
     }
-
-    $sharedScript = Join-Path -Path $ScriptRoot -ChildPath 'Dhcp-AnalyzerCommon.ps1'
-    . $sharedScript
 }
 
 Import-DhcpAnalyzerDependencies -ScriptRoot $PSScriptRoot
