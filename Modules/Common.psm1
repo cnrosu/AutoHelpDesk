@@ -674,8 +674,6 @@ function New-IssueCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
-  $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
-
   $bodyParts = @()
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
@@ -687,6 +685,15 @@ function New-IssueCardHtml {
     $evidenceHtml = Encode-Html $Entry.Evidence
     $bodyParts += "<pre class='report-pre'>$evidenceHtml</pre>"
   }
+
+  $badgeFragment = "<span class='report-badge report-badge--$cardClass'>$badgeHtml</span>"
+  $summaryFragment = "<span class='report-card__summary-text'>$summaryText</span>"
+
+  if ($bodyParts.Count -eq 0) {
+    return "<div class='report-card report-card--$cardClass report-card--static'>$badgeFragment$summaryFragment</div>"
+  }
+
+  $cardHtml = "<details class='report-card report-card--$cardClass'><summary>$badgeFragment$summaryFragment</summary>"
 
   if ($bodyParts.Count -gt 0) {
     $cardHtml += "<div class='report-card__body'>$($bodyParts -join '')</div>"
