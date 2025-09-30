@@ -495,6 +495,32 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
+        $hasDhcpIssues = $false
+        if ($CategoryResult -and $CategoryResult.PSObject.Properties['Issues'] -and $CategoryResult.Issues) {
+            foreach ($issue in $CategoryResult.Issues) {
+                if ($hasDhcpIssues -or -not $issue) { continue }
+
+                $subcategory = $null
+                if ($issue.PSObject.Properties['Subcategory'] -and $issue.Subcategory) {
+                    $subcategory = [string]$issue.Subcategory
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($subcategory)) {
+                    if ($subcategory -ieq 'DHCP') { $hasDhcpIssues = $true }
+                    continue
+                }
+
+                $title = $null
+                if ($issue.PSObject.Properties['Title'] -and $issue.Title) {
+                    $title = [string]$issue.Title
+                }
+
+                if ($title -and $title -match 'DHCP') { $hasDhcpIssues = $true }
+            }
+        }
+
+        if ($hasDhcpIssues) { return }
+
         $eligibleArtifactBases = [System.Collections.Generic.List[object]]::new()
         foreach ($analyzer in $eligibleAnalyzers) {
             $null = $eligibleArtifactBases.Add($analyzer.ArtifactBase)
