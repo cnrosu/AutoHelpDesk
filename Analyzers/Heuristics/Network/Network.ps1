@@ -374,6 +374,62 @@ function ConvertTo-KebabCase {
     return $s
 }
 
+function Get-DhcpAnalyzerDisplayName {
+    param(
+        $Analyzer
+    )
+
+    if (-not $Analyzer) { return 'DHCP check' }
+
+    $scriptInfo = if ($Analyzer.PSObject.Properties['Script']) { $Analyzer.Script } else { $null }
+    $scriptName = $null
+
+    if ($scriptInfo) {
+        if ($scriptInfo.PSObject -and $scriptInfo.PSObject.Properties['Name']) {
+            $scriptName = [string]$scriptInfo.Name
+        } else {
+            try {
+                $scriptName = [System.IO.Path]::GetFileName($scriptInfo)
+            } catch {
+                $scriptName = [string]$scriptInfo
+            }
+        }
+    }
+
+    if (-not $scriptName) { return 'DHCP check' }
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($scriptName)
+    if ($baseName.StartsWith('Analyze-')) {
+        $baseName = $baseName.Substring(8)
+    }
+
+    if (-not $baseName) { return 'DHCP check' }
+
+    $kebab = ConvertTo-KebabCase $baseName
+    if (-not $kebab) { $kebab = $baseName }
+
+    $rawParts = $kebab -split '-'
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($part in $rawParts) {
+        if (-not $part) { continue }
+
+        $upper = $part.ToUpperInvariant()
+        switch ($upper) {
+            'DHCP' { $parts.Add('DHCP') | Out-Null; continue }
+            'APIPA' { $parts.Add('APIPA') | Out-Null; continue }
+        }
+
+        $text = $part.Substring(0,1).ToUpperInvariant()
+        if ($part.Length -gt 1) {
+            $text += $part.Substring(1).ToLowerInvariant()
+        }
+        $parts.Add($text) | Out-Null
+    }
+
+    if ($parts.Count -eq 0) { return 'DHCP check' }
+    return ($parts -join ' ')
+}
+
 function Invoke-DhcpAnalyzers {
     param(
         [Parameter(Mandatory)]
@@ -495,17 +551,20 @@ function Invoke-DhcpAnalyzers {
             }
         }
     } else {
-        $eligibleArtifactBases = [System.Collections.Generic.List[object]]::new()
         foreach ($analyzer in $eligibleAnalyzers) {
-            $null = $eligibleArtifactBases.Add($analyzer.ArtifactBase)
-        }
+            $checkName = Get-DhcpAnalyzerDisplayName -Analyzer $analyzer
+            $evidence = [ordered]@{
+                Check    = $checkName
+                Artifact = "$($analyzer.ArtifactBase).json"
+                Folder   = $InputFolder
+            }
 
-        $evidence = [ordered]@{
-            Checks = $eligibleArtifactBases
-            Folder = $inputFolder
-        }
+            if ($analyzer.Script -and $analyzer.Script.PSObject -and $analyzer.Script.PSObject.Properties['FullName']) {
+                $evidence['Script'] = $analyzer.Script.FullName
+            }
 
-        Add-CategoryNormal -CategoryResult $CategoryResult -Title ("DHCP diagnostics healthy ({0} checks)" -f $eligibleAnalyzers.Count) -Evidence $evidence -Subcategory 'DHCP'
+            Add-CategoryNormal -CategoryResult $CategoryResult -Title ("{0} check healthy" -f $checkName) -Evidence $evidence -Subcategory 'DHCP'
+        }
     }
 }
 
