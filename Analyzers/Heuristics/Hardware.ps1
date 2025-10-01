@@ -264,6 +264,254 @@ function Normalize-DriverErrorControl {
     return 'other'
 }
 
+function ConvertTo-NullableBool {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [bool]) { return [bool]$Value }
+
+    if ($Value -is [int]) {
+        if ($Value -eq 1) { return $true }
+        if ($Value -eq 0) { return $false }
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+    $normalized = $text.Trim().ToLowerInvariant()
+    switch ($normalized) {
+        'true'     { return $true }
+        'false'    { return $false }
+        '1'        { return $true }
+        '0'        { return $false }
+        'yes'      { return $true }
+        'no'       { return $false }
+        'enabled'  { return $true }
+        'disabled' { return $false }
+        default    { return $null }
+    }
+}
+
+function Get-HardwareDriverFailureEvents {
+    param($Context)
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
+    if (-not $artifact) { return @() }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return @() }
+
+    if (-not ($payload.PSObject.Properties['System'])) { return @() }
+    $systemNode = $payload.System
+    if (-not $systemNode) { return @() }
+    if ($systemNode.PSObject.Properties['Error'] -and $systemNode.Error) { return @() }
+
+    $items = @()
+    if ($systemNode -is [System.Collections.IEnumerable] -and -not ($systemNode -is [string])) {
+        $items = @($systemNode)
+    } else {
+        $items = @($systemNode)
+    }
+
+    $events = New-Object System.Collections.Generic.List[object]
+    foreach ($item in $items) {
+        if (-not $item) { continue }
+        if (-not ($item.PSObject.Properties['Id'])) { continue }
+        $id = $item.Id
+        if ($null -eq $id) { continue }
+        try { $idValue = [int]$id } catch { continue }
+        if ($idValue -in 7000, 7001, 7026) {
+            $events.Add($item) | Out-Null
+        }
+    }
+
+    return $events.ToArray()
+}
+
+function Test-HardwareEventMatchesDriver {
+    param(
+        $Event,
+        [string[]]$CandidateNames
+    )
+
+    if (-not $Event -or -not $CandidateNames -or $CandidateNames.Count -eq 0) { return $false }
+
+    $message = $null
+    if ($Event.PSObject.Properties['Message']) {
+        $message = [string]$Event.Message
+    }
+    if (-not $message) { return $false }
+
+    foreach ($name in $CandidateNames) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $pattern = [regex]::Escape($name.Trim())
+        if (-not $pattern) { continue }
+        if ([regex]::IsMatch($message, "(?i)(^|[^A-Za-z0-9_])$pattern([^A-Za-z0-9_]|$)")) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function ConvertTo-DriverEventEvidence {
+    param($Event)
+
+    if (-not $Event) { return $null }
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    if ($Event.PSObject.Properties['TimeCreated'] -and $Event.TimeCreated) {
+        $parts.Add(("Time: {0}" -f $Event.TimeCreated)) | Out-Null
+    }
+    if ($Event.PSObject.Properties['Id'] -and $Event.Id -ne $null) {
+        $parts.Add(("Event ID: {0}" -f $Event.Id)) | Out-Null
+    }
+    if ($Event.PSObject.Properties['ProviderName'] -and $Event.ProviderName) {
+        $parts.Add(("Source: {0}" -f $Event.ProviderName)) | Out-Null
+    }
+    if ($Event.PSObject.Properties['Message'] -and $Event.Message) {
+        $message = [string]$Event.Message
+        if ($message) {
+            $normalized = ($message -replace '\r?\n', ' ')
+            if ($normalized.Length -gt 220) {
+                $normalized = $normalized.Substring(0, 220) + '…'
+            }
+            $parts.Add(("Message: {0}" -f $normalized)) | Out-Null
+        }
+    }
+
+    if ($parts.Count -eq 0) { return $null }
+    return ($parts.ToArray() -join '; ')
+}
+
+function Get-HardwareDefenderStatus {
+    param($Context)
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'defender'
+    if (-not $artifact) { return $null }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return $null }
+
+    if (-not ($payload.PSObject.Properties['Status'])) { return $null }
+    $status = $payload.Status
+    if (-not $status) { return $null }
+    if ($status.PSObject.Properties['Error'] -and $status.Error) { return $null }
+
+    return [pscustomobject]@{
+        AMServiceEnabled          = ConvertTo-NullableBool $status.AMServiceEnabled
+        AntivirusEnabled          = ConvertTo-NullableBool $status.AntivirusEnabled
+        RealTimeProtectionEnabled = ConvertTo-NullableBool $status.RealTimeProtectionEnabled
+    }
+}
+
+function Get-HardwareDefenderActiveState {
+    param($Status)
+
+    if (-not $Status) { return $null }
+
+    $values = New-Object System.Collections.Generic.List[bool]
+    foreach ($property in @('AMServiceEnabled','AntivirusEnabled','RealTimeProtectionEnabled')) {
+        if (-not $Status.PSObject.Properties[$property]) { continue }
+        $value = $Status.$property
+        if ($null -eq $value) { continue }
+        try {
+            $boolValue = [bool]$value
+            if ($boolValue -eq $true) {
+                $values.Add($true) | Out-Null
+            } elseif ($boolValue -eq $false) {
+                $values.Add($false) | Out-Null
+            }
+        } catch {
+        }
+    }
+
+    if ($values.Count -eq 0) { return $null }
+    if ($values.Contains($true)) { return $true }
+    if ($values.Contains($false) -and -not $values.Contains($true)) { return $false }
+    return $null
+}
+
+function Get-DriverStartupAssessment {
+    param(
+        [pscustomobject]$DriverInfo,
+        [object[]]$FailureEvents,
+        [hashtable]$DriverLookup,
+        $DefenderStatus
+    )
+
+    $result = [ordered]@{
+        ShouldReport = $false
+        Severity     = $null
+        Evidence     = @()
+        Reason       = $null
+    }
+
+    if (-not $DriverInfo) { return [pscustomobject]$result }
+
+    $startMode = $DriverInfo.StartModeNormalized
+    $baseSeverity = if ($startMode -in @('boot','system')) { 'high' } else { 'medium' }
+    if ($DriverInfo.ErrorControlNormalized -eq 'critical') { $baseSeverity = 'critical' }
+
+    $candidateNames = New-Object System.Collections.Generic.List[string]
+    if ($DriverInfo.ModuleName) { $candidateNames.Add([string]$DriverInfo.ModuleName) | Out-Null }
+    if ($DriverInfo.Label -and $DriverInfo.Label -ne 'Unknown driver') { $candidateNames.Add([string]$DriverInfo.Label) | Out-Null }
+
+    $matchedEvents = New-Object System.Collections.Generic.List[object]
+    foreach ($event in $FailureEvents) {
+        if (Test-HardwareEventMatchesDriver -Event $event -CandidateNames $candidateNames.ToArray()) {
+            $matchedEvents.Add($event) | Out-Null
+        }
+    }
+
+    if ($matchedEvents.Count -gt 0) {
+        $evidenceLines = New-Object System.Collections.Generic.List[string]
+        foreach ($event in ($matchedEvents.ToArray() | Select-Object -First 3)) {
+            $line = ConvertTo-DriverEventEvidence -Event $event
+            if ($line) { $evidenceLines.Add($line) | Out-Null }
+        }
+
+        $result.ShouldReport = $true
+        $result.Severity = $baseSeverity
+        $result.Evidence = $evidenceLines.ToArray()
+        $result.Reason = 'Service Control Manager failure event detected for driver'
+        return [pscustomobject]$result
+    }
+
+    if ($startMode -in @('boot','system')) {
+        $moduleKey = $null
+        if ($DriverInfo.ModuleName) { $moduleKey = $DriverInfo.ModuleName.ToLowerInvariant() }
+
+        $reason = 'No Service Control Manager failure events detected for boot/system driver'
+        if ($moduleKey -eq 'wdboot') {
+            $wdFilterRunning = $false
+            if ($DriverLookup -and $DriverLookup.ContainsKey('wdfilter')) {
+                $wdFilterInfo = $DriverLookup['wdfilter']
+                if ($wdFilterInfo -and $wdFilterInfo.StateNormalized -eq 'running') { $wdFilterRunning = $true }
+            }
+
+            $defenderActive = Get-HardwareDefenderActiveState -Status $DefenderStatus
+            if ($wdFilterRunning -and ($defenderActive -eq $true -or $defenderActive -eq $null)) {
+                $reason = 'WdBoot expected to stop after handing off to WdFilter when Defender is active.'
+            } elseif (-not $wdFilterRunning -and $defenderActive -eq $false) {
+                $reason = 'WdBoot inactive with Defender disabled; no failure evidence present.'
+            } else {
+                $reason = 'WdBoot reported stopped but no corroborating failure signals were detected.'
+            }
+        } elseif ($moduleKey -in @('dam','hwpolicy')) {
+            $reason = 'Common boot/system driver stops post-boot without indicating a fault.'
+        }
+
+        $result.Reason = $reason
+        return [pscustomobject]$result
+    }
+
+    $result.ShouldReport = $true
+    $result.Severity = $baseSeverity
+    $result.Reason = 'Automatic-start driver stopped without corroborating events.'
+    return [pscustomobject]$result
+}
+
 function Invoke-HardwareHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -330,21 +578,75 @@ function Invoke-HardwareHeuristics {
         return $result
     }
 
-    $issueCount = 0
+    $failureEvents = Get-HardwareDriverFailureEvents -Context $Context
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved Service Control Manager failure events for driver analysis' -Data ([ordered]@{
+        FailureEventCount = if ($failureEvents) { $failureEvents.Count } else { 0 }
+    })
+
+    $defenderStatus = Get-HardwareDefenderStatus -Context $Context
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved Defender status for driver heuristics' -Data ([ordered]@{
+        HasStatus               = [bool]$defenderStatus
+        AMServiceEnabled        = if ($defenderStatus) { $defenderStatus.AMServiceEnabled } else { $null }
+        AntivirusEnabled        = if ($defenderStatus) { $defenderStatus.AntivirusEnabled } else { $null }
+        RealTimeProtection      = if ($defenderStatus) { $defenderStatus.RealTimeProtectionEnabled } else { $null }
+    })
+
+    $driverInfos = New-Object System.Collections.Generic.List[pscustomobject]
     foreach ($entry in $entries) {
         if (-not $entry) { continue }
 
         $label = Get-DriverLabel -Entry $entry
         $statusRaw = Get-DriverPropertyValue -Entry $entry -Names @('Status')
         $statusNormalized = Normalize-DriverStatus -Value $statusRaw
+        $stateRaw = Get-DriverPropertyValue -Entry $entry -Names @('State')
+        $startModeRaw = Get-DriverPropertyValue -Entry $entry -Names @('Start Mode','StartMode')
+        $stateNormalized = Normalize-DriverState -Value $stateRaw
+        $startModeNormalized = Normalize-DriverStartMode -Value $startModeRaw
+        $errorControlRaw = Get-DriverPropertyValue -Entry $entry -Names @('Error Control','ErrorControl')
+        $errorControlNormalized = Normalize-DriverErrorControl -Value $errorControlRaw
+        $moduleName = Get-DriverPropertyValue -Entry $entry -Names @('Module Name','Driver Name','Name')
+
+        $driverInfos.Add([pscustomobject]@{
+            Entry                  = $entry
+            Label                  = $label
+            StatusRaw              = $statusRaw
+            StatusNormalized       = $statusNormalized
+            StateRaw               = $stateRaw
+            StateNormalized        = $stateNormalized
+            StartModeRaw           = $startModeRaw
+            StartModeNormalized    = $startModeNormalized
+            ErrorControlRaw        = $errorControlRaw
+            ErrorControlNormalized = $errorControlNormalized
+            ModuleName             = $moduleName
+        }) | Out-Null
+    }
+
+    $driverLookup = @{}
+    foreach ($info in $driverInfos) {
+        if (-not $info.ModuleName) { continue }
+        $key = $info.ModuleName.ToLowerInvariant()
+        if (-not $key) { continue }
+        if (-not $driverLookup.ContainsKey($key)) {
+            $driverLookup[$key] = $info
+        }
+    }
+
+    $issueCount = 0
+    foreach ($info in $driverInfos) {
+        if (-not $info) { continue }
+
+        $entry = $info.Entry
+        $label = $info.Label
+
+        $statusNormalized = $info.StatusNormalized
         if ($statusNormalized -and $statusNormalized -ne 'ok' -and $statusNormalized -ne 'unknown') {
             $severity = switch ($statusNormalized) {
                 'error'    { 'high' }
                 'degraded' { 'medium' }
                 default    { 'info' }
             }
-            $title = if ($statusRaw) {
-                "Driver status '{0}' reported for {1}, so the device may malfunction." -f $statusRaw, $label
+            $title = if ($info.StatusRaw) {
+                "Driver status '{0}' reported for {1}, so the device may malfunction." -f $info.StatusRaw, $label
             } else {
                 "Driver status indicates an issue for {0}, so the device may malfunction." -f $label
             }
@@ -352,26 +654,48 @@ function Invoke-HardwareHeuristics {
             $issueCount++
         }
 
-        $stateRaw = Get-DriverPropertyValue -Entry $entry -Names @('State')
-        $startModeRaw = Get-DriverPropertyValue -Entry $entry -Names @('Start Mode','StartMode')
-        $stateNormalized = Normalize-DriverState -Value $stateRaw
-        $startModeNormalized = Normalize-DriverStartMode -Value $startModeRaw
-        if ($startModeNormalized -in @('boot','system','auto') -and $stateNormalized -ne 'running' -and $stateNormalized -ne 'pending') {
-            $severity = if ($startModeNormalized -in @('boot','system')) { 'high' } else { 'medium' }
-            $errorControlRaw = Get-DriverPropertyValue -Entry $entry -Names @('Error Control','ErrorControl')
-            $errorControlNormalized = Normalize-DriverErrorControl -Value $errorControlRaw
-            if ($errorControlNormalized -eq 'critical') { $severity = 'critical' }
+        if ($info.StartModeNormalized -in @('boot','system','auto') -and $info.StateNormalized -ne 'running' -and $info.StateNormalized -ne 'pending') {
+            $assessment = Get-DriverStartupAssessment -DriverInfo $info -FailureEvents $failureEvents -DriverLookup $driverLookup -DefenderStatus $defenderStatus
+            Write-HeuristicDebug -Source 'Hardware' -Message 'Driver startup assessment' -Data ([ordered]@{
+                Driver        = if ($info.ModuleName) { $info.ModuleName } else { $label }
+                StartMode     = $info.StartModeNormalized
+                ShouldReport  = $assessment.ShouldReport
+                Reason        = $assessment.Reason
+                EvidenceCount = if ($assessment.Evidence) { (@($assessment.Evidence)).Count } else { 0 }
+                Severity      = if ($assessment.Severity) { $assessment.Severity } else { '(default)' }
+            })
 
-            $title = if ($stateRaw -and $startModeRaw) {
-                "Driver {0} is {1} despite start mode {2}, so hardware may not initialize." -f $label, $stateRaw, $startModeRaw
-            } elseif ($startModeRaw) {
-                "Driver {0} is not running despite start mode {1}, so hardware may not initialize." -f $label, $startModeRaw
-            } else {
-                "Driver {0} is not running despite an automatic start mode, so hardware may not initialize." -f $label
+            if ($assessment.ShouldReport) {
+                $severity = if ($assessment.Severity) {
+                    $assessment.Severity
+                } elseif ($info.StartModeNormalized -in @('boot','system')) {
+                    'high'
+                } else {
+                    'medium'
+                }
+
+                $title = if ($info.StateRaw -and $info.StartModeRaw) {
+                    "Driver {0} is {1} despite start mode {2}, so hardware may not initialize." -f $label, $info.StateRaw, $info.StartModeRaw
+                } elseif ($info.StartModeRaw) {
+                    "Driver {0} is not running despite start mode {1}, so hardware may not initialize." -f $label, $info.StartModeRaw
+                } else {
+                    "Driver {0} is not running despite an automatic start mode, so hardware may not initialize." -f $label
+                }
+
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+                if ($assessment.Evidence) {
+                    foreach ($line in @($assessment.Evidence)) {
+                        if (-not $line) { continue }
+                        $evidenceLines.Add([string]$line) | Out-Null
+                    }
+                }
+                $driverEvidence = Get-DriverEvidence -Entry $entry
+                if ($driverEvidence) { $evidenceLines.Add($driverEvidence) | Out-Null }
+                $evidenceText = if ($evidenceLines.Count -gt 0) { ($evidenceLines.ToArray() -join "`n") } else { $null }
+
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidenceText -Subcategory 'Device Manager'
+                $issueCount++
             }
-
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence (Get-DriverEvidence -Entry $entry) -Subcategory 'Device Manager'
-            $issueCount++
         }
     }
 
