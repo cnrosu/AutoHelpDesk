@@ -830,13 +830,16 @@ function ConvertTo-RawCard {
     }
 
     $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
-    $metaParts = [System.Collections.Generic.List[string]]::new()
-    if ($collectedAt) { $metaParts.Add("Collected: $collectedAt") }
-    if ($path) { $metaParts.Add("File: $path") }
+    $metaBuilder = [System.Text.StringBuilder]::new()
+    if ($collectedAt) { $null = $metaBuilder.Append("Collected: $collectedAt") }
+    if ($path) {
+        if ($metaBuilder.Length -gt 0) { $null = $metaBuilder.Append(' • ') }
+        $null = $metaBuilder.Append("File: $path")
+    }
 
     $metaHtml = ''
-    if ($metaParts.Count -gt 0) {
-        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaParts.ToArray() -join ' • '))</small></div>"
+    if ($metaBuilder.Length -gt 0) {
+        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
     }
 
     return "<div class='report-card'><b>$(Encode-Html $Key)</b>$metaHtml<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre></div>"
@@ -849,28 +852,29 @@ function Build-DebugSection {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $builder = [System.Text.StringBuilder]::new()
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) {
-            $lines.Add("${key}: (no entries)")
+            $null = $builder.AppendLine("${key}: (no entries)")
             continue
         }
 
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             $count = $entries.Count
             $firstPath = $entries[0].Path
-            $lines.Add("${key}: $count file(s); first = $firstPath")
+            $null = $builder.AppendLine("${key}: $count file(s); first = $firstPath")
         } else {
-            $lines.Add("${key}: $($entries.Path)")
+            $null = $builder.AppendLine("${key}: $($entries.Path)")
         }
     }
 
-    if ($lines.Count -eq 0) {
+    if ($builder.Length -eq 0) {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($lines.ToArray() -join [Environment]::NewLine))</pre></div>"
+    $linesText = $builder.ToString().TrimEnd(@([char]13, [char]10))
+    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($linesText))</pre></div>"
 }
 
 function Build-RawSection {
@@ -910,15 +914,15 @@ function Build-RawSection {
         return "<div class='report-card'><i>No raw payloads available.</i></div>"
     }
 
-    $cards = New-Object System.Collections.Generic.List[string]
-    $cards.Add("<div class='report-card'><i>Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters.</i></div>") | Out-Null
+    $cardsBuilder = [System.Text.StringBuilder]::new()
+    $null = $cardsBuilder.Append("<div class='report-card'><i>Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters.</i></div>")
 
     $processed = 0
     foreach ($item in $items) {
         if ($processed -ge $MaxArtifacts) { break }
         $card = ConvertTo-RawCard -Key $item.Key -Entry $item.Entry -MaxLines $MaxLines -MaxChars $MaxChars
         if ($card) {
-            $cards.Add($card) | Out-Null
+            $null = $cardsBuilder.Append($card)
             $processed++
         }
     }
@@ -930,11 +934,11 @@ function Build-RawSection {
 
     if ($items.Count -gt $processed) {
         $remaining = $items.Count - $processed
-        $cards.Add("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>") | Out-Null
+        $null = $cardsBuilder.Append("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>")
     }
 
     Write-HtmlDebug -Stage 'RawSection' -Message 'Raw artifact section built.' -Data @{ Rendered = $processed; Remaining = [Math]::Max($items.Count - $processed, 0) }
-    return ($cards -join '')
+    return $cardsBuilder.ToString()
 }
 
 function New-AnalyzerHtml {
@@ -1051,19 +1055,15 @@ function New-AnalyzerHtml {
         $failedContentBuilder = [System.Text.StringBuilder]::new()
         $null = $failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
         foreach ($entry in $failedReports) {
-            $detailParts = [System.Collections.Generic.List[string]]::new()
-            if ($entry.Path) { $detailParts.Add("File: $($entry.Path)") }
-            if ($entry.Details) { $detailParts.Add($entry.Details) }
-            $detailHtml = if ($detailParts.Count -gt 0) {
-                $encodedDetails = [System.Collections.Generic.List[string]]::new()
-                foreach ($detail in $detailParts) {
-                    $null = $encodedDetails.Add((Encode-Html $detail))
-                }
-
-                ($encodedDetails.ToArray() -join '<br>')
-            } else {
-                Encode-Html ''
+            $detailBuilder = [System.Text.StringBuilder]::new()
+            if ($entry.Path) {
+                $null = $detailBuilder.Append((Encode-Html "File: $($entry.Path)"))
             }
+            if ($entry.Details) {
+                if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('<br>') }
+                $null = $detailBuilder.Append((Encode-Html $entry.Details))
+            }
+            $detailHtml = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { Encode-Html '' }
             $null = $failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
         }
         $null = $failedContentBuilder.Append("</table></div>")
@@ -1074,7 +1074,12 @@ function New-AnalyzerHtml {
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tail = '</body></html>'
 
-    $html = ($head + $summaryHtml + $goodHtml + $issuesHtml + $failedHtml + $rawHtml + $debugHtml + $tail)
+    $htmlBuilder = [System.Text.StringBuilder]::new()
+    foreach ($segment in @($head, $summaryHtml, $goodHtml, $issuesHtml, $failedHtml, $rawHtml, $debugHtml, $tail)) {
+        if ($segment) { $null = $htmlBuilder.Append($segment) }
+    }
+
+    $html = $htmlBuilder.ToString()
     Write-HtmlDebug -Stage 'Composer' -Message 'HTML composition complete.' -Data @{ Length = $html.Length }
     return $html
 }
