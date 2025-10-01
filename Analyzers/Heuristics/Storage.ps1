@@ -254,7 +254,29 @@ function Invoke-StorageHeuristics {
                 $sizeGb = [math]::Round($size / 1GB,2)
                 $freeGb = [math]::Round($free / 1GB,2)
                 $freePct = if ($size -gt 0) { ($free / $size) * 100 } else { 0 }
-                $label = if ($volume.DriveLetter) { $volume.DriveLetter } elseif ($volume.FileSystemLabel) { $volume.FileSystemLabel } else { 'Unknown' }
+
+                $hasDriveLetter = $volume.PSObject.Properties['DriveLetter'] -and -not [string]::IsNullOrWhiteSpace([string]$volume.DriveLetter)
+                $rawLabel = if ($volume.FileSystemLabel) { [string]$volume.FileSystemLabel } else { '' }
+                $label = if ($hasDriveLetter) { $volume.DriveLetter } elseif ($rawLabel) { $rawLabel } else { 'Unknown' }
+
+                $shouldSkip = $false
+                if (-not $hasDriveLetter) {
+                    if ($rawLabel -match '(?i)recovery|reserved|diagnostic|tools|restore') {
+                        $shouldSkip = $true
+                    } elseif ($sizeGb -lt 1) {
+                        $shouldSkip = $true
+                    }
+                }
+
+                if ($shouldSkip) {
+                    Write-HeuristicDebug -Source 'Storage' -Message 'Skipping hidden volume for free space evaluation' -Data ([ordered]@{
+                        Label = if ($rawLabel) { $rawLabel } else { $label }
+                        SizeGb = $sizeGb
+                        HasDriveLetter = $hasDriveLetter
+                    })
+                    continue
+                }
+
                 $threshold = Get-VolumeThreshold -Volume $volume -SizeGB $sizeGb -Config $thresholdConfig
 
                 $details = "Free {0} GB of {1} GB ({2}% free); profile {3}" -f $freeGb, $sizeGb, ([math]::Round($freePct,1)), $threshold.Description
@@ -264,7 +286,7 @@ function Invoke-StorageHeuristics {
                 $warnPercent = $threshold.WarnPercent * 100
                 if ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                     $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space" -f $label) -Evidence $evidence -Subcategory 'Free Space'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining)" -f $label, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
                 } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                     $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
                     Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence -Subcategory 'Free Space'
