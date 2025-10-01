@@ -568,7 +568,6 @@ function Build-SummaryCardHtml {
     $osArray = $osParts.ToArray()
     $osText = if ($osArray.Length -gt 0) { ($osArray -join ' | ') } else { 'Unknown' }
 
-    $serverText = if ($Summary.IsWindowsServer -eq $true) { 'Yes' } elseif ($Summary.IsWindowsServer -eq $false) { 'No' } else { 'Unknown' }
 
     $ipv4Text = if ($Summary.IPv4Addresses -and $Summary.IPv4Addresses.Count -gt 0) { ($Summary.IPv4Addresses -join ', ') } else { 'Unknown' }
     $gatewayText = if ($Summary.Gateways -and $Summary.Gateways.Count -gt 0) { ($Summary.Gateways -join ', ') } else { 'Unknown' }
@@ -643,14 +642,16 @@ function Build-SummaryCardHtml {
     $null = $sb.AppendLine("      <small class='report-note score-section__note'>Score is heuristic. Triage Critical/High items first.</small>")
     $null = $sb.AppendLine('    </div>')
     $null = $sb.AppendLine('  </div>')
-    $null = $sb.AppendLine("  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Windows Server</td><td>$(Encode-Html $serverText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
-    $null = $sb.AppendLine("    <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
+    $null = $sb.AppendLine("  <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("    <colgroup>")
+    $null = $sb.AppendLine("      <col class='report-overview__col report-overview__col--primary-label' />")
+    $null = $sb.AppendLine("      <col class='report-overview__col report-overview__col--primary-value' />")
+    $null = $sb.AppendLine("      <col class='report-overview__col report-overview__col--secondary-label' />")
+    $null = $sb.AppendLine("      <col class='report-overview__col report-overview__col--secondary-value' />")
+    $null = $sb.AppendLine('    </colgroup>')
+    $null = $sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
+    $null = $sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
+    $null = $sb.AppendLine("    <tr><td>System</td><td>$(Encode-Html $osText)</td><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
     $null = $sb.AppendLine('  </table>')
     $null = $sb.AppendLine('</div>')
 

@@ -584,6 +584,53 @@ details.report-card[open] > summary {
   margin-top: var(--space-sm);
 }
 
+.report-table--overview {
+  margin-top: var(--space-sm);
+  table-layout: fixed;
+}
+
+.report-table--overview .report-overview__col--primary-label {
+  width: 18%;
+}
+
+.report-table--overview .report-overview__col--primary-value {
+  width: 52%;
+}
+
+.report-table--overview .report-overview__col--secondary-label {
+  width: 12%;
+}
+
+.report-table--overview .report-overview__col--secondary-value {
+  width: 18%;
+}
+
+@media (max-width: 720px) {
+  .report-table--overview {
+    table-layout: auto;
+  }
+
+  .report-table--overview tr {
+    display: grid;
+    grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);
+    gap: 0;
+  }
+
+  .report-table--overview td {
+    width: auto !important;
+    border-right-width: 1px;
+  }
+
+  .report-table--overview td:nth-child(odd) {
+    border-right-width: 0;
+  }
+
+  .report-table--overview td:nth-child(3),
+  .report-table--overview td:nth-child(4) {
+    border-top-width: 0;
+  }
+}
+
 .report-table--list {
   margin-top: var(--space-sm);
 }
