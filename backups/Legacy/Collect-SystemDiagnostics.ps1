@@ -1192,11 +1192,17 @@ if (Test-Path $printingCollectorScript) {
   }
 
   if (-not (Test-Path -LiteralPath $expectedPrintingPath)) {
-    $errorMessages = @()
+    $errorMessageBuilder = [System.Text.StringBuilder]::new()
     if ($printingErrorMessage) {
-      $errorMessages += "Collector execution failed: $printingErrorMessage"
+      [void]$errorMessageBuilder.Append("Collector execution failed: ")
+      [void]$errorMessageBuilder.AppendLine($printingErrorMessage)
     } else {
-      $errorMessages += 'Printing collector not available or produced no data.'
+      [void]$errorMessageBuilder.AppendLine('Printing collector not available or produced no data.')
+    }
+
+    $errorMessages = @()
+    if ($errorMessageBuilder.Length -gt 0) {
+      $errorMessages = @($errorMessageBuilder.ToString().TrimEnd("`r","`n"))
     }
 
     $placeholderPayload = [ordered]@{
