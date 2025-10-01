@@ -584,6 +584,29 @@ details.report-card[open] > summary {
   margin-top: var(--space-sm);
 }
 
+.report-overview__columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.report-overview__column {
+  flex: 1 1 260px;
+}
+
+.report-overview__column--primary {
+  flex-basis: 70%;
+}
+
+.report-overview__column--secondary {
+  flex-basis: 30%;
+}
+
+.report-overview__column .report-table--key-value {
+  margin-top: 0;
+}
+
 .report-table--list {
   margin-top: var(--space-sm);
 }
