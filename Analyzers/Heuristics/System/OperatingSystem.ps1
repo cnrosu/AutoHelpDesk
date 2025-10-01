@@ -29,7 +29,7 @@ function Invoke-SystemOperatingSystemChecks {
             $description = if ($build) { "{0} (build {1})" -f $caption, $build } else { [string]$caption }
             $captionLower = $caption.ToLowerInvariant()
             if ($captionLower -match 'windows\s+11') {
-                Add-CategoryNormal -CategoryResult $Result -Title ("Operating system supported: {0}" -f $description)
+                Add-CategoryNormal -CategoryResult $Result -Title ("Operating system supported: {0}" -f $description) -Subcategory 'Operating System'
             } else {
                 $unsupportedMatch = [regex]::Match($captionLower, 'windows\s+(7|8(\.1)?|10)')
                 if ($unsupportedMatch.Success) {

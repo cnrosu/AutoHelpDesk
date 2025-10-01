@@ -313,6 +313,6 @@ function Invoke-ServiceCheckAutomaticInventory {
 
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
     } else {
-        Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running'
+        Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running' -Subcategory 'Service Inventory'
     }
 }

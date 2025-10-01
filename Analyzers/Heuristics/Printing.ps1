@@ -226,7 +226,7 @@ function Invoke-PrintingHeuristics {
     }
 
     if ($printers.Count -gt 0 -and $offlinePrinters.Count -eq 0) {
-        Add-CategoryNormal -CategoryResult $result -Title ('Printers online ({0})' -f $printers.Count)
+        Add-CategoryNormal -CategoryResult $result -Title ('Printers online ({0})' -f $printers.Count) -Subcategory 'Printers'
     }
 
     return $result

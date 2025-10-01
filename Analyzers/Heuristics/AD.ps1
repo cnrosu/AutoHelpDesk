@@ -79,13 +79,13 @@ function Invoke-ADHeuristics {
 
     if (-not $domainJoined) {
         Write-HeuristicDebug -Source 'AD' -Message 'System not domain joined; marking AD as not applicable'
-        Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable'
+        Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable' -Subcategory 'Discovery'
         return $result
     }
 
     $domainName = if ($domainStatus.PSObject.Properties['Domain']) { $domainStatus.Domain } else { $null }
     if ($domainName) {
-        Add-CategoryNormal -CategoryResult $result -Title ("Domain joined: {0}" -f $domainName)
+        Add-CategoryNormal -CategoryResult $result -Title ("Domain joined: {0}" -f $domainName) -Subcategory 'Discovery'
     }
 
     $discovery = if ($adPayload) { Get-FirstPayloadProperty -Payload $adPayload -Name 'Discovery' } else { $null }
@@ -124,7 +124,7 @@ function Invoke-ADHeuristics {
             }
         }
         $dcEvidence = if ($dcNames) { ($dcNames | Sort-Object -Unique) -join ', ' } else { 'SRV queries resolved.' }
-        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence
+        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence -Subcategory 'DNS Discovery'
     } else {
         $srvErrors = $srvLookups | Where-Object { $_ -and $_.Succeeded -ne $true }
         $evidence = ($srvErrors | ForEach-Object {
@@ -209,7 +209,7 @@ function Invoke-ADHeuristics {
     }
 
     if ($reachableWithShares.Count -gt 0) {
-        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares | Sort-Object -Unique) -join ', ')
+        Add-CategoryNormal -CategoryResult $result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares | Sort-Object -Unique) -join ', ') -Subcategory 'Connectivity'
     }
 
     $testsWithoutErrors = 0
@@ -256,7 +256,7 @@ function Invoke-ADHeuristics {
             $timeSkewHigh = $true
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew.' -Evidence 'Time service not synchronized.' -Subcategory 'Time Synchronization'
         } elseif ($offset -ne $null -and [math]::Abs([double]$offset) -le 300) {
-            Add-CategoryNormal -CategoryResult $result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2))
+            Add-CategoryNormal -CategoryResult $result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
         }
     }
 
@@ -267,7 +267,7 @@ function Invoke-ADHeuristics {
             if ($scTest.Succeeded -eq $true -and $scTest.IsSecure -eq $false) {
                 $scBroken = $true
             } elseif ($scTest.Succeeded -eq $true -and $scTest.IsSecure -eq $true) {
-                Add-CategoryNormal -CategoryResult $result -Title 'GOOD SecureChannel (verified)'
+                Add-CategoryNormal -CategoryResult $result -Title 'GOOD SecureChannel (verified)' -Subcategory 'Secure Channel'
             }
         }
         if ($secureInfo.NltestScQuery) {
@@ -339,7 +339,7 @@ function Invoke-ADHeuristics {
         if ($gpResult -and $gpResult.Succeeded -eq $true) { $gpResultSuccess = $true }
 
         if ($gpResultSuccess -and $gpoEvents.Count -eq 0) {
-            Add-CategoryNormal -CategoryResult $result -Title 'GOOD GPO (processed successfully)'
+            Add-CategoryNormal -CategoryResult $result -Title 'GOOD GPO (processed successfully)' -Subcategory 'Group Policy'
         } else {
             $severity = 'medium'
             if ($gpoEvents.Count -ge 5 -and $sharesFailingHosts.Count -gt 0) { $severity = 'high' }
@@ -369,7 +369,7 @@ function Invoke-ADHeuristics {
         if ($identityPayload -and $identityPayload.DsRegCmd) {
             $text = if ($identityPayload.DsRegCmd -is [string[]]) { $identityPayload.DsRegCmd -join "`n" } else { [string]$identityPayload.DsRegCmd }
             if ($text -match 'AzureAdJoined\s*:\s*YES') {
-                Add-CategoryNormal -CategoryResult $result -Title 'Azure AD join detected'
+                Add-CategoryNormal -CategoryResult $result -Title 'Azure AD join detected' -Subcategory 'Discovery'
             }
         }
     }

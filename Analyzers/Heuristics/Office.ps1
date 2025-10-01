@@ -54,7 +54,7 @@ function Invoke-OfficeHeuristics {
             }
 
             if ($macroBlocked) {
-                Add-CategoryNormal -CategoryResult $result -Title 'Macro runtime blocked by policy'
+                Add-CategoryNormal -CategoryResult $result -Title 'Macro runtime blocked by policy' -Subcategory 'Macro Policies'
             }
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office MOTW macro blocking - no data. Confirm macro policies.' -Subcategory 'Macro Policies'
@@ -78,7 +78,7 @@ function Invoke-OfficeHeuristics {
                 $names = $largeCaches | Select-Object -ExpandProperty FullName -First 5
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Large Outlook cache files detected' -Evidence ($names -join "`n") -Subcategory 'Outlook Cache'
             } elseif ($payload.Caches.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('Outlook cache files present ({0})' -f $payload.Caches.Count)
+                Add-CategoryNormal -CategoryResult $result -Title ('Outlook cache files present ({0})' -f $payload.Caches.Count) -Subcategory 'Outlook Cache'
             }
         }
     }
@@ -98,7 +98,7 @@ function Invoke-OfficeHeuristics {
                 $names = $largeOst.Name
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Large OST files detected: {0}' -f ($names -join ', ')) -Subcategory 'Outlook Data Files'
             } elseif ($payload.OstFiles.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count)
+                Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count) -Subcategory 'Outlook Data Files'
             }
         }
     }
@@ -126,7 +126,7 @@ function Invoke-OfficeHeuristics {
                     $targets = $targetsClean
                     $targetText = $targets -join ', '
                     if ($targets -match 'autodiscover\.outlook\.com') {
-                        Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover CNAME healthy for {0}" -f $domain) -Evidence $targetText
+                        Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover CNAME healthy for {0}" -f $domain) -Evidence $targetText -Subcategory 'Autodiscover DNS'
                     } else {
                         Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Autodiscover for {0} points to {1}" -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS'
                     }
