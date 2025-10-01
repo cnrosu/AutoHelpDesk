@@ -28,23 +28,23 @@ function Get-WDACRegistry {
         'HKLM:\SOFTWARE\Microsoft\Windows Defender\SmartScreen'
     )
 
-    $result = @()
+    $result = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($path in $paths) {
         try {
             $values = Get-ItemProperty -Path $path -ErrorAction Stop | Select-Object * -ExcludeProperty PS*, CIM*, PSEdition
-            $result += [PSCustomObject]@{
+            $result.Add([PSCustomObject]@{
                 Path   = $path
                 Values = $values
-            }
+            })
         } catch {
-            $result += [PSCustomObject]@{
+            $result.Add([PSCustomObject]@{
                 Path  = $path
                 Error = $_.Exception.Message
-            }
+            })
         }
     }
 
-    return $result
+    return $result.ToArray()
 }
 
 function Invoke-Main {

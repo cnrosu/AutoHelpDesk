@@ -46,25 +46,36 @@ if (Test-Path -Path $heuristicsPath) {
 $context = New-AnalyzerContext -InputFolder $InputFolder
 Write-Verbose ("Analyzer context created with {0} artifact(s)." -f $context.Artifacts.Count)
 
-$categories = @()
-$categories += Invoke-SystemHeuristics   -Context $context
+$categoriesList = [System.Collections.Generic.List[object]]::new()
+$systemCategories = Invoke-SystemHeuristics   -Context $context
+if ($systemCategories) { foreach ($item in @($systemCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'System heuristics completed.'
-$categories += Invoke-SecurityHeuristics -Context $context
+$securityCategories = Invoke-SecurityHeuristics -Context $context
+if ($securityCategories) { foreach ($item in @($securityCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Security heuristics completed.'
-$categories += Invoke-NetworkHeuristics  -Context $context -InputFolder $InputFolder
+$networkCategories = Invoke-NetworkHeuristics  -Context $context -InputFolder $InputFolder
+if ($networkCategories) { foreach ($item in @($networkCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Network heuristics completed.'
-$categories += Invoke-ADHeuristics       -Context $context
+$adCategories = Invoke-ADHeuristics       -Context $context
+if ($adCategories) { foreach ($item in @($adCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Active Directory heuristics completed.'
-$categories += Invoke-OfficeHeuristics   -Context $context
+$officeCategories = Invoke-OfficeHeuristics   -Context $context
+if ($officeCategories) { foreach ($item in @($officeCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Office heuristics completed.'
-$categories += Invoke-StorageHeuristics  -Context $context
+$storageCategories = Invoke-StorageHeuristics  -Context $context
+if ($storageCategories) { foreach ($item in @($storageCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Storage heuristics completed.'
-$categories += Invoke-EventsHeuristics   -Context $context
+$eventsCategories = Invoke-EventsHeuristics   -Context $context
+if ($eventsCategories) { foreach ($item in @($eventsCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Events heuristics completed.'
-$categories += Invoke-ServicesHeuristics -Context $context
+$servicesCategories = Invoke-ServicesHeuristics -Context $context
+if ($servicesCategories) { foreach ($item in @($servicesCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Services heuristics completed.'
-$categories += Invoke-PrintingHeuristics -Context $context
+$printingCategories = Invoke-PrintingHeuristics -Context $context
+if ($printingCategories) { foreach ($item in @($printingCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Printing heuristics completed.'
+
+$categories = $categoriesList.ToArray()
 
 $merged = Merge-AnalyzerResults -Categories $categories
 $summary = Get-AnalyzerSummary -Context $context
@@ -98,10 +109,10 @@ $cssSources = @(
     Join-Path -Path $repoRoot -ChildPath 'styles/device-health-report.css'
 )
 
-$resolvedCss = @()
+$resolvedCss = [System.Collections.Generic.List[string]]::new()
 foreach ($source in $cssSources) {
     if (Test-Path -LiteralPath $source) {
-        $resolvedCss += (Resolve-Path -LiteralPath $source).ProviderPath
+        $resolvedCss.Add((Resolve-Path -LiteralPath $source).ProviderPath)
         Write-Verbose ("Resolved CSS source '{0}'." -f $source)
     }
 }

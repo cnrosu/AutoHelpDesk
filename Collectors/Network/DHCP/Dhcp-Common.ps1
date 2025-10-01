@@ -30,9 +30,9 @@ function Get-DhcpAdapterConfigurations {
         })
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($instance in $instances) {
-        $results += [pscustomobject]@{
+        $results.Add([pscustomobject]@{
             Description            = $instance.Description
             Caption                 = $instance.Caption
             InterfaceIndex          = $instance.InterfaceIndex
@@ -50,10 +50,10 @@ function Get-DhcpAdapterConfigurations {
             WinsSecondaryServer     = [string]$instance.WINSSecondaryServer
             ServiceName             = [string]$instance.ServiceName
             SettingID               = [string]$instance.SettingID
-        }
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Get-DhcpIpconfigAll {
@@ -84,19 +84,19 @@ function Get-DhcpClientEvents {
         })
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($event in $events) {
-        $results += [pscustomobject]@{
+        $results.Add([pscustomobject]@{
             Id           = $event.Id
             ProviderName = $event.ProviderName
             Level        = $event.LevelDisplayName
             RecordId     = $event.RecordId
             TimeCreated  = if ($event.TimeCreated) { $event.TimeCreated.ToString('o') } else { $null }
             Message      = $event.Message
-        }
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function New-DhcpBasePayload {

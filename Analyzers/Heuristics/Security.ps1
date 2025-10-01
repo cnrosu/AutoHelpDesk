@@ -11,9 +11,9 @@ function ConvertTo-List {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $items = @()
-        foreach ($item in $Value) { $items += $item }
-        return $items
+        $items = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) { $items.Add($item) }
+        return $items.ToArray()
     }
     return @($Value)
 }
@@ -21,16 +21,16 @@ function ConvertTo-List {
 function ConvertTo-IntArray {
     param($Value)
 
-    $list = @()
+    $list = [System.Collections.Generic.List[int]]::new()
     foreach ($item in (ConvertTo-List $Value)) {
         if ($null -eq $item) { continue }
         $text = $item.ToString()
         $parsed = 0
         if ([int]::TryParse($text, [ref]$parsed)) {
-            $list += $parsed
+            $list.Add($parsed)
         }
     }
-    return $list
+    return $list.ToArray()
 }
 
 function Get-ObjectPropertyString {
@@ -59,14 +59,14 @@ function Get-ObjectPropertyString {
 function Format-BitLockerVolume {
     param($Volume)
 
-    $parts = @()
-    if ($Volume.MountPoint) { $parts += ("Mount: {0}" -f $Volume.MountPoint) }
-    if ($Volume.VolumeType) { $parts += ("Type: {0}" -f $Volume.VolumeType) }
-    if ($Volume.ProtectionStatus -ne $null) { $parts += ("Protection: {0}" -f $Volume.ProtectionStatus) }
-    if ($Volume.EncryptionMethod) { $parts += ("Method: {0}" -f $Volume.EncryptionMethod) }
-    if ($Volume.LockStatus) { $parts += ("Lock: {0}" -f $Volume.LockStatus) }
-    if ($Volume.AutoUnlockEnabled -ne $null) { $parts += ("AutoUnlock: {0}" -f $Volume.AutoUnlockEnabled) }
-    return ($parts -join '; ')
+    $parts = [System.Collections.Generic.List[string]]::new()
+    if ($Volume.MountPoint) { $parts.Add(("Mount: {0}" -f $Volume.MountPoint)) }
+    if ($Volume.VolumeType) { $parts.Add(("Type: {0}" -f $Volume.VolumeType)) }
+    if ($Volume.ProtectionStatus -ne $null) { $parts.Add(("Protection: {0}" -f $Volume.ProtectionStatus)) }
+    if ($Volume.EncryptionMethod) { $parts.Add(("Method: {0}" -f $Volume.EncryptionMethod)) }
+    if ($Volume.LockStatus) { $parts.Add(("Lock: {0}" -f $Volume.LockStatus)) }
+    if ($Volume.AutoUnlockEnabled -ne $null) { $parts.Add(("AutoUnlock: {0}" -f $Volume.AutoUnlockEnabled)) }
+    return ($parts.ToArray() -join '; ')
 }
 
 function Get-RegistryValueFromEntries {
@@ -308,12 +308,12 @@ function Invoke-SecurityHeuristics {
             HasProfiles = [bool]($payload -and $payload.Profiles)
         })
         if ($payload -and $payload.Profiles) {
-            $disabledProfiles = @()
+            $disabledProfiles = [System.Collections.Generic.List[string]]::new()
             foreach ($profile in $payload.Profiles) {
                 if ($profile.PSObject.Properties['Enabled']) {
                     $enabled = ConvertTo-NullableBool $profile.Enabled
                     if ($enabled -eq $false) {
-                        $disabledProfiles += $profile.Name
+                        $disabledProfiles.Add($profile.Name)
                     }
                     Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $profile.Name) -Status ($(if ($enabled) { 'Enabled' } elseif ($enabled -eq $false) { 'Disabled' } else { 'Unknown' })) -Details ("Inbound: {0}; Outbound: {1}" -f $profile.DefaultInboundAction, $profile.DefaultOutboundAction)
                 }
@@ -344,9 +344,9 @@ function Invoke-SecurityHeuristics {
         })
         if ($payload -and $payload.Volumes) {
             $volumes = ConvertTo-List $payload.Volumes
-            $osVolumes = @()
-            $osUnprotected = @()
-            $osProtectedEvidence = @()
+            $osVolumes = [System.Collections.Generic.List[object]]::new()
+            $osUnprotected = [System.Collections.Generic.List[object]]::new()
+            $osProtectedEvidence = [System.Collections.Generic.List[string]]::new()
             $hasRecoveryProtector = $false
 
             foreach ($volume in $volumes) {
@@ -358,7 +358,7 @@ function Invoke-SecurityHeuristics {
                 if (-not $isOs -and $mount) {
                     if ($mount.Trim().ToUpperInvariant() -eq 'C:') { $isOs = $true }
                 }
-                if ($isOs) { $osVolumes += $volume }
+                if ($isOs) { $osVolumes.Add($volume) }
 
                 foreach ($protector in (ConvertTo-List $volume.KeyProtector)) {
                     if ($null -eq $protector) { continue }
@@ -379,9 +379,9 @@ function Invoke-SecurityHeuristics {
                     $isProtected = -not ($status -match '(?i)off|0')
                 }
                 if ($isProtected) {
-                    $osProtectedEvidence += (Format-BitLockerVolume $osVolume)
+                    $osProtectedEvidence.Add((Format-BitLockerVolume $osVolume))
                 } else {
-                    $osUnprotected += $osVolume
+                    $osUnprotected.Add($osVolume)
                 }
             }
 
@@ -398,7 +398,7 @@ function Invoke-SecurityHeuristics {
                 $evidence = ($osUnprotected | ForEach-Object { Format-BitLockerVolume $_ }) -join "`n"
                 Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title ("BitLocker is OFF for system volume(s): {0}, risking data exposure." -f $mountList) -Evidence $evidence -Subcategory 'BitLocker'
             } elseif ($osProtectedEvidence.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title 'BitLocker protection active for system volume(s).' -Evidence ($osProtectedEvidence -join "`n") -Subcategory 'BitLocker'
+                Add-CategoryNormal -CategoryResult $result -Title 'BitLocker protection active for system volume(s).' -Evidence ($osProtectedEvidence.ToArray() -join "`n") -Subcategory 'BitLocker'
             }
 
             if (-not $hasRecoveryProtector) {
@@ -456,17 +456,17 @@ function Invoke-SecurityHeuristics {
         if ($registryValues -and $registryValues.PSObject.Properties['AllowDmaUnderLock']) {
             $allowValue = ConvertTo-NullableInt $registryValues.AllowDmaUnderLock
         }
-        $evidenceLines = @()
+        $evidenceLines = [System.Collections.Generic.List[string]]::new()
         if ($payload.DeviceGuard) {
             $dg = $payload.DeviceGuard
-            if ($dg.Status) { $evidenceLines += "DeviceGuard.Status: $($dg.Status)" }
-            if ($dg.Message) { $evidenceLines += "DeviceGuard.Message: $($dg.Message)" }
+            if ($dg.Status) { $evidenceLines.Add("DeviceGuard.Status: $($dg.Status)") }
+            if ($dg.Message) { $evidenceLines.Add("DeviceGuard.Message: $($dg.Message)") }
         }
-        if ($payload.Registry -and $payload.Registry.Status) { $evidenceLines += "Registry.Status: $($payload.Registry.Status)" }
-        if ($payload.Registry -and $payload.Registry.Message) { $evidenceLines += "Registry.Message: $($payload.Registry.Message)" }
-        if ($payload.MsInfo -and $payload.MsInfo.Status) { $evidenceLines += "MsInfo.Status: $($payload.MsInfo.Status)" }
-        if ($payload.MsInfo -and $payload.MsInfo.Message) { $evidenceLines += "MsInfo.Message: $($payload.MsInfo.Message)" }
-        $dmaEvidence = ($evidenceLines | Where-Object { $_ }) -join "`n"
+        if ($payload.Registry -and $payload.Registry.Status) { $evidenceLines.Add("Registry.Status: $($payload.Registry.Status)") }
+        if ($payload.Registry -and $payload.Registry.Message) { $evidenceLines.Add("Registry.Message: $($payload.Registry.Message)") }
+        if ($payload.MsInfo -and $payload.MsInfo.Status) { $evidenceLines.Add("MsInfo.Status: $($payload.MsInfo.Status)") }
+        if ($payload.MsInfo -and $payload.MsInfo.Message) { $evidenceLines.Add("MsInfo.Message: $($payload.MsInfo.Message)") }
+        $dmaEvidence = ($evidenceLines.ToArray() | Where-Object { $_ }) -join "`n"
 
         if ($allowValue -eq 0) {
             Add-CategoryNormal -CategoryResult $result -Title 'Kernel DMA protection enforced' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
@@ -507,36 +507,37 @@ function Invoke-SecurityHeuristics {
                 @{ Label = 'Block credential stealing from LSASS'; Ids = @('9E6C4E1F-7D60-472F-B5E9-2D3BEEB1BF0E') }
             )
             foreach ($set in $requiredRules) {
-                $missing = @()
-                $nonBlocking = @()
+                $missing = [System.Collections.Generic.List[string]]::new()
+                $nonBlocking = [System.Collections.Generic.List[string]]::new()
                 foreach ($id in $set.Ids) {
                     $lookup = $id.ToUpperInvariant()
                     if (-not $ruleMap.ContainsKey($lookup)) {
-                        $missing += $lookup
+                        $missing.Add($lookup)
                         continue
                     }
                     if ($ruleMap[$lookup] -ne 1) {
-                        $nonBlocking += "{0} => {1}" -f $lookup, $ruleMap[$lookup]
+                        $nonBlocking.Add("{0} => {1}" -f $lookup, $ruleMap[$lookup])
                     }
                 }
                 if ($missing.Count -eq 0 -and $nonBlocking.Count -eq 0) {
                     $evidence = ($set.Ids | ForEach-Object { "{0} => 1" -f $_ }) -join "`n"
                     Add-CategoryNormal -CategoryResult $result -Title ("ASR blocking enforced: {0}" -f $set.Label) -Evidence $evidence -Subcategory 'Attack Surface Reduction'
                 } else {
-                    $detailParts = @()
-                    if ($missing.Count -gt 0) { $detailParts += ("Missing rule(s): {0}" -f ($missing -join ', ')) }
-                    if ($nonBlocking.Count -gt 0) { $detailParts += ("Non-blocking: {0}" -f ($nonBlocking -join '; ')) }
-                    $detailText = if ($detailParts.Count -gt 0) { $detailParts -join '; ' } else { 'Rule not enforced.' }
-                    $evidenceLines = @()
+                    $detailParts = [System.Collections.Generic.List[string]]::new()
+                    if ($missing.Count -gt 0) { $detailParts.Add(("Missing rule(s): {0}" -f ($missing.ToArray() -join ', '))) }
+                    if ($nonBlocking.Count -gt 0) { $detailParts.Add(("Non-blocking: {0}" -f ($nonBlocking.ToArray() -join '; '))) }
+                    $detailText = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Rule not enforced.' }
+                    $evidenceLines = [System.Collections.Generic.List[string]]::new()
                     foreach ($id in $set.Ids) {
                         $lookup = $id.ToUpperInvariant()
                         if ($ruleMap.ContainsKey($lookup)) {
-                            $evidenceLines += "{0} => {1}" -f $lookup, $ruleMap[$lookup]
+                            $evidenceLines.Add("{0} => {1}" -f $lookup, $ruleMap[$lookup])
                         } else {
-                            $evidenceLines += "{0} => (missing)" -f $lookup
+                            $evidenceLines.Add("{0} => (missing)" -f $lookup)
                         }
                     }
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label) -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
+
                 }
             }
         } else {
@@ -554,11 +555,11 @@ function Invoke-SecurityHeuristics {
             $cfgEnabled = ConvertTo-NullableBool ($mitigations.CFG.Enable)
             $depEnabled = ConvertTo-NullableBool ($mitigations.DEP.Enable)
             $aslrEnabled = ConvertTo-NullableBool ($mitigations.ASLR.Enable)
-            $evidence = @()
-            if ($mitigations.CFG.Enable -ne $null) { $evidence += "CFG.Enable: $($mitigations.CFG.Enable)" }
-            if ($mitigations.DEP.Enable -ne $null) { $evidence += "DEP.Enable: $($mitigations.DEP.Enable)" }
-            if ($mitigations.ASLR.Enable -ne $null) { $evidence += "ASLR.Enable: $($mitigations.ASLR.Enable)" }
-            $evidenceText = $evidence -join "`n"
+            $evidence = [System.Collections.Generic.List[string]]::new()
+            if ($mitigations.CFG.Enable -ne $null) { $evidence.Add("CFG.Enable: $($mitigations.CFG.Enable)") }
+            if ($mitigations.DEP.Enable -ne $null) { $evidence.Add("DEP.Enable: $($mitigations.DEP.Enable)") }
+            if ($mitigations.ASLR.Enable -ne $null) { $evidence.Add("ASLR.Enable: $($mitigations.ASLR.Enable)") }
+            $evidenceText = $evidence.ToArray() -join "`n"
             if (($cfgEnabled -eq $true) -and ($depEnabled -eq $true) -and ($aslrEnabled -eq $true)) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Exploit protection mitigations enforced (CFG/DEP/ASLR)' -Evidence $evidenceText -Subcategory 'Exploit Protection'
             } else {
@@ -581,11 +582,11 @@ function Invoke-SecurityHeuristics {
     $wdacArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wdac'
     if ($wdacArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wdacArtifact)
-        $wdacEvidenceLines = @()
+        $wdacEvidenceLines = [System.Collections.Generic.List[string]]::new()
         if ($payload -and $payload.DeviceGuard -and -not $payload.DeviceGuard.Error) {
             $dgSection = $payload.DeviceGuard
-            $wdacEvidenceLines += "SecurityServicesRunning: $($dgSection.SecurityServicesRunning)"
-            $wdacEvidenceLines += "SecurityServicesConfigured: $($dgSection.SecurityServicesConfigured)"
+            $wdacEvidenceLines.Add("SecurityServicesRunning: $($dgSection.SecurityServicesRunning)")
+            $wdacEvidenceLines.Add("SecurityServicesConfigured: $($dgSection.SecurityServicesConfigured)")
             if ($securityServicesRunning.Count -eq 0) { $securityServicesRunning = ConvertTo-IntArray $dgSection.SecurityServicesRunning }
             if ($securityServicesConfigured.Count -eq 0) { $securityServicesConfigured = ConvertTo-IntArray $dgSection.SecurityServicesConfigured }
             if ($availableSecurityProperties.Count -eq 0) { $availableSecurityProperties = ConvertTo-IntArray $dgSection.AvailableSecurityProperties }
@@ -600,7 +601,7 @@ function Invoke-SecurityHeuristics {
                 if ($entry.Path -and $entry.Path -match 'Control\\CI') {
                     foreach ($prop in $entry.Values.PSObject.Properties) {
                         if ($prop.Name -match '^PS') { continue }
-                        $wdacEvidenceLines += ("{0}: {1}" -f $prop.Name, $prop.Value)
+                        $wdacEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $prop.Value))
                         if ($prop.Name -match 'PolicyEnforcement' -and (ConvertTo-NullableInt $prop.Value) -ge 1) {
                             $wdacEnforced = $true
                         }
@@ -610,12 +611,12 @@ function Invoke-SecurityHeuristics {
         }
 
         if ($wdacEnforced) {
-            Add-CategoryNormal -CategoryResult $result -Title 'WDAC policy enforcement detected' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control'
+            Add-CategoryNormal -CategoryResult $result -Title 'WDAC policy enforcement detected' -Evidence ($wdacEvidenceLines.ToArray() -join "`n") -Subcategory 'Windows Defender Application Control'
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'No WDAC policy enforcement detected, so unrestricted code execution remains possible.' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control'
         }
 
-        $smartAppEvidence = @()
+        $smartAppEvidence = [System.Collections.Generic.List[string]]::new()
         $smartAppState = $null
         if ($payload -and $payload.SmartAppControl) {
             $entry = $payload.SmartAppControl
@@ -624,7 +625,7 @@ function Invoke-SecurityHeuristics {
             } elseif ($entry.Values) {
                 foreach ($prop in $entry.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
-                    $smartAppEvidence += ("{0}: {1}" -f $prop.Name, $prop.Value)
+                    $smartAppEvidence.Add(("{0}: {1}" -f $prop.Name, $prop.Value))
                     $candidate = $prop.Value
                     if ($null -ne $candidate) {
                         $parsed = 0
@@ -638,7 +639,7 @@ function Invoke-SecurityHeuristics {
             }
         }
 
-        $evidenceText = if ($smartAppEvidence.Count -gt 0) { $smartAppEvidence -join "`n" } else { '' }
+        $evidenceText = if ($smartAppEvidence.Count -gt 0) { $smartAppEvidence.ToArray() -join "`n" } else { '' }
         if ($smartAppState -eq 1) {
             Add-CategoryNormal -CategoryResult $result -Title 'Smart App Control enforced' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($smartAppState -eq 2) {
@@ -671,7 +672,7 @@ function Invoke-SecurityHeuristics {
         }
 
         $lapsEnabled = $false
-        $lapsEvidenceLines = @()
+        $lapsEvidenceLines = [System.Collections.Generic.List[string]]::new()
         if ($lapsPolicies) {
             foreach ($prop in $lapsPolicies.PSObject.Properties) {
                 if ($prop.Name -match '^PS') { continue }
@@ -679,10 +680,10 @@ function Invoke-SecurityHeuristics {
                 if ($null -eq $value) { continue }
                 if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
                     foreach ($inner in $value) {
-                        $lapsEvidenceLines += ("{0}: {1}" -f $prop.Name, $inner)
+                        $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $inner))
                     }
                 } else {
-                    $lapsEvidenceLines += ("{0}: {1}" -f $prop.Name, $value)
+                    $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $value))
                 }
                 if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $value) -eq 1) { $lapsEnabled = $true }
                 if ($prop.Name -match 'BackupDirectory' -and -not [string]::IsNullOrWhiteSpace($value.ToString())) { $lapsEnabled = $true }
@@ -690,7 +691,7 @@ function Invoke-SecurityHeuristics {
         }
 
         if ($lapsEnabled) {
-            Add-CategoryNormal -CategoryResult $result -Title 'LAPS/PLAP policy detected' -Evidence ($lapsEvidenceLines -join "`n") -Subcategory 'Credential Management'
+            Add-CategoryNormal -CategoryResult $result -Title 'LAPS/PLAP policy detected' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
         } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.' -Evidence ($lapsEvidenceLines -join "`n") -Subcategory 'Credential Management'
         }
@@ -699,11 +700,11 @@ function Invoke-SecurityHeuristics {
     $runAsPpl = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RunAsPPL')
     $runAsPplBoot = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RunAsPPLBoot')
     $credentialGuardRunning = ($securityServicesRunning -contains 1)
-    $lsaEvidenceLines = @()
-    if ($credentialGuardRunning) { $lsaEvidenceLines += 'SecurityServicesRunning includes 1 (Credential Guard).' }
-    if ($runAsPpl -ne $null) { $lsaEvidenceLines += "RunAsPPL: $runAsPpl" }
-    if ($runAsPplBoot -ne $null) { $lsaEvidenceLines += "RunAsPPLBoot: $runAsPplBoot" }
-    $lsaEvidence = $lsaEvidenceLines -join "`n"
+    $lsaEvidenceLines = [System.Collections.Generic.List[string]]::new()
+    if ($credentialGuardRunning) { $lsaEvidenceLines.Add('SecurityServicesRunning includes 1 (Credential Guard).') }
+    if ($runAsPpl -ne $null) { $lsaEvidenceLines.Add("RunAsPPL: $runAsPpl") }
+    if ($runAsPplBoot -ne $null) { $lsaEvidenceLines.Add("RunAsPPLBoot: $runAsPplBoot") }
+    $lsaEvidence = $lsaEvidenceLines.ToArray() -join "`n"
     Write-HeuristicDebug -Source 'Security' -Message 'Credential Guard evaluation summary' -Data ([ordered]@{
         CredentialGuardRunning = $credentialGuardRunning
         RunAsPpl             = $runAsPpl
@@ -715,12 +716,12 @@ function Invoke-SecurityHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Credential Guard or LSA protection is not enforced, leaving LSASS credentials vulnerable.' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
     }
 
-    $deviceGuardEvidenceLines = @()
-    if ($securityServicesConfigured.Count -gt 0) { $deviceGuardEvidenceLines += "Configured: $($securityServicesConfigured -join ',')" }
-    if ($securityServicesRunning.Count -gt 0) { $deviceGuardEvidenceLines += "Running: $($securityServicesRunning -join ',')" }
-    if ($availableSecurityProperties.Count -gt 0) { $deviceGuardEvidenceLines += "Available: $($availableSecurityProperties -join ',')" }
-    if ($requiredSecurityProperties.Count -gt 0) { $deviceGuardEvidenceLines += "Required: $($requiredSecurityProperties -join ',')" }
-    $hvciEvidence = $deviceGuardEvidenceLines -join "`n"
+    $deviceGuardEvidenceLines = [System.Collections.Generic.List[string]]::new()
+    if ($securityServicesConfigured.Count -gt 0) { $deviceGuardEvidenceLines.Add("Configured: $($securityServicesConfigured -join ',')") }
+    if ($securityServicesRunning.Count -gt 0) { $deviceGuardEvidenceLines.Add("Running: $($securityServicesRunning -join ',')") }
+    if ($availableSecurityProperties.Count -gt 0) { $deviceGuardEvidenceLines.Add("Available: $($availableSecurityProperties -join ',')") }
+    if ($requiredSecurityProperties.Count -gt 0) { $deviceGuardEvidenceLines.Add("Required: $($requiredSecurityProperties -join ',')") }
+    $hvciEvidence = $deviceGuardEvidenceLines.ToArray() -join "`n"
     $hvciRunning = ($securityServicesRunning -contains 2)
     $hvciAvailable = ($availableSecurityProperties -contains 2) -or ($requiredSecurityProperties -contains 2)
     if ($hvciRunning) {
@@ -749,11 +750,11 @@ function Invoke-SecurityHeuristics {
             if ($enableLua -eq 1 -and ($secureDesktop -eq $null -or $secureDesktop -eq 1) -and ($consentPrompt -eq $null -or $consentPrompt -ge 2)) {
                 Add-CategoryNormal -CategoryResult $result -Title 'UAC configured with secure prompts' -Evidence $evidence -Subcategory 'User Account Control'
             } else {
-                $findings = @()
-                if ($enableLua -ne 1) { $findings += 'EnableLUA=0' }
-                if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $findings += "ConsentPrompt=$consentPrompt" }
-                if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $findings += 'PromptOnSecureDesktop=0' }
-                $detail = if ($findings.Count -gt 0) { $findings -join '; ' } else { 'UAC configuration unclear.' }
+                $findings = [System.Collections.Generic.List[string]]::new()
+                if ($enableLua -ne 1) { $findings.Add('EnableLUA=0') }
+                if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $findings.Add("ConsentPrompt=$consentPrompt") }
+                if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $findings.Add('PromptOnSecureDesktop=0') }
+                $detail = if ($findings.Count -gt 0) { $findings.ToArray() -join '; ' } else { 'UAC configuration unclear.' }
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('UAC configuration is insecure ({0}), reducing protection for administrative actions.' -f $detail) -Evidence $evidence -Subcategory 'User Account Control'
             }
         }
@@ -766,12 +767,12 @@ function Invoke-SecurityHeuristics {
             $scriptBlockEnabled = $false
             $moduleLoggingEnabled = $false
             $transcriptionEnabled = $false
-            $evidenceLines = @()
+            $evidenceLines = [System.Collections.Generic.List[string]]::new()
             foreach ($policy in (ConvertTo-List $payload.Policies)) {
                 if (-not $policy -or -not $policy.Values) { continue }
                 foreach ($prop in $policy.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
-                    $evidenceLines += ("{0} ({1}): {2}" -f $prop.Name, $policy.Path, $prop.Value)
+                    $evidenceLines.Add(("{0} ({1}): {2}" -f $prop.Name, $policy.Path, $prop.Value))
                     switch -Regex ($prop.Name) {
                         'EnableScriptBlockLogging' { if ((ConvertTo-NullableInt $prop.Value) -eq 1) { $scriptBlockEnabled = $true } }
                         'EnableModuleLogging'     { if ((ConvertTo-NullableInt $prop.Value) -eq 1) { $moduleLoggingEnabled = $true } }
@@ -780,14 +781,14 @@ function Invoke-SecurityHeuristics {
                 }
             }
             if ($scriptBlockEnabled -and $moduleLoggingEnabled) {
-                Add-CategoryNormal -CategoryResult $result -Title 'PowerShell logging policies enforced' -Evidence ($evidenceLines -join "`n") -Subcategory 'PowerShell Logging'
+                Add-CategoryNormal -CategoryResult $result -Title 'PowerShell logging policies enforced' -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
             } else {
-                $detailParts = @()
-                if (-not $scriptBlockEnabled) { $detailParts += 'Script block logging disabled' }
-                if (-not $moduleLoggingEnabled) { $detailParts += 'Module logging disabled' }
-                if (-not $transcriptionEnabled) { $detailParts += 'Transcription not enabled' }
-                $detail = if ($detailParts.Count -gt 0) { $detailParts -join '; ' } else { 'Logging state unknown.' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines -join "`n") -Subcategory 'PowerShell Logging'
+                $detailParts = [System.Collections.Generic.List[string]]::new()
+                if (-not $scriptBlockEnabled) { $detailParts.Add('Script block logging disabled') }
+                if (-not $moduleLoggingEnabled) { $detailParts.Add('Module logging disabled') }
+                if (-not $transcriptionEnabled) { $detailParts.Add('Transcription not enabled') }
+                $detail = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Logging state unknown.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
             }
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
@@ -801,12 +802,12 @@ function Invoke-SecurityHeuristics {
     $restrictSendingMsv = ConvertTo-NullableInt $msvEntry
     $restrictReceivingMsv = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa\\\\MSV1_0$' -Name 'RestrictReceivingNTLMTraffic')
     $auditReceivingMsv = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa\\\\MSV1_0$' -Name 'AuditReceivingNTLMTraffic')
-    $ntlmEvidenceLines = @()
-    if ($restrictSendingLsa -ne $null) { $ntlmEvidenceLines += "Lsa RestrictSendingNTLMTraffic: $restrictSendingLsa" }
-    if ($restrictSendingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 RestrictSendingNTLMTraffic: $restrictSendingMsv" }
-    if ($restrictReceivingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 RestrictReceivingNTLMTraffic: $restrictReceivingMsv" }
-    if ($auditReceivingMsv -ne $null) { $ntlmEvidenceLines += "MSV1_0 AuditReceivingNTLMTraffic: $auditReceivingMsv" }
-    $ntlmEvidence = $ntlmEvidenceLines -join "`n"
+    $ntlmEvidenceLines = [System.Collections.Generic.List[string]]::new()
+    if ($restrictSendingLsa -ne $null) { $ntlmEvidenceLines.Add("Lsa RestrictSendingNTLMTraffic: $restrictSendingLsa") }
+    if ($restrictSendingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 RestrictSendingNTLMTraffic: $restrictSendingMsv") }
+    if ($restrictReceivingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 RestrictReceivingNTLMTraffic: $restrictReceivingMsv") }
+    if ($auditReceivingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 AuditReceivingNTLMTraffic: $auditReceivingMsv") }
+    $ntlmEvidence = $ntlmEvidenceLines.ToArray() -join "`n"
     $ntlmRestricted = ($restrictSendingLsa -ge 2) -or ($restrictSendingMsv -ge 2)
     $ntlmAudited = ($auditReceivingMsv -ge 2)
     if ($ntlmRestricted -and $ntlmAudited) {

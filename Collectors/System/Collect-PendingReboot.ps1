@@ -112,17 +112,17 @@ function Get-PendingRebootIndicators {
         [pscustomobject]@{ Name = 'ServerManagerCurrentRebootAttempts'; Path = 'HKLM:\\SOFTWARE\\Microsoft\\ServerManager\\CurrentRebootAttempts' }
     )
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($entry in $registryPaths) {
         $exists = Test-RegistryPath -Path $entry.Path
-        $results += [pscustomobject]@{
+        $results.Add([pscustomobject]@{
             Name    = $entry.Name
             Path    = $entry.Path
             Present = $exists
-        }
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-Main {

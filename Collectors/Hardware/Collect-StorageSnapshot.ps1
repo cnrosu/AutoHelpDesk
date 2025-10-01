@@ -118,7 +118,7 @@ function Get-StorageWearSnapshot {
 
     if (-not $physical) { return 'No physical disks found for reliability counters.' }
 
-    $rows = @()
+    $rows = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($disk in $physical) {
         $row = [ordered]@{
             DeviceId     = $disk.DeviceId
@@ -142,12 +142,12 @@ function Get-StorageWearSnapshot {
             $row['Error'] = $_.Exception.Message
         }
 
-        $rows += [pscustomobject]$row
+        $rows.Add([pscustomobject]$row)
     }
 
     if ($rows.Count -eq 0) { return 'No reliability data returned.' }
 
-    return ($rows | Format-Table DeviceId, FriendlyName, SerialNumber, MediaType, Wear, Temperature, Error -AutoSize | Out-String -Width 200).TrimEnd()
+    return ($rows.ToArray() | Format-Table DeviceId, FriendlyName, SerialNumber, MediaType, Wear, Temperature, Error -AutoSize | Out-String -Width 200).TrimEnd()
 }
 
 function Invoke-Main {

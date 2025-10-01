@@ -237,7 +237,7 @@ function Get-DomainDiscovery {
         $name = $srvTargets[$key]
         $lookup = [ordered]@{
             Query     = $name
-            Records   = @()
+            Records   = [System.Collections.Generic.List[pscustomobject]]::new()
             Error     = $null
             Succeeded = $false
         }
@@ -273,18 +273,21 @@ function Get-DomainDiscovery {
                         # ignore resolution errors here
                     }
                 }
-                $lookup.Records += [ordered]@{
+                $lookup.Records.Add([pscustomobject]@{
                     Target    = $target
                     Port      = $record.Port
                     Priority  = $record.Priority
                     Weight    = $record.Weight
                     TimeToLive = $record.TTL
-                }
+                })
             }
             $lookup.Succeeded = $true
         } catch {
             $lookup.Error = $_.Exception.Message
             $lookup.Succeeded = $false
+        }
+        if ($lookup.Records -is [System.Collections.Generic.List[object]]) {
+            $lookup.Records = $lookup.Records.ToArray()
         }
         $discovery.SrvLookups[$key] = $lookup
     }
@@ -300,7 +303,7 @@ function Test-DomainControllerReachability {
         [array]$Candidates
     )
 
-    $tests = @()
+    $tests = [System.Collections.Generic.List[pscustomobject]]::new()
     if (-not $Candidates) { return $tests }
 
     $ports = @(88, 389, 445, 135)
@@ -328,11 +331,11 @@ function Test-DomainControllerReachability {
             if (-not $testResult.RemoteAddress -and $candidate.Addresses -and $candidate.Addresses.Count -gt 0) {
                 $testResult.RemoteAddress = $candidate.Addresses[0]
             }
-            $tests += $testResult
+            $tests.Add([pscustomobject]$testResult)
         }
     }
 
-    return $tests
+    return $tests.ToArray()
 }
 
 function Test-DomainShares {
@@ -340,7 +343,7 @@ function Test-DomainShares {
         [array]$Candidates
     )
 
-    $tests = @()
+    $tests = [System.Collections.Generic.List[pscustomobject]]::new()
     if (-not $Candidates) { return $tests }
 
     foreach ($candidate in $Candidates) {
@@ -373,11 +376,11 @@ function Test-DomainShares {
                 $test.Success = $false
                 $test.Error = $_.Exception.Message
             }
-            $tests += $test
+            $tests.Add([pscustomobject]$test)
         }
     }
 
-    return $tests
+    return $tests.ToArray()
 }
 
 function Get-TimeServiceStatus {
@@ -451,27 +454,28 @@ function Get-KerberosInfo {
     }
 
     $startTime = (Get-Date).AddHours(-72)
-    $kerberosEvents = @()
+    $kerberosEvents = [System.Collections.Generic.List[pscustomobject]]::new()
     try {
         $events = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = @(4768, 4771, 4776); StartTime = $startTime } -ErrorAction Stop | Select-Object -First 200 -Property TimeCreated, Id, LevelDisplayName, Message
         if ($events) {
             foreach ($event in $events) {
-                $kerberosEvents += [ordered]@{
+                $kerberosEvents.Add([pscustomobject]@{
                     TimeCreated = $event.TimeCreated
                     Id          = $event.Id
                     Level       = $event.LevelDisplayName
                     Message     = $event.Message
-                }
+                })
             }
         }
     } catch {
-        $kerberosEvents = @([ordered]@{ Error = $_.Exception.Message })
+        $kerberosEvents = [System.Collections.Generic.List[pscustomobject]]::new()
+        $kerberosEvents.Add([pscustomobject]@{ Error = $_.Exception.Message })
     }
 
     return [ordered]@{
         Klist  = $klist
         Parsed = $parsed
-        Events = $kerberosEvents
+        Events = $kerberosEvents.ToArray()
     }
 }
 
@@ -509,7 +513,7 @@ function Get-SecureChannelInfo {
 function Get-GpoInfo {
     $gpo = [ordered]@{
         GpResult = $null
-        Events   = @()
+        Events   = [System.Collections.Generic.List[pscustomobject]]::new()
     }
 
     $gpo.GpResult = Invoke-CommandCapture -FilePath 'gpresult.exe' -ArgumentList '/r','/scope','computer'
@@ -518,15 +522,19 @@ function Get-GpoInfo {
     try {
         $events = Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-GroupPolicy/Operational'; Id = @(1058, 1030); StartTime = $startTime } -ErrorAction Stop | Select-Object -First 200 -Property TimeCreated, Id, LevelDisplayName, Message
         foreach ($event in $events) {
-            $gpo.Events += [ordered]@{
+            $gpo.Events.Add([pscustomobject]@{
                 TimeCreated = $event.TimeCreated
                 Id          = $event.Id
                 Level       = $event.LevelDisplayName
                 Message     = $event.Message
-            }
+            })
         }
     } catch {
         $gpo.Events = @([ordered]@{ Error = $_.Exception.Message })
+    }
+
+    if ($gpo.Events -is [System.Collections.Generic.List[object]]) {
+        $gpo.Events = $gpo.Events.ToArray()
     }
 
     return $gpo
