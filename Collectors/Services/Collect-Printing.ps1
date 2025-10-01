@@ -358,19 +358,19 @@ function Collect-PrintEvents {
     $startTime = (Get-Date).AddDays(-7)
     $adminEvents = @()
     $operationalEvents = @()
-    $errors = [System.Collections.Generic.List[string]]::new()
+    $errors = [System.Text.StringBuilder]::new()
 
     try {
         $adminEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Admin'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors.Add("Admin log query failed: $($_.Exception.Message)")
+        [void]$errors.AppendLine("Admin log query failed: $($_.Exception.Message)")
         $adminEvents = @()
     }
 
     try {
         $operationalEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Operational'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors.Add("Operational log query failed: $($_.Exception.Message)")
+        [void]$errors.AppendLine("Operational log query failed: $($_.Exception.Message)")
         $operationalEvents = @()
     }
 
@@ -408,7 +408,7 @@ function Collect-PrintEvents {
             WarningCount = ($operationalEvents | Where-Object { $_.LevelDisplayName -eq 'Warning' }).Count
             Events       = $operationalConverted
         }
-        Errors = if ($errors -is [System.Collections.Generic.List[string]]) { $errors.ToArray() } else { $errors }
+        Errors = if ($errors -is [System.Text.StringBuilder]) { $errors.ToString().TrimEnd() } else { $errors }
     }
 }
 
