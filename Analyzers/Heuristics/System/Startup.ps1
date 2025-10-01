@@ -73,10 +73,10 @@ function Invoke-SystemStartupChecks {
                 Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
             } else {
                 $title = "Startup autoruns manageable ({0} non-Microsoft of {1} total)." -f $nonMicrosoftEntries.Count, $validEntries.Count
-                Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidence
+                Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
             }
         } else {
-            Add-CategoryNormal -CategoryResult $Result -Title 'No startup entries detected'
+            Add-CategoryNormal -CategoryResult $Result -Title 'No startup entries detected' -Subcategory 'Startup Programs'
         }
     } elseif ($payload -and $payload.StartupCommands -eq $null) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory empty' -Subcategory 'Startup Programs'

@@ -23,7 +23,7 @@ function Invoke-SystemPowerChecks {
         if ($fast.HiberbootEnabled -eq 1) {
             Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting.' -Evidence 'Fast Startup keeps Windows in a hybrid hibernation state and can mask reboot-dependent fixes.' -Subcategory 'Power Configuration'
         } else {
-            Add-CategoryNormal -CategoryResult $Result -Title 'Fast Startup disabled'
+            Add-CategoryNormal -CategoryResult $Result -Title 'Fast Startup disabled' -Subcategory 'Power Configuration'
         }
     } elseif ($payload -and $payload.FastStartup -and $payload.FastStartup.Error) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to read Fast Startup configuration' -Evidence $payload.FastStartup.Error -Subcategory 'Power Configuration'
