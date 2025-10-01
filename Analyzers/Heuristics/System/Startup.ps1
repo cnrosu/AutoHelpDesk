@@ -47,8 +47,7 @@ function Invoke-SystemStartupChecks {
             [void]$evidenceBuilder.Add("Total startup entries evaluated: {0}" -f $validEntries.Count)
             [void]$evidenceBuilder.Add("Non-Microsoft startup entries: {0}" -f $nonMicrosoftEntries.Count)
 
-            $topEntries = $nonMicrosoftEntries | Select-Object -First 8
-            foreach ($entry in $topEntries) {
+            foreach ($entry in $nonMicrosoftEntries) {
                 $parts = New-Object System.Collections.Generic.List[string]
                 if ($entry.Name) { [void]$parts.Add([string]$entry.Name) }
                 if ($entry.Command) { [void]$parts.Add([string]$entry.Command) }
@@ -56,11 +55,6 @@ function Invoke-SystemStartupChecks {
                 if ($entry.User) { [void]$parts.Add(("User: {0}" -f $entry.User)) }
                 $line = ($parts -join ' | ')
                 if ($line) { [void]$evidenceBuilder.Add($line) }
-            }
-
-            $remaining = $nonMicrosoftEntries.Count - $topEntries.Count
-            if ($remaining -gt 0) {
-                [void]$evidenceBuilder.Add("(+{0} additional non-Microsoft startup entries)" -f $remaining)
             }
 
             $evidence = $evidenceBuilder -join "`n"
