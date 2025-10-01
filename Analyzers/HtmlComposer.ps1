@@ -647,7 +647,6 @@ function Build-SummaryCardHtml {
         $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
     $null = $sb.AppendLine('      </div>')
-    $null = $sb.AppendLine("      <small class='report-note score-section__note'>Fraction shows good findings versus bad findings. Triage Critical/High items first.</small>")
     $null = $sb.AppendLine('    </div>')
     $null = $sb.AppendLine('  </div>')
     $null = $sb.AppendLine("  <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
