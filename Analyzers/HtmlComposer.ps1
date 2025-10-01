@@ -505,17 +505,24 @@ function Get-FailedCollectorReports {
     return $failures
 }
 
+
 function Build-SummaryCardHtml {
     param(
         [pscustomobject]$Summary,
-        [System.Collections.Generic.List[pscustomobject]]$Issues
+        [System.Collections.Generic.List[pscustomobject]]$Issues,
+        [System.Collections.Generic.List[pscustomobject]]$Normals
     )
+
+    if (-not $Summary) { $Summary = [pscustomobject]@{} }
+    if (-not $Issues) { $Issues = @() }
+    if (-not $Normals) { $Normals = @() }
 
     $generatedAt = if ($Summary.GeneratedAt) { [datetime]$Summary.GeneratedAt } else { Get-Date }
     $generatedAtHtml = Encode-Html ($generatedAt.ToString("dddd, MMMM d, yyyy 'at' h:mm tt"))
 
+    $severityKeys = @('critical','high','medium','warning','low','info')
     $counts = @{}
-    foreach ($key in @('critical','high','medium','low','warning','info')) { $counts[$key] = 0 }
+    foreach ($key in $severityKeys) { $counts[$key] = 0 }
     foreach ($issue in $Issues) {
         $key = if ($issue.Severity) { $issue.Severity } else { 'info' }
         if (-not $counts.ContainsKey($key)) { $counts[$key] = 0 }
@@ -529,6 +536,96 @@ function Build-SummaryCardHtml {
         if ($weights.ContainsKey($sev)) { $penalty += $weights[$sev] }
     }
     $score = [Math]::Max(0, 100 - [Math]::Min($penalty, 80))
+
+    $severityOrder = @{ critical = 0; high = 1; medium = 2; warning = 3; low = 4; info = 5; good = 6 }
+    $overallWorst = 'good'
+    foreach ($severity in $severityKeys) {
+        if ($counts.ContainsKey($severity) -and $counts[$severity] -gt 0) {
+            $overallWorst = $severity
+            break
+        }
+    }
+
+    $categoryData = @{}
+    foreach ($issue in $Issues) {
+        $categoryName = Get-BaseCategoryFromArea -Area $issue.Area
+        if (-not $categoryName) { $categoryName = 'General' }
+        if (-not $categoryData.ContainsKey($categoryName)) {
+            $categoryData[$categoryName] = @{
+                Name          = $categoryName
+                IssueCount    = 0
+                NormalCount   = 0
+                Penalty       = 0.0
+                WorstSeverity = 'good'
+            }
+        }
+        $stat = $categoryData[$categoryName]
+        $stat.IssueCount++
+        $sev = if ($issue.Severity) { $issue.Severity } else { 'info' }
+        if ($weights.ContainsKey($sev)) { $stat.Penalty += $weights[$sev] }
+        if (-not $severityOrder.ContainsKey($stat.WorstSeverity) -or $severityOrder[$sev] -lt $severityOrder[$stat.WorstSeverity]) {
+            $stat.WorstSeverity = $sev
+        }
+    }
+
+    foreach ($normal in $Normals) {
+        $categoryName = Get-BaseCategoryFromArea -Area $normal.Area
+        if (-not $categoryName) { $categoryName = 'General' }
+        if (-not $categoryData.ContainsKey($categoryName)) {
+            $categoryData[$categoryName] = @{
+                Name          = $categoryName
+                IssueCount    = 0
+                NormalCount   = 0
+                Penalty       = 0.0
+                WorstSeverity = 'good'
+            }
+        }
+        $categoryData[$categoryName].NormalCount++
+    }
+
+    $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events','General')
+    $orderedCategoryNames = New-Object System.Collections.Generic.List[string]
+    foreach ($name in $categoryOrder) {
+        if ($categoryData.ContainsKey($name)) { $orderedCategoryNames.Add($name) | Out-Null }
+    }
+    foreach ($name in ($categoryData.Keys | Sort-Object)) {
+        if (-not $orderedCategoryNames.Contains($name)) { $orderedCategoryNames.Add($name) | Out-Null }
+    }
+
+    $categorySummaries = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($name in $orderedCategoryNames) {
+        $stat = $categoryData[$name]
+        $catScore = [Math]::Max(0, 100 - [Math]::Min($stat.Penalty, 80))
+        $worst = if ($stat.IssueCount -gt 0) { $stat.WorstSeverity } else { 'good' }
+        $categorySummaries.Add([pscustomobject]@{
+            Name         = $name
+            Score        = [int][Math]::Round($catScore, 0)
+            IssueCount   = [int]$stat.IssueCount
+            NormalCount  = [int]$stat.NormalCount
+            WorstSeverity = $worst
+        }) | Out-Null
+    }
+
+    $sortedCategories = @()
+    if ($categorySummaries.Count -gt 0) {
+        $sortedCategories = $categorySummaries.ToArray() | Sort-Object -Stable -Property @(
+            @{ Expression = { if ($_.IssueCount -gt 0) { 0 } else { 1 } } },
+            @{ Expression = { $_.Score } },
+            @{ Expression = { $_.Name } }
+        )
+    }
+
+    $severityDisplay = @{
+        critical = 'Critical'
+        high     = 'High'
+        medium   = 'Medium'
+        warning  = 'Warning'
+        low      = 'Low'
+        info     = 'Info'
+        good     = 'All clear'
+    }
+
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
 
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
@@ -546,12 +643,120 @@ function Build-SummaryCardHtml {
     $gatewayText = if ($Summary.Gateways -and $Summary.Gateways.Count -gt 0) { ($Summary.Gateways -join ', ') } else { 'Unknown' }
     $dnsText = if ($Summary.DnsServers -and $Summary.DnsServers.Count -gt 0) { ($Summary.DnsServers -join ', ') } else { 'Unknown' }
 
+    $overallPercent = [Math]::Max(0.0, [Math]::Min([double]$score, 100.0))
+    $overallCircumference = 2.0 * [Math]::PI * 54.0
+    $overallDashArray = [string]::Format($invariant, '{0:0.##}', $overallCircumference)
+    $overallDashOffset = [string]::Format($invariant, '{0:0.##}', $overallCircumference * (1.0 - ($overallPercent / 100.0)))
+    $overallClass = if ($overallWorst) { "score-ring score-ring--overall score-ring--$overallWorst" } else { 'score-ring score-ring--overall score-ring--info' }
+
+    $overallLabelParts = New-Object System.Collections.Generic.List[string]
+    $null = $overallLabelParts.Add(("Overall health score {0} out of 100" -f $score))
+    if ($overallWorst -and $overallWorst -ne 'good') {
+        $display = if ($severityDisplay.ContainsKey($overallWorst)) { $severityDisplay[$overallWorst] } else { $overallWorst }
+        $null = $overallLabelParts.Add(("Worst severity {0}" -f $display))
+    } else {
+        $null = $overallLabelParts.Add('No active issues detected')
+    }
+    $overallAriaHtml = Encode-Html ($overallLabelParts -join '. ')
+
+    $overallRingBuilder = [System.Text.StringBuilder]::new()
+    $overallLabelHtml = Encode-Html 'Overall'
+    $overallScoreHtml = Encode-Html ([string]$score)
+    $null = $overallRingBuilder.AppendLine("<div class='$overallClass' role='img' aria-label='$overallAriaHtml'>")
+    $null = $overallRingBuilder.AppendLine("  <svg class='score-ring__svg' viewBox='0 0 120 120'>")
+    $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__background' cx='60' cy='60' r='54'></circle>")
+    $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__value' cx='60' cy='60' r='54' stroke-dasharray='$overallDashArray' stroke-dashoffset='$overallDashOffset'></circle>")
+    $null = $overallRingBuilder.AppendLine('  </svg>')
+    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>/100</span></div>")
+    $null = $overallRingBuilder.AppendLine('</div>')
+    $overallRingHtml = $overallRingBuilder.ToString().TrimEnd()
+
+    $appendIndented = {
+        param(
+            [System.Text.StringBuilder]$Builder,
+            [string]$Text,
+            [string]$Indent
+        )
+
+        if (-not $Builder -or [string]::IsNullOrEmpty($Text)) { return }
+        foreach ($line in [regex]::Split($Text, '\\r?\\n')) {
+            if ($line.Length -eq 0) {
+                [void]$Builder.AppendLine('')
+            } else {
+                [void]$Builder.AppendLine("$Indent$line")
+            }
+        }
+    }
+
+    $smallCircumference = 2.0 * [Math]::PI * 30.0
+    $smallDashArray = [string]::Format($invariant, '{0:0.##}', $smallCircumference)
+
+    $breakdownBuilder = [System.Text.StringBuilder]::new()
+    if ($sortedCategories.Count -gt 0) {
+        $null = $breakdownBuilder.AppendLine("<div class='score-breakdown'>")
+        foreach ($category in $sortedCategories) {
+            $categoryPercent = [Math]::Max(0.0, [Math]::Min([double]$category.Score, 100.0))
+            $smallDashOffset = [string]::Format($invariant, '{0:0.##}', $smallCircumference * (1.0 - ($categoryPercent / 100.0)))
+            $severityClass = if ($category.WorstSeverity) { $category.WorstSeverity } else { 'info' }
+            $categoryClass = "score-ring score-ring--small score-ring--$severityClass"
+            $categoryNameHtml = Encode-Html $category.Name
+            $categoryScoreHtml = Encode-Html ([string]$category.Score)
+            $worstDisplay = if ($severityDisplay.ContainsKey($category.WorstSeverity)) { $severityDisplay[$category.WorstSeverity] } else { $category.WorstSeverity }
+            if (-not $worstDisplay) { $worstDisplay = 'Info' }
+
+            if ($category.IssueCount -eq 0) {
+                $issueText = 'No issues detected'
+                $worstDetail = 'All clear'
+            } else {
+                $issueWord = if ($category.IssueCount -eq 1) { 'issue' } else { 'issues' }
+                $issueText = ('{0} {1}' -f $category.IssueCount, $issueWord)
+                $worstDetail = ('Worst: {0}' -f $worstDisplay)
+            }
+            $positiveText = if ($category.NormalCount -gt 0) { ('Positives: {0}' -f $category.NormalCount) } else { 'No positives recorded' }
+
+            $primaryDetail = if ($category.IssueCount -eq 0) { $worstDetail } else { ('{0} · {1}' -f $issueText, $worstDetail) }
+            $primaryDetailHtml = Encode-Html $primaryDetail
+            $secondaryDetailHtml = Encode-Html $positiveText
+
+            $ariaParts = New-Object System.Collections.Generic.List[string]
+            $null = $ariaParts.Add(("{0} score {1} percent" -f $category.Name, $category.Score))
+            if ($category.IssueCount -gt 0) {
+                $null = $ariaParts.Add(("{0}" -f $issueText))
+                $null = $ariaParts.Add(("Worst severity {0}" -f $worstDisplay))
+            } else {
+                $null = $ariaParts.Add('All clear')
+            }
+            $categoryAriaHtml = Encode-Html ($ariaParts -join '. ')
+
+            $null = $breakdownBuilder.AppendLine("  <div class='score-breakdown__item'>")
+            $null = $breakdownBuilder.AppendLine("    <div class='$categoryClass' role='img' aria-label='$categoryAriaHtml'>")
+            $null = $breakdownBuilder.AppendLine("      <svg class='score-ring__svg' viewBox='0 0 72 72'>")
+            $null = $breakdownBuilder.AppendLine("        <circle class='score-ring__background' cx='36' cy='36' r='30'></circle>")
+            $null = $breakdownBuilder.AppendLine("        <circle class='score-ring__value' cx='36' cy='36' r='30' stroke-dasharray='$smallDashArray' stroke-dashoffset='$smallDashOffset'></circle>")
+            $null = $breakdownBuilder.AppendLine('      </svg>')
+            $null = $breakdownBuilder.AppendLine("      <div class='score-ring__content score-ring__content--compact'><span class='score-ring__number'>$categoryScoreHtml</span><span class='score-ring__suffix'>%</span></div>")
+            $null = $breakdownBuilder.AppendLine('    </div>')
+            $null = $breakdownBuilder.AppendLine("    <div class='score-breakdown__meta'>")
+            $null = $breakdownBuilder.AppendLine("      <div class='score-breakdown__label'>$categoryNameHtml</div>")
+            $null = $breakdownBuilder.AppendLine("      <div class='score-breakdown__details'>$primaryDetailHtml</div>")
+            $null = $breakdownBuilder.AppendLine("      <div class='score-breakdown__details score-breakdown__details--muted'>$secondaryDetailHtml</div>")
+            $null = $breakdownBuilder.AppendLine('    </div>')
+            $null = $breakdownBuilder.AppendLine('  </div>')
+        }
+        $null = $breakdownBuilder.AppendLine('</div>')
+    } else {
+        $null = $breakdownBuilder.AppendLine("<div class='score-breakdown score-breakdown--empty'><i>No category signals captured.</i></div>")
+    }
+    $breakdownHtml = $breakdownBuilder.ToString().TrimEnd()
+
     $sb = New-Object System.Text.StringBuilder
     $null = $sb.AppendLine('<h1>Device Health Report</h1>')
     $null = $sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
-    $null = $sb.AppendLine("<div class='report-card'>")
-    $null = $sb.AppendLine("  <div class='report-badge-group'>")
-    $null = $sb.AppendLine("    <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>")
+    $null = $sb.AppendLine("<div class='report-card report-card--overview'>")
+    $null = $sb.AppendLine("  <div class='score-section'>")
+    $null = $sb.AppendLine("    <div class='score-section__primary'>")
+    & $appendIndented $sb $overallRingHtml '      '
+    $null = $sb.AppendLine("      <div class='report-badge-group'>")
     foreach ($badge in @(
             @{ Key = 'critical'; Label = 'CRITICAL'; Class = 'critical' },
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
@@ -562,10 +767,16 @@ function Build-SummaryCardHtml {
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
         $labelHtml = Encode-Html $badge.Label
-        $null = $sb.AppendLine("    <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
+        $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
+    $null = $sb.AppendLine('      </div>')
+    $null = $sb.AppendLine("      <small class='report-note score-section__note'>Score is heuristic. Triage Critical/High items first.</small>")
+    $null = $sb.AppendLine('    </div>')
+    $null = $sb.AppendLine("    <div class='score-section__breakdown'>")
+    $null = $sb.AppendLine("      <h3 class='score-section__title'>Category health</h3>")
+    & $appendIndented $sb $breakdownHtml '      '
+    $null = $sb.AppendLine('    </div>')
     $null = $sb.AppendLine('  </div>')
-
     $null = $sb.AppendLine("  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
     $null = $sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
     $null = $sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
@@ -575,7 +786,6 @@ function Build-SummaryCardHtml {
     $null = $sb.AppendLine("    <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
     $null = $sb.AppendLine("    <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
     $null = $sb.AppendLine('  </table>')
-    $null = $sb.AppendLine("  <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>")
     $null = $sb.AppendLine('</div>')
 
     return $sb.ToString()
@@ -1043,7 +1253,7 @@ function New-AnalyzerHtml {
     }
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
-    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
+    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues -Normals $normals
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedReports = Get-FailedCollectorReports -Context $Context
