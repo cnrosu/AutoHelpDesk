@@ -53,10 +53,9 @@ function Invoke-SystemPendingRebootChecks {
 
     if ($payload.PSObject.Properties['PendingFileRenames']) {
         $renamePayload = $payload.PendingFileRenames
-        $sets = @('PendingFileRenameOperations','PendingFileRenameOperations2')
-        foreach ($name in $sets) {
-            if (-not $renamePayload.PSObject.Properties[$name]) { continue }
-            $values = $renamePayload.$name
+        $valueName = 'PendingFileRenameOperations'
+        if ($renamePayload.PSObject.Properties[$valueName]) {
+            $values = $renamePayload.$valueName
             if (-not ($values -is [System.Collections.IEnumerable] -and -not ($values -is [string]))) {
                 $values = @($values)
             }
@@ -69,7 +68,7 @@ function Invoke-SystemPendingRebootChecks {
                     if ($trimmed) {
                         $pendingFileRenames = $true
                         if ($fileRenameEvidence.Count -lt 6) {
-                            $fileRenameEvidence.Add(('{0}[{1}]: {2}' -f $name, $index, $trimmed)) | Out-Null
+                            $fileRenameEvidence.Add(('{0}[{1}]: {2}' -f $valueName, $index, $trimmed)) | Out-Null
                         }
                     }
                 } elseif ($value.PSObject.Properties['Error']) {

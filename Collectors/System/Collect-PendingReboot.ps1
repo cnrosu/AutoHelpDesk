@@ -93,11 +93,9 @@ function Get-PendingRenameStatus {
 function Get-PendingFileOperations {
     $sessionManagerPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager'
     $primary = Get-RegistryValueStrings -Path $sessionManagerPath -ValueName 'PendingFileRenameOperations'
-    $secondary = Get-RegistryValueStrings -Path $sessionManagerPath -ValueName 'PendingFileRenameOperations2'
 
     return [pscustomobject]@{
-        PendingFileRenameOperations  = $primary
-        PendingFileRenameOperations2 = $secondary
+        PendingFileRenameOperations = $primary
     }
 }
 
