@@ -165,9 +165,12 @@ function Get-AnalyzerArtifact {
     if (-not $Context -or -not $Context.Artifacts) { return $null }
 
     $key = $Name.ToLowerInvariant()
-    $lookupKeys = @($key)
+    $lookupKeys = [System.Collections.Generic.List[string]]::new()
+    $lookupKeys.Add($key) | Out-Null
     if ($key -notmatch '\.') {
-        $lookupKeys += ($key + '.json')
+        $builder = [System.Text.StringBuilder]::new($key)
+        $null = $builder.Append('.json')
+        $lookupKeys.Add($builder.ToString()) | Out-Null
     }
 
     $entries = $null
