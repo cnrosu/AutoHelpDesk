@@ -156,9 +156,17 @@ function Get-AdapterIdentity {
 
   if ($null -eq $Adapter) { return 'Unknown adapter' }
 
-  $parts = @()
-  if ($Adapter.Description) { $parts += [string]$Adapter.Description }
-  elseif ($Adapter.Caption) { $parts += [string]$Adapter.Caption }
+  $partsBuilder = [System.Text.StringBuilder]::new()
+  $appendPart = {
+    param([string]$value)
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      if ($partsBuilder.Length -gt 0) { [void]$partsBuilder.Append(' | ') }
+      [void]$partsBuilder.Append($value)
+    }
+  }
+
+  if ($Adapter.Description) { & $appendPart ([string]$Adapter.Description) }
+  elseif ($Adapter.Caption) { & $appendPart ([string]$Adapter.Caption) }
 
   $indexValue = $null
   if ($Adapter.PSObject.Properties['InterfaceIndex'] -and $null -ne $Adapter.InterfaceIndex) {
@@ -167,13 +175,13 @@ function Get-AdapterIdentity {
     $indexValue = $Adapter.Index
   }
   if ($null -ne $indexValue) {
-    $parts += "Index $indexValue"
+    & $appendPart ("Index $indexValue")
   }
 
-  if ($Adapter.MACAddress) { $parts += "MAC $($Adapter.MACAddress)" }
+  if ($Adapter.MACAddress) { & $appendPart ("MAC $($Adapter.MACAddress)") }
 
-  if (-not $parts) { return 'Unknown adapter' }
-  return ($parts -join ' | ')
+  if ($partsBuilder.Length -eq 0) { return 'Unknown adapter' }
+  return $partsBuilder.ToString()
 }
 
 function Get-AdapterIpv4Addresses {
@@ -674,33 +682,36 @@ function New-IssueCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
-  $bodyParts = @()
+  $bodyBuilder = [System.Text.StringBuilder]::new()
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
     $explanationHtml = Encode-Html $Entry.Explanation
-    $bodyParts += "<p class='report-card__explanation'>$explanationHtml</p>"
+    [void]$bodyBuilder.Append("<p class='report-card__explanation'>$explanationHtml</p>")
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    $bodyParts += "<pre class='report-pre'>$evidenceHtml</pre>"
+    [void]$bodyBuilder.Append("<pre class='report-pre'>$evidenceHtml</pre>")
   }
 
   $badgeFragment = "<span class='report-badge report-badge--$cardClass'>$badgeHtml</span>"
   $summaryFragment = "<span class='report-card__summary-text'>$summaryText</span>"
 
-  if ($bodyParts.Count -eq 0) {
+  if ($bodyBuilder.Length -eq 0) {
     return "<div class='report-card report-card--$cardClass report-card--static'>$badgeFragment$summaryFragment</div>"
   }
 
-  $cardHtml = "<details class='report-card report-card--$cardClass'><summary>$badgeFragment$summaryFragment</summary>"
+  $cardBuilder = [System.Text.StringBuilder]::new()
+  [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary>$badgeFragment$summaryFragment</summary>")
 
-  if ($bodyParts.Count -gt 0) {
-    $cardHtml += "<div class='report-card__body'>$($bodyParts -join '')</div>"
+  if ($bodyBuilder.Length -gt 0) {
+    [void]$cardBuilder.Append("<div class='report-card__body'>")
+    [void]$cardBuilder.Append($bodyBuilder.ToString())
+    [void]$cardBuilder.Append("</div>")
   }
 
-  $cardHtml += "</details>"
-  return $cardHtml
+  [void]$cardBuilder.Append("</details>")
+  return $cardBuilder.ToString()
 }
 
 function New-GoodCardHtml {
@@ -721,13 +732,14 @@ function New-GoodCardHtml {
     return "<div class='report-card report-card--$cardClass report-card--static'><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></div>"
   }
 
-  $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
+  $cardBuilder = [System.Text.StringBuilder]::new()
+  [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
 
   $evidenceHtml = Encode-Html $Entry.Evidence
-  $cardHtml += "<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>"
+  [void]$cardBuilder.Append("<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>")
 
-  $cardHtml += "</details>"
-  return $cardHtml
+  [void]$cardBuilder.Append("</details>")
+  return $cardBuilder.ToString()
 }
 
 function Get-HealthScores {
