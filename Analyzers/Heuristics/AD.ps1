@@ -68,7 +68,7 @@ function Invoke-ADHeuristics {
 
     if (-not $domainStatus) {
         Write-HeuristicDebug -Source 'AD' -Message 'Domain status unavailable; reporting collection issue'
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable, so Active Directory reachability is unknown.' -Subcategory 'Collection'
         return $result
     }
 
@@ -130,7 +130,7 @@ function Invoke-ADHeuristics {
         $evidence = ($srvErrors | ForEach-Object {
                 if ($_.Error) { "{0}: {1}" -f $_.Query, $_.Error } else { "{0}: no records" -f $_.Query }
             }) -join '; '
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'AD SRV records not resolvable.' -Evidence $evidence -Subcategory 'DNS Discovery'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery'
     }
 
     if (-not $srvSuccess -and -not $nltestSuccess -and $discovery) {
@@ -143,7 +143,7 @@ function Invoke-ADHeuristics {
             if ($discovery.DcList.Error) { $evidence += "dclist: $($discovery.DcList.Error)" }
             elseif ($discovery.DcList.Output) { $evidence += "dclist output: $($discovery.DcList.Output -join ' | ')" }
         }
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered.' -Evidence ($evidence -join '; ') -Subcategory 'Discovery'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered, so Active Directory is unreachable.' -Evidence ($evidence -join '; ') -Subcategory 'Discovery'
     }
 
     $candidates = @()
@@ -221,7 +221,7 @@ function Invoke-ADHeuristics {
 
     $allPortsTested = $portMap.Count -gt 0
     if ($candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Cannot reach any DC on required ports.' -Evidence (($portMap.Keys | Sort-Object) -join ', ') -Subcategory 'Connectivity'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence (($portMap.Keys | Sort-Object) -join ', ') -Subcategory 'Connectivity'
     }
 
     $sharesFailingHosts = @()
@@ -234,7 +234,7 @@ function Invoke-ADHeuristics {
     }
 
     if ($sharesFailingHosts.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth).' -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can’t deliver GPOs.' -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
     }
 
     $timeSkewHigh = $false
@@ -251,10 +251,10 @@ function Invoke-ADHeuristics {
 
         if ($offset -ne $null -and [math]::Abs([double]$offset) -gt 300) {
             $timeSkewHigh = $true
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew.' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew, breaking Active Directory authentication.' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
         } elseif ($synchronized -eq $false -or ($timeInfo.Status -and $timeInfo.Status.Succeeded -ne $true)) {
             $timeSkewHigh = $true
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew.' -Evidence 'Time service not synchronized.' -Subcategory 'Time Synchronization'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew, breaking Active Directory authentication.' -Evidence 'Time service not synchronized.' -Subcategory 'Time Synchronization'
         } elseif ($offset -ne $null -and [math]::Abs([double]$offset) -le 300) {
             Add-CategoryNormal -CategoryResult $result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
         }
@@ -277,10 +277,10 @@ function Invoke-ADHeuristics {
             }
         }
         if ($scTest -and $scTest.Succeeded -eq $false -and $scTest.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Secure channel verification failed to run.' -Evidence $scTest.Error -Subcategory 'Secure Channel'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Secure channel verification failed to run, so machine trust status is unknown.' -Evidence $scTest.Error -Subcategory 'Secure Channel'
         }
         if ($scBroken) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Broken machine secure channel.' -Subcategory 'Secure Channel'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Broken machine secure channel, blocking domain authentication.' -Subcategory 'Secure Channel'
         }
     }
 
@@ -297,7 +297,7 @@ function Invoke-ADHeuristics {
         $failureEvents = $kerberosEvents | Where-Object { $_.Id -in 4768, 4771, 4776 }
         $failureCount = $failureEvents.Count
         if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
-            $title = 'Kerberos TGT not present'
+            $title = 'Kerberos TGT not present, breaking Active Directory authentication.'
             $evidenceParts = @('klist output missing krbtgt ticket')
             if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
                 $evidenceParts += "Expected realm: $($kerberosInfo.Parsed.TgtRealm)"
@@ -309,7 +309,7 @@ function Invoke-ADHeuristics {
         if ($failureCount -gt 0) {
             $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
             if ($noDcReachable -and $severity -eq 'high') { $severity = 'medium' }
-            $message = "Kerberos authentication failures detected ($failureCount)"
+            $message = "Kerberos authentication failures detected ($failureCount), breaking Active Directory authentication"
             if ($timeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
                 $message += ' related to time skew'
             } elseif ($noDcReachable) {
@@ -343,7 +343,7 @@ function Invoke-ADHeuristics {
         } else {
             $severity = 'medium'
             if ($gpoEvents.Count -ge 5 -and $sharesFailingHosts.Count -gt 0) { $severity = 'high' }
-            $title = 'GPO processing errors'
+            $title = 'GPO processing errors, so device policies aren’t applied'
             if ($timeSkewHigh) { $title += ' related to time skew' }
             $evidence = @()
             if ($gpResult -and $gpResult.Output) { $evidence += (($gpResult.Output | Select-Object -First 3) -join ' | ') }
@@ -380,7 +380,7 @@ function Invoke-ADHeuristics {
         if ($eventsPayload -and $eventsPayload.GroupPolicy) {
             $groupPolicyLog = $eventsPayload.GroupPolicy
             if ($groupPolicyLog.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read Group Policy event log' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read Group Policy event log, so device policy failures may be hidden.' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy'
             } else {
                 $entries = if ($groupPolicyLog -is [System.Collections.IEnumerable] -and -not ($groupPolicyLog -is [string])) { @($groupPolicyLog) } else { @($groupPolicyLog) }
                 $sysvolMatches = $entries | Where-Object { $_.Message -match '(?i)\\\\[^\r\n]+\\(SYSVOL|NETLOGON)' -or $_.Message -match '(?i)The network path was not found' -or $_.Message -match '(?i)The system cannot find the path specified' }
@@ -392,7 +392,7 @@ function Invoke-ADHeuristics {
                     }
 
                     $evidence = ($sysvolEvidence -join "`n")
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Group Policy errors accessing SYSVOL/NETLOGON' -Evidence $evidence -Subcategory 'Group Policy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren’t applied.' -Evidence $evidence -Subcategory 'Group Policy'
                 }
 
                 $gpoFailures = $entries | Where-Object { $_.Id -in 1058, 1030, 1502, 1503 }
@@ -404,7 +404,7 @@ function Invoke-ADHeuristics {
                     }
 
                     $evidence = ($gpoFailureEvidence -join "`n")
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy processing failures detected' -Evidence $evidence -Subcategory 'Group Policy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy processing failures detected, so device policies aren’t applied.' -Evidence $evidence -Subcategory 'Group Policy'
                 }
             }
         }

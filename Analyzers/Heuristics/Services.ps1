@@ -272,9 +272,9 @@ function Invoke-ServicesHeuristics {
         }
 
         $issueTitle = if ($candidateDiagnostics | Where-Object { $_.Status -eq 'missing' }) {
-            'Services artifact missing'
+            'Services artifact missing, so outages in critical services may go unnoticed.'
         } else {
-            'Unable to query services'
+            'Unable to query services, so outages in critical services may go unnoticed.'
         }
 
         $evidenceText = if ($evidenceLines.Count -gt 0) { $evidenceLines -join "`n" } else { $null }
@@ -397,7 +397,7 @@ function Invoke-ServicesHeuristics {
         $collectionErrors = @($payload.CollectionErrors | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
         if ($collectionErrors.Count -gt 0) {
             Write-HeuristicDebug -Source 'Services' -Message ('CollectionErrors found (non-blocking). Messages: {0}' -f ($collectionErrors -join ' | '))
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Service inventory reported collection errors' -Evidence ($collectionErrors -join "`n") -Subcategory 'Service Inventory'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Service inventory reported collection errors, so outages in critical services may go unnoticed.' -Evidence ($collectionErrors -join "`n") -Subcategory 'Service Inventory'
         }
     }
 

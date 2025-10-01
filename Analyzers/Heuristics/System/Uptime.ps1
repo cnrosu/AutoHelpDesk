@@ -30,7 +30,7 @@ function Invoke-SystemUptimeChecks {
             $days = [math]::Floor($span.TotalDays)
             Add-CategoryCheck -CategoryResult $Result -Name 'Current uptime (days)' -Status ([string][math]::Round($span.TotalDays,2))
             if ($span.TotalDays -gt 30) {
-                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Device has not rebooted in over 30 days' -Evidence ("Reported uptime: {0}" -f $uptimeText) -Subcategory 'Uptime'
+                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Device has not rebooted in over 30 days, so the system needs a reboot for stability.' -Evidence ("Reported uptime: {0}" -f $uptimeText) -Subcategory 'Uptime'
             } elseif ($span.TotalDays -lt 1) {
                 Add-CategoryNormal -CategoryResult $Result -Title 'Recent reboot detected' -Subcategory 'Uptime'
             }
