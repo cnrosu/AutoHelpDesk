@@ -1,6 +1,6 @@
 <#!
 .SYNOPSIS
-    Collects recent Application and System event log entries.
+    Collects recent Application, System, and authentication/time synchronization event log entries.
 #>
 [CmdletBinding()]
 param(
@@ -28,11 +28,176 @@ function Get-RecentEvents {
     }
 }
 
+function ConvertTo-EventPayload {
+    param(
+        [Parameter(Mandatory)]
+        $Event
+    )
+
+    $entry = [ordered]@{
+        TimeCreated      = $null
+        RecordId         = $null
+        Id               = $null
+        LevelDisplayName = $null
+        ProviderName     = $null
+        Message          = $null
+    }
+
+    if ($Event.PSObject.Properties['TimeCreated']) {
+        $timeValue = $Event.TimeCreated
+        if ($timeValue) {
+            try {
+                $entry.TimeCreated = $timeValue.ToUniversalTime().ToString('o')
+            } catch {
+                $entry.TimeCreated = $timeValue.ToString()
+            }
+        }
+    }
+
+    foreach ($name in @('RecordId','Id','LevelDisplayName','ProviderName','Message')) {
+        if ($Event.PSObject.Properties[$name]) {
+            $entry[$name] = $Event.$name
+        }
+    }
+
+    try {
+        $xml = [xml]$Event.ToXml()
+        $dataNodes = $xml.Event.EventData.Data
+        if ($dataNodes) {
+            $data = [ordered]@{}
+            foreach ($node in $dataNodes) {
+                $nodeName = $null
+                if ($node.Name) {
+                    $nodeName = [string]$node.Name
+                } elseif ($node.PSObject.Properties['name']) {
+                    $nodeName = [string]$node.name
+                }
+
+                if (-not $nodeName) { continue }
+
+                $value = $null
+                if ($node.'#text') {
+                    $value = [string]$node.'#text'
+                }
+
+                if ($data.Contains($nodeName)) {
+                    $data[$nodeName] = $value
+                } else {
+                    $data.Add($nodeName, $value)
+                }
+            }
+
+            if ($data.Count -gt 0) {
+                $entry['EventData'] = $data
+            }
+        }
+    } catch {
+        $entry['EventDataError'] = $_.Exception.Message
+    }
+
+    return [pscustomobject]$entry
+}
+
+function Get-EventRecords {
+    param(
+        [Parameter(Mandatory)]
+        [string]$LogName,
+
+        [int[]]$EventIds,
+
+        [datetime]$StartTime,
+
+        [int]$MaxEvents = 400
+    )
+
+    $result = [ordered]@{
+        LogName   = $LogName
+        EventIds  = if ($EventIds) { @($EventIds) } else { @() }
+        StartTime = if ($StartTime) { $StartTime.ToString('o') } else { $null }
+        Events    = @()
+        Error     = $null
+    }
+
+    try {
+        $filter = @{ LogName = $LogName }
+        if ($EventIds) { $filter['Id'] = $EventIds }
+        if ($StartTime) { $filter['StartTime'] = $StartTime }
+
+        $eventRecords = Get-WinEvent -FilterHashtable $filter -MaxEvents $MaxEvents -ErrorAction Stop
+        if ($eventRecords) {
+            $ordered = @($eventRecords) | Sort-Object TimeCreated
+            $converted = foreach ($event in $ordered) {
+                ConvertTo-EventPayload -Event $event
+            }
+
+            $result.Events = @($converted)
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-KerberosPreAuthFailures {
+    $startTime = (Get-Date).AddDays(-14)
+    return Get-EventRecords -LogName 'Security' -EventIds @(4771) -StartTime $startTime -MaxEvents 400
+}
+
+function Get-TimeServiceEvents {
+    $startTime = (Get-Date).AddDays(-14)
+    return Get-EventRecords -LogName 'Microsoft-Windows-Time-Service/Operational' -EventIds @(29, 36, 47, 50) -StartTime $startTime -MaxEvents 400
+}
+
+function Get-W32tmStatus {
+    $result = [ordered]@{
+        CommandPath = $null
+        Arguments   = @('/query','/status')
+        Output      = @()
+        ExitCode    = $null
+        Error       = $null
+        Succeeded   = $false
+    }
+
+    $command = Get-Command -Name 'w32tm.exe' -ErrorAction SilentlyContinue
+    if (-not $command) {
+        $result.Error = 'w32tm.exe not found.'
+        return [pscustomobject]$result
+    }
+
+    $result.CommandPath = $command.Source
+
+    try {
+        $output = & $command.Source '/query' '/status' 2>&1
+        if ($output) {
+            $result.Output = @($output)
+        }
+
+        if ($null -ne $LASTEXITCODE) {
+            $result.ExitCode = $LASTEXITCODE
+            if ($LASTEXITCODE -eq 0) { $result.Succeeded = $true }
+        } else {
+            $result.ExitCode = 0
+            $result.Succeeded = $true
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+        $result.Succeeded = $false
+    }
+
+    return [pscustomobject]$result
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
         Application = Get-RecentEvents -LogName 'Application'
         GroupPolicy = Get-RecentEvents -LogName 'Microsoft-Windows-GroupPolicy/Operational' -MaxEvents 200
+        Authentication = [ordered]@{
+            KerberosPreAuthFailures = Get-KerberosPreAuthFailures
+            TimeServiceEvents       = Get-TimeServiceEvents
+            W32tmStatus             = Get-W32tmStatus
+        }
     }
 
     $result = New-CollectorMetadata -Payload $payload
