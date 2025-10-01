@@ -650,6 +650,8 @@ function Invoke-SecurityHeuristics {
         } elseif ($smartAppState -ne $null) {
             Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control'
     }
 
     $lapsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'laps_localadmin'

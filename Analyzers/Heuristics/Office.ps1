@@ -61,6 +61,10 @@ function Invoke-OfficeHeuristics {
             Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office macro notifications - no data, so macro security gaps could expose the organization to macro malware.' -Subcategory 'Macro Policies'
             Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office Protected View - no data, so disabled Protected View could let untrusted files open directly.' -Subcategory 'Protected View Policies'
         }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Office MOTW macro blocking - no data, so disabled MOTW or permissive macro settings could expose the organization to macro malware.' -Subcategory 'Macro Policies'
+        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office macro notifications - no data, so macro security gaps could expose the organization to macro malware.' -Subcategory 'Macro Policies'
+        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Office Protected View - no data, so disabled Protected View could let untrusted files open directly.' -Subcategory 'Protected View Policies'
     }
 
     $cacheArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-caches'
@@ -81,6 +85,8 @@ function Invoke-OfficeHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title ('Outlook cache files present ({0})' -f $payload.Caches.Count) -Subcategory 'Outlook Cache'
             }
         }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Outlook cache inventory not collected, so oversized cache files may be missed.' -Subcategory 'Outlook Cache'
     }
 
     $connectivityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
@@ -101,6 +107,8 @@ function Invoke-OfficeHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title ('OST files present ({0})' -f $payload.OstFiles.Count) -Subcategory 'Outlook Data Files'
             }
         }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Outlook data file inventory not collected, so oversized OST files may be missed.' -Subcategory 'Outlook Data Files'
     }
 
     $autodiscoverArtifact = Get-AnalyzerArtifact -Context $Context -Name 'autodiscover-dns'

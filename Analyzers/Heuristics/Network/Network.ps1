@@ -823,6 +823,8 @@ function Invoke-NetworkHeuristics {
                 }
             }
         }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'DNS diagnostics not collected, so latency and name resolution issues may be missed.' -Subcategory 'DNS Resolution'
     }
 
     $outlookArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
@@ -899,6 +901,15 @@ function Invoke-NetworkHeuristics {
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters'
         }
+    } elseif ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
+        $adapterNode = $adapterPayload.Adapters
+        if ($adapterNode -is [pscustomobject] -and $adapterNode.PSObject.Properties['Error'] -and $adapterNode.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapterNode.Error -Subcategory 'Network Adapters'
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
     }
 
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
