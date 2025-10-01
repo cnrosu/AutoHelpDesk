@@ -98,6 +98,63 @@ function Get-ServiceInventory {
     }
 }
 
+function Get-ServiceDependencyNames {
+    param($Service)
+
+    if (-not $Service) { return @() }
+
+    $names = New-Object System.Collections.Generic.List[string]
+    $dedup = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addName = {
+        param($value)
+
+        if ($null -eq $value) { return }
+
+        $candidate = ''
+        if ($value -is [string]) {
+            $candidate = $value
+        } elseif ($value -is [System.ServiceProcess.ServiceController]) {
+            $candidate = $value.ServiceName
+        } elseif ($value.PSObject) {
+            if ($value.PSObject.Properties['Name']) {
+                $candidate = [string]$value.Name
+            } elseif ($value.PSObject.Properties['ServiceName']) {
+                $candidate = [string]$value.ServiceName
+            } elseif ($value.PSObject.Properties['Id']) {
+                $candidate = [string]$value.Id
+            } else {
+                $candidate = [string]$value
+            }
+        } else {
+            $candidate = [string]$value
+        }
+
+        if ([string]::IsNullOrWhiteSpace($candidate)) { return }
+
+        $normalized = $candidate.Trim()
+        if (-not $dedup.Add($normalized)) { return }
+
+        $names.Add($normalized) | Out-Null
+    }
+
+    foreach ($propertyName in @('Dependencies','DependOnService','ServicesDependedOn','RequiredServices')) {
+        if (-not $Service.PSObject.Properties[$propertyName]) { continue }
+        $raw = $Service.$propertyName
+        if ($null -eq $raw) { continue }
+
+        if ($raw -is [System.Collections.IEnumerable] -and -not ($raw -is [string])) {
+            foreach ($entry in $raw) {
+                & $addName $entry
+            }
+        } else {
+            & $addName $raw
+        }
+    }
+
+    return $names.ToArray()
+}
+
 function Get-ServiceRecord {
     param($Service)
 
@@ -164,6 +221,7 @@ function Get-ServiceRecord {
         Raw                   = $rawLine
         StartModeRaw          = if ($startMode) { $startMode.Trim() } else { '' }
         DelayedAutoStart      = $delayed
+        Dependencies          = Get-ServiceDependencyNames -Service $Service
     }
 }
 
