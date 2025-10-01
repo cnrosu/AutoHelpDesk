@@ -71,18 +71,20 @@ function Get-PrinterDictionaries {
     $result = [ordered]@{
         Printers       = [System.Collections.Generic.List[pscustomobject]]::new()
         DefaultPrinter = $null
-        Errors         = [System.Collections.Generic.List[string]]::new()
+        Errors         = @()
     }
+
+    $errorBuilder = [System.Text.StringBuilder]::new()
 
     $printersRaw = @()
     try {
         $printersRaw = Get-Printer -ErrorAction Stop
     } catch {
-        $result.Errors.Add("Get-Printer failed: $($_.Exception.Message)")
+        [void]$errorBuilder.AppendLine("Get-Printer failed: $($_.Exception.Message)")
         try {
             $printersRaw = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
         } catch {
-            $result.Errors.Add("Win32_Printer fallback failed: $($_.Exception.Message)")
+            [void]$errorBuilder.AppendLine("Win32_Printer fallback failed: $($_.Exception.Message)")
             $printersRaw = @()
         }
     }
@@ -95,7 +97,7 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors.Add("Get-PrinterPort failed: $($_.Exception.Message)")
+        [void]$errorBuilder.AppendLine("Get-PrinterPort failed: $($_.Exception.Message)")
     }
 
     $driversByName = @{}
@@ -106,7 +108,7 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors.Add("Get-PrinterDriver failed: $($_.Exception.Message)")
+        [void]$errorBuilder.AppendLine("Get-PrinterDriver failed: $($_.Exception.Message)")
     }
 
     $now = Get-Date
@@ -150,7 +152,7 @@ function Get-PrinterDictionaries {
             }
             if ($configRaw) { $configuration = ConvertTo-OrderedDictionary $configRaw }
         } catch {
-            $result.Errors.Add("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
+            [void]$errorBuilder.AppendLine("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
         }
 
         $jobs = [System.Collections.Generic.List[pscustomobject]]::new()
@@ -184,7 +186,7 @@ function Get-PrinterDictionaries {
                 })
             }
         } catch {
-            $result.Errors.Add("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
+            [void]$errorBuilder.AppendLine("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
         }
 
         $portDict = $null
@@ -230,8 +232,11 @@ function Get-PrinterDictionaries {
     }
 
     $result.Printers = $printerDictionaries.ToArray()
-    if ($result.Errors -is [System.Collections.Generic.List[string]]) {
-        $result.Errors = $result.Errors.ToArray()
+
+    if ($errorBuilder.Length -gt 0) {
+        $errorMessages = $errorBuilder.ToString() -split '\r?\n'
+        $errorMessages = $errorMessages | Where-Object { $_ }
+        $result.Errors = [string[]]$errorMessages
     }
     return $result
 }
@@ -356,19 +361,19 @@ function Collect-PrintEvents {
     $startTime = (Get-Date).AddDays(-7)
     $adminEvents = @()
     $operationalEvents = @()
-    $errors = [System.Collections.Generic.List[string]]::new()
+    $errorsBuilder = [System.Text.StringBuilder]::new()
 
     try {
         $adminEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Admin'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors.Add("Admin log query failed: $($_.Exception.Message)")
+        [void]$errorsBuilder.AppendLine("Admin log query failed: $($_.Exception.Message)")
         $adminEvents = @()
     }
 
     try {
         $operationalEvents = Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PrintService/Operational'; StartTime=$startTime} -ErrorAction Stop
     } catch {
-        $errors.Add("Operational log query failed: $($_.Exception.Message)")
+        [void]$errorsBuilder.AppendLine("Operational log query failed: $($_.Exception.Message)")
         $operationalEvents = @()
     }
 
@@ -406,7 +411,10 @@ function Collect-PrintEvents {
             WarningCount = ($operationalEvents | Where-Object { $_.LevelDisplayName -eq 'Warning' }).Count
             Events       = $operationalConverted
         }
-        Errors = if ($errors -is [System.Collections.Generic.List[string]]) { $errors.ToArray() } else { $errors }
+        Errors = if ($errorsBuilder.Length -gt 0) {
+            $messages = $errorsBuilder.ToString() -split '\r?\n'
+            [string[]]($messages | Where-Object { $_ })
+        } else { @() }
     }
 }
 
