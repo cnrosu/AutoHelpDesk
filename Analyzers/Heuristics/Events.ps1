@@ -54,6 +54,79 @@ function Invoke-EventsHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
+
+            if ($payload.PSObject.Properties['StorageDiskEvents']) {
+                $diskEvents = $payload.StorageDiskEvents
+                $eventCount = 0
+                $hasError = $false
+                $hasSummary = [bool]$diskEvents
+                if ($diskEvents -and $diskEvents.PSObject.Properties['Events'] -and $diskEvents.Events) {
+                    $eventCount = ($diskEvents.Events | Where-Object { $_ -and $_.Count -gt 0 }).Count
+                }
+                if ($diskEvents -and $diskEvents.PSObject.Properties['Error'] -and $diskEvents.Error) {
+                    $hasError = $true
+                }
+
+                Write-HeuristicDebug -Source 'Events' -Message 'Evaluating storage disk events' -Data ([ordered]@{
+                    HasSummary = $hasSummary
+                    EventSummaries = $eventCount
+                    HasError = $hasError
+                })
+
+                if ($diskEvents -and $diskEvents.PSObject.Properties['Error'] -and $diskEvents.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Disk integrity event query failed, so intermittent storage faults may be hidden.' -Evidence $diskEvents.Error -Subcategory 'Storage / Disk'
+                } elseif ($diskEvents -and $diskEvents.PSObject.Properties['Events']) {
+                    $eventSummaries = @($diskEvents.Events | Where-Object { $_ -and $_.Count -gt 0 })
+                    if ($eventSummaries.Count -gt 0) {
+                        $hasNtfs55 = $eventSummaries | Where-Object { $_.EventId -eq 55 -and $_.Count -gt 0 }
+                        $severity = if ($hasNtfs55) { 'high' } else { 'medium' }
+
+                        Write-HeuristicDebug -Source 'Events' -Message 'Disk/NTFS integrity events detected' -Data ([ordered]@{
+                            Severity = $severity
+                            Entries = $eventSummaries.Count
+                            HasNtfs55 = [bool]$hasNtfs55
+                        })
+
+                        $evidenceLines = @()
+                        if ($diskEvents.PSObject.Properties['WindowStartUtc'] -and $diskEvents.WindowStartUtc) {
+                            $evidenceLines += ('WindowStartUtc {0}' -f $diskEvents.WindowStartUtc)
+                        }
+
+                        foreach ($entry in ($eventSummaries | Sort-Object -Property { [int]$_.EventId })) {
+                            $parts = @('EventId {0}' -f $entry.EventId, 'Count {0}' -f $entry.Count)
+
+                            if ($entry.PSObject.Properties['Provider'] -and $entry.Provider) {
+                                $parts += ('Provider {0}' -f $entry.Provider)
+                            }
+
+                            if ($entry.PSObject.Properties['LastUtc'] -and $entry.LastUtc) {
+                                $parts += ('LastUtc {0}' -f $entry.LastUtc)
+                            }
+
+                            $deviceHints = @()
+                            if ($entry.PSObject.Properties['DeviceHints'] -and $entry.DeviceHints) {
+                                if ($entry.DeviceHints -is [System.Collections.IEnumerable] -and -not ($entry.DeviceHints -is [string])) {
+                                    foreach ($hint in $entry.DeviceHints) {
+                                        if ($hint) { $deviceHints += [string]$hint }
+                                    }
+                                } else {
+                                    $deviceHints = @([string]$entry.DeviceHints)
+                                }
+                            } elseif ($entry.PSObject.Properties['DeviceHint'] -and $entry.DeviceHint) {
+                                $deviceHints = @([string]$entry.DeviceHint)
+                            }
+
+                            if ($deviceHints.Count -gt 0) {
+                                $parts += ('Devices {0}' -f (($deviceHints | Sort-Object -Unique) -join ', '))
+                            }
+
+                            $evidenceLines += ($parts -join '; ')
+                        }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Disk I/O or NTFS integrity issues detected' -Evidence ($evidenceLines -join "`n") -Subcategory 'Storage / Disk'
+                    }
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
