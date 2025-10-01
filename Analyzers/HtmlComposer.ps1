@@ -529,13 +529,16 @@ function Build-SummaryCardHtml {
         $counts[$key]++
     }
 
-    $weights = @{ critical = 10; high = 6; medium = 3; warning = 2; low = 1; info = 0 }
-    $penalty = 0
-    foreach ($issue in $Issues) {
-        $sev = if ($issue.Severity) { $issue.Severity } else { 'info' }
-        if ($weights.ContainsKey($sev)) { $penalty += $weights[$sev] }
+    $goodCount = if ($Normals) { [int]$Normals.Count } else { 0 }
+    $badCount = if ($Issues) { [int]$Issues.Count } else { 0 }
+    $totalCount = $goodCount + $badCount
+    if ($totalCount -le 0) {
+        $overallRatio = 1.0
+        $fractionDisplay = '0/0'
+    } else {
+        $overallRatio = [Math]::Max(0.0, [Math]::Min(([double]$goodCount / [double]$totalCount), 1.0))
+        $fractionDisplay = ("{0}/{1}" -f $goodCount, $totalCount)
     }
-    $score = [Math]::Max(0, 100 - [Math]::Min($penalty, 80))
 
     $severityOrder = @{ critical = 0; high = 1; medium = 2; warning = 3; low = 4; info = 5; good = 6 }
     $overallWorst = 'good'
@@ -573,14 +576,19 @@ function Build-SummaryCardHtml {
     $gatewayText = if ($Summary.Gateways -and $Summary.Gateways.Count -gt 0) { ($Summary.Gateways -join ', ') } else { 'Unknown' }
     $dnsText = if ($Summary.DnsServers -and $Summary.DnsServers.Count -gt 0) { ($Summary.DnsServers -join ', ') } else { 'Unknown' }
 
-    $overallPercent = [Math]::Max(0.0, [Math]::Min([double]$score, 100.0))
+    $overallPercent = [Math]::Round(100.0 * $overallRatio, 1)
     $overallCircumference = 2.0 * [Math]::PI * 54.0
     $overallDashArray = [string]::Format($invariant, '{0:0.##}', $overallCircumference)
-    $overallDashOffset = [string]::Format($invariant, '{0:0.##}', $overallCircumference * (1.0 - ($overallPercent / 100.0)))
+    $overallDashOffset = [string]::Format($invariant, '{0:0.##}', $overallCircumference * (1.0 - ($overallRatio)))
     $overallClass = if ($overallWorst) { "score-ring score-ring--overall score-ring--$overallWorst" } else { 'score-ring score-ring--overall score-ring--info' }
 
     $overallLabelParts = New-Object System.Collections.Generic.List[string]
-    $null = $overallLabelParts.Add(("Overall health score {0} out of 100" -f $score))
+    if ($totalCount -le 0) {
+        $null = $overallLabelParts.Add('No good or bad findings were recorded')
+    } else {
+        $null = $overallLabelParts.Add(("Good findings {0}; bad findings {1}" -f $goodCount, $badCount))
+        $null = $overallLabelParts.Add(("Good fraction {0}%" -f $overallPercent))
+    }
     if ($overallWorst -and $overallWorst -ne 'good') {
         $display = if ($severityDisplay.ContainsKey($overallWorst)) { $severityDisplay[$overallWorst] } else { $overallWorst }
         $null = $overallLabelParts.Add(("Worst severity {0}" -f $display))
@@ -591,13 +599,13 @@ function Build-SummaryCardHtml {
 
     $overallRingBuilder = [System.Text.StringBuilder]::new()
     $overallLabelHtml = Encode-Html 'Overall'
-    $overallScoreHtml = Encode-Html ([string]$score)
+    $overallScoreHtml = Encode-Html ([string]$fractionDisplay)
     $null = $overallRingBuilder.AppendLine("<div class='$overallClass' role='img' aria-label='$overallAriaHtml'>")
     $null = $overallRingBuilder.AppendLine("  <svg class='score-ring__svg' viewBox='0 0 120 120'>")
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__background' cx='60' cy='60' r='54'></circle>")
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__value' cx='60' cy='60' r='54' stroke-dasharray='$overallDashArray' stroke-dashoffset='$overallDashOffset'></circle>")
     $null = $overallRingBuilder.AppendLine('  </svg>')
-    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>/100</span></div>")
+    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>GOOD/TOTAL</span></div>")
     $null = $overallRingBuilder.AppendLine('</div>')
     $overallRingHtml = $overallRingBuilder.ToString().TrimEnd()
 
@@ -639,7 +647,7 @@ function Build-SummaryCardHtml {
         $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
     $null = $sb.AppendLine('      </div>')
-    $null = $sb.AppendLine("      <small class='report-note score-section__note'>Score is heuristic. Triage Critical/High items first.</small>")
+    $null = $sb.AppendLine("      <small class='report-note score-section__note'>Fraction shows good findings versus bad findings. Triage Critical/High items first.</small>")
     $null = $sb.AppendLine('    </div>')
     $null = $sb.AppendLine('  </div>')
     $null = $sb.AppendLine("  <div class='report-overview__columns'>")
