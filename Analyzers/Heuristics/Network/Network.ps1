@@ -912,6 +912,32 @@ function Invoke-NetworkHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
     }
 
+    if ($adapterPayload -and $adapterPayload.Properties) {
+        $propertyNodes = ConvertTo-NetworkArray $adapterPayload.Properties
+        foreach ($property in $propertyNodes) {
+            if (-not $property) { continue }
+            if (-not ($property.PSObject.Properties['DisplayName'] -and $property.DisplayName)) { continue }
+
+            $displayName = [string]$property.DisplayName
+            if (-not $displayName -or ($displayName -notmatch '(?i)auto[\s-]*reconnect')) { continue }
+
+            $adapterName = if ($property.PSObject.Properties['Name'] -and $property.Name) { [string]$property.Name } else { 'adapter' }
+            $displayValue = if ($property.PSObject.Properties['DisplayValue']) { [string]$property.DisplayValue } else { '' }
+            $normalizedValue = if ($displayValue) { $displayValue.Trim() } else { '' }
+
+            if ($normalizedValue -match '(?i)disable|off|false|not enabled') {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Auto-reconnect disabled on {0}, so network blips disconnect users." -f $adapterName) -Evidence ("{0} = {1}" -f $displayName, (if ($normalizedValue) { $normalizedValue } else { 'Disabled' })) -Subcategory 'Wireless Reliability'
+            } elseif ($normalizedValue -match '(?i)enable|on|true') {
+                Add-CategoryNormal -CategoryResult $result -Title ("Auto-reconnect enabled on {0}" -f $adapterName) -Evidence ("{0} = {1}" -f $displayName, $normalizedValue) -Subcategory 'Wireless Reliability'
+            }
+        }
+    } elseif ($adapterPayload -and $adapterPayload.PSObject.Properties['Properties']) {
+        $propertyNode = $adapterPayload.Properties
+        if ($propertyNode -is [pscustomobject] -and $propertyNode.PSObject.Properties['Error'] -and $propertyNode.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read adapter advanced properties, so wireless reliability settings are unknown.' -Evidence $propertyNode.Error -Subcategory 'Wireless Reliability'
+        }
+    }
+
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved proxy artifact' -Data ([ordered]@{
         Found = [bool]$proxyArtifact

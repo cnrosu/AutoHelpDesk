@@ -75,6 +75,7 @@ The following sections list the analysis functions and issue card heuristics gro
 
 ## Network & DNS Heuristics
 - **Network** – Critical issues are raised for missing IPv4 addresses or APIPA addresses, high for missing default gateways or default routes, high for failed pings, and low when traceroute never completes, highlighting likely connectivity faults.
+- **Network/Wireless Reliability** – Flags medium issues when adapter auto-reconnect advanced properties are disabled (with evidence of the reported value) and records normal findings when auto-reconnect remains enabled.
 - **DNS/Internal** – Adjusts severity based on domain-join health: medium/high when only one or no AD-capable resolvers are detected (with special handling if the secure channel is already broken) and medium when public DNS servers appear on a domain-joined device.
 - **DNS/Order** – Creates a low-severity issue when a public DNS server sits ahead of an internal resolver in the configuration order.
 - **DNS** – Reports a medium-severity issue whenever `nslookup` results show timeouts or NXDOMAIN responses.
