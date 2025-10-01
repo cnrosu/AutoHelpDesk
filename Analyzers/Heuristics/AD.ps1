@@ -28,6 +28,22 @@ function Get-ArtifactPayloadValue {
     return $payload
 }
 
+function Add-StringFragment {
+    param(
+        [Parameter(Mandatory)]
+        [System.Text.StringBuilder]$Builder,
+        [Parameter(Mandatory)]
+        [string]$Fragment,
+        [string]$Separator = '; '
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Fragment)) { return }
+    if ($Builder.Length -gt 0 -and $Separator) {
+        $null = $Builder.Append($Separator)
+    }
+    $null = $Builder.Append($Fragment)
+}
+
 function Invoke-ADHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -134,16 +150,17 @@ function Invoke-ADHeuristics {
     }
 
     if (-not $srvSuccess -and -not $nltestSuccess -and $discovery) {
-        $evidence = @()
+        $evidenceBuilder = [System.Text.StringBuilder]::new()
         if ($discovery.DsGetDc) {
-            if ($discovery.DsGetDc.Error) { $evidence += "dsgetdc: $($discovery.DsGetDc.Error)" }
-            elseif ($discovery.DsGetDc.Output) { $evidence += "dsgetdc output: $($discovery.DsGetDc.Output -join ' | ')" }
+            if ($discovery.DsGetDc.Error) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dsgetdc: {0}" -f $discovery.DsGetDc.Error) }
+            elseif ($discovery.DsGetDc.Output) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dsgetdc output: {0}" -f ($discovery.DsGetDc.Output -join ' | ')) }
         }
         if ($discovery.DcList) {
-            if ($discovery.DcList.Error) { $evidence += "dclist: $($discovery.DcList.Error)" }
-            elseif ($discovery.DcList.Output) { $evidence += "dclist output: $($discovery.DcList.Output -join ' | ')" }
+            if ($discovery.DcList.Error) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dclist: {0}" -f $discovery.DcList.Error) }
+            elseif ($discovery.DcList.Output) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dclist output: {0}" -f ($discovery.DcList.Output -join ' | ')) }
         }
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered, so Active Directory is unreachable.' -Evidence ($evidence -join '; ') -Subcategory 'Discovery'
+        $evidenceText = $evidenceBuilder.ToString()
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No DC discovered, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Discovery'
     }
 
     $candidates = @()
@@ -298,22 +315,24 @@ function Invoke-ADHeuristics {
         $failureCount = $failureEvents.Count
         if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
             $title = "Kerberos TGT not present, breaking Active Directory authentication."
-            $evidenceParts = @('klist output missing krbtgt ticket')
+            $evidencePartsBuilder = [System.Text.StringBuilder]::new()
+            Add-StringFragment -Builder $evidencePartsBuilder -Fragment 'klist output missing krbtgt ticket'
             if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
-                $evidenceParts += "Expected realm: $($kerberosInfo.Parsed.TgtRealm)"
+                Add-StringFragment -Builder $evidencePartsBuilder -Fragment ("Expected realm: {0}" -f $kerberosInfo.Parsed.TgtRealm)
             }
-            if ($noDcReachable) { $evidenceParts += 'likely off network' }
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence ($evidenceParts -join '; ') -Subcategory 'Kerberos'
+            if ($noDcReachable) { Add-StringFragment -Builder $evidencePartsBuilder -Fragment 'likely off network' }
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidencePartsBuilder.ToString() -Subcategory 'Kerberos'
         }
 
         if ($failureCount -gt 0) {
             $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
             if ($noDcReachable -and $severity -eq 'high') { $severity = 'medium' }
-            $message = "Kerberos authentication failures detected ($failureCount), breaking Active Directory authentication"
+            $messageBuilder = [System.Text.StringBuilder]::new()
+            $null = $messageBuilder.Append(("Kerberos authentication failures detected ({0}), breaking Active Directory authentication" -f $failureCount))
             if ($timeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
-                $message += ' related to time skew'
+                $null = $messageBuilder.Append(' related to time skew')
             } elseif ($noDcReachable) {
-                $message += '; DC unreachable'
+                $null = $messageBuilder.Append('; DC unreachable')
             }
             $failureGroups = $failureEvents | Group-Object -Property Id
             $failureSummaryParts = [System.Collections.Generic.List[string]]::new()
@@ -322,7 +341,7 @@ function Invoke-ADHeuristics {
             }
 
             $failureSummary = ($failureSummaryParts -join ', ')
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $message -Evidence $failureSummary -Subcategory 'Kerberos'
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $messageBuilder.ToString() -Evidence $failureSummary -Subcategory 'Kerberos'
         }
     }
 
@@ -344,10 +363,15 @@ function Invoke-ADHeuristics {
             $severity = 'medium'
             if ($gpoEvents.Count -ge 5 -and $sharesFailingHosts.Count -gt 0) { $severity = 'high' }
             $title = "GPO processing errors, so device policies aren't applied"
-            if ($timeSkewHigh) { $title += ' related to time skew' }
-            $evidence = @()
-            if ($gpResult -and $gpResult.Output) { $evidence += (($gpResult.Output | Select-Object -First 3) -join ' | ') }
-            if ($gpResult -and $gpResult.Error) { $evidence += $gpResult.Error }
+            if ($timeSkewHigh) {
+                $titleBuilder = [System.Text.StringBuilder]::new()
+                $null = $titleBuilder.Append($title)
+                $null = $titleBuilder.Append(' related to time skew')
+                $title = $titleBuilder.ToString()
+            }
+            $evidenceBuilder = [System.Text.StringBuilder]::new()
+            if ($gpResult -and $gpResult.Output) { Add-StringFragment -Builder $evidenceBuilder -Fragment (($gpResult.Output | Select-Object -First 3) -join ' | ') }
+            if ($gpResult -and $gpResult.Error) { Add-StringFragment -Builder $evidenceBuilder -Fragment $gpResult.Error }
             if ($gpoEvents.Count -gt 0) {
                 $eventGroups = $gpoEvents | Group-Object -Property Id
                 $eventSummaryParts = [System.Collections.Generic.List[string]]::new()
@@ -356,10 +380,10 @@ function Invoke-ADHeuristics {
                 }
 
                 $eventSummary = ($eventSummaryParts -join ', ')
-                if ($eventSummary) { $evidence += $eventSummary }
+                if ($eventSummary) { Add-StringFragment -Builder $evidenceBuilder -Fragment $eventSummary }
             }
-            if (-not $evidence) { $evidence = @('GPO data unavailable') }
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence ($evidence -join '; ') -Subcategory 'Group Policy'
+            if ($evidenceBuilder.Length -eq 0) { Add-StringFragment -Builder $evidenceBuilder -Fragment 'GPO data unavailable' }
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidenceBuilder.ToString() -Subcategory 'Group Policy'
         }
     }
 
