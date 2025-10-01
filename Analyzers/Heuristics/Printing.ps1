@@ -79,7 +79,7 @@ function Invoke-PrintingHeuristics {
         Found = [bool]$printingArtifact
     })
     if (-not $printingArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing artifact not collected, so printing security and reliability risks can’t be evaluated.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing artifact not collected, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
         return $result
     }
 
@@ -88,7 +88,7 @@ function Invoke-PrintingHeuristics {
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing payload missing, so printing security and reliability risks can’t be evaluated.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing payload missing, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
         return $result
     }
 
@@ -103,7 +103,7 @@ function Invoke-PrintingHeuristics {
     if ($payload.Spooler) {
         $spooler = $payload.Spooler
         if ($spooler.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Print Spooler state unavailable, so printing security and reliability risks can’t be evaluated.' -Evidence $spooler.Error -Subcategory 'Spooler Service'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Print Spooler state unavailable, so printing security and reliability risks can't be evaluated." -Evidence $spooler.Error -Subcategory 'Spooler Service'
         } else {
             $status = if ($spooler.Status) { [string]$spooler.Status } else { 'Unknown' }
             $startMode = if ($spooler.StartMode) { [string]$spooler.StartMode } else { $spooler.StartType }

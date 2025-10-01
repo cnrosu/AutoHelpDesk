@@ -838,7 +838,7 @@ function Invoke-NetworkHeuristics {
             $conn = $payload.Connectivity
                 if ($conn.PSObject.Properties['TcpTestSucceeded']) {
                     if (-not $conn.TcpTestSucceeded) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Outlook HTTPS connectivity failed, so Outlook can’t connect to Exchange Online.' -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity'
                     } else {
                         Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
                 }

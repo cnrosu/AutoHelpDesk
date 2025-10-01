@@ -234,7 +234,7 @@ function Invoke-ADHeuristics {
     }
 
     if ($sharesFailingHosts.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can’t deliver GPOs.' -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
     }
 
     $timeSkewHigh = $false
@@ -297,7 +297,7 @@ function Invoke-ADHeuristics {
         $failureEvents = $kerberosEvents | Where-Object { $_.Id -in 4768, 4771, 4776 }
         $failureCount = $failureEvents.Count
         if ($kerberosInfo.Parsed -and $kerberosInfo.Parsed.HasTgt -ne $true) {
-            $title = 'Kerberos TGT not present, breaking Active Directory authentication.'
+            $title = "Kerberos TGT not present, breaking Active Directory authentication."
             $evidenceParts = @('klist output missing krbtgt ticket')
             if ($kerberosInfo.Parsed.PSObject.Properties['TgtRealm'] -and $kerberosInfo.Parsed.TgtRealm) {
                 $evidenceParts += "Expected realm: $($kerberosInfo.Parsed.TgtRealm)"
@@ -343,7 +343,7 @@ function Invoke-ADHeuristics {
         } else {
             $severity = 'medium'
             if ($gpoEvents.Count -ge 5 -and $sharesFailingHosts.Count -gt 0) { $severity = 'high' }
-            $title = 'GPO processing errors, so device policies aren’t applied'
+            $title = "GPO processing errors, so device policies aren't applied"
             if ($timeSkewHigh) { $title += ' related to time skew' }
             $evidence = @()
             if ($gpResult -and $gpResult.Output) { $evidence += (($gpResult.Output | Select-Object -First 3) -join ' | ') }
@@ -392,7 +392,7 @@ function Invoke-ADHeuristics {
                     }
 
                     $evidence = ($sysvolEvidence -join "`n")
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren’t applied.' -Evidence $evidence -Subcategory 'Group Policy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy'
                 }
 
                 $gpoFailures = $entries | Where-Object { $_.Id -in 1058, 1030, 1502, 1503 }
@@ -404,7 +404,7 @@ function Invoke-ADHeuristics {
                     }
 
                     $evidence = ($gpoFailureEvidence -join "`n")
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy processing failures detected, so device policies aren’t applied.' -Evidence $evidence -Subcategory 'Group Policy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title "Group Policy processing failures detected, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy'
                 }
             }
         }
