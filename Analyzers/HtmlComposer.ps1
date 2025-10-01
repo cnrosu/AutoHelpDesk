@@ -1024,6 +1024,13 @@ function New-AnalyzerHtml {
 
     Write-HtmlDebug -Stage 'Composer' -Message 'Category flattening complete.' -Data @{ Issues = $issues.Count; Normals = $normals.Count }
 
+    $servicesIssueCount = ($issues | Where-Object { $_ -and $_.PSObject.Properties['Area'] -and ($_.Area -like 'Services*') }).Count
+    $servicesNormalCount = ($normals | Where-Object { $_ -and $_.PSObject.Properties['Area'] -and ($_.Area -like 'Services*') }).Count
+    Write-HtmlDebug -Stage 'Composer.Services' -Message ('Composer: Rendering Services section: rows={0}' -f ($servicesIssueCount + $servicesNormalCount)) -Data ([ordered]@{
+        Issues  = $servicesIssueCount
+        Normals = $servicesNormalCount
+    })
+
     if (-not $Summary) {
         $Summary = [pscustomobject]@{ GeneratedAt = Get-Date }
         Write-HtmlDebug -Stage 'Composer' -Message 'No summary provided; synthesized default summary.'
