@@ -27,10 +27,12 @@ function Invoke-EventsHeuristics {
             HasPayload = [bool]$payload
         })
         if ($payload) {
+            $systemEntries = $null
             foreach ($logName in @('System','Application','GroupPolicy')) {
                 Write-HeuristicDebug -Source 'Events' -Message ('Inspecting {0} log entries' -f $logName)
                 if (-not $payload.PSObject.Properties[$logName]) { continue }
                 $entries = $payload.$logName
+                if ($logName -eq 'System') { $systemEntries = $entries }
                 if ($entries -and -not $entries.Error) {
                     $logSubcategory = ("{0} Event Log" -f $logName)
                     $errorCount = ($entries | Where-Object { $_.LevelDisplayName -eq 'Error' }).Count
@@ -52,6 +54,78 @@ function Invoke-EventsHeuristics {
                 } elseif ($entries.Error) {
                     $logSubcategory = ("{0} Event Log" -f $logName)
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
+                }
+            }
+
+            if ($systemEntries) {
+                $systemEntryCount = ($systemEntries | Measure-Object).Count
+                Write-HeuristicDebug -Source 'Events' -Message 'Evaluating display driver resets (Event 4101)' -Data ([ordered]@{
+                    Entries = $systemEntryCount
+                })
+            }
+
+            if ($systemEntries -and -not $systemEntries.Error) {
+                $windowStart = (Get-Date).AddDays(-7)
+                $tdrEvents = @(
+                    foreach ($entry in $systemEntries) {
+                        if (-not $entry) { continue }
+                        if (-not ($entry.PSObject.Properties['Id'])) { continue }
+                        if ($entry.Id -ne 4101) { continue }
+
+                        $eventTime = $null
+                        if ($entry.PSObject.Properties['TimeCreated'] -and $entry.TimeCreated) {
+                            try {
+                                $eventTime = [datetime]$entry.TimeCreated
+                            } catch {
+                                $eventTime = $null
+                            }
+                        }
+
+                        if (-not $eventTime -or $eventTime -lt $windowStart) { continue }
+                        $entry
+                    }
+                )
+
+                Write-HeuristicDebug -Source 'Events' -Message 'Display driver reset candidates within window' -Data ([ordered]@{
+                    Count = $tdrEvents.Count
+                })
+
+                if ($tdrEvents.Count -ge 2) {
+                    $latestEvent = $tdrEvents | Sort-Object -Property TimeCreated -Descending | Select-Object -First 1
+                    $lastOccurrenceUtc = $null
+                    if ($latestEvent -and $latestEvent.PSObject.Properties['TimeCreated'] -and $latestEvent.TimeCreated) {
+                        try {
+                            $lastOccurrenceUtc = ([datetime]$latestEvent.TimeCreated).ToUniversalTime().ToString('u')
+                        } catch {
+                            $lastOccurrenceUtc = $null
+                        }
+                    }
+
+                    $adapterHint = $null
+                    foreach ($candidate in ($tdrEvents | Sort-Object -Property TimeCreated -Descending)) {
+                        if (-not $candidate -or -not $candidate.PSObject.Properties['Message']) { continue }
+                        $messageText = [string]$candidate.Message
+                        if (-not $messageText) { continue }
+                        $match = [System.Text.RegularExpressions.Regex]::Match(
+                            $messageText,
+                            'Display driver\s+(?<adapter>[\w\-. ]+?)\s+stopped responding',
+                            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+                        )
+                        if ($match.Success) {
+                            $adapterHint = $match.Groups['adapter'].Value.Trim()
+                            if ($adapterHint) { break }
+                        }
+                    }
+
+                    $evidence = [ordered]@{
+                        Count            = $tdrEvents.Count
+                        LastOccurrenceUtc = $lastOccurrenceUtc
+                    }
+                    if ($adapterHint) {
+                        $evidence['AdapterHint'] = $adapterHint
+                    }
+
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Display driver resets detected (Event 4101)' -Evidence $evidence -Subcategory 'Display / GPU'
                 }
             }
         }
