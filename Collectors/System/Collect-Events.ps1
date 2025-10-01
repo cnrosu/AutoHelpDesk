@@ -28,11 +28,31 @@ function Get-RecentEvents {
     }
 }
 
+function Get-WindowsUpdateClientEvents {
+    param(
+        [int]$MaxEvents = 200
+    )
+
+    $logName = 'Microsoft-Windows-WindowsUpdateClient/Operational'
+    $xpath = "*[System[(EventID=19 or EventID=20 or EventID=25 or EventID=31 or EventID=34)]]"
+
+    try {
+        return Get-WinEvent -LogName $logName -FilterXPath $xpath -MaxEvents $MaxEvents -ErrorAction Stop |
+            Select-Object TimeCreated, Id, LevelDisplayName, ProviderName, Message
+    } catch {
+        return [PSCustomObject]@{
+            LogName = $logName
+            Error   = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
         Application = Get-RecentEvents -LogName 'Application'
         GroupPolicy = Get-RecentEvents -LogName 'Microsoft-Windows-GroupPolicy/Operational' -MaxEvents 200
+        WindowsUpdateClient = Get-WindowsUpdateClientEvents -MaxEvents 200
     }
 
     $result = New-CollectorMetadata -Payload $payload

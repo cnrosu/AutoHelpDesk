@@ -59,5 +59,151 @@ function Invoke-EventsHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
     }
 
+    $pendingArtifacts = Get-AnalyzerArtifact -Context $Context -Name 'pendingreboot'
+    Write-HeuristicDebug -Source 'Events' -Message 'Evaluating pending rename persistence window' -Data ([ordered]@{
+        ArtifactsPresent = [bool]$pendingArtifacts
+    })
+
+    if ($pendingArtifacts) {
+        $artifactItems = @()
+        if ($pendingArtifacts -is [System.Collections.IEnumerable] -and -not ($pendingArtifacts -is [string])) {
+            $artifactItems = @($pendingArtifacts)
+        } else {
+            $artifactItems = @($pendingArtifacts)
+        }
+
+        $renameSnapshots = New-Object System.Collections.Generic.List[pscustomobject]
+        $sha256 = $null
+
+        try {
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            foreach ($artifact in $artifactItems) {
+                if (-not $artifact -or -not $artifact.Data) { continue }
+
+                $data = $artifact.Data
+                if (-not $data.PSObject.Properties['Payload']) { continue }
+
+                $payload = $data.Payload
+                if (-not $payload) { continue }
+
+                $collectedAtUtc = $null
+                if ($data.PSObject.Properties['CollectedAt'] -and $data.CollectedAt) {
+                    $timestamp = [string]$data.CollectedAt
+                    if ($timestamp) {
+                        try {
+                            $parsed = [datetime]::Parse($timestamp, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                        } catch {
+                            try { $parsed = [datetime]::Parse($timestamp) } catch { $parsed = $null }
+                        }
+
+                        if ($parsed) { $collectedAtUtc = $parsed.ToUniversalTime() }
+                    }
+                }
+
+                $indicatorList = @()
+                if ($payload.PSObject.Properties['Indicators'] -and $payload.Indicators) {
+                    $indicatorList = Ensure-Array $payload.Indicators
+                }
+
+                $rebootKeyPresent = $false
+                foreach ($indicator in $indicatorList) {
+                    if (-not $indicator) { continue }
+                    $name = if ($indicator.PSObject.Properties['Name']) { [string]$indicator.Name } else { $null }
+                    if (-not $name) { continue }
+                    if ($name -in @('WindowsUpdateRebootRequired','ComponentBasedServicingRebootPending')) {
+                        $present = $false
+                        if ($indicator.PSObject.Properties['Present']) { $present = [bool]$indicator.Present }
+                        if ($present) { $rebootKeyPresent = $true; break }
+                    }
+                }
+
+                if ($rebootKeyPresent) { continue }
+
+                $renameEntries = @()
+                if ($payload.PSObject.Properties['PendingFileRenames']) {
+                    $renamePayload = $payload.PendingFileRenames
+                    if ($renamePayload -and $renamePayload.PSObject.Properties['PendingFileRenameOperations']) {
+                        $rawEntries = $renamePayload.PendingFileRenameOperations
+                        if ($rawEntries) {
+                            if ($rawEntries -is [System.Collections.IEnumerable] -and -not ($rawEntries -is [string])) {
+                                foreach ($value in $rawEntries) {
+                                    if ($null -eq $value) { continue }
+                                    if ($value -is [string]) {
+                                        $trimmed = $value.Trim()
+                                        if ($trimmed) { $renameEntries += $trimmed }
+                                    }
+                                }
+                            } elseif ($rawEntries -is [string]) {
+                                $trimmed = $rawEntries.Trim()
+                                if ($trimmed) { $renameEntries += $trimmed }
+                            }
+                        }
+                    }
+                }
+
+                $entryCount = $renameEntries.Count
+                if ($entryCount -le 0) { continue }
+
+                $hash = $null
+                if ($sha256) {
+                    try {
+                        $joined = [string]::Join("`n", $renameEntries)
+                        $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
+                        $hashBytes = $sha256.ComputeHash($bytes)
+                        $hash = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+                    } catch {
+                        $hash = $null
+                    }
+                }
+
+                if (-not $hash) { continue }
+
+                $snapshot = [pscustomobject]@{
+                    Hash        = $hash
+                    EntryCount  = $entryCount
+                    CollectedAt = $collectedAtUtc
+                }
+                $renameSnapshots.Add($snapshot) | Out-Null
+            }
+        } finally {
+            if ($sha256) { $sha256.Dispose() }
+        }
+
+        Write-HeuristicDebug -Source 'Events' -Message 'Pending rename persistence snapshots gathered' -Data ([ordered]@{
+            SnapshotCount = $renameSnapshots.Count
+        })
+
+        if ($renameSnapshots.Count -gt 0) {
+            $groups = $renameSnapshots | Group-Object -Property Hash
+            foreach ($group in $groups) {
+                $items = $group.Group | Where-Object { $_.CollectedAt }
+                if ($items.Count -lt 2) { continue }
+
+                $sorted = $items | Sort-Object -Property CollectedAt
+                $first = $sorted[0]
+                $last = $sorted[-1]
+
+                $window = $last.CollectedAt - $first.CollectedAt
+                if ($window.TotalHours -lt 24) { continue }
+
+                $evidenceObject = [ordered]@{
+                    entryCount   = $first.EntryCount
+                    firstSeenUtc = $first.CollectedAt.ToString('o')
+                    lastSeenUtc  = $last.CollectedAt.ToString('o')
+                }
+
+                $evidenceText = $null
+                try {
+                    $evidenceText = $evidenceObject | ConvertTo-Json -Compress
+                } catch {
+                    $evidenceText = "entryCount={0}; firstSeenUtc={1}; lastSeenUtc={2}" -f $evidenceObject.entryCount, $evidenceObject.firstSeenUtc, $evidenceObject.lastSeenUtc
+                }
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Pending reboot appears stuck (rename operations persist)' -Evidence $evidenceText -Subcategory 'Servicing / Reboot Coordination'
+                break
+            }
+        }
+    }
+
     return $result
 }
