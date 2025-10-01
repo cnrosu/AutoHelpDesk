@@ -254,7 +254,29 @@ function Invoke-StorageHeuristics {
                 $sizeGb = [math]::Round($size / 1GB,2)
                 $freeGb = [math]::Round($free / 1GB,2)
                 $freePct = if ($size -gt 0) { ($free / $size) * 100 } else { 0 }
-                $label = if ($volume.DriveLetter) { $volume.DriveLetter } elseif ($volume.FileSystemLabel) { $volume.FileSystemLabel } else { 'Unknown' }
+
+                $hasDriveLetter = $volume.PSObject.Properties['DriveLetter'] -and -not [string]::IsNullOrWhiteSpace([string]$volume.DriveLetter)
+                $rawLabel = if ($volume.FileSystemLabel) { [string]$volume.FileSystemLabel } else { '' }
+                $label = if ($hasDriveLetter) { $volume.DriveLetter } elseif ($rawLabel) { $rawLabel } else { 'Unknown' }
+
+                $shouldSkip = $false
+                if (-not $hasDriveLetter) {
+                    if ($rawLabel -match '(?i)recovery|reserved|diagnostic|tools|restore') {
+                        $shouldSkip = $true
+                    } elseif ($sizeGb -lt 1) {
+                        $shouldSkip = $true
+                    }
+                }
+
+                if ($shouldSkip) {
+                    Write-HeuristicDebug -Source 'Storage' -Message 'Skipping hidden volume for free space evaluation' -Data ([ordered]@{
+                        Label = if ($rawLabel) { $rawLabel } else { $label }
+                        SizeGb = $sizeGb
+                        HasDriveLetter = $hasDriveLetter
+                    })
+                    continue
+                }
+
                 $threshold = Get-VolumeThreshold -Volume $volume -SizeGB $sizeGb -Config $thresholdConfig
 
                 $details = "Free {0} GB of {1} GB ({2}% free); profile {3}" -f $freeGb, $sizeGb, ([math]::Round($freePct,1)), $threshold.Description
