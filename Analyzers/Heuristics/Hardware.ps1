@@ -45,13 +45,13 @@ function Add-UniqueDriverNameVariant {
     if (-not $List -or -not $Lookup) { return }
     if ([string]::IsNullOrWhiteSpace($Name)) { return }
 
-    $trimmed = $Name.Trim(" `t`r`n.:;'\"")
+    $trimmed = $Name.Trim(' `t`r`n.:;''"'.ToCharArray())
     if (-not $trimmed) { return }
 
     $candidates = [System.Collections.Generic.List[string]]::new()
     $candidates.Add($trimmed) | Out-Null
 
-    $withoutSuffix = [regex]::Replace($trimmed, '\b(service|driver)\b$', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Trim(" `t`r`n.:;'\"")
+    $withoutSuffix = [regex]::Replace($trimmed, '\b(service|driver)\b$', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Trim(' `t`r`n.:;''"'.ToCharArray())
     if ($withoutSuffix -and ($withoutSuffix -ne $trimmed)) {
         $candidates.Add($withoutSuffix) | Out-Null
     }
@@ -85,7 +85,7 @@ function Parse-DriverQueryEntries {
     $entries = New-Object System.Collections.Generic.List[pscustomobject]
     if ([string]::IsNullOrWhiteSpace($Text)) { return $entries.ToArray() }
 
-    $lines = [regex]::Split($Text, '\r?\n')
+    $lines = $Text -split '\r?\n'
     $current = [ordered]@{}
 
     foreach ($line in $lines) {
@@ -404,7 +404,7 @@ function Get-DriverFailureEventMap {
                 if ($match.Success) {
                     $list = $match.Groups['names'].Value
                     if ($list) {
-                        $tokens = [regex]::Split($list, '[\r\n,;]+')
+                        $tokens = $list -split '[\r\n,;]+'
                         foreach ($token in $tokens) {
                             if ([string]::IsNullOrWhiteSpace($token)) { continue }
                             $names.Add($token.Trim()) | Out-Null
