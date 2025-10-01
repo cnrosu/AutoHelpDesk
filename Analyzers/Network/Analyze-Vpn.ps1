@@ -236,7 +236,7 @@ function Invoke-NetworkVpnAnalysis {
     if ($connections.Count -eq 0) {
         $summary = Get-VpnServiceStateSummary -Services $services
         $extra = [ordered]@{ detectedProfiles = 0; serviceStates = $summary }
-        Add-CategoryIssue -CategoryResult $category -Severity 'critical' -Title 'No VPN profiles detected; remote access will fail on managed devices.' -Evidence $extra -Subcategory 'Profiles'
+        Add-CategoryIssue -CategoryResult $category -Severity 'info' -Title 'No VPN profiles detected; remote access will fail on managed devices.' -Evidence $extra -Subcategory 'Profiles'
         return $category
     }
 

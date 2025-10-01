@@ -346,7 +346,7 @@ function Invoke-EventsAuthenticationChecks {
         $kerberosError = $kerberosData.Error
     }
 
-    if ($kdc18EventsAll.Count -eq 0 -and -not $kerberosError -and $w32tmStatus -and $w32tmStatus.Succeeded -and ($null -ne $offsetSeconds) -and ([math]::Abs($offsetSeconds) -le 60)) {
+    if ($kerberosSummary.PreAuthEvents -eq 0 -and -not $kerberosError -and $w32tmStatus -and $w32tmStatus.Succeeded -and ($null -ne $offsetSeconds) -and ([math]::Abs($offsetSeconds) -le 60)) {
         $evidenceParts = New-Object System.Collections.Generic.List[string]
         $evidenceParts.Add(('Clock offset: {0}s' -f $offsetSeconds)) | Out-Null
         if ($w32tmMetrics.Source) {
