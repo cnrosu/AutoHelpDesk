@@ -35,7 +35,7 @@ function Get-OperatingSystemInventory {
 
 function Get-ComputerSystemInventory {
     try {
-        return Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer, Model, Domain, PartOfDomain, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
+        return Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer, Model, Domain, PartOfDomain, DomainRole, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
     } catch {
         return [PSCustomObject]@{
             Source = 'Win32_ComputerSystem'

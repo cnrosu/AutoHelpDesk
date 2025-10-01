@@ -377,7 +377,6 @@ details.report-card[open] > summary {
   color: var(--color-text-note);
 }
 
-
 .score-ring--overall {
   width: 160px;
   height: 160px;
@@ -386,6 +385,7 @@ details.report-card[open] > summary {
 .score-ring--overall .score-ring__background,
 .score-ring--overall .score-ring__value {
   stroke-width: 8;
+
 }
 
 .score-ring--small {

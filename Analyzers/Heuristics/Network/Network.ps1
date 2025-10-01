@@ -894,17 +894,17 @@ function Invoke-NetworkHeuristics {
         }
     }
 
-    if ($adapterPayload -and $adapterPayload.Adapters -and -not $adapterPayload.Adapters.Error) {
-        $upAdapters = $adapterPayload.Adapters | Where-Object { $_.Status -eq 'Up' }
-        if ($upAdapters.Count -gt 0) {
-            Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters.Name -join ', ')) -Subcategory 'Network Adapters'
-        } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters'
-        }
-    } elseif ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
-        $adapterNode = $adapterPayload.Adapters
-        if ($adapterNode -is [pscustomobject] -and $adapterNode.PSObject.Properties['Error'] -and $adapterNode.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapterNode.Error -Subcategory 'Network Adapters'
+    if ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
+        $adapters = ConvertTo-NetworkArray $adapterPayload.Adapters
+        if ($adapters.Count -eq 1 -and ($adapters[0] -is [pscustomobject]) -and $adapters[0].PSObject.Properties['Error'] -and $adapters[0].Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
+        } elseif ($adapters.Count -gt 0) {
+            $upAdapters = $adapters | Where-Object { $_ -and $_.Status -eq 'Up' }
+            if ($upAdapters.Count -gt 0) {
+                Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters.Name -join ', ')) -Subcategory 'Network Adapters'
+            } else {
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters'
+            }
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
         }
