@@ -71,18 +71,18 @@ function Get-PrinterDictionaries {
     $result = [ordered]@{
         Printers       = [System.Collections.Generic.List[pscustomobject]]::new()
         DefaultPrinter = $null
-        Errors         = [System.Collections.Generic.List[string]]::new()
+        Errors         = [System.Text.StringBuilder]::new()
     }
 
     $printersRaw = @()
     try {
         $printersRaw = Get-Printer -ErrorAction Stop
     } catch {
-        $result.Errors.Add("Get-Printer failed: $($_.Exception.Message)")
+        [void]$result.Errors.AppendLine("Get-Printer failed: $($_.Exception.Message)")
         try {
             $printersRaw = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
         } catch {
-            $result.Errors.Add("Win32_Printer fallback failed: $($_.Exception.Message)")
+            [void]$result.Errors.AppendLine("Win32_Printer fallback failed: $($_.Exception.Message)")
             $printersRaw = @()
         }
     }
@@ -95,7 +95,7 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors.Add("Get-PrinterPort failed: $($_.Exception.Message)")
+        [void]$result.Errors.AppendLine("Get-PrinterPort failed: $($_.Exception.Message)")
     }
 
     $driversByName = @{}
@@ -106,7 +106,7 @@ function Get-PrinterDictionaries {
             }
         }
     } catch {
-        $result.Errors.Add("Get-PrinterDriver failed: $($_.Exception.Message)")
+        [void]$result.Errors.AppendLine("Get-PrinterDriver failed: $($_.Exception.Message)")
     }
 
     $now = Get-Date
@@ -150,7 +150,7 @@ function Get-PrinterDictionaries {
             }
             if ($configRaw) { $configuration = ConvertTo-OrderedDictionary $configRaw }
         } catch {
-            $result.Errors.Add("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
+            [void]$result.Errors.AppendLine("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
         }
 
         $jobs = [System.Collections.Generic.List[pscustomobject]]::new()
@@ -184,7 +184,7 @@ function Get-PrinterDictionaries {
                 })
             }
         } catch {
-            $result.Errors.Add("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
+            [void]$result.Errors.AppendLine("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
         }
 
         $portDict = $null
@@ -230,7 +230,9 @@ function Get-PrinterDictionaries {
     }
 
     $result.Printers = $printerDictionaries.ToArray()
-    if ($result.Errors -is [System.Collections.Generic.List[string]]) {
+    if ($result.Errors -is [System.Text.StringBuilder]) {
+        $result.Errors = $result.Errors.ToString().TrimEnd()
+    } elseif ($result.Errors -is [System.Collections.Generic.List[string]]) {
         $result.Errors = $result.Errors.ToArray()
     }
     return $result
