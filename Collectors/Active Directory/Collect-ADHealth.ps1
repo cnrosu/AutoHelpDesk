@@ -158,6 +158,7 @@ function Get-DomainStatus {
         DomainJoined = $null
         Domain       = $null
         Forest       = $null
+        DomainRole   = $null
         Workgroup    = $null
         Error        = $null
     }
@@ -166,6 +167,9 @@ function Get-DomainStatus {
         $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
         $result.DomainJoined = $cs.PartOfDomain
         $result.Domain = $cs.Domain
+        if ($cs.PSObject.Properties['DomainRole']) {
+            $result.DomainRole = $cs.DomainRole
+        }
         if (-not $cs.PartOfDomain -and $cs.PSObject.Properties['Workgroup']) {
             $result.Workgroup = $cs.Workgroup
         }
@@ -386,6 +390,7 @@ function Test-DomainShares {
 function Get-TimeServiceStatus {
     $status = Invoke-CommandCapture -FilePath 'w32tm.exe' -ArgumentList '/query','/status'
     $peers = Invoke-CommandCapture -FilePath 'w32tm.exe' -ArgumentList '/query','/peers'
+    $config = Invoke-CommandCapture -FilePath 'w32tm.exe' -ArgumentList '/query','/configuration'
 
     $parsed = [ordered]@{
         Source        = $null
@@ -393,6 +398,9 @@ function Get-TimeServiceStatus {
         OffsetSeconds = $null
         LastSync      = $null
         Synchronized  = $null
+        ClientType    = $null
+        ClientNtpServer = $null
+        PeerEntries   = @()
     }
 
     if ($status.Output) {
@@ -428,9 +436,43 @@ function Get-TimeServiceStatus {
         }
     }
 
+    if ($config.Output) {
+        $currentProvider = $null
+        foreach ($line in $config.Output) {
+            $trimmed = $line.Trim()
+            if ($trimmed -match '^(?<provider>[A-Za-z0-9]+)\s*\(') {
+                $currentProvider = $matches['provider']
+                continue
+            }
+            if ($currentProvider -ne 'NtpClient') { continue }
+            if (-not $parsed.ClientType -and $trimmed -match '^Type:\s*(?<value>\S+)') {
+                $parsed.ClientType = $matches['value']
+                continue
+            }
+            if ($trimmed -match '^NtpServer:\s*(?<value>.+)$') {
+                $parsed.ClientNtpServer = $matches['value'].Trim()
+                continue
+            }
+        }
+    }
+
+    if ($peers.Output) {
+        $peerList = New-Object System.Collections.Generic.List[string]
+        foreach ($line in $peers.Output) {
+            if ($line -match '^Peer:\s*(?<value>.+)$') {
+                $peerValue = $matches['value'].Trim()
+                if ($peerValue) {
+                    $null = $peerList.Add($peerValue)
+                }
+            }
+        }
+        $parsed.PeerEntries = $peerList.ToArray()
+    }
+
     return [ordered]@{
         Status = $status
         Peers  = $peers
+        Configuration = $config
         Parsed = $parsed
     }
 }

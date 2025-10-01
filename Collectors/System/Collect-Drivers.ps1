@@ -25,9 +25,25 @@ function Get-DriverInventory {
     }
 }
 
+function Get-PnpProblemDevices {
+    try {
+        $temp = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid().ToString() + '.txt')
+        pnputil.exe /enum-devices /problem > $temp
+        $content = Get-Content -Path $temp -ErrorAction Stop
+        Remove-Item -Path $temp -ErrorAction SilentlyContinue
+        return $content
+    } catch {
+        return [PSCustomObject]@{
+            Source = 'pnputil.exe'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
-        DriverQuery = Get-DriverInventory
+        DriverQuery  = Get-DriverInventory
+        PnpProblems  = Get-PnpProblemDevices
     }
 
     $result = New-CollectorMetadata -Payload $payload
