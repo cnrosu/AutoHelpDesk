@@ -584,27 +584,51 @@ details.report-card[open] > summary {
   margin-top: var(--space-sm);
 }
 
-.report-overview__columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
+.report-table--overview {
   margin-top: var(--space-sm);
 }
 
-.report-overview__column {
-  flex: 1 1 260px;
+.report-table--overview td {
+  vertical-align: top;
 }
 
-.report-overview__column--primary {
-  flex-basis: 70%;
+.report-table__col--overview-primary {
+  width: 70%;
 }
 
-.report-overview__column--secondary {
-  flex-basis: 30%;
+.report-table__col--overview-secondary {
+  width: 30%;
 }
 
-.report-overview__column .report-table--key-value {
+.report-overview__group-title {
+  margin: 0 0 var(--space-xs);
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.report-table--overview .report-table--key-value {
   margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .report-table--overview colgroup {
+    display: none;
+  }
+
+  .report-table--overview tr {
+    display: block;
+  }
+
+  .report-table--overview td {
+    display: block;
+    width: 100%;
+  }
+
+  .report-table--overview td + td {
+    margin-top: var(--space-md);
+  }
 }
 
 .report-table--list {
