@@ -172,12 +172,12 @@ function Invoke-SecurityHeuristics {
             $status = $payload.Status
             $rtp = ConvertTo-NullableBool $status.RealTimeProtectionEnabled
             if ($rtp -eq $false) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Defender real-time protection disabled' -Evidence 'Get-MpComputerStatus reports RealTimeProtectionEnabled = False.' -Subcategory 'Microsoft Defender'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Defender real-time protection disabled, creating antivirus protection gaps.' -Evidence 'Get-MpComputerStatus reports RealTimeProtectionEnabled = False.' -Subcategory 'Microsoft Defender'
             }
 
             $av = ConvertTo-NullableBool $status.AntivirusEnabled
             if ($av -eq $false) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Defender antivirus engine disabled' -Evidence 'Get-MpComputerStatus reports AntivirusEnabled = False.' -Subcategory 'Microsoft Defender'
+                Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Defender antivirus engine disabled, creating antivirus protection gaps.' -Evidence 'Get-MpComputerStatus reports AntivirusEnabled = False.' -Subcategory 'Microsoft Defender'
             }
             $statusTamper = ConvertTo-NullableBool $status.TamperProtectionEnabled
 
@@ -193,15 +193,15 @@ function Invoke-SecurityHeuristics {
                 Add-CategoryNormal -CategoryResult $result -Title 'No recent Defender detections' -Subcategory 'Microsoft Defender'
             }
         } elseif ($payload -and $payload.Status -and $payload.Status.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender status' -Evidence $payload.Status.Error -Subcategory 'Microsoft Defender'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender status, leaving antivirus protection gaps unverified.' -Evidence $payload.Status.Error -Subcategory 'Microsoft Defender'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact missing expected structure' -Subcategory 'Microsoft Defender'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact missing expected structure, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
         }
 
         if ($payload -and $payload.PSObject.Properties['Preferences']) {
             $preferencesEntry = Resolve-SinglePayload -Payload $payload.Preferences
             if ($preferencesEntry -and $preferencesEntry.PSObject.Properties['Error'] -and $preferencesEntry.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender preferences' -Evidence $preferencesEntry.Error -Subcategory 'Microsoft Defender'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query Defender preferences, leaving antivirus protection gaps unverified.' -Evidence $preferencesEntry.Error -Subcategory 'Microsoft Defender'
             } elseif ($preferencesEntry) {
                 $prefEvidence = 'DisableTamperProtection={0}; MAPSReporting={1}; SubmitSamplesConsent={2}; CloudBlockLevel={3}' -f `
                     (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'DisableTamperProtection'),
@@ -220,7 +220,7 @@ function Invoke-SecurityHeuristics {
                 }
 
                 if ($tamperProtectionOff) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Defender tamper protection disabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderTamper'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Defender tamper protection disabled, creating antivirus protection gaps.' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderTamper'
                 } elseif (($prefTamperDisabled -eq $false) -or ($statusTamper -eq $true)) {
                     Add-CategoryNormal -CategoryResult $result -Title 'Defender tamper protection enabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderTamper'
                 }
@@ -288,14 +288,14 @@ function Invoke-SecurityHeuristics {
                         $cloudSeverity = 'high'
                     }
 
-                    Add-CategoryIssue -CategoryResult $result -Severity $cloudSeverity -Title 'Defender cloud-delivered protection disabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
+                    Add-CategoryIssue -CategoryResult $result -Severity $cloudSeverity -Title 'Defender cloud-delivered protection disabled, creating antivirus protection gaps.' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
                 } elseif (($mapsEnabled -eq $true) -or ($cloudDisabled -eq $false)) {
                     Add-CategoryNormal -CategoryResult $result -Title 'Defender cloud-delivered protection enabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact not collected' -Subcategory 'Microsoft Defender'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Defender artifact not collected, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
     }
 
     $firewallArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
@@ -320,17 +320,17 @@ function Invoke-SecurityHeuristics {
             }
 
             if ($disabledProfiles.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Firewall profiles disabled: {0}' -f ($disabledProfiles.ToArray() -join ', ')) -Subcategory 'Windows Firewall'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'All firewall profiles enabled' -Subcategory 'Windows Firewall'
             }
         } elseif ($payload -and $payload.Profiles -and $payload.Profiles.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed, so the network defense posture is unknown.' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured. Collect firewall profile configuration.' -Subcategory 'Windows Firewall'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
     }
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'
@@ -395,23 +395,23 @@ function Invoke-SecurityHeuristics {
 
                 $mountList = ($mountPoints | Sort-Object -Unique) -join ', '
                 if (-not $mountList) { $mountList = 'Unknown volume' }
-                $evidence = ($osUnprotected.ToArray() | ForEach-Object { Format-BitLockerVolume $_ }) -join "`n"
-                Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title ("BitLocker is OFF for system volume(s): {0}." -f $mountList) -Evidence $evidence -Subcategory 'BitLocker'
+                $evidence = ($osUnprotected | ForEach-Object { Format-BitLockerVolume $_ }) -join "`n"
+                Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title ("BitLocker is OFF for system volume(s): {0}, risking data exposure." -f $mountList) -Evidence $evidence -Subcategory 'BitLocker'
             } elseif ($osProtectedEvidence.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title 'BitLocker protection active for system volume(s).' -Evidence ($osProtectedEvidence.ToArray() -join "`n") -Subcategory 'BitLocker'
             }
 
             if (-not $hasRecoveryProtector) {
                 $volumeEvidence = ($volumes | ForEach-Object { Format-BitLockerVolume $_ }) -join "`n"
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No BitLocker recovery password protector detected. Ensure recovery keys are escrowed.' -Evidence $volumeEvidence -Subcategory 'BitLocker'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No BitLocker recovery password protector detected, risking data exposure if recovery is needed.' -Evidence $volumeEvidence -Subcategory 'BitLocker'
             }
         } elseif ($payload -and $payload.Volumes -and $payload.Volumes.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'BitLocker query failed' -Evidence $payload.Volumes.Error -Subcategory 'BitLocker'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'BitLocker query failed, so the encryption state and data exposure risk are unknown.' -Evidence $payload.Volumes.Error -Subcategory 'BitLocker'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'BitLocker data missing expected structure' -Subcategory 'BitLocker'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'BitLocker artifact not collected' -Subcategory 'BitLocker'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
     }
 
     $tpmArtifact = Get-AnalyzerArtifact -Context $Context -Name 'tpm'
@@ -428,14 +428,14 @@ function Invoke-SecurityHeuristics {
             $present = ConvertTo-NullableBool $tpm.TpmPresent
             $ready = ConvertTo-NullableBool $tpm.TpmReady
             if ($present -eq $false) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No TPM detected' -Evidence 'Get-Tpm reported TpmPresent = False.' -Subcategory 'TPM'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No TPM detected, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmPresent = False.' -Subcategory 'TPM'
             } elseif ($ready -eq $false) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'TPM not initialized' -Evidence 'Get-Tpm reported TpmReady = False.' -Subcategory 'TPM'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'TPM not initialized, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmReady = False.' -Subcategory 'TPM'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'TPM present and ready' -Subcategory 'TPM'
             }
         } elseif ($payload -and $payload.Tpm -and $payload.Tpm.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query TPM status' -Evidence $payload.Tpm.Error -Subcategory 'TPM'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to query TPM status, so hardware-based key protection availability is unknown.' -Evidence $payload.Tpm.Error -Subcategory 'TPM'
         }
     }
 
@@ -471,12 +471,12 @@ function Invoke-SecurityHeuristics {
         if ($allowValue -eq 0) {
             Add-CategoryNormal -CategoryResult $result -Title 'Kernel DMA protection enforced' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
         } elseif ($allowValue -eq 1) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection allows DMA while locked on this device (AllowDmaUnderLock = 1).' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection allows DMA while locked on this device (AllowDmaUnderLock = 1), enabling DMA attacks via peripherals.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection unknown. Confirm DMA protection capabilities.' -Subcategory 'Kernel DMA'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Subcategory 'Kernel DMA'
     }
 
     $asrArtifact = Get-AnalyzerArtifact -Context $Context -Name 'asr'
@@ -536,14 +536,15 @@ function Invoke-SecurityHeuristics {
                             $evidenceLines.Add("{0} => (missing)" -f $lookup)
                         }
                     }
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("ASR rule not enforced: {0}. Configure to Block (1)." -f $set.Label) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'Attack Surface Reduction'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label) -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
+
                 }
             }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'ASR policy data missing. Configure required Attack Surface Reduction rules.' -Subcategory 'Attack Surface Reduction'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'ASR policy data missing, leaving exploit paths open.' -Subcategory 'Attack Surface Reduction'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'ASR policy data missing. Configure required Attack Surface Reduction rules.' -Subcategory 'Attack Surface Reduction'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'ASR policy data missing, leaving exploit paths open.' -Subcategory 'Attack Surface Reduction'
     }
 
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
@@ -562,20 +563,20 @@ function Invoke-SecurityHeuristics {
             if (($cfgEnabled -eq $true) -and ($depEnabled -eq $true) -and ($aslrEnabled -eq $true)) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Exploit protection mitigations enforced (CFG/DEP/ASLR)' -Evidence $evidenceText -Subcategory 'Exploit Protection'
             } else {
-                $details = [System.Collections.Generic.List[string]]::new()
-                if ($cfgEnabled -ne $true) { $details.Add('CFG disabled') }
-                if ($depEnabled -ne $true) { $details.Add('DEP disabled') }
-                if ($aslrEnabled -ne $true) { $details.Add('ASLR disabled') }
-                $detailText = if ($details.Count -gt 0) { $details.ToArray() -join '; ' } else { 'Mitigation status unknown.' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}).' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection'
+                $details = @()
+                if ($cfgEnabled -ne $true) { $details += 'CFG disabled' }
+                if ($depEnabled -ne $true) { $details += 'DEP disabled' }
+                if ($aslrEnabled -ne $true) { $details += 'ASLR disabled' }
+                $detailText = if ($details.Count -gt 0) { $details -join '; ' } else { 'Mitigation status unknown.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}), reducing exploit resistance.' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection'
             }
         } elseif ($payload -and $payload.Mitigations -and $payload.Mitigations.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured. Collect Get-ProcessMitigation output.' -Evidence $payload.Mitigations.Error -Subcategory 'Exploit Protection'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Evidence $payload.Mitigations.Error -Subcategory 'Exploit Protection'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured. Collect Get-ProcessMitigation output.' -Subcategory 'Exploit Protection'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured. Collect Get-ProcessMitigation output.' -Subcategory 'Exploit Protection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection'
     }
 
     $wdacArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wdac'
@@ -612,7 +613,7 @@ function Invoke-SecurityHeuristics {
         if ($wdacEnforced) {
             Add-CategoryNormal -CategoryResult $result -Title 'WDAC policy enforcement detected' -Evidence ($wdacEvidenceLines.ToArray() -join "`n") -Subcategory 'Windows Defender Application Control'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'No WDAC policy enforcement detected. Evaluate Application Control requirements.' -Evidence ($wdacEvidenceLines.ToArray() -join "`n") -Subcategory 'Windows Defender Application Control'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'No WDAC policy enforcement detected, so unrestricted code execution remains possible.' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control'
         }
 
         $smartAppEvidence = [System.Collections.Generic.List[string]]::new()
@@ -620,7 +621,7 @@ function Invoke-SecurityHeuristics {
         if ($payload -and $payload.SmartAppControl) {
             $entry = $payload.SmartAppControl
             if ($entry.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query Smart App Control state' -Evidence $entry.Error -Subcategory 'Smart App Control'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
             } elseif ($entry.Values) {
                 foreach ($prop in $entry.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
@@ -643,11 +644,11 @@ function Invoke-SecurityHeuristics {
             Add-CategoryNormal -CategoryResult $result -Title 'Smart App Control enforced' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($smartAppState -eq 2) {
             $severity = if ($isWindows11) { 'low' } else { 'info' }
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Smart App Control in evaluation mode' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Smart App Control in evaluation mode, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($isWindows11) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($smartAppState -ne $null) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Smart App Control disabled' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         }
     }
 
@@ -692,7 +693,7 @@ function Invoke-SecurityHeuristics {
         if ($lapsEnabled) {
             Add-CategoryNormal -CategoryResult $result -Title 'LAPS/PLAP policy detected' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'LAPS/PLAP not detected. Enforce password management policy.' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.' -Evidence ($lapsEvidenceLines -join "`n") -Subcategory 'Credential Management'
         }
     }
 
@@ -712,7 +713,7 @@ function Invoke-SecurityHeuristics {
     if ($credentialGuardRunning -and $runAsPpl -eq 1) {
         Add-CategoryNormal -CategoryResult $result -Title 'Credential Guard with LSA protection enabled' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Credential Guard or LSA protection is not enforced. Enable RunAsPPL and Credential Guard.' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Credential Guard or LSA protection is not enforced, leaving LSASS credentials vulnerable.' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
     }
 
     $deviceGuardEvidenceLines = [System.Collections.Generic.List[string]]::new()
@@ -726,9 +727,9 @@ function Invoke-SecurityHeuristics {
     if ($hvciRunning) {
         Add-CategoryNormal -CategoryResult $result -Title 'Memory integrity (HVCI) running' -Evidence $hvciEvidence -Subcategory 'Memory Integrity'
     } elseif ($hvciAvailable) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Memory integrity (HVCI) is available but not running. Enable virtualization-based protection.' -Evidence $hvciEvidence -Subcategory 'Memory Integrity'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Memory integrity (HVCI) is available but not running, reducing kernel exploit defenses.' -Evidence $hvciEvidence -Subcategory 'Memory Integrity'
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Memory integrity (HVCI) not captured. Collect Device Guard diagnostics.' -Evidence $hvciEvidence -Subcategory 'Memory Integrity'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Memory integrity (HVCI) not captured, so kernel exploit defenses are unknown.' -Evidence $hvciEvidence -Subcategory 'Memory Integrity'
     }
 
     $uacArtifact = Get-AnalyzerArtifact -Context $Context -Name 'uac'
@@ -754,7 +755,7 @@ function Invoke-SecurityHeuristics {
                 if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $findings.Add("ConsentPrompt=$consentPrompt") }
                 if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $findings.Add('PromptOnSecureDesktop=0') }
                 $detail = if ($findings.Count -gt 0) { $findings.ToArray() -join '; ' } else { 'UAC configuration unclear.' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('UAC configuration is insecure ({0}). Enforce secure UAC prompts.' -f $detail) -Evidence $evidence -Subcategory 'User Account Control'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('UAC configuration is insecure ({0}), reducing protection for administrative actions.' -f $detail) -Evidence $evidence -Subcategory 'User Account Control'
             }
         }
     }
@@ -787,13 +788,13 @@ function Invoke-SecurityHeuristics {
                 if (-not $moduleLoggingEnabled) { $detailParts.Add('Module logging disabled') }
                 if (-not $transcriptionEnabled) { $detailParts.Add('Transcription not enabled') }
                 $detail = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Logging state unknown.' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}). Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled). Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled). Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
     }
 
     $restrictSendingLsa = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RestrictSendingNTLMTraffic')
@@ -812,7 +813,7 @@ function Invoke-SecurityHeuristics {
     if ($ntlmRestricted -and $ntlmAudited) {
         Add-CategoryNormal -CategoryResult $result -Title 'NTLM hardening policies enforced' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'NTLM hardening policies are not configured. Enforce RestrictSending/Audit NTLM settings.' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
+        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'NTLM hardening policies are not configured, allowing credential relay attacks. Enforce RestrictSending/Audit NTLM settings.' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
     }
 
     return $result

@@ -13,7 +13,7 @@ function Invoke-SystemStartupChecks {
         Found = [bool]$startupArtifact
     })
     if (-not $startupArtifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program artifact missing' -Subcategory 'Startup Programs'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program artifact missing, so excess or missing autoruns that slow logins or indicate incomplete data cannot be assessed.' -Subcategory 'Startup Programs'
         return
     }
 
@@ -33,7 +33,7 @@ function Invoke-SystemStartupChecks {
         $errorEntries = @($entries | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error })
         if ($errorEntries.Count -gt 0) {
             $message = "Unable to enumerate all startup items ({0})." -f ($errorEntries[0].Error)
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory incomplete' -Evidence $message -Subcategory 'Startup Programs'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory incomplete, so excess or missing autoruns that slow logins or indicate incomplete data may be overlooked.' -Evidence $message -Subcategory 'Startup Programs'
         }
 
         $validEntries = @($entries | Where-Object { -not ($_.PSObject.Properties['Error'] -and $_.Error) })
@@ -47,8 +47,7 @@ function Invoke-SystemStartupChecks {
             [void]$evidenceBuilder.Add("Total startup entries evaluated: {0}" -f $validEntries.Count)
             [void]$evidenceBuilder.Add("Non-Microsoft startup entries: {0}" -f $nonMicrosoftEntries.Count)
 
-            $topEntries = $nonMicrosoftEntries | Select-Object -First 8
-            foreach ($entry in $topEntries) {
+            foreach ($entry in $nonMicrosoftEntries) {
                 $parts = New-Object System.Collections.Generic.List[string]
                 if ($entry.Name) { [void]$parts.Add([string]$entry.Name) }
                 if ($entry.Command) { [void]$parts.Add([string]$entry.Command) }
@@ -58,18 +57,13 @@ function Invoke-SystemStartupChecks {
                 if ($line) { [void]$evidenceBuilder.Add($line) }
             }
 
-            $remaining = $nonMicrosoftEntries.Count - $topEntries.Count
-            if ($remaining -gt 0) {
-                [void]$evidenceBuilder.Add("(+{0} additional non-Microsoft startup entries)" -f $remaining)
-            }
-
             $evidence = $evidenceBuilder -join "`n"
 
             if ($nonMicrosoftEntries.Count -gt 10) {
-                $title = "Startup autoruns bloat: {0} non-Microsoft entries detected. Review and trim startup apps to reduce login delay." -f $nonMicrosoftEntries.Count
+                $title = "Startup autoruns bloat: {0} non-Microsoft entries detected, which can slow logins or hide issues. Review and trim startup apps to reduce login delay." -f $nonMicrosoftEntries.Count
                 Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
             } elseif ($nonMicrosoftEntries.Count -gt 5) {
-                $title = "Startup autoruns trending high ({0} non-Microsoft entries)." -f $nonMicrosoftEntries.Count
+                $title = "Startup autoruns trending high ({0} non-Microsoft entries), which can slow logins or hide issues." -f $nonMicrosoftEntries.Count
                 Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title $title -Evidence $evidence -Subcategory 'Startup Programs'
             } else {
                 $title = "Startup autoruns manageable ({0} non-Microsoft of {1} total)." -f $nonMicrosoftEntries.Count, $validEntries.Count
@@ -79,6 +73,6 @@ function Invoke-SystemStartupChecks {
             Add-CategoryNormal -CategoryResult $Result -Title 'No startup entries detected' -Subcategory 'Startup Programs'
         }
     } elseif ($payload -and $payload.StartupCommands -eq $null) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory empty' -Subcategory 'Startup Programs'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory empty, so missing autoruns that slow logins or indicate incomplete data cannot be reviewed.' -Subcategory 'Startup Programs'
     }
 }
