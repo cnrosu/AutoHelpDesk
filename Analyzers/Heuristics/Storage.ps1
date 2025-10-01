@@ -264,7 +264,7 @@ function Invoke-StorageHeuristics {
                 $warnPercent = $threshold.WarnPercent * 100
                 if ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                     $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space" -f $label) -Evidence $evidence -Subcategory 'Free Space'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining)" -f $label, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
                 } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                     $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
                     Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence -Subcategory 'Free Space'
