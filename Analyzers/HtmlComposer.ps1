@@ -505,17 +505,24 @@ function Get-FailedCollectorReports {
     return $failures
 }
 
+
 function Build-SummaryCardHtml {
     param(
         [pscustomobject]$Summary,
-        [System.Collections.Generic.List[pscustomobject]]$Issues
+        [System.Collections.Generic.List[pscustomobject]]$Issues,
+        [System.Collections.Generic.List[pscustomobject]]$Normals
     )
+
+    if (-not $Summary) { $Summary = [pscustomobject]@{} }
+    if (-not $Issues) { $Issues = @() }
+    if (-not $Normals) { $Normals = @() }
 
     $generatedAt = if ($Summary.GeneratedAt) { [datetime]$Summary.GeneratedAt } else { Get-Date }
     $generatedAtHtml = Encode-Html ($generatedAt.ToString("dddd, MMMM d, yyyy 'at' h:mm tt"))
 
+    $severityKeys = @('critical','high','medium','warning','low','info')
     $counts = @{}
-    foreach ($key in @('critical','high','medium','low','warning','info')) { $counts[$key] = 0 }
+    foreach ($key in $severityKeys) { $counts[$key] = 0 }
     foreach ($issue in $Issues) {
         $key = if ($issue.Severity) { $issue.Severity } else { 'info' }
         if (-not $counts.ContainsKey($key)) { $counts[$key] = 0 }
@@ -529,6 +536,27 @@ function Build-SummaryCardHtml {
         if ($weights.ContainsKey($sev)) { $penalty += $weights[$sev] }
     }
     $score = [Math]::Max(0, 100 - [Math]::Min($penalty, 80))
+
+    $severityOrder = @{ critical = 0; high = 1; medium = 2; warning = 3; low = 4; info = 5; good = 6 }
+    $overallWorst = 'good'
+    foreach ($severity in $severityKeys) {
+        if ($counts.ContainsKey($severity) -and $counts[$severity] -gt 0) {
+            $overallWorst = $severity
+            break
+        }
+    }
+
+    $severityDisplay = @{
+        critical = 'Critical'
+        high     = 'High'
+        medium   = 'Medium'
+        warning  = 'Warning'
+        low      = 'Low'
+        info     = 'Info'
+        good     = 'All clear'
+    }
+
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
 
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
@@ -546,12 +574,59 @@ function Build-SummaryCardHtml {
     $gatewayText = if ($Summary.Gateways -and $Summary.Gateways.Count -gt 0) { ($Summary.Gateways -join ', ') } else { 'Unknown' }
     $dnsText = if ($Summary.DnsServers -and $Summary.DnsServers.Count -gt 0) { ($Summary.DnsServers -join ', ') } else { 'Unknown' }
 
+    $overallPercent = [Math]::Max(0.0, [Math]::Min([double]$score, 100.0))
+    $overallCircumference = 2.0 * [Math]::PI * 54.0
+    $overallDashArray = [string]::Format($invariant, '{0:0.##}', $overallCircumference)
+    $overallDashOffset = [string]::Format($invariant, '{0:0.##}', $overallCircumference * (1.0 - ($overallPercent / 100.0)))
+    $overallClass = if ($overallWorst) { "score-ring score-ring--overall score-ring--$overallWorst" } else { 'score-ring score-ring--overall score-ring--info' }
+
+    $overallLabelParts = New-Object System.Collections.Generic.List[string]
+    $null = $overallLabelParts.Add(("Overall health score {0} out of 100" -f $score))
+    if ($overallWorst -and $overallWorst -ne 'good') {
+        $display = if ($severityDisplay.ContainsKey($overallWorst)) { $severityDisplay[$overallWorst] } else { $overallWorst }
+        $null = $overallLabelParts.Add(("Worst severity {0}" -f $display))
+    } else {
+        $null = $overallLabelParts.Add('No active issues detected')
+    }
+    $overallAriaHtml = Encode-Html ($overallLabelParts -join '. ')
+
+    $overallRingBuilder = [System.Text.StringBuilder]::new()
+    $overallLabelHtml = Encode-Html 'Overall'
+    $overallScoreHtml = Encode-Html ([string]$score)
+    $null = $overallRingBuilder.AppendLine("<div class='$overallClass' role='img' aria-label='$overallAriaHtml'>")
+    $null = $overallRingBuilder.AppendLine("  <svg class='score-ring__svg' viewBox='0 0 120 120'>")
+    $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__background' cx='60' cy='60' r='54'></circle>")
+    $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__value' cx='60' cy='60' r='54' stroke-dasharray='$overallDashArray' stroke-dashoffset='$overallDashOffset'></circle>")
+    $null = $overallRingBuilder.AppendLine('  </svg>')
+    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>/100</span></div>")
+    $null = $overallRingBuilder.AppendLine('</div>')
+    $overallRingHtml = $overallRingBuilder.ToString().TrimEnd()
+
+    $appendIndented = {
+        param(
+            [System.Text.StringBuilder]$Builder,
+            [string]$Text,
+            [string]$Indent
+        )
+
+        if (-not $Builder -or [string]::IsNullOrEmpty($Text)) { return }
+        foreach ($line in [regex]::Split($Text, '\\r?\\n')) {
+            if ($line.Length -eq 0) {
+                [void]$Builder.AppendLine('')
+            } else {
+                [void]$Builder.AppendLine("$Indent$line")
+            }
+        }
+    }
+
     $sb = New-Object System.Text.StringBuilder
     $null = $sb.AppendLine('<h1>Device Health Report</h1>')
     $null = $sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
-    $null = $sb.AppendLine("<div class='report-card'>")
-    $null = $sb.AppendLine("  <div class='report-badge-group'>")
-    $null = $sb.AppendLine("    <span class='report-badge report-badge--score'><span class='report-badge__label'>SCORE</span><span class='report-badge__value'>$score</span><span class='report-badge__suffix'>/100</span></span>")
+    $null = $sb.AppendLine("<div class='report-card report-card--overview'>")
+    $null = $sb.AppendLine("  <div class='score-section'>")
+    $null = $sb.AppendLine("    <div class='score-section__primary'>")
+    & $appendIndented $sb $overallRingHtml '      '
+    $null = $sb.AppendLine("      <div class='report-badge-group'>")
     foreach ($badge in @(
             @{ Key = 'critical'; Label = 'CRITICAL'; Class = 'critical' },
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
@@ -562,10 +637,12 @@ function Build-SummaryCardHtml {
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
         $labelHtml = Encode-Html $badge.Label
-        $null = $sb.AppendLine("    <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
+        $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
+    $null = $sb.AppendLine('      </div>')
+    $null = $sb.AppendLine("      <small class='report-note score-section__note'>Score is heuristic. Triage Critical/High items first.</small>")
+    $null = $sb.AppendLine('    </div>')
     $null = $sb.AppendLine('  </div>')
-
     $null = $sb.AppendLine("  <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
     $null = $sb.AppendLine("    <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
     $null = $sb.AppendLine("    <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
@@ -575,7 +652,6 @@ function Build-SummaryCardHtml {
     $null = $sb.AppendLine("    <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
     $null = $sb.AppendLine("    <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
     $null = $sb.AppendLine('  </table>')
-    $null = $sb.AppendLine("  <small class='report-note'>Score is heuristic. Triage Critical/High items first.</small>")
     $null = $sb.AppendLine('</div>')
 
     return $sb.ToString()
@@ -1043,7 +1119,7 @@ function New-AnalyzerHtml {
     }
 
     $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
-    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues
+    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues -Normals $normals
     $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
     $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedReports = Get-FailedCollectorReports -Context $Context
