@@ -295,19 +295,15 @@ details.report-card[open] > summary {
 
 .score-section {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-lg);
-}
-
-.score-section__primary,
-.score-section__breakdown {
-  flex: 1 1 280px;
-  display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  align-items: center;
+  gap: var(--space-md);
 }
 
 .score-section__primary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
   align-items: center;
   text-align: center;
 }
@@ -320,62 +316,6 @@ details.report-card[open] > summary {
 .score-section__note {
   display: block;
   margin-top: var(--space-xs);
-  color: var(--color-text-note);
-}
-
-.score-section__title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-heading);
-}
-
-.score-breakdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  width: 100%;
-  justify-content: flex-start;
-}
-
-.score-breakdown__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background-color: var(--color-surface-muted);
-  flex: 1 1 200px;
-  max-width: 260px;
-}
-
-.score-breakdown__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.score-breakdown__label {
-  font-weight: 600;
-  color: var(--color-heading);
-}
-
-.score-breakdown__details {
-  font-size: 0.85rem;
-  color: var(--color-text-primary);
-}
-
-.score-breakdown__details--muted {
-  color: var(--color-text-note);
-}
-
-.score-breakdown--empty {
-  padding: var(--space-sm);
-  border: 1px dashed var(--color-border-subtle);
-  border-radius: var(--radius-card);
   color: var(--color-text-note);
 }
 
@@ -444,7 +384,8 @@ details.report-card[open] > summary {
 
 .score-ring--overall .score-ring__background,
 .score-ring--overall .score-ring__value {
-  stroke-width: 14;
+  stroke-width: 8;
+
 }
 
 .score-ring--small {
@@ -500,19 +441,9 @@ details.report-card[open] > summary {
 }
 
 @media (max-width: 640px) {
-  .score-section__primary,
-  .score-section__breakdown {
-    flex: 1 1 100%;
-  }
-
   .score-ring--overall {
     width: 140px;
     height: 140px;
-  }
-
-  .score-ring--small {
-    width: 72px;
-    height: 72px;
   }
 }
 
