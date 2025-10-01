@@ -149,6 +149,26 @@ function Get-IssueAreaLabel {
 
     $subcategories = New-Object System.Collections.Generic.List[string]
 
+    if ($Entry -and $Entry.PSObject.Properties['Area']) {
+        $areaValue = [string]$Entry.Area
+        if (-not [string]::IsNullOrWhiteSpace($areaValue)) {
+            $areaTrimmed = $areaValue.Trim()
+            if ($areaTrimmed) {
+                if ($areaTrimmed.Contains('/')) {
+                    $parts = $areaTrimmed.Split('/', 2)
+                    $basePart = Resolve-CategoryGroup -Name $parts[0]
+                    $rest = if ($parts.Length -gt 1) { $parts[1].Trim() } else { '' }
+                    if ($rest) {
+                        return ("{0}/{1}" -f $basePart, $rest)
+                    }
+                    return $basePart
+                }
+
+                return Resolve-CategoryGroup -Name $areaTrimmed
+            }
+        }
+    }
+
     if ($Entry -and $Entry.PSObject.Properties['Subcategory']) {
         Add-SubcategoryCandidate -List $subcategories -Value $Entry.Subcategory -BaseCategory $baseCategory -OriginalCategory $categoryName
     }
@@ -232,6 +252,17 @@ function Convert-ToIssueCard {
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
     $hasNewLines = $detail -match "\r|\n"
+    $plainLanguage = if ($Issue.PSObject.Properties['PlainLanguage']) { [string]$Issue.PlainLanguage } else { $null }
+
+    $technicalSummary = $null
+    $evidenceText = $null
+    if (-not [string]::IsNullOrWhiteSpace($detail)) {
+        if ($hasNewLines) {
+            $evidenceText = $detail
+        } else {
+            $technicalSummary = $detail
+        }
+    }
 
     $card = [pscustomobject]@{
         Severity    = $severity
@@ -239,12 +270,13 @@ function Convert-ToIssueCard {
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
-        Explanation = if ($hasNewLines) { $null } else { $detail }
-        Evidence    = if ($hasNewLines) { $detail } else { $null }
-        Source     = $issueSource
+        PlainLanguage = if ([string]::IsNullOrWhiteSpace($plainLanguage)) { $null } else { $plainLanguage }
+        Explanation   = $technicalSummary
+        Evidence      = $evidenceText
+        Source        = $issueSource
     }
 
-    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence; HasPlain = [bool]$card.PlainLanguage; HasSummary = [bool]$card.Explanation }
     foreach ($key in $issueSourceData.Keys) {
         $generatedData[$key] = $issueSourceData[$key]
     }
@@ -273,17 +305,31 @@ function Convert-ToGoodCard {
     Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Converting positive finding entry to card.' -Data $goodConvertData
 
     $detail = Format-AnalyzerEvidence -Value $Normal.Evidence
+    $hasNewLines = $detail -match "\r|\n"
+    $plainLanguage = if ($Normal.PSObject.Properties['PlainLanguage']) { [string]$Normal.PlainLanguage } else { $null }
 
-    $card = [pscustomobject]@{
-        CssClass  = 'good'
-        BadgeText = 'GOOD'
-        Area      = Get-IssueAreaLabel -Category $Category -Entry $Normal
-        Message   = $Normal.Title
-        Evidence  = $detail
-        Source    = $normalSource
+    $technicalSummary = $null
+    $evidenceText = $null
+    if (-not [string]::IsNullOrWhiteSpace($detail)) {
+        if ($hasNewLines) {
+            $evidenceText = $detail
+        } else {
+            $technicalSummary = $detail
+        }
     }
 
-    $goodGeneratedData = @{ Title = $card.Message; HasEvidence = [bool]$card.Evidence }
+    $card = [pscustomobject]@{
+        CssClass      = 'good'
+        BadgeText     = 'GOOD'
+        Area          = Get-IssueAreaLabel -Category $Category -Entry $Normal
+        Message       = $Normal.Title
+        PlainLanguage = if ([string]::IsNullOrWhiteSpace($plainLanguage)) { $null } else { $plainLanguage }
+        Explanation   = $technicalSummary
+        Evidence      = $evidenceText
+        Source        = $normalSource
+    }
+
+    $goodGeneratedData = @{ Title = $card.Message; HasEvidence = [bool]$card.Evidence; HasPlain = [bool]$card.PlainLanguage; HasSummary = [bool]$card.Explanation }
     foreach ($key in $normalSourceData.Keys) {
         $goodGeneratedData[$key] = $normalSourceData[$key]
     }
