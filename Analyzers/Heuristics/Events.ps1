@@ -39,24 +39,24 @@ function Invoke-EventsHeuristics {
                     Add-CategoryCheck -CategoryResult $result -Name ("{0} log warnings" -f $logName) -Status ([string]$warnCount)
                     if ($logName -eq 'GroupPolicy') {
                         if ($errorCount -gt 0) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory
                         }
                     } else {
                         if ($errorCount -gt 20) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample)." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample), indicating noisy or unhealthy logs." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount) -Subcategory $logSubcategory
                         }
                         if ($warnCount -gt 40) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log" -f $logName) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log, indicating noisy or unhealthy logs." -f $logName) -Subcategory $logSubcategory
                         }
                     }
                 } elseif ($entries.Error) {
                     $logSubcategory = ("{0} Event Log" -f $logName)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log" -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
     }
 
     return $result

@@ -205,7 +205,7 @@ function Invoke-StorageHeuristics {
                     $null = $details.Add(("Disk {0}: {1} ({2})" -f $disk.Number, $disk.HealthStatus, $disk.OperationalStatus))
                 }
 
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Disks reporting degraded health, indicating failing disks.' -Evidence ($details -join "`n") -Subcategory 'Disk Health'
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'Disk health reports healthy' -Subcategory 'Disk Health'
             }
@@ -221,7 +221,7 @@ function Invoke-StorageHeuristics {
                     }
                 }
 
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Disk health unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Disk health unavailable, so failing disks may go unnoticed.' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health'
             }
         }
 
@@ -286,10 +286,10 @@ function Invoke-StorageHeuristics {
                 $warnPercent = $threshold.WarnPercent * 100
                 if ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                     $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining)" -f $label, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $label, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
                 } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                     $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity" -f $label) -Evidence $evidence -Subcategory 'Free Space'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $label) -Evidence $evidence -Subcategory 'Free Space'
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title ("Volume {0} has {1}% free" -f $label, [math]::Round($freePct,1)) -Subcategory 'Free Space'
                 }
@@ -304,7 +304,7 @@ function Invoke-StorageHeuristics {
                         $_.Error
                     }
                 }
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Volume inventory unavailable' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
             }
         }
 
@@ -314,9 +314,9 @@ function Invoke-StorageHeuristics {
             if ($wearNode -is [pscustomobject] -and $wearNode.PSObject.Properties['Error']) {
                 $errorMessage = [string]$wearNode.Error
                 if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable' -Evidence $errorMessage -Subcategory 'SMART Wear'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Evidence $errorMessage -Subcategory 'SMART Wear'
                 } else {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable' -Subcategory 'SMART Wear'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
                 }
             } else {
                 $wearEntries = ConvertTo-StorageArray $wearNode
@@ -325,7 +325,7 @@ function Invoke-StorageHeuristics {
 
                     if ($entry.PSObject.Properties['Error'] -and -not [string]::IsNullOrWhiteSpace([string]$entry.Error)) {
                         $label = Get-StorageWearLabel -Entry $entry
-                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Unable to query SMART wear for {0}" -f $label) -Evidence $entry.Error -Subcategory 'SMART Wear'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Unable to query SMART wear for {0}, so SSD end-of-life risks may be hidden." -f $label) -Evidence $entry.Error -Subcategory 'SMART Wear'
                         continue
                     }
 
@@ -373,7 +373,7 @@ function Invoke-StorageHeuristics {
             if ($smartData -is [pscustomobject] -and $smartData.PSObject.Properties['Error']) {
                 $errorDetail = $smartData.Error
                 if (-not [string]::IsNullOrWhiteSpace($errorDetail)) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART status unavailable' -Evidence $errorDetail -Subcategory 'SMART'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART status unavailable, so imminent drive failure may be missed.' -Evidence $errorDetail -Subcategory 'SMART'
                 }
             } else {
                 $smartText = if ($smartData -is [string]) { $smartData } else { [string]$smartData }
@@ -414,7 +414,7 @@ function Invoke-StorageHeuristics {
     }
 
     if (-not $storageArtifact -and -not $snapshotArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing, so storage health and capacity risks may be hidden.' -Subcategory 'Collection'
     }
 
     return $result

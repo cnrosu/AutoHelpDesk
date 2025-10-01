@@ -75,7 +75,7 @@ function Invoke-SystemOperatingSystemChecks {
                 if ($uefi -and -not $secureBootMatch.Success) {
                     $evidence = ($systemInfoText -split "\r?\n" | Where-Object { $_ -match '(?i)(BIOS\s+Mode|Secure\s+Boot)' } | Select-Object -First 5)
                     if ($evidence.Count -eq 0) { $evidence = ($systemInfoText -split "\r?\n" | Select-Object -First 10) }
-                    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware.' -Evidence (($evidence | Where-Object { $_ }) -join "`n") -Subcategory 'Firmware'
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware, so the device may boot without firmware integrity protections.' -Evidence (($evidence | Where-Object { $_ }) -join "`n") -Subcategory 'Firmware'
                 }
             }
         }

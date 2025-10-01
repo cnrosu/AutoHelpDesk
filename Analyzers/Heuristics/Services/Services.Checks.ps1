@@ -250,7 +250,9 @@ function Invoke-ServiceCheckBits {
         }
     } elseif ($service.StartModeNormalized -eq 'manual') {
         if ($IsWorkstation) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS configured for manual start on workstation' -Evidence $evidence -Subcategory 'BITS Service'
+            $manualWorkstationTitle = 'BITS service stopped; Windows Update, Defender/AV signature updates, Office 365 Click-to-Run updates/repairs, WSUS/SCCM client content downloads, and some Microsoft Store/app servicing will fail or stall.'
+            $manualWorkstationEvidence = 'BITS service stopped; configured for manual start on workstation.'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $manualWorkstationTitle -Evidence $manualWorkstationEvidence -Subcategory 'BITS Service'
         } elseif ($service.StatusNormalized -ne 'running') {
             Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'BITS manual start and currently stopped' -Evidence $evidence -Subcategory 'BITS Service'
         }
@@ -328,7 +330,7 @@ function Invoke-ServiceCheckAutomaticInventory {
             $null = $summary.Add(("{0} ({1}; StartType={2})" -f $service.DisplayName, $serviceState, $startMode))
         }
 
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
     } else {
         Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running' -Subcategory 'Service Inventory'
     }
