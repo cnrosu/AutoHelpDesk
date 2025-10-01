@@ -6,6 +6,11 @@
 $analyzersRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 . (Join-Path -Path $analyzersRoot -ChildPath 'AnalyzerCommon.ps1')
 
+$vpnAnalyzerPath = Join-Path -Path $analyzersRoot -ChildPath 'Network/Analyze-Vpn.ps1'
+if (Test-Path -LiteralPath $vpnAnalyzerPath) {
+    . $vpnAnalyzerPath
+}
+
 function Test-NetworkPrivateIpv4 {
     param([string]$Address)
 
@@ -946,5 +951,25 @@ function Invoke-NetworkHeuristics {
     Write-Host ("DBG DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolderPath,$dhcpFolderExists,$dhcpFileCount,($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' } | Measure-Object).Count)
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result -InputFolder $dhcpFolderPath
 
-    return $result
+    $categories = New-Object System.Collections.Generic.List[object]
+    $categories.Add($result) | Out-Null
+
+    $vpnCategory = $null
+    if (Get-Command -Name 'Invoke-NetworkVpnAnalysis' -ErrorAction SilentlyContinue) {
+        try {
+            $vpnCategory = Invoke-NetworkVpnAnalysis -Context $Context
+        } catch {
+            Write-HeuristicDebug -Source 'Network' -Message 'Invoke-NetworkVpnAnalysis failed' -Data ([ordered]@{ Error = $_.Exception.Message })
+        }
+    }
+
+    if ($vpnCategory) {
+        $categories.Add($vpnCategory) | Out-Null
+    }
+
+    if ($categories.Count -eq 1) {
+        return $result
+    }
+
+    return $categories.ToArray()
 }
