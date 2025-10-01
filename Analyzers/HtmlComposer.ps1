@@ -605,7 +605,7 @@ function Build-SummaryCardHtml {
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__background' cx='60' cy='60' r='54'></circle>")
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__value' cx='60' cy='60' r='54' stroke-dasharray='$overallDashArray' stroke-dashoffset='$overallDashOffset'></circle>")
     $null = $overallRingBuilder.AppendLine('  </svg>')
-    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>GOOD/TOTAL</span></div>")
+    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span></div>")
     $null = $overallRingBuilder.AppendLine('</div>')
     $overallRingHtml = $overallRingBuilder.ToString().TrimEnd()
 
