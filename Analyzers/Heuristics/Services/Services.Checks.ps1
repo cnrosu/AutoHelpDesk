@@ -300,15 +300,32 @@ function Invoke-ServiceCheckAutomaticInventory {
     })
 
     $stoppedAuto = $Services | Where-Object {
-        ($_.StartMode -eq 'Auto' -or $_.StartType -eq 'Automatic') -and ($_.State -ne 'Running' -and $_.Status -ne 'Running')
+        $startNormalized = if ($_.PSObject.Properties['StartModeNormalized']) {
+            $_.StartModeNormalized
+        } elseif ($_.PSObject.Properties['NormalizedStartType']) {
+            $_.NormalizedStartType
+        } else {
+            Normalize-ServiceStartValue -Value $_.StartMode
+        }
+
+        $statusNormalized = if ($_.PSObject.Properties['StatusNormalized']) {
+            $_.StatusNormalized
+        } elseif ($_.PSObject.Properties['NormalizedStatus']) {
+            $_.NormalizedStatus
+        } else {
+            Normalize-ServiceStateValue -Value $_.Status
+        }
+
+        ($startNormalized -in @('automatic','automatic-delayed')) -and ($statusNormalized -ne 'running')
     }
 
     if ($stoppedAuto.Count -gt 0) {
         $topStoppedAuto = $stoppedAuto | Select-Object -First 5
         $summary = [System.Collections.Generic.List[string]]::new()
         foreach ($service in $topStoppedAuto) {
-            $serviceState = if ($service.State) { $service.State } else { $service.Status }
-            $null = $summary.Add(("{0} ({1})" -f $service.DisplayName, $serviceState))
+            $serviceState = if ($service.State) { $service.State } elseif ($service.Status) { $service.Status } else { 'Unknown' }
+            $startMode = if ($service.StartType) { $service.StartType } elseif ($service.StartMode) { $service.StartMode } else { 'Unknown' }
+            $null = $summary.Add(("{0} ({1}; StartType={2})" -f $service.DisplayName, $serviceState, $startMode))
         }
 
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'

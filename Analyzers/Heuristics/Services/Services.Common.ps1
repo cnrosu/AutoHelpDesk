@@ -8,6 +8,7 @@ function Normalize-ServiceStateValue {
     $lower = $trimmed.ToLowerInvariant()
     if ($lower -like 'run*') { return 'running' }
     if ($lower -like 'stop*') { return 'stopped' }
+    if ($lower -like 'pause*' -or $lower -like 'pending*') { return 'other' }
     return 'other'
 }
 
@@ -21,9 +22,63 @@ function Normalize-ServiceStartValue {
     $lower = $trimmed.ToLowerInvariant()
     if ($lower -like 'auto*' -and $lower -like '*delay*') { return 'automatic-delayed' }
     if ($lower -like 'auto*') { return 'automatic' }
-    if ($lower -like 'manual*') { return 'manual' }
+    if ($lower -like 'manual*' -or $lower -like 'demand*') { return 'manual' }
     if ($lower -like 'disabled*') { return 'disabled' }
+    if ($lower -like 'boot*' -or $lower -like 'system*') { return 'other' }
     return 'other'
+}
+
+function Resolve-ServicePropertyValue {
+    param(
+        $Service,
+        [string[]]$Names
+    )
+
+    if (-not $Service) { return $null }
+
+    foreach ($name in $Names) {
+        if (-not $name) { continue }
+        if ($Service.PSObject.Properties[$name]) {
+            $value = $Service.$name
+            if ($null -ne $value) {
+                $stringValue = [string]$value
+                if (-not [string]::IsNullOrWhiteSpace($stringValue)) {
+                    return $stringValue.Trim()
+                }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Expand-NormalizedServiceState {
+    param([string]$Value)
+
+    if (-not $Value) { return $null }
+
+    switch ($Value.ToLowerInvariant()) {
+        'running' { return 'Running' }
+        'stopped' { return 'Stopped' }
+        'other'   { return 'Other' }
+        'unknown' { return 'Unknown' }
+        default   { return $Value }
+    }
+}
+
+function Expand-NormalizedStartValue {
+    param([string]$Value)
+
+    if (-not $Value) { return $null }
+
+    switch ($Value.ToLowerInvariant()) {
+        'automatic-delayed' { return 'Automatic (Delayed)' }
+        'automatic'         { return 'Automatic' }
+        'manual'            { return 'Manual' }
+        'disabled'          { return 'Disabled' }
+        'unknown'           { return 'Unknown' }
+        default             { return $Value }
+    }
 }
 
 function Get-ServiceStateInfo {
@@ -69,12 +124,95 @@ function Get-ServiceStateInfo {
 function ConvertTo-ServiceCollection {
     param($Value)
 
-    if (-not $Value) { return @() }
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        return @($Value)
+    $items = @()
+    if (-not $Value) {
+        $items = @()
+    } elseif ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $items = @($Value)
+    } else {
+        $items = @($Value)
     }
 
-    return @($Value)
+    $normalized = New-Object System.Collections.Generic.List[pscustomobject]
+    $metrics = [ordered]@{
+        SourceCount          = $items.Count
+        MissingName          = 0
+        MissingStatus        = 0
+        MissingStartType     = 0
+        UsedNormalizedStatus = 0
+        UsedNormalizedStart  = 0
+    }
+
+    foreach ($service in $items) {
+        if (-not $service) { continue }
+
+        $name = Resolve-ServicePropertyValue -Service $service -Names @('Name','ServiceName','Key','Id')
+        if (-not $name) {
+            $metrics.MissingName++
+            continue
+        }
+
+        $displayName = Resolve-ServicePropertyValue -Service $service -Names @('DisplayName','ServiceDisplayName','Caption')
+
+        $statusSource = Resolve-ServicePropertyValue -Service $service -Names @('Status','State','CurrentState','ServiceState')
+        $usedNormalizedStatus = $false
+        if (-not $statusSource) {
+            $normalizedStatusValue = Resolve-ServicePropertyValue -Service $service -Names @('NormalizedStatus','StatusNormalized')
+            if ($normalizedStatusValue) {
+                $statusSource = Expand-NormalizedServiceState -Value $normalizedStatusValue
+                $usedNormalizedStatus = $true
+            }
+        }
+        if (-not $statusSource) {
+            $metrics.MissingStatus++
+            $statusSource = 'Unknown'
+        } elseif ($usedNormalizedStatus) {
+            $metrics.UsedNormalizedStatus++
+        }
+
+        $startSource = Resolve-ServicePropertyValue -Service $service -Names @('StartType','StartMode','StartUpType','StartupType','StartModeDisplay')
+        $usedNormalizedStart = $false
+        if (-not $startSource) {
+            $normalizedStart = Resolve-ServicePropertyValue -Service $service -Names @('NormalizedStartType','StartTypeNormalized','StartModeNormalized')
+            if ($normalizedStart) {
+                $startSource = Expand-NormalizedStartValue -Value $normalizedStart
+                $usedNormalizedStart = $true
+            }
+        }
+        if (-not $startSource) {
+            $metrics.MissingStartType++
+            $startSource = 'Unknown'
+        } elseif ($usedNormalizedStart) {
+            $metrics.UsedNormalizedStart++
+        }
+
+        $stateValue = Resolve-ServicePropertyValue -Service $service -Names @('State','Status','CurrentState','ServiceState')
+        if (-not $stateValue) { $stateValue = $statusSource }
+
+        $normalizedStatus = Normalize-ServiceStateValue -Value $statusSource
+        $normalizedStart = Normalize-ServiceStartValue -Value $startSource
+
+        $entry = [ordered]@{
+            Name                 = $name
+            DisplayName          = if ($displayName) { $displayName } else { $name }
+            Status               = $statusSource
+            State                = $stateValue
+            StartMode            = $startSource
+            StartType            = $startSource
+            StatusNormalized     = $normalizedStatus
+            NormalizedStatus     = $normalizedStatus
+            StartModeNormalized  = $normalizedStart
+            NormalizedStartType  = $normalizedStart
+            Raw                  = $service
+        }
+
+        $normalized.Add([pscustomobject]$entry) | Out-Null
+    }
+
+    return [pscustomobject]@{
+        Services = $normalized
+        Metrics  = $metrics
+    }
 }
 
 function New-ServiceLookup {
