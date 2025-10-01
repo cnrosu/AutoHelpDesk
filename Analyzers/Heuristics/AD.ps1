@@ -44,6 +44,62 @@ function Add-StringFragment {
     $null = $Builder.Append($Fragment)
 }
 
+function Get-CleanTimePeerName {
+    param(
+        [string]$Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+    $clean = $Value.Trim()
+    $clean = $clean -replace ',0x[0-9a-fA-F]+', ''
+    $clean = $clean.Trim()
+
+    if ($clean -match '^(?<host>[^\s\(]+)\s*\(') {
+        $clean = $matches['host']
+    }
+
+    return $clean.TrimEnd('.')
+}
+
+function Test-IsDomainTimePeer {
+    param(
+        [string]$Peer,
+        [string[]]$CandidateHosts,
+        [string[]]$CandidateAddresses,
+        [string]$DomainName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Peer)) { return $false }
+
+    $peerLower = $Peer.ToLowerInvariant().TrimEnd('.')
+
+    if ($DomainName) {
+        $domainLower = $DomainName.ToLowerInvariant().TrimStart('.').TrimEnd('.')
+        if ($peerLower -eq $domainLower) { return $true }
+        if ($peerLower.EndsWith(".$domainLower")) { return $true }
+    }
+
+    if ($CandidateHosts) {
+        foreach ($host in $CandidateHosts) {
+            if ([string]::IsNullOrWhiteSpace($host)) { continue }
+            $hostLower = $host.ToLowerInvariant().TrimEnd('.')
+            if ($peerLower -eq $hostLower) { return $true }
+            $short = ($hostLower -split '\.')[0]
+            if ($short -and $peerLower -eq $short) { return $true }
+        }
+    }
+
+    if ($CandidateAddresses) {
+        foreach ($address in $CandidateAddresses) {
+            if ([string]::IsNullOrWhiteSpace($address)) { continue }
+            if ($peerLower -eq $address.ToLowerInvariant()) { return $true }
+        }
+    }
+
+    return $false
+}
+
 function Invoke-ADHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -77,6 +133,7 @@ function Invoke-ADHeuristics {
                     DomainJoined = $systemPayload.ComputerSystem.PartOfDomain
                     Domain       = $systemPayload.ComputerSystem.Domain
                     Forest       = $null
+                    DomainRole   = if ($systemPayload.ComputerSystem.PSObject.Properties['DomainRole']) { $systemPayload.ComputerSystem.DomainRole } else { $null }
                 }
             }
         }
@@ -100,6 +157,13 @@ function Invoke-ADHeuristics {
     }
 
     $domainName = if ($domainStatus.PSObject.Properties['Domain']) { $domainStatus.Domain } else { $null }
+    $domainRole = $null
+    $domainRoleInt = $null
+    if ($domainStatus.PSObject.Properties['DomainRole']) {
+        $domainRole = $domainStatus.DomainRole
+        try { $domainRoleInt = [int]$domainRole } catch { $domainRoleInt = $null }
+    }
+
     if ($domainName) {
         Add-CategoryNormal -CategoryResult $result -Title ("Domain joined: {0}" -f $domainName) -Subcategory 'Discovery'
     }
@@ -254,6 +318,15 @@ function Invoke-ADHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
     }
 
+    $candidateHosts = @()
+    $candidateAddresses = @()
+    if ($discovery -and $discovery.Candidates) {
+        foreach ($candidate in $discovery.Candidates) {
+            if ($candidate -and $candidate.Hostname) { $candidateHosts += $candidate.Hostname }
+            if ($candidate -and $candidate.Addresses) { $candidateAddresses += $candidate.Addresses }
+        }
+    }
+
     $timeSkewHigh = $false
     if ($timeInfo) {
         $parsed = $timeInfo.Parsed
@@ -274,6 +347,89 @@ function Invoke-ADHeuristics {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Kerberos time skew, breaking Active Directory authentication.' -Evidence 'Time service not synchronized.' -Subcategory 'Time Synchronization'
         } elseif ($offset -ne $null -and [math]::Abs([double]$offset) -le 300) {
             Add-CategoryNormal -CategoryResult $result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
+        }
+
+        $clientType = $null
+        $clientServersRaw = $null
+        $peerEntries = @()
+        $sourceRaw = $null
+        if ($parsed) {
+            if ($parsed.PSObject.Properties['ClientType']) { $clientType = $parsed.ClientType }
+            if ($parsed.PSObject.Properties['ClientNtpServer']) { $clientServersRaw = $parsed.ClientNtpServer }
+            if ($parsed.PSObject.Properties['PeerEntries'] -and $parsed.PeerEntries) { $peerEntries = $parsed.PeerEntries }
+            if ($parsed.PSObject.Properties['Source']) { $sourceRaw = $parsed.Source }
+        }
+
+        $manualPeers = @()
+        if ($clientServersRaw) {
+            $components = $clientServersRaw -split '\s+'
+            foreach ($component in $components) {
+                $cleanPeer = Get-CleanTimePeerName -Value $component
+                if (-not $cleanPeer) { continue }
+                if ($cleanPeer -eq '(Local)') { continue }
+                $manualPeers += $cleanPeer
+            }
+        }
+
+        $peerNames = @()
+        foreach ($peerEntry in $peerEntries) {
+            $cleanPeer = Get-CleanTimePeerName -Value $peerEntry
+            if ($cleanPeer) { $peerNames += $cleanPeer }
+        }
+
+        $sourceName = if ($sourceRaw) { Get-CleanTimePeerName -Value $sourceRaw } else { $null }
+
+        $combinedPeers = @()
+        if ($manualPeers) { $combinedPeers += $manualPeers }
+        if ($peerNames) { $combinedPeers += $peerNames }
+        $combinedPeers = $combinedPeers | Sort-Object -Unique
+
+        $suspiciousPeers = @()
+        foreach ($peer in $combinedPeers) {
+            if (-not $peer) { continue }
+            $peerLower = $peer.ToLowerInvariant()
+            if ($peerLower -match 'local cmos clock' -or $peerLower -match 'free-running system clock') { continue }
+            if (Test-IsDomainTimePeer -Peer $peer -CandidateHosts $candidateHosts -CandidateAddresses $candidateAddresses -DomainName $domainName) {
+                continue
+            }
+            $suspiciousPeers += $peer
+        }
+
+        $suspiciousSource = $null
+        if ($sourceName) {
+            $sourceLower = $sourceName.ToLowerInvariant()
+            $isDomainPeer = Test-IsDomainTimePeer -Peer $sourceName -CandidateHosts $candidateHosts -CandidateAddresses $candidateAddresses -DomainName $domainName
+            if (-not $isDomainPeer -or $sourceLower -match 'local cmos clock' -or $sourceLower -match 'free-running system clock' -or $sourceLower -match 'vm ic time synchronization provider') {
+                $suspiciousSource = $sourceName
+            }
+        }
+
+        $clientTypeNormalized = $null
+        if ($clientType) {
+            $clientTypeNormalized = $clientType.ToString().Trim()
+        }
+
+        $isPrimaryDomainController = $false
+        if ($null -ne $domainRoleInt -and $domainRoleInt -eq 5) { $isPrimaryDomainController = $true }
+
+        if ($domainJoined -and -not $isPrimaryDomainController) {
+            $needsWarning = $false
+            if ($clientTypeNormalized -and $clientTypeNormalized.ToUpperInvariant() -ne 'NT5DS') {
+                $needsWarning = $true
+            }
+            if (-not $needsWarning -and $suspiciousPeers.Count -gt 0) { $needsWarning = $true }
+            if (-not $needsWarning -and $suspiciousSource) { $needsWarning = $true }
+
+            if ($needsWarning) {
+                $evidencePieces = @()
+                if ($clientTypeNormalized) { $evidencePieces += "Type $clientTypeNormalized" }
+                if ($suspiciousSource) { $evidencePieces += "Source $suspiciousSource" }
+                if ($suspiciousPeers.Count -gt 0) {
+                    $evidencePieces += ("Peers: {0}" -f (($suspiciousPeers | Sort-Object -Unique) -join ', '))
+                }
+                if (-not $evidencePieces) { $evidencePieces += 'Manual time source detected.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Domain time misconfigured (manual NTP), so Active Directory cannot control system time.' -Evidence ($evidencePieces -join '; ') -Subcategory 'Time Synchronization'
+            }
         }
     }
 
