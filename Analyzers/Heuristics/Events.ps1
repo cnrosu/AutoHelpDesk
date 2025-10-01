@@ -54,6 +54,36 @@ function Invoke-EventsHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
+
+            if ($payload.PSObject.Properties['WmiActivity']) {
+                Write-HeuristicDebug -Source 'Events' -Message 'Inspecting WMI Activity log entries'
+                $entries = $payload.WmiActivity
+                if ($entries -and -not $entries.Error) {
+                    $eventsWithTimestamps = $entries | Where-Object { $_.TimeCreated }
+                    $eventCount = ($eventsWithTimestamps | Measure-Object).Count
+
+                    Add-CategoryCheck -CategoryResult $result -Name 'WMI operation error events' -Status ([string]$eventCount)
+
+                    if ($eventCount -ge 3) {
+                        $latest = $eventsWithTimestamps | Sort-Object TimeCreated | Select-Object -Last 1
+                        $evidence = [ordered]@{
+                            Count = $eventCount
+                        }
+
+                        if ($latest -and $latest.TimeCreated) {
+                            $evidence['LastUtc'] = $latest.TimeCreated.ToUniversalTime().ToString('o')
+                        }
+
+                        if ($latest -and -not [string]::IsNullOrWhiteSpace($latest.Message)) {
+                            $evidence['OperationHint'] = $latest.Message
+                        }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WMI operation errors detected' -Evidence ($evidence | ConvertTo-Json -Compress) -Subcategory 'WMI Activity'
+                    }
+                } elseif ($entries.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Unable to read Microsoft-Windows-WMI-Activity/Operational event log, so WMI issues may be hidden.' -Evidence $entries.Error -Subcategory 'WMI Activity'
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
