@@ -250,7 +250,8 @@ function Invoke-ServiceCheckBits {
         }
     } elseif ($service.StartModeNormalized -eq 'manual') {
         if ($IsWorkstation) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS configured for manual start on workstation' -Evidence $evidence -Subcategory 'BITS Service'
+            $manualWorkstationEvidence = 'BITS service stopped; configured for manual start on workstation. Windows Update, Defender/AV signature updates, Office 365 Click-to-Run updates/repairs, WSUS/SCCM client content downloads, and some Microsoft Store/app servicing will fail or stall.'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS configured for manual start on workstation' -Evidence $manualWorkstationEvidence -Subcategory 'BITS Service'
         } elseif ($service.StatusNormalized -ne 'running') {
             Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'BITS manual start and currently stopped' -Evidence $evidence -Subcategory 'BITS Service'
         }
