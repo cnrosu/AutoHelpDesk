@@ -64,8 +64,10 @@ if (-not $eventEvidence -and -not $apipaGroups) {
     return @()
 }
 
-$messageParts = @()
-if ($eventEvidence) { $messageParts += "detected $($eventEvidence.Count) DHCP scope exhaustion warnings (event ID 1046)" }
+$messageBuilder = [System.Text.StringBuilder]::new()
+if ($eventEvidence) {
+    $null = $messageBuilder.Append("detected $($eventEvidence.Count) DHCP scope exhaustion warnings (event ID 1046)")
+}
 if ($apipaGroups) {
     $affectedCounts = [System.Collections.Generic.List[int]]::new()
     foreach ($group in $apipaGroups) {
@@ -73,10 +75,11 @@ if ($apipaGroups) {
     }
 
     $affected = ($affectedCounts -join ', ')
-    $messageParts += "found multiple adapters reverting to APIPA under gateway groupings ($affected)"
+    if ($messageBuilder.Length -gt 0) { $null = $messageBuilder.Append('; ') }
+    $null = $messageBuilder.Append("found multiple adapters reverting to APIPA under gateway groupings ($affected)")
 }
 
-$message = "Indicators of DHCP scope depletion: " + ($messageParts -join '; ') + '.'
+$message = "Indicators of DHCP scope depletion: " + $messageBuilder.ToString() + '.'
 
 $evidence = [ordered]@{}
 if ($eventEvidence) { $evidence['Events'] = $eventEvidence }
