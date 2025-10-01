@@ -162,6 +162,52 @@ function Get-DriverEvidence {
     return ($lines.ToArray() -join "`n")
 }
 
+function Get-PnpDeviceLabel {
+    param($Entry)
+
+    $label = Get-DriverPropertyValue -Entry $Entry -Names @('Device Description','Friendly Name','Name','Instance ID','InstanceID')
+    if ($label) { return $label }
+    return 'Unknown device'
+}
+
+function Get-PnpDeviceEvidence {
+    param($Entry)
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($name in @('Device Description','Instance ID','Class Name','Manufacturer Name','Status','Problem','Problem Status')) {
+        $value = Get-DriverPropertyValue -Entry $Entry -Names @($name)
+        if ($value) {
+            $lines.Add(("{0}: {1}" -f $name, $value)) | Out-Null
+        }
+    }
+
+    if ($lines.Count -eq 0) { return $null }
+    return ($lines.ToArray() -join "`n")
+}
+
+function Normalize-PnpProblem {
+    param(
+        [string[]]$Values
+    )
+
+    if (-not $Values) { return 'unknown' }
+
+    foreach ($value in $Values) {
+        if (-not $value) { continue }
+        $lower = $value.Trim().ToLowerInvariant()
+        if (-not $lower) { continue }
+
+        if ($lower -match '0x00000028' -or $lower -match '\bcode\s*28\b' -or $lower -match 'cm_prob_failed_install' -or $lower -match 'dn_driver_not_installed' -or $lower -match 'driver\s+not\s+install') {
+            return 'missing-driver'
+        }
+        if ($lower -match 'cm_prob|problem|error') {
+            return 'problem'
+        }
+    }
+
+    return 'none'
+}
+
 function Normalize-DriverStatus {
     param([string]$Value)
 
@@ -257,6 +303,12 @@ function Invoke-HardwareHeuristics {
         return $result
     }
 
+    if ($payload.PnpProblems -and $payload.PnpProblems.PSObject.Properties['Error'] -and $payload.PnpProblems.Error) {
+        $source = if ($payload.PnpProblems.PSObject.Properties['Source']) { [string]$payload.PnpProblems.Source } else { 'pnputil.exe' }
+        $evidence = if ($payload.PnpProblems.Error) { [string]$payload.PnpProblems.Error } else { 'Unknown error' }
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Problem device inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
+    }
+
     $driverText = ConvertTo-HardwareDriverText -Value $payload.DriverQuery
     Write-HeuristicDebug -Source 'Hardware' -Message 'Driver query text resolved' -Data ([ordered]@{
         HasText = [bool]$driverText
@@ -320,6 +372,41 @@ function Invoke-HardwareHeuristics {
 
             Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence (Get-DriverEvidence -Entry $entry) -Subcategory 'Device Manager'
             $issueCount++
+        }
+    }
+
+    $pnpText = ConvertTo-HardwareDriverText -Value $payload.PnpProblems
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Problem device text resolved' -Data ([ordered]@{
+        HasText = [bool]$pnpText
+        Length  = if ($pnpText) { $pnpText.Length } else { 0 }
+    })
+
+    if ($pnpText) {
+        $pnpEntries = Parse-DriverQueryEntries -Text $pnpText
+        Write-HeuristicDebug -Source 'Hardware' -Message 'Parsed problem device entries' -Data ([ordered]@{
+            EntryCount = $pnpEntries.Count
+        })
+
+        foreach ($entry in $pnpEntries) {
+            if (-not $entry) { continue }
+
+            $label = Get-PnpDeviceLabel -Entry $entry
+            $statusRaw = Get-DriverPropertyValue -Entry $entry -Names @('Status','Problem Status')
+            $problemRaw = Get-DriverPropertyValue -Entry $entry -Names @('Problem','Problem Code','ProblemStatus')
+            $normalized = Normalize-PnpProblem -Values @($statusRaw, $problemRaw)
+
+            if ($normalized -eq 'missing-driver') {
+                $title = "Device {0} is missing drivers (Code 28), so functionality may be limited." -f $label
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence (Get-PnpDeviceEvidence -Entry $entry) -Subcategory 'Device Manager'
+                $issueCount++
+                continue
+            }
+
+            if ($normalized -eq 'problem') {
+                $title = "Device Manager reports a problem for {0}." -f $label
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence (Get-PnpDeviceEvidence -Entry $entry) -Subcategory 'Device Manager'
+                $issueCount++
+            }
         }
     }
 
