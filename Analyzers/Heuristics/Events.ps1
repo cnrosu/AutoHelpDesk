@@ -54,6 +54,77 @@ function Invoke-EventsHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
+
+            if ($payload.PSObject.Properties['WheaLogger']) {
+                Write-HeuristicDebug -Source 'Events' -Message 'Inspecting WHEA logger entries'
+                $wheaData = $payload.WheaLogger
+
+                if ($wheaData -and $wheaData.PSObject.Properties['Error'] -and $wheaData.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to read WHEA hardware event log, so corrected error history may be incomplete.' -Evidence $wheaData.Error -Subcategory 'Hardware / WHEA'
+                } else {
+                    $wheaEvents = @()
+                    if ($wheaData -and $wheaData.PSObject.Properties['Events']) {
+                        $wheaEvents = @($wheaData.Events) | Where-Object { $_ }
+                    } elseif ($wheaData) {
+                        $wheaEvents = @($wheaData) | Where-Object { $_ }
+                    }
+
+                    if ($wheaEvents) {
+                        $correctedEvents = @($wheaEvents | Where-Object { $_.Id -in @(17, 19) })
+                        $totalCorrected = $correctedEvents.Count
+                        Write-HeuristicDebug -Source 'Events' -Message 'Evaluated WHEA corrected hardware errors' -Data ([ordered]@{
+                            Count = $totalCorrected
+                        })
+
+                        if ($totalCorrected -gt 0) {
+                            $latestEvent = $correctedEvents | Sort-Object -Property TimeCreated -Descending | Select-Object -First 1
+                            $severity = 'medium'
+                            if ($totalCorrected -eq 1 -and $latestEvent -and $latestEvent.Id -eq 17) {
+                                $severity = 'low'
+                            }
+
+                            $lastUtc = $null
+                            if ($latestEvent) {
+                                if ($latestEvent.PSObject.Properties['TimeCreatedUtc'] -and $latestEvent.TimeCreatedUtc) {
+                                    $lastUtc = $latestEvent.TimeCreatedUtc
+                                } elseif ($latestEvent.TimeCreated) {
+                                    try {
+                                        $lastUtc = $latestEvent.TimeCreated.ToUniversalTime()
+                                    } catch {
+                                    }
+                                }
+                            }
+
+                            $deviceBus = $null
+                            if ($latestEvent -and $latestEvent.Message) {
+                                $lines = @($latestEvent.Message -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+                                $busLine = $lines | Where-Object { $_ -match 'Bus:Device:Function' } | Select-Object -First 1
+                                if (-not $busLine) {
+                                    $busLine = $lines | Where-Object { $_ -like 'Device:*' } | Select-Object -First 1
+                                }
+                                if ($busLine) {
+                                    $parts = $busLine -split ':', 2
+                                    if ($parts.Count -ge 2 -and $parts[1]) {
+                                        $deviceBus = $parts[1].Trim()
+                                    } else {
+                                        $deviceBus = $busLine
+                                    }
+                                }
+                            }
+
+                            $evidence = [ordered]@{
+                                Count   = $totalCorrected
+                                LastUtc = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+                            }
+                            if ($deviceBus) {
+                                $evidence['DeviceBus'] = $deviceBus
+                            }
+
+                            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Corrected hardware errors reported (WHEA)' -Evidence $evidence -Subcategory 'Hardware / WHEA'
+                        }
+                    }
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
