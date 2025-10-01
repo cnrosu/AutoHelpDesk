@@ -79,7 +79,7 @@ function Invoke-PrintingHeuristics {
         Found = [bool]$printingArtifact
     })
     if (-not $printingArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing artifact not collected' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing artifact not collected, so printing security and reliability risks can’t be evaluated.' -Subcategory 'Collection'
         return $result
     }
 
@@ -88,14 +88,14 @@ function Invoke-PrintingHeuristics {
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing payload missing' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing payload missing, so printing security and reliability risks can’t be evaluated.' -Subcategory 'Collection'
         return $result
     }
 
     if ($payload.Errors) {
         foreach ($error in $payload.Errors) {
             if ($error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing data collection warning' -Evidence $error -Subcategory 'Collection'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing data collection warning, so printing security and reliability risks may be hidden.' -Evidence $error -Subcategory 'Collection'
             }
         }
     }
@@ -103,7 +103,7 @@ function Invoke-PrintingHeuristics {
     if ($payload.Spooler) {
         $spooler = $payload.Spooler
         if ($spooler.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Print Spooler state unavailable' -Evidence $spooler.Error -Subcategory 'Spooler Service'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Print Spooler state unavailable, so printing security and reliability risks can’t be evaluated.' -Evidence $spooler.Error -Subcategory 'Spooler Service'
         } else {
             $status = if ($spooler.Status) { [string]$spooler.Status } else { 'Unknown' }
             $startMode = if ($spooler.StartMode) { [string]$spooler.StartMode } else { $spooler.StartType }
@@ -117,7 +117,7 @@ function Invoke-PrintingHeuristics {
                 }
             } else {
                 $note = if ($isWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing will remain offline until the spooler is started.' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Print Spooler not running' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Print Spooler not running, exposing printing security and reliability risks until resolved.' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service'
             }
         }
     }
@@ -145,9 +145,9 @@ function Invoke-PrintingHeuristics {
         if ($offline) {
             $offlinePrintersList.Add($name) | Out-Null
             if ($defaultPrinter -and $name -eq $defaultPrinter) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Default printer offline' -Evidence $name -Subcategory 'Printers'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Default printer offline, exposing printing security and reliability risks.' -Evidence $name -Subcategory 'Printers'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Printer offline: {0}' -f $name) -Subcategory 'Printers'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Printer offline: {0}, exposing printing security and reliability risks.' -f $name) -Subcategory 'Printers'
             }
         }
 
@@ -163,7 +163,7 @@ function Invoke-PrintingHeuristics {
                     $jobName = if ($job.DocumentName) { [string]$job.DocumentName } elseif ($job.PSObject.Properties['Id']) { "Job $($job.Id)" } else { 'Print job' }
                     $ageRounded = [math]::Round($job.AgeMinutes,1)
                     $stuckJobsList.Add(("{0} ({1} min old)" -f $jobName, $ageRounded)) | Out-Null
-                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Stale print job detected on {0}' -f $name) -Evidence (("{0} age {1} minutes" -f $jobName, $ageRounded)) -Subcategory 'Queues'
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Stale print job detected on {0}, exposing printing security and reliability risks.' -f $name) -Evidence (("{0} age {1} minutes" -f $jobName, $ageRounded)) -Subcategory 'Queues'
                 }
             }
         }
@@ -184,7 +184,7 @@ function Invoke-PrintingHeuristics {
     }
 
     if ($wsdPrinters.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('Printers using WSD ports: {0}' -f ($wsdPrinters -join ', ')) -Evidence 'WSD ports are less reliable for enterprise printing; prefer Standard TCP/IP.' -Subcategory 'Printers'
+        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('Printers using WSD ports: {0}, exposing printing security and reliability risks.' -f ($wsdPrinters -join ', ')) -Evidence 'WSD ports are less reliable for enterprise printing; prefer Standard TCP/IP.' -Subcategory 'Printers'
     }
 
     if ($payload.Events) {
@@ -200,14 +200,14 @@ function Invoke-PrintingHeuristics {
                 }
 
                 $evidence = "Errors: {0}; Driver crash IDs: {1}" -f $admin.ErrorCount, ($driverCrashSummaries -join ', ')
-                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'PrintService Admin log reporting errors' -Evidence $evidence -Subcategory 'Event Logs'
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'PrintService Admin log reporting errors, exposing printing security and reliability risks.' -Evidence $evidence -Subcategory 'Event Logs'
             }
         }
         if ($events.Operational) {
             $op = $events.Operational
             Add-CategoryCheck -CategoryResult $result -Name 'PrintService/Operational warnings' -Status ([string]$op.WarningCount)
             if ($op.ErrorCount -gt 10) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PrintService Operational log has frequent errors' -Evidence ("Errors: {0}" -f $op.ErrorCount) -Subcategory 'Event Logs'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'PrintService Operational log has frequent errors, exposing printing security and reliability risks.' -Evidence ("Errors: {0}" -f $op.ErrorCount) -Subcategory 'Event Logs'
             }
         }
     }
@@ -219,7 +219,7 @@ function Invoke-PrintingHeuristics {
                 if (-not $test) { continue }
                 if ($test.Success -eq $false -or $test.Error) {
                     $evidence = "Host: {0}; Test: {1}; Error: {2}" -f $testGroup.Host, $test.Name, ($test.Error ? $test.Error : 'Connection failure')
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Printer host connectivity test failed ({0})' -f $testGroup.Host) -Evidence $evidence -Subcategory 'Network Tests'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Printer host connectivity test failed ({0}), exposing printing security and reliability risks.' -f $testGroup.Host) -Evidence $evidence -Subcategory 'Network Tests'
                 }
             }
         }

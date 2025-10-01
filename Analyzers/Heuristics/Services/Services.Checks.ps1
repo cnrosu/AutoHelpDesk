@@ -330,7 +330,7 @@ function Invoke-ServiceCheckAutomaticInventory {
             $null = $summary.Add(("{0} ({1}; StartType={2})" -f $service.DisplayName, $serviceState, $startMode))
         }
 
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
     } else {
         Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running' -Subcategory 'Service Inventory'
     }
