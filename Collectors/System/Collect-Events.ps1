@@ -139,6 +139,50 @@ function Get-EventRecords {
     return [pscustomobject]$result
 }
 
+function Get-AccountLockoutEvents {
+    $startTime = (Get-Date).AddDays(-7)
+
+    $lockouts = Get-EventRecords -LogName 'Security' -EventIds @(4740) -StartTime $startTime -MaxEvents 400
+    $failed = Get-EventRecords -LogName 'Security' -EventIds @(4625) -StartTime $startTime -MaxEvents 800
+    $network = Get-EventRecords -LogName 'Security' -EventIds @(4624) -StartTime $startTime -MaxEvents 400
+
+    if ($network -and -not $network.Error -and $network.PSObject.Properties['Events']) {
+        $filtered = @()
+        foreach ($event in @($network.Events)) {
+            if (-not $event) { continue }
+
+            $eventData = $null
+            if ($event.PSObject.Properties['EventData']) {
+                $eventData = $event.EventData
+            }
+
+            $logonType = $null
+            if ($eventData) {
+                if ($eventData -is [System.Collections.IDictionary] -and $eventData.Contains('LogonType')) {
+                    $logonType = $eventData['LogonType']
+                } elseif ($eventData.PSObject -and $eventData.PSObject.Properties['LogonType']) {
+                    $logonType = $eventData.LogonType
+                }
+            }
+
+            if ($logonType -and [string]::Equals([string]$logonType, '3', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $filtered += $event
+            }
+        }
+
+        $network.Events = @($filtered)
+    }
+
+    $result = [ordered]@{
+        WindowDays    = 7
+        Lockouts      = $lockouts
+        FailedLogons  = $failed
+        NetworkLogons = $network
+    }
+
+    return [pscustomobject]$result
+}
+
 function Get-KerberosPreAuthFailures {
     $startTime = (Get-Date).AddDays(-14)
     return Get-EventRecords -LogName 'Security' -EventIds @(4771) -StartTime $startTime -MaxEvents 400
@@ -197,6 +241,7 @@ function Invoke-Main {
             KerberosPreAuthFailures = Get-KerberosPreAuthFailures
             TimeServiceEvents       = Get-TimeServiceEvents
             W32tmStatus             = Get-W32tmStatus
+            AccountLockouts         = Get-AccountLockoutEvents
         }
     }
 

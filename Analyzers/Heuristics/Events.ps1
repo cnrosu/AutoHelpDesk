@@ -142,13 +142,152 @@ function Get-EventsW32tmMetrics {
     return [pscustomobject]$metrics
 }
 
+function Normalize-EventsUserName {
+    param([string]$UserName)
+
+    if ([string]::IsNullOrWhiteSpace($UserName)) { return $null }
+
+    $value = $UserName.Trim()
+
+    if ($value -match '^[^\\]+\\(?<name>.+)$') {
+        $value = $matches['name']
+    }
+
+    if ($value -match '^(?<name>[^@]+)@.+$') {
+        $value = $matches['name']
+    }
+
+    return $value.ToUpperInvariant()
+}
+
+function Normalize-EventsHostName {
+    param([string]$HostName)
+
+    if ([string]::IsNullOrWhiteSpace($HostName)) { return $null }
+
+    $value = $HostName.Trim()
+    if ($value -eq '-' -or $value -eq '--') { return $null }
+
+    if ($value.EndsWith('$')) {
+        $value = $value.Substring(0, $value.Length - 1)
+    }
+
+    if ($value.Contains('.')) {
+        $value = $value.Split('.')[0]
+    }
+
+    return $value.ToUpperInvariant()
+}
+
+function ConvertTo-EventsMaskedUser {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+    $text = $Value.Trim()
+
+    if ($text -match '^[^\\]+\\(?<name>.+)$') {
+        $text = $matches['name']
+    }
+
+    if ($text -match '^(?<name>[^@]+)@.+$') {
+        $text = $matches['name']
+    }
+
+    if ($text.Length -le 1) { return '***' }
+    if ($text.Length -eq 2) { return ('{0}***' -f $text.Substring(0, 1)) }
+
+    return ('{0}***{1}' -f $text.Substring(0, 1), $text.Substring($text.Length - 1))
+}
+
+function ConvertTo-EventsMaskedHost {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+    $text = $Value.Trim()
+    if ($text -eq '-' -or $text -eq '--') { return $null }
+
+    if ($text -match '^(?:\d{1,3}\.){3}\d{1,3}$') {
+        $octets = $text.Split('.')
+        if ($octets.Length -ge 2) {
+            return ('{0}.{1}.***' -f $octets[0], $octets[1])
+        }
+
+        return ('{0}.***' -f $octets[0])
+    }
+
+    if ($text -match '^[0-9a-fA-F:]+$' -and $text.Contains(':')) {
+        $prefixLength = [math]::Min(4, $text.Length)
+        return ('{0}***' -f $text.Substring(0, $prefixLength))
+    }
+
+    if ($text.Contains('-')) {
+        $segment = $text.Split('-')[0]
+        if ($segment) { return ('{0}-***' -f $segment) }
+    }
+
+    if ($text.Contains('.')) {
+        $segment = $text.Split('.')[0]
+        if ($segment) { return ('{0}.***' -f $segment) }
+    }
+
+    if ($text.Length -le 1) { return '***' }
+    if ($text.Length -eq 2) { return ('{0}***' -f $text.Substring(0, 1)) }
+
+    return ('{0}***{1}' -f $text.Substring(0, 1), $text.Substring($text.Length - 1))
+}
+
+function Get-EventsCurrentDeviceName {
+    param($Context)
+
+    if (-not $Context) { return $null }
+
+    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    if (-not $systemArtifact) { return $null }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+    if (-not $payload) { return $null }
+
+    $systemInfo = $null
+    if ($payload.PSObject.Properties['SystemInfoText']) {
+        $systemInfo = $payload.SystemInfoText
+    }
+
+    if ($systemInfo -is [pscustomobject] -and $systemInfo.PSObject.Properties['Error']) {
+        return $null
+    }
+
+    if ($systemInfo) {
+        if ($systemInfo -isnot [string]) {
+            if ($systemInfo -is [System.Collections.IEnumerable] -and -not ($systemInfo -is [string])) {
+                $systemInfo = ($systemInfo -join "`n")
+            } else {
+                $systemInfo = [string]$systemInfo
+            }
+        }
+
+        if ($systemInfo) {
+            foreach ($line in [regex]::Split($systemInfo, '\r?\n')) {
+                if ($line -match '^\s*Host\s+Name\s*:\s*(.+)$') {
+                    return $matches[1].Trim()
+                }
+            }
+        }
+    }
+
+    return $null
+}
+
 function Invoke-EventsAuthenticationChecks {
     param(
         [Parameter(Mandatory)]
         $Result,
 
         [Parameter(Mandatory)]
-        $Authentication
+        $Authentication,
+
+        [string]$DeviceName
     )
 
     Write-HeuristicDebug -Source 'Events/Auth' -Message 'Starting authentication heuristics evaluation'
@@ -338,23 +477,239 @@ function Invoke-EventsAuthenticationChecks {
         $evidenceJson = $evidenceObject | ConvertTo-Json -Depth 4 -Compress
 
         Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Multiple Kerberos pre-auth failures (clock skew suspected)' -Evidence $evidenceJson -Subcategory 'Authentication'
-        return
-    }
-
-    $kerberosError = $null
-    if ($kerberosData -and $kerberosData.PSObject.Properties['Error']) {
-        $kerberosError = $kerberosData.Error
-    }
-
-    if ($kerberosSummary.PreAuthEvents -eq 0 -and -not $kerberosError -and $w32tmStatus -and $w32tmStatus.Succeeded -and ($null -ne $offsetSeconds) -and ([math]::Abs($offsetSeconds) -le 60)) {
-        $evidenceParts = New-Object System.Collections.Generic.List[string]
-        $evidenceParts.Add(('Clock offset: {0}s' -f $offsetSeconds)) | Out-Null
-        if ($w32tmMetrics.Source) {
-            $evidenceParts.Add(('Source: {0}' -f $w32tmMetrics.Source)) | Out-Null
+    } else {
+        $kerberosError = $null
+        if ($kerberosData -and $kerberosData.PSObject.Properties['Error']) {
+            $kerberosError = $kerberosData.Error
         }
 
-        $evidenceText = $evidenceParts -join '; '
-        Add-CategoryNormal -CategoryResult $Result -Title 'Time synchronization healthy — no 4771 pre-auth failures in last 14 days and absolute offset ≤60s.' -Evidence $evidenceText -Subcategory 'Authentication'
+        if ($kerberosSummary.PreAuthEvents -eq 0 -and -not $kerberosError -and $w32tmStatus -and $w32tmStatus.Succeeded -and ($null -ne $offsetSeconds) -and ([math]::Abs($offsetSeconds) -le 60)) {
+            $evidenceParts = New-Object System.Collections.Generic.List[string]
+            $evidenceParts.Add(('Clock offset: {0}s' -f $offsetSeconds)) | Out-Null
+            if ($w32tmMetrics.Source) {
+                $evidenceParts.Add(('Source: {0}' -f $w32tmMetrics.Source)) | Out-Null
+            }
+
+            $evidenceText = $evidenceParts -join '; '
+            Add-CategoryNormal -CategoryResult $Result -Title 'Time synchronization healthy — no 4771 pre-auth failures in last 14 days and absolute offset ≤60s.' -Evidence $evidenceText -Subcategory 'Authentication'
+        }
+    }
+
+    $accountLockoutData = $null
+    if ($Authentication.PSObject.Properties['AccountLockouts']) {
+        $accountLockoutData = $Authentication.AccountLockouts
+    }
+
+    if (-not $accountLockoutData) { return }
+
+    $lockoutContainer = $null
+    if ($accountLockoutData.PSObject.Properties['Lockouts']) {
+        $lockoutContainer = $accountLockoutData.Lockouts
+    }
+
+    $failedContainer = $null
+    if ($accountLockoutData.PSObject.Properties['FailedLogons']) {
+        $failedContainer = $accountLockoutData.FailedLogons
+    }
+
+    if (-not $lockoutContainer -or -not $failedContainer) { return }
+
+    if (($lockoutContainer.Error) -or ($failedContainer.Error)) { return }
+
+    $lockoutEventsRaw = @()
+    if ($lockoutContainer.PSObject.Properties['Events']) {
+        $lockoutEventsRaw = @($lockoutContainer.Events)
+    }
+
+    $failedEventsRaw = @()
+    if ($failedContainer.PSObject.Properties['Events']) {
+        $failedEventsRaw = @($failedContainer.Events)
+    }
+
+    if (-not $lockoutEventsRaw -or -not $failedEventsRaw) { return }
+
+    $lockoutRecords = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($event in $lockoutEventsRaw) {
+        if (-not $event) { continue }
+
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) {
+            $eventData = $event.EventData
+        }
+
+        $userValue = $null
+        foreach ($field in @('TargetUserName','TargetAccountName')) {
+            $candidate = Get-EventsEventDataValue -EventData $eventData -Name $field
+            if ($candidate) { $userValue = [string]$candidate; break }
+        }
+
+        if (-not $userValue) { continue }
+
+        $normalizedUser = Normalize-EventsUserName -UserName $userValue
+        if (-not $normalizedUser) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        $lockoutRecords.Add([pscustomobject]@{
+            TimeUtc        = $timeUtc
+            User           = $userValue
+            UserNormalized = $normalizedUser
+        }) | Out-Null
+    }
+
+    $failedRecords = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($event in $failedEventsRaw) {
+        if (-not $event) { continue }
+
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) {
+            $eventData = $event.EventData
+        }
+
+        $userValue = $null
+        foreach ($field in @('TargetUserName','TargetAccountName')) {
+            $candidate = Get-EventsEventDataValue -EventData $eventData -Name $field
+            if ($candidate) { $userValue = [string]$candidate; break }
+        }
+
+        if (-not $userValue) { continue }
+
+        $normalizedUser = Normalize-EventsUserName -UserName $userValue
+        if (-not $normalizedUser) { continue }
+
+        $workstation = Get-EventsEventDataValue -EventData $eventData -Name 'WorkstationName'
+        $ipAddress = Get-EventsEventDataValue -EventData $eventData -Name 'IpAddress'
+
+        $sourceType = $null
+        $sourceLabel = $null
+        $sourceNormalized = $null
+
+        if ($workstation -and $workstation -notin '', '-', '--') {
+            $sourceType = 'Workstation'
+            $sourceLabel = ([string]$workstation).Trim()
+            $sourceNormalized = Normalize-EventsHostName -HostName $sourceLabel
+        }
+
+        if (-not $sourceNormalized -and $ipAddress -and $ipAddress -notin '', '-', '--') {
+            $sourceType = 'IP'
+            $sourceLabel = ([string]$ipAddress).Trim()
+            $sourceNormalized = $sourceLabel
+            if ($sourceNormalized) {
+                $sourceNormalized = $sourceNormalized.ToLowerInvariant()
+            }
+        }
+
+        if (-not $sourceNormalized) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        $failedRecords.Add([pscustomobject]@{
+            TimeUtc          = $timeUtc
+            User             = $userValue
+            UserNormalized   = $normalizedUser
+            SourceType       = $sourceType
+            SourceLabel      = $sourceLabel
+            SourceNormalized = $sourceNormalized
+            SourceKey        = ('{0}|{1}' -f $sourceType, $sourceNormalized)
+        }) | Out-Null
+    }
+
+    if ($lockoutRecords.Count -eq 0 -or $failedRecords.Count -eq 0) { return }
+
+    $localNormalized = $null
+    if ($DeviceName) {
+        $localNormalized = Normalize-EventsHostName -HostName $DeviceName
+    }
+
+    $userGroups = @($lockoutRecords | Where-Object { $_.UserNormalized }) | Group-Object -Property UserNormalized
+
+    foreach ($userGroup in $userGroups) {
+        if (-not $userGroup.Name) { continue }
+        $userKey = $userGroup.Name
+        $userLockouts = @($userGroup.Group | Sort-Object TimeUtc)
+        if ($userLockouts.Count -eq 0) { continue }
+
+        $userFailed = @($failedRecords | Where-Object { $_.UserNormalized -eq $userKey })
+        if ($userFailed.Count -lt 2) { continue }
+
+        $sourceGroups = $userFailed | Group-Object -Property SourceKey
+        foreach ($sourceGroup in $sourceGroups) {
+            if (-not $sourceGroup.Name) { continue }
+            $sourceEvents = @($sourceGroup.Group | Where-Object { $_.SourceKey } | Sort-Object TimeUtc)
+            if ($sourceEvents.Count -lt 2) { continue }
+
+            $matchingLockouts = New-Object System.Collections.Generic.List[object]
+            foreach ($lockout in $userLockouts) {
+                if (-not $lockout.TimeUtc) { continue }
+                $priorEvents = @($sourceEvents | Where-Object { $_.TimeUtc -and $_.TimeUtc -le $lockout.TimeUtc })
+                if ($priorEvents.Count -ge 2) {
+                    $matchingLockouts.Add($lockout) | Out-Null
+                }
+            }
+
+            if ($matchingLockouts.Count -eq 0) { continue }
+
+            $sourceSample = $sourceEvents[0]
+            $sourceLabel = $sourceSample.SourceLabel
+            $sourceType = $sourceSample.SourceType
+            $sourceNormalized = $sourceSample.SourceNormalized
+
+            $severity = 'medium'
+            if ($sourceType -eq 'Workstation' -and $localNormalized -and $sourceNormalized -and ([string]::Equals($sourceNormalized, $localNormalized, [System.StringComparison]::OrdinalIgnoreCase))) {
+                $severity = 'low'
+            }
+
+            $timeAccumulator = New-Object System.Collections.Generic.List[datetime]
+            foreach ($evt in $sourceEvents) {
+                if ($evt.TimeUtc) { $timeAccumulator.Add($evt.TimeUtc) | Out-Null }
+            }
+            foreach ($lockout in $matchingLockouts) {
+                if ($lockout.TimeUtc) { $timeAccumulator.Add($lockout.TimeUtc) | Out-Null }
+            }
+
+            $firstUtc = $null
+            $lastUtc = $null
+            if ($timeAccumulator.Count -gt 0) {
+                $orderedTimes = $timeAccumulator.ToArray() | Sort-Object
+                $firstUtc = $orderedTimes[0]
+                $lastUtc = $orderedTimes[$orderedTimes.Length - 1]
+            }
+
+            $userMasked = ConvertTo-EventsMaskedUser -Value ($matchingLockouts[0].User)
+            $hostMasked = ConvertTo-EventsMaskedHost -Value $sourceLabel
+
+            $firstUtcString = if ($firstUtc) { $firstUtc.ToString('o') } else { $null }
+            $lastUtcString = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+
+            $evidence = [ordered]@{
+                userMasked        = $userMasked
+                sourceHostMasked  = $hostMasked
+                lockoutCount      = $matchingLockouts.Count
+                failedSignInCount = $sourceEvents.Count
+                firstUtc          = $firstUtcString
+                lastUtc           = $lastUtcString
+            }
+
+            $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+
+            Write-HeuristicDebug -Source 'Events/Auth' -Message 'Account lockout pattern detected' -Data ([ordered]@{
+                UserKey      = $userKey
+                SourceKey    = $sourceGroup.Name
+                Severity     = $severity
+                Lockouts     = $matchingLockouts.Count
+                Failures     = $sourceEvents.Count
+                FirstUtc     = $firstUtcString
+                LastUtc      = $lastUtcString
+            })
+
+            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated account lockouts (possibly from another host/session)' -Evidence $evidenceJson -Subcategory 'Authentication'
+        }
     }
 }
 
@@ -367,6 +722,8 @@ function Invoke-EventsHeuristics {
     Write-HeuristicDebug -Source 'Events' -Message 'Starting event log heuristics' -Data ([ordered]@{
         ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
     })
+
+    $deviceName = Get-EventsCurrentDeviceName -Context $Context
 
     $result = New-CategoryResult -Name 'Events'
 
@@ -409,7 +766,7 @@ function Invoke-EventsHeuristics {
             }
 
             if ($payload.PSObject.Properties['Authentication']) {
-                Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication
+                Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
             }
         }
     } else {
