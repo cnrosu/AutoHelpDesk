@@ -360,6 +360,8 @@ function Invoke-StorageHeuristics {
                     }
                 }
             }
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'SMART wear data not collected, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
         }
     }
 
@@ -413,8 +415,12 @@ function Invoke-StorageHeuristics {
         }
     }
 
-    if (-not $storageArtifact -and -not $snapshotArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage artifact missing, so storage health and capacity risks may be hidden.' -Subcategory 'Collection'
+    if (-not $storageArtifact) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage inventory artifact missing, so storage health and wear cannot be evaluated.' -Subcategory 'Collection'
+    }
+
+    if (-not $snapshotArtifact) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage snapshot artifact missing, so SMART status cannot be evaluated.' -Subcategory 'Collection'
     }
 
     return $result
