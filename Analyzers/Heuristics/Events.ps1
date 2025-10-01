@@ -41,6 +41,46 @@ function Invoke-EventsHeuristics {
                         if ($errorCount -gt 0) {
                             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory
                         }
+
+                        $gpoFailureIds = @(1058, 1030, 1129)
+                        $gpoFailureEvents = @()
+                        foreach ($entry in $entries) {
+                            if (-not $entry) { continue }
+                            if ($entry.Id -notin $gpoFailureIds) { continue }
+                            if (-not $entry.PSObject.Properties['TimeCreated']) { continue }
+                            $eventTime = $null
+                            try {
+                                $eventTime = [datetime]$entry.TimeCreated
+                            } catch {
+                                $eventTime = $null
+                            }
+                            if (-not $eventTime) { continue }
+                            $gpoFailureEvents += [pscustomobject]@{
+                                Event = $entry
+                                Time  = $eventTime
+                            }
+                        }
+
+                        if ($gpoFailureEvents.Count -gt 0) {
+                            $now = Get-Date
+                            $recentWindowStart = $now.AddHours(-24)
+                            $historicWindowStart = $now.AddDays(-7)
+                            $recentFailures = @($gpoFailureEvents | Where-Object { $_.Time -ge $recentWindowStart })
+                            if ($recentFailures.Count -ge 3) {
+                                $olderFailures = @($gpoFailureEvents | Where-Object { $_.Time -lt $recentWindowStart -and $_.Time -ge $historicWindowStart })
+                                $lastEvent = $recentFailures | Sort-Object -Property Time -Descending | Select-Object -First 1
+                                $eventIdSet = $recentFailures | ForEach-Object { $_.Event.Id } | Sort-Object -Unique
+                                $lastUtc = if ($lastEvent -and $lastEvent.Time) { $lastEvent.Time.ToUniversalTime().ToString('o') } else { $null }
+                                $severity = if ($olderFailures.Count -gt 0) { 'high' } else { 'medium' }
+                                $evidence = [ordered]@{
+                                    eventIdSet = $eventIdSet
+                                    count24h   = $recentFailures.Count
+                                    lastUtc    = $lastUtc
+                                    hint       = 'Check DNS to DC, SYSVOL/DFS, network at startup.'
+                                }
+                                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Group Policy processing failures detected' -Evidence $evidence -Subcategory $logSubcategory
+                            }
+                        }
                     } else {
                         if ($errorCount -gt 20) {
                             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample), indicating noisy or unhealthy logs." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount) -Subcategory $logSubcategory
