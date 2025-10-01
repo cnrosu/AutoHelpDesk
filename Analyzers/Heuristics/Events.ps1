@@ -3,6 +3,118 @@
     Event log heuristics summarizing recent error and warning volume.
 #>
 
+function Get-W32tmStatusSummary {
+    param(
+        $Status
+    )
+
+    $summary = [ordered]@{
+        OffsetSeconds = $null
+        Source        = $null
+        LastSyncTime  = $null
+    }
+
+    if (-not $Status) { return [pscustomobject]$summary }
+
+    if ($Status.Output) {
+        $offsetValue = $null
+        foreach ($line in $Status.Output) {
+            if (-not $summary.Source -and $line -match 'Source:\s*(?<value>.+)$') {
+                $summary.Source = $matches['value'].Trim()
+                continue
+            }
+
+            if (-not $summary.LastSyncTime -and $line -match 'Last Successful Sync Time:\s*(?<value>.+)$') {
+                $rawValue = $matches['value'].Trim()
+                if ($rawValue -and $rawValue -notmatch '(?i)unspecified') {
+                    try {
+                        $parsed = Get-Date -Date $rawValue -ErrorAction Stop
+                        $summary.LastSyncTime = $parsed
+                    } catch {
+                    }
+                }
+                continue
+            }
+
+            if ($line -match '(?i)(?:phase\s+offset|clock\s+skew|offset):\s*(?<value>[-+]?\d+(?:\.\d+)?)s') {
+                try {
+                    $offsetValue = [double]$matches['value']
+                } catch {
+                    $offsetValue = $null
+                }
+            }
+        }
+
+        if ($null -ne $offsetValue) {
+            $summary.OffsetSeconds = [int][math]::Round($offsetValue, 0)
+        }
+    }
+
+    if (-not $summary.Source -and $Status.FilePath) {
+        $summary.Source = [System.IO.Path]::GetFileName($Status.FilePath)
+    }
+
+    return [pscustomobject]$summary
+}
+
+function Get-TimeServiceEventSummary {
+    param(
+        $Events
+    )
+
+    $summary = [ordered]@{
+        OffsetSeconds   = $null
+        OffsetSource    = $null
+        OffsetEventTime = $null
+        ProblemEvents   = @()
+        CollectionError = $null
+    }
+
+    if (-not $Events) { return [pscustomobject]$summary }
+
+    $problemIds = @(36, 47, 50)
+
+    foreach ($event in $Events) {
+        if (-not $event) { continue }
+
+        if ($event.PSObject.Properties['Error']) {
+            $summary.CollectionError = $event.Error
+            continue
+        }
+
+        if ($problemIds -contains [int]$event.Id) {
+            $summary.ProblemEvents += ,$event
+        }
+
+        if ($null -eq $summary.OffsetSeconds -and $event.Message) {
+            $message = [string]$event.Message
+            if ($message -match '(?i)(?<seconds>[-+]?\d+(?:\.\d+)?)\s*seconds') {
+                try {
+                    $seconds = [double]$matches['seconds']
+                    $summary.OffsetSeconds = [int][math]::Round($seconds, 0)
+                    $summary.OffsetSource = "Event {0}" -f $event.Id
+                    $summary.OffsetEventTime = $event.TimeCreated
+                    continue
+                } catch {
+                }
+            }
+
+            if ($message -match '(?i)(?<milliseconds>[-+]?\d+(?:\.\d+)?)\s*(?:milliseconds|ms)') {
+                try {
+                    $milliseconds = [double]$matches['milliseconds']
+                    $seconds = $milliseconds / 1000
+                    $summary.OffsetSeconds = [int][math]::Round($seconds, 0)
+                    $summary.OffsetSource = "Event {0}" -f $event.Id
+                    $summary.OffsetEventTime = $event.TimeCreated
+                } catch {
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]$summary
+}
+
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
 function Invoke-EventsHeuristics {
@@ -52,6 +164,63 @@ function Invoke-EventsHeuristics {
                 } elseif ($entries.Error) {
                     $logSubcategory = ("{0} Event Log" -f $logName)
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
+                }
+            }
+
+            $timeService = if ($payload.PSObject.Properties['TimeService']) { $payload.TimeService } else { $null }
+            if ($timeService) {
+                $operationalEvents = if ($timeService.PSObject.Properties['Operational']) { $timeService.Operational } else { $null }
+                $status = if ($timeService.PSObject.Properties['W32tmStatus']) { $timeService.W32tmStatus } else { $null }
+
+                $statusSummary = Get-W32tmStatusSummary -Status $status
+                $eventSummary = Get-TimeServiceEventSummary -Events $operationalEvents
+
+                if ($eventSummary.CollectionError) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Time service events unavailable, so drift alerts may be missed.' -Evidence $eventSummary.CollectionError -Subcategory 'Time Service'
+                }
+
+                $offsetSeconds = $statusSummary.OffsetSeconds
+                $offsetSource = $statusSummary.Source
+                $lastSyncTime = $statusSummary.LastSyncTime
+
+                if ($null -eq $offsetSeconds -and $null -ne $eventSummary.OffsetSeconds) {
+                    $offsetSeconds = $eventSummary.OffsetSeconds
+                    $offsetSource = $eventSummary.OffsetSource
+                    if (-not $lastSyncTime -and $eventSummary.OffsetEventTime) {
+                        $lastSyncTime = $eventSummary.OffsetEventTime
+                    }
+                }
+
+                if (-not $offsetSource -and $eventSummary.OffsetSource) {
+                    $offsetSource = $eventSummary.OffsetSource
+                }
+
+                if (-not $lastSyncTime -and $eventSummary.OffsetEventTime) {
+                    $lastSyncTime = $eventSummary.OffsetEventTime
+                }
+
+                $lastSyncUtc = if ($lastSyncTime) { $lastSyncTime.ToUniversalTime().ToString('o') } else { $null }
+                $absOffset = if ($null -ne $offsetSeconds) { [math]::Abs($offsetSeconds) } else { $null }
+                $hasProblemEvents = ($eventSummary.ProblemEvents -and $eventSummary.ProblemEvents.Count -gt 0)
+
+                if (-not $offsetSource -and $hasProblemEvents) {
+                    $offsetSource = 'Time-Service events'
+                }
+
+                $evidence = [ordered]@{
+                    offsetSec   = $offsetSeconds
+                    source      = $offsetSource
+                    lastSyncUtc = $lastSyncUtc
+                }
+
+                $issueCondition = $hasProblemEvents -or ($null -ne $absOffset -and $absOffset -gt 300)
+                if ($issueCondition) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'System clock drift beyond 5 minutes' -Evidence ([pscustomobject]$evidence) -Subcategory 'Time Service'
+                } elseif ($null -ne $absOffset -and $absOffset -le 60 -and $lastSyncTime) {
+                    $ageHours = (Get-Date).ToUniversalTime() - $lastSyncTime.ToUniversalTime()
+                    if ($ageHours.TotalHours -le 24) {
+                        Add-CategoryNormal -CategoryResult $result -Title 'Time synchronization OK — offset ≤60s and last sync ≤24h ago' -Evidence ([pscustomobject]$evidence) -Subcategory 'Time Service'
+                    }
                 }
             }
         }
