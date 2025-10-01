@@ -537,7 +537,7 @@ function Build-SummaryCardHtml {
         $fractionDisplay = '0/0'
     } else {
         $overallRatio = [Math]::Max(0.0, [Math]::Min(([double]$goodCount / [double]$totalCount), 1.0))
-        $fractionDisplay = ("{0}/{1}" -f $goodCount, $badCount)
+        $fractionDisplay = ("{0}/{1}" -f $goodCount, $totalCount)
     }
 
     $severityOrder = @{ critical = 0; high = 1; medium = 2; warning = 3; low = 4; info = 5; good = 6 }
@@ -606,7 +606,7 @@ function Build-SummaryCardHtml {
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__background' cx='60' cy='60' r='54'></circle>")
     $null = $overallRingBuilder.AppendLine("    <circle class='score-ring__value' cx='60' cy='60' r='54' stroke-dasharray='$overallDashArray' stroke-dashoffset='$overallDashOffset'></circle>")
     $null = $overallRingBuilder.AppendLine('  </svg>')
-    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>GOOD/BAD</span></div>")
+    $null = $overallRingBuilder.AppendLine("  <div class='score-ring__content'><span class='score-ring__label'>$overallLabelHtml</span><span class='score-ring__number'>$overallScoreHtml</span><span class='score-ring__suffix'>GOOD/TOTAL</span></div>")
     $null = $overallRingBuilder.AppendLine('</div>')
     $overallRingHtml = $overallRingBuilder.ToString().TrimEnd()
 
