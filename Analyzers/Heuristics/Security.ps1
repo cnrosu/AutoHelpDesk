@@ -563,11 +563,20 @@ function Invoke-SecurityHeuristics {
             if (($cfgEnabled -eq $true) -and ($depEnabled -eq $true) -and ($aslrEnabled -eq $true)) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Exploit protection mitigations enforced (CFG/DEP/ASLR)' -Evidence $evidenceText -Subcategory 'Exploit Protection'
             } else {
-                $details = @()
-                if ($cfgEnabled -ne $true) { $details += 'CFG disabled' }
-                if ($depEnabled -ne $true) { $details += 'DEP disabled' }
-                if ($aslrEnabled -ne $true) { $details += 'ASLR disabled' }
-                $detailText = if ($details.Count -gt 0) { $details -join '; ' } else { 'Mitigation status unknown.' }
+                $detailBuilder = [System.Text.StringBuilder]::new()
+                if ($cfgEnabled -ne $true) {
+                    if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('; ') }
+                    $null = $detailBuilder.Append('CFG disabled')
+                }
+                if ($depEnabled -ne $true) {
+                    if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('; ') }
+                    $null = $detailBuilder.Append('DEP disabled')
+                }
+                if ($aslrEnabled -ne $true) {
+                    if ($detailBuilder.Length -gt 0) { $null = $detailBuilder.Append('; ') }
+                    $null = $detailBuilder.Append('ASLR disabled')
+                }
+                $detailText = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { 'Mitigation status unknown.' }
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}), reducing exploit resistance.' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection'
             }
         } elseif ($payload -and $payload.Mitigations -and $payload.Mitigations.Error) {
