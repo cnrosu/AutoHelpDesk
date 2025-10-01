@@ -128,6 +128,7 @@ The following sections list the analysis functions and issue card heuristics gro
 ## Hardware Heuristics
 - **Hardware/Removable Media – Autorun/Autoplay** – Flags medium severity when Autorun or Autoplay remains enabled by checking `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF` (or equivalent policy) and `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoAutoRun = 1`.
 - **Hardware/Removable Storage Control** – Raises medium-to-high severity when removable storage controls (such as deny write/allow read policies or BitLocker To Go requirements) are not enforced in environments where policy forbids unrestricted removable storage.
+- **Hardware/Device Manager** – Surfaces high-severity issues when drivers report error states or fail to start despite boot/system/automatic start modes, and medium severity when Device Manager marks drivers as degraded so malfunctioning hardware is highlighted quickly.
 - **Hardware/Bluetooth & Wireless Sharing** – Emits low-severity findings when Bluetooth, Wi-Fi sharing, or Nearby sharing features deviate from the required baseline on laptops.
 
 ## Storage Heuristics

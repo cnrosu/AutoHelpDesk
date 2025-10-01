@@ -65,6 +65,9 @@ Write-Verbose 'Office heuristics completed.'
 $storageCategories = Invoke-StorageHeuristics  -Context $context
 if ($storageCategories) { foreach ($item in @($storageCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Storage heuristics completed.'
+$hardwareCategories = Invoke-HardwareHeuristics -Context $context
+if ($hardwareCategories) { foreach ($item in @($hardwareCategories)) { $categoriesList.Add($item) } }
+Write-Verbose 'Hardware heuristics completed.'
 $eventsCategories = Invoke-EventsHeuristics   -Context $context
 if ($eventsCategories) { foreach ($item in @($eventsCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Events heuristics completed.'
