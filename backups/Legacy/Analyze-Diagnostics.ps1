@@ -1692,25 +1692,25 @@ if ($raw['systeminfo']){
 }
 
 $computerInfoText = $raw['computerinfo']
-$firmwareEvidenceLines = @()
-$secureBootEvidenceLines = @()
+$firmwareEvidenceBuilder = [System.Text.StringBuilder]::new()
+$secureBootEvidenceBuilder = [System.Text.StringBuilder]::new()
 if ($computerInfoText) {
   $biosFirmwareMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosFirmwareType\s*:\s*(.+)$')
   if ($biosFirmwareMatch.Success) {
     $summary.BiosFirmwareType = $biosFirmwareMatch.Groups[1].Value.Trim()
-    $firmwareEvidenceLines += $biosFirmwareMatch.Value.Trim()
+    [void]$firmwareEvidenceBuilder.AppendLine($biosFirmwareMatch.Value.Trim())
   }
 
   $biosModeMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosMode\s*:\s*(.+)$')
   if ($biosModeMatch.Success) {
     $summary.BiosMode = $biosModeMatch.Groups[1].Value.Trim()
-    $firmwareEvidenceLines += $biosModeMatch.Value.Trim()
+    [void]$firmwareEvidenceBuilder.AppendLine($biosModeMatch.Value.Trim())
   }
 
   $secureBootMatch = [regex]::Match($computerInfoText,'(?im)^\s*BiosSecureBootState\s*:\s*(.+)$')
   if ($secureBootMatch.Success) {
     $summary.BiosSecureBootState = $secureBootMatch.Groups[1].Value.Trim()
-    $secureBootEvidenceLines += $secureBootMatch.Value.Trim()
+    [void]$secureBootEvidenceBuilder.AppendLine($secureBootMatch.Value.Trim())
   }
 }
 
@@ -1733,8 +1733,8 @@ if ($uefiIndicator) {
 if ($uefiStatus -ne $null) { $summary.UefiFirmware = $uefiStatus }
 
 $firmwareEvidenceText = $null
-if ($firmwareEvidenceLines.Count -gt 0) {
-  $firmwareEvidenceText = $firmwareEvidenceLines -join "`n"
+if ($firmwareEvidenceBuilder.Length -gt 0) {
+  $firmwareEvidenceText = $firmwareEvidenceBuilder.ToString().TrimEnd()
 } elseif ($computerInfoText) {
   $firmwareEvidenceText = (([regex]::Split($computerInfoText,'\r?\n') | Where-Object { $_ -match '(?i)Bios' } | Select-Object -First 6)) -join "`n"
 }
@@ -1751,9 +1751,9 @@ $secureBootState = $summary.BiosSecureBootState
 $secureBootEvidenceText = $null
 if ($secureBootState) {
   if ($uefiIndicator) {
-    $secureBootEvidenceLines += ("Firmware indicator: {0}" -f $uefiIndicator)
+    [void]$secureBootEvidenceBuilder.AppendLine("Firmware indicator: {0}" -f $uefiIndicator)
   }
-  $secureBootEvidenceText = $secureBootEvidenceLines -join "`n"
+  $secureBootEvidenceText = $secureBootEvidenceBuilder.ToString().TrimEnd()
   $secureBootValue = ConvertTo-NullableBool -Value $secureBootState
   if ($secureBootValue -eq $true) {
     Add-Normal "System/Secure Boot" "Secure Boot enabled" $secureBootEvidenceText
@@ -1775,13 +1775,13 @@ if ($secureBootState) {
 }
 
 $fastStartupState = $null
-$fastStartupEvidenceLines = @()
+$fastStartupEvidenceBuilder = [System.Text.StringBuilder]::new()
 if ($raw['power_settings']) {
   $powerSettingsText = $raw['power_settings']
   $hiberMatch = [regex]::Match($powerSettingsText,'(?im)^\s*HiberbootEnabled\s*[:=]\s*(.+)$')
   if ($hiberMatch.Success) {
     $hiberValueText = $hiberMatch.Groups[1].Value.Trim()
-    if ($hiberValueText) { $fastStartupEvidenceLines += $hiberMatch.Value.Trim() }
+    if ($hiberValueText) { [void]$fastStartupEvidenceBuilder.AppendLine($hiberMatch.Value.Trim()) }
     $fastStartupState = ConvertTo-NullableBool -Value $hiberValueText
     if ($fastStartupState -eq $null) {
       $numericMatch = [regex]::Match($hiberValueText,'0x[0-9a-fA-F]+|\d+')
@@ -1799,13 +1799,13 @@ if ($raw['power_settings']) {
       }
     }
   } elseif ($powerSettingsText -match '(?i)value not present') {
-    $fastStartupEvidenceLines += 'HiberbootEnabled value not present.'
+    [void]$fastStartupEvidenceBuilder.AppendLine('HiberbootEnabled value not present.')
   }
 
   $fastStartupLines = [regex]::Matches($powerSettingsText,'(?im)^.*Fast Startup.*$')
   foreach ($lineMatch in $fastStartupLines) {
     $lineValue = $lineMatch.Value.Trim()
-    if ($lineValue) { $fastStartupEvidenceLines += $lineValue }
+    if ($lineValue) { [void]$fastStartupEvidenceBuilder.AppendLine($lineValue) }
   }
 }
 
@@ -1814,16 +1814,16 @@ if ($fastStartupState -ne $null) {
 }
 
 if ($fastStartupState -eq $true) {
-  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  $fastStartupEvidence = $fastStartupEvidenceBuilder.ToString().TrimEnd()
   if (-not $fastStartupEvidence) { $fastStartupEvidence = 'HiberbootEnabled value indicates Fast Startup enabled.' }
   Add-Issue "warning" "System/Fast Startup" "Fast Startup (Fast Boot) is enabled. Disable Fast Startup for consistent shutdown and troubleshooting." $fastStartupEvidence
 } elseif ($fastStartupState -eq $false) {
-  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  $fastStartupEvidence = $fastStartupEvidenceBuilder.ToString().TrimEnd()
   if ($fastStartupEvidence) {
     Add-Normal "System/Fast Startup" "Fast Startup disabled" $fastStartupEvidence
   }
 } elseif ($raw['power_settings']) {
-  $fastStartupEvidence = $fastStartupEvidenceLines -join "`n"
+  $fastStartupEvidence = $fastStartupEvidenceBuilder.ToString().TrimEnd()
   if ($fastStartupEvidence) {
     Add-Issue "warning" "System/Fast Startup" "Unable to determine Fast Startup (Fast Boot) state from available data." $fastStartupEvidence
   }
@@ -2218,32 +2218,32 @@ if ($raw['ipconfig']){
 
       $canEvaluateDns = $dnsTestsAvailable -and ($dnsTestsAttempted -or $dcIPs.Count -gt 0)
 
-      $dnsEvidenceLines = @()
-      if ($configuredCount -gt 0) { $dnsEvidenceLines += ("Configured DNS: " + ($dnsServers -join ", ")) }
+      $dnsEvidenceBuilder = [System.Text.StringBuilder]::new()
+      if ($configuredCount -gt 0) { [void]$dnsEvidenceBuilder.AppendLine("Configured DNS: " + ($dnsServers -join ", ")) }
       if ($adCapableInOrder.Count -gt 0) {
-        $dnsEvidenceLines += ("AD-capable DNS: " + ($adCapableInOrder -join ", "))
+        [void]$dnsEvidenceBuilder.AppendLine("AD-capable DNS: " + ($adCapableInOrder -join ", "))
       } else {
-        $dnsEvidenceLines += "AD-capable DNS: (none)"
+        [void]$dnsEvidenceBuilder.AppendLine('AD-capable DNS: (none)')
       }
       if ($dcIPs.Count -gt 0) {
-        $dnsEvidenceLines += ("Discovered DC IPs: " + ($dcIPs -join ", "))
+        [void]$dnsEvidenceBuilder.AppendLine("Discovered DC IPs: " + ($dcIPs -join ", "))
       } else {
-        $dnsEvidenceLines += "Discovered DC IPs: (none)"
+        [void]$dnsEvidenceBuilder.AppendLine('Discovered DC IPs: (none)')
       }
-      $dnsEvidenceLines += ("DC count: " + $dcCount)
+      [void]$dnsEvidenceBuilder.AppendLine("DC count: " + $dcCount)
       if ($normalizedAllow -and $normalizedAllow.Count -gt 0) {
-        $dnsEvidenceLines += ("Anycast allowlist: " + ($normalizedAllow -join ", "))
+        [void]$dnsEvidenceBuilder.AppendLine("Anycast allowlist: " + ($normalizedAllow -join ", "))
       }
-      $dnsEvidenceLines += ("Anycast override matched: " + ([string]$anycastOverrideMatch))
-      $dnsEvidenceLines += ("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
+      [void]$dnsEvidenceBuilder.AppendLine("Anycast override matched: " + ([string]$anycastOverrideMatch))
+      [void]$dnsEvidenceBuilder.AppendLine("Secure channel healthy: " + (if ($null -eq $secureOK) { 'Unknown' } else { [string]$secureOK }))
       if ($dcCount -ge 2 -and $adCapableInOrder.Count -lt 2) {
-        $dnsEvidenceLines += ("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
+        [void]$dnsEvidenceBuilder.AppendLine("Note: {0} DC IPs discovered; only {1} AD-capable resolver(s) configured." -f $dcCount, $adCapableInOrder.Count)
       }
       if ($dnsEvalTable) {
-        $dnsEvidenceLines += ''
-        $dnsEvidenceLines += $dnsEvalTable.TrimEnd()
+        [void]$dnsEvidenceBuilder.AppendLine()
+        [void]$dnsEvidenceBuilder.Append($dnsEvalTable.TrimEnd())
       }
-      $dnsEvidence = $dnsEvidenceLines -join "`n"
+      $dnsEvidence = $dnsEvidenceBuilder.ToString().TrimEnd()
 
       if ($anycastOverrideMatch) {
         Add-Normal "DNS/Internal" ("GOOD DNS/Internal: Single Anycast/VIP resolver approved by policy: {0}." -f $primaryServer) $dnsEvidence
@@ -4400,11 +4400,11 @@ if ($printingPayload) {
   }
   $spoolerNormalizedStatus = if ($spoolerStatus) { Normalize-ServiceStatus $spoolerStatus } else { 'unknown' }
   $spoolerNormalizedStart = if ($spoolerStart) { Normalize-ServiceStartType $spoolerStart } else { 'unknown' }
-  $spoolerEvidenceLines = @()
-  if ($spoolerStatus) { $spoolerEvidenceLines += "Status: $spoolerStatus" }
-  if ($spoolerStart) { $spoolerEvidenceLines += "Start Type: $spoolerStart" }
-  if ($spoolerInfo -and $spoolerInfo.PSObject.Properties['Error'] -and $spoolerInfo.Error) { $spoolerEvidenceLines += "Error: $($spoolerInfo.Error)" }
-  $spoolerEvidence = $spoolerEvidenceLines -join "`n"
+  $spoolerEvidenceBuilder = [System.Text.StringBuilder]::new()
+  if ($spoolerStatus) { [void]$spoolerEvidenceBuilder.AppendLine("Status: $spoolerStatus") }
+  if ($spoolerStart) { [void]$spoolerEvidenceBuilder.AppendLine("Start Type: $spoolerStart") }
+  if ($spoolerInfo -and $spoolerInfo.PSObject.Properties['Error'] -and $spoolerInfo.Error) { [void]$spoolerEvidenceBuilder.AppendLine("Error: $($spoolerInfo.Error)") }
+  $spoolerEvidence = $spoolerEvidenceBuilder.ToString().TrimEnd()
   if ($spoolerNormalizedStatus -ne 'running' -or $spoolerNormalizedStart -eq 'disabled') {
     $statusDisplay = if ($spoolerStatus) { $spoolerStatus } else { 'Unknown' }
     $startDisplay = if ($spoolerStart) { $spoolerStart } else { 'Unknown' }
@@ -4617,12 +4617,12 @@ if ($printingPayload) {
   if ($updatePromptValue -ne $null -and $updatePromptValue -lt 2) { $promptsSuppressed = $true }
 
   if (-not $restrictDrivers -and $promptsSuppressed) {
-    $policyEvidenceLines = @()
-    $policyEvidenceLines += "RestrictDriverInstallationToAdministrators: $restrictDriversValue"
-    if ($packageOnlyValue -ne $null) { $policyEvidenceLines += "PackagePointAndPrintOnly: $packageOnlyValue" }
-    if ($noWarningValue -ne $null) { $policyEvidenceLines += "NoWarningNoElevationOnInstall: $noWarningValue" }
-    if ($updatePromptValue -ne $null) { $policyEvidenceLines += "UpdatePromptSettings: $updatePromptValue" }
-    $policyEvidence = $policyEvidenceLines -join "`n"
+    $policyEvidenceBuilder = [System.Text.StringBuilder]::new()
+    [void]$policyEvidenceBuilder.AppendLine("RestrictDriverInstallationToAdministrators: $restrictDriversValue")
+    if ($packageOnlyValue -ne $null) { [void]$policyEvidenceBuilder.AppendLine("PackagePointAndPrintOnly: $packageOnlyValue") }
+    if ($noWarningValue -ne $null) { [void]$policyEvidenceBuilder.AppendLine("NoWarningNoElevationOnInstall: $noWarningValue") }
+    if ($updatePromptValue -ne $null) { [void]$policyEvidenceBuilder.AppendLine("UpdatePromptSettings: $updatePromptValue") }
+    $policyEvidence = $policyEvidenceBuilder.ToString().TrimEnd()
     Add-Issue 'high' 'Printing/Policies' 'Point-and-Print hardening disabled (install prompts suppressed without driver restrictions).' $policyEvidence
   }
 
@@ -4680,11 +4680,11 @@ if ($printingPayload) {
 
   $isDomainJoined = ($summary.DomainJoined -eq $true)
   if ($isDomainJoined -and $legacyDrivers.Count -gt 0) {
-    $driverEvidenceLines = @()
+    $driverEvidenceBuilder = [System.Text.StringBuilder]::new()
     foreach ($legacy in $legacyDrivers) {
-      $driverEvidenceLines += ("{0}: Type={1}; Packaged={2}; Printers={3}" -f $legacy.Name, (if ($legacy.Type -ne $null) { $legacy.Type } else { 'Unknown' }), (if ($legacy.IsPackaged -eq $true) { 'True' } else { 'False' }), ($legacy.Printers -join ', '))
+      [void]$driverEvidenceBuilder.AppendLine("{0}: Type={1}; Packaged={2}; Printers={3}" -f $legacy.Name, (if ($legacy.Type -ne $null) { $legacy.Type } else { 'Unknown' }), (if ($legacy.IsPackaged -eq $true) { 'True' } else { 'False' }), ($legacy.Printers -join ', '))
     }
-    $driverEvidence = $driverEvidenceLines -join "`n"
+    $driverEvidence = $driverEvidenceBuilder.ToString().TrimEnd()
     $driverSeverity = if ($requireType4) { 'high' } else { 'medium' }
     Add-Issue $driverSeverity 'Printing/Drivers' 'Legacy Type 3 or non-packaged print drivers detected on a domain-joined client.' $driverEvidence
   } elseif ($driverMap.Count -gt 0 -and $allDriversPackaged) {
@@ -4725,7 +4725,7 @@ if ($defaultHosts) {
 }
 
   $allHostsReachable = $true
-  $networkEvidenceLines = @()
+  $networkEvidenceBuilder = [System.Text.StringBuilder]::new()
   foreach ($hostEntry in $networkTestsRaw) {
     if (-not $hostEntry) { continue }
     $hostName = if ($hostEntry.PSObject.Properties['Host']) { [string]$hostEntry.Host } else { '' }
@@ -4749,7 +4749,8 @@ if ($defaultHosts) {
       }
     }
     if ($testsList.Count -eq 0) { continue }
-    $testSummaries = @()
+    $testSummariesBuilder = [System.Text.StringBuilder]::new()
+    $isFirstSummary = $true
     $anySuccess = $false
     foreach ($test in $testsList) {
       $successValue = $null
@@ -4757,13 +4758,17 @@ if ($defaultHosts) {
       if ($successValue -eq $true) { $anySuccess = $true }
       $statusText = if ($successValue -eq $true) { 'OK' } elseif ($successValue -eq $false) { 'Fail' } else { 'Unknown' }
       $testName = if ($test.PSObject.Properties['Name']) { [string]$test.Name } else { 'Test' }
-      if ($test.PSObject.Properties['Port'] -and $test.Port) {
-        $testSummaries += "${testName}:${statusText}(port=$($test.Port))"
+      $summaryText = if ($test.PSObject.Properties['Port'] -and $test.Port) {
+        "${testName}:${statusText}(port=$($test.Port))"
       } else {
-        $testSummaries += "${testName}:${statusText}"
+        "${testName}:${statusText}"
       }
+      if (-not $isFirstSummary) { [void]$testSummariesBuilder.Append(', ') }
+      [void]$testSummariesBuilder.Append($summaryText)
+      $isFirstSummary = $false
     }
-    $networkEvidenceLines += ("{0} ({1}) => {2}" -f (if ($hostName) { $hostName } else { 'Unknown host' }), $kind, ($testSummaries -join ', '))
+    $testsSummaryText = $testSummariesBuilder.ToString()
+    [void]$networkEvidenceBuilder.AppendLine("{0} ({1}) => {2}" -f (if ($hostName) { $hostName } else { 'Unknown host' }), $kind, $testsSummaryText)
     if (-not $anySuccess) {
       $allHostsReachable = $false
       $isDefaultHost = $false
@@ -4773,12 +4778,16 @@ if ($defaultHosts) {
       }
       $severity = if ($kind -eq 'ServerQueue' -or $isDefaultHost) { 'high' } else { 'medium' }
       $queueSummary = if ($printersForHost.Count -gt 0) { $printersForHost -join ', ' } else { 'Unknown queues' }
-      $evidence = ("Host: {0} ({1})`nQueues: {2}`n{3}" -f (if ($hostName) { $hostName } else { 'Unknown' }), $kind, $queueSummary, ($testSummaries -join ', '))
+      $evidenceBuilder = [System.Text.StringBuilder]::new()
+      [void]$evidenceBuilder.AppendLine("Host: {0} ({1})" -f (if ($hostName) { $hostName } else { 'Unknown' }), $kind)
+      [void]$evidenceBuilder.AppendLine("Queues: {0}" -f $queueSummary)
+      [void]$evidenceBuilder.Append($testsSummaryText)
+      $evidence = $evidenceBuilder.ToString().TrimEnd()
       Add-Issue $severity 'Printing/Network' ('Printer host unreachable ({0}): {1}' -f $kind, (if ($hostName) { $hostName } else { 'Unknown host' })) $evidence
     }
   }
-  if ($networkTestsRaw.Count -gt 0 -and $allHostsReachable -and $networkEvidenceLines.Count -gt 0) {
-    $networkEvidence = $networkEvidenceLines -join "`n"
+  if ($networkTestsRaw.Count -gt 0 -and $allHostsReachable -and $networkEvidenceBuilder.Length -gt 0) {
+    $networkEvidence = $networkEvidenceBuilder.ToString().TrimEnd()
     Add-Normal 'Printing/Network' 'GOOD Printing/Network Reachable (ports)' $networkEvidence
   }
 
@@ -4800,15 +4809,15 @@ if ($defaultHosts) {
         $adminEventObjects = @($adminEventValue)
       }
     }
-    $eventSnippets = @()
+    $eventSnippetsBuilder = [System.Text.StringBuilder]::new()
     foreach ($evt in ($adminEventObjects | Select-Object -First 6)) {
       $timeText = if ($evt.PSObject.Properties['TimeCreated'] -and $evt.TimeCreated) { [string]$evt.TimeCreated } else { 'Unknown time' }
       $idText = if ($evt.PSObject.Properties['Id']) { [string]$evt.Id } else { 'N/A' }
       $levelText = if ($evt.PSObject.Properties['Level']) { [string]$evt.Level } elseif ($evt.PSObject.Properties['LevelDisplayName']) { [string]$evt.LevelDisplayName } else { '' }
       $messageText = if ($evt.PSObject.Properties['Message']) { [string]$evt.Message } else { '' }
-      $eventSnippets += ("{0} - ID {1} [{2}] {3}" -f $timeText, $idText, (if ($levelText) { $levelText } else { 'Unknown' }), $messageText)
+      [void]$eventSnippetsBuilder.AppendLine("{0} - ID {1} [{2}] {3}" -f $timeText, $idText, (if ($levelText) { $levelText } else { 'Unknown' }), $messageText)
     }
-    $eventsEvidence = $eventSnippets -join "`n"
+    $eventsEvidence = $eventSnippetsBuilder.ToString().TrimEnd()
 
     if ($adminErrorCount -gt 5) {
       Add-Issue 'medium' 'Printing/Events' ("PrintService/Admin log recorded {0} error events in the last 7 days." -f $adminErrorCount) $eventsEvidence
@@ -5876,40 +5885,41 @@ foreach ($definition in $deviceStateDefinitions) {
   }
 }
 
-$deviceStateDetails = @()
+$deviceStateBuilder = [System.Text.StringBuilder]::new()
 if ($deviceStateLabel) {
-  $deviceStateDetails += $deviceStateLabel
+  [void]$deviceStateBuilder.AppendLine($deviceStateLabel)
 } else {
   $aadStatus = & $formatJoinStatus $summary.AzureAdJoined
   $entStatus = & $formatJoinStatus $summary.EnterpriseJoined
   $domainStatus = & $formatJoinStatus $summary.DomainJoined
-  $deviceStateDetails += "State unknown (Azure AD joined: $aadStatus, Enterprise joined: $entStatus, Domain joined: $domainStatus)"
+  [void]$deviceStateBuilder.AppendLine("State unknown (Azure AD joined: $aadStatus, Enterprise joined: $entStatus, Domain joined: $domainStatus)")
 }
 
 if ($domainNameValue) {
   if ($summary.DomainJoined -eq $true) {
-    $deviceStateDetails += "Domain: $domainNameValue"
+    [void]$deviceStateBuilder.AppendLine("Domain: $domainNameValue")
   } elseif ($domainNameUpper -eq 'WORKGROUP') {
-    $deviceStateDetails += 'Domain: WORKGROUP (not domain joined)'
+    [void]$deviceStateBuilder.AppendLine('Domain: WORKGROUP (not domain joined)')
   } else {
-    $deviceStateDetails += "Domain (reported): $domainNameValue"
+    [void]$deviceStateBuilder.AppendLine("Domain (reported): $domainNameValue")
   }
 } else {
-  $deviceStateDetails += 'Domain: Unknown'
+  [void]$deviceStateBuilder.AppendLine('Domain: Unknown')
 }
 
 if ($summary.LogonServer -and ($summary.DomainJoined -eq $true -or ($domainNameUpper -and $domainNameUpper -ne 'WORKGROUP'))) {
-  $deviceStateDetails += "Logon Server: $($summary.LogonServer)"
+  [void]$deviceStateBuilder.AppendLine("Logon Server: $($summary.LogonServer)")
 }
 
-if ($summary.DomainRole) { $deviceStateDetails += "Role: $($summary.DomainRole)" }
-if ($summary.AzureAdTenantName) { $deviceStateDetails += "Tenant: $($summary.AzureAdTenantName)" }
-if ($summary.AzureAdTenantDomain) { $deviceStateDetails += "Tenant Domain: $($summary.AzureAdTenantDomain)" }
-if ($summary.AzureAdTenantId) { $deviceStateDetails += "Tenant ID: $($summary.AzureAdTenantId)" }
-if ($summary.AzureAdDeviceId) { $deviceStateDetails += "Device ID: $($summary.AzureAdDeviceId)" }
-if ($summary.WorkplaceJoined -eq $true) { $deviceStateDetails += 'Workplace join: Yes' }
+if ($summary.DomainRole) { [void]$deviceStateBuilder.AppendLine("Role: $($summary.DomainRole)") }
+if ($summary.AzureAdTenantName) { [void]$deviceStateBuilder.AppendLine("Tenant: $($summary.AzureAdTenantName)") }
+if ($summary.AzureAdTenantDomain) { [void]$deviceStateBuilder.AppendLine("Tenant Domain: $($summary.AzureAdTenantDomain)") }
+if ($summary.AzureAdTenantId) { [void]$deviceStateBuilder.AppendLine("Tenant ID: $($summary.AzureAdTenantId)") }
+if ($summary.AzureAdDeviceId) { [void]$deviceStateBuilder.AppendLine("Device ID: $($summary.AzureAdDeviceId)") }
+if ($summary.WorkplaceJoined -eq $true) { [void]$deviceStateBuilder.AppendLine('Workplace join: Yes') }
 
-$deviceStateHtml = if ($deviceStateDetails.Count -gt 0) { ($deviceStateDetails | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
+$deviceStateText = $deviceStateBuilder.ToString().TrimEnd()
+$deviceStateHtml = if ($deviceStateText) { ($deviceStateText -split "\r?\n" | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html 'Unknown' }
 
 $osHtml = "$(Encode-Html ($summary.OS)) | $(Encode-Html ($summary.OS_Version))"
 $ipv4Html = Encode-Html ($summary.IPv4)
@@ -5986,15 +5996,17 @@ $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
 if ($failedReports.Count -eq 0){
   $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
 } else {
-  $failedContent = "<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>"
+  $failedContentBuilder = [System.Text.StringBuilder]::new()
+  [void]$failedContentBuilder.Append("<div class='report-card'><table class='report-table report-table--list' cellspacing='0' cellpadding='0'><tr><th>Key</th><th>Status</th><th>Details</th></tr>")
   foreach($entry in $failedReports){
-    $detailParts = @()
-    if ($entry.Path){ $detailParts += "File: $($entry.Path)" }
-    if ($entry.Details){ $detailParts += $entry.Details }
+    $detailParts = New-Object System.Collections.Generic.List[string]
+    if ($entry.Path){ $detailParts.Add("File: $($entry.Path)") }
+    if ($entry.Details){ $detailParts.Add($entry.Details) }
     $detailHtml = if ($detailParts.Count -gt 0) { ($detailParts | ForEach-Object { Encode-Html $_ }) -join '<br>' } else { Encode-Html '' }
-    $failedContent += "<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>"
+    [void]$failedContentBuilder.Append("<tr><td>$(Encode-Html $($entry.Key))</td><td>$(Encode-Html $($entry.Status))</td><td>$detailHtml</td></tr>")
   }
-  $failedContent += "</table></div>"
+  [void]$failedContentBuilder.Append("</table></div>")
+  $failedContent = $failedContentBuilder.ToString()
 }
 $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
 
@@ -6056,7 +6068,8 @@ if ($normals.Count -eq 0){
   if (-not $firstNonEmpty) { $firstNonEmpty = $categoryOrder[0] }
 
   $tabName = 'good-tabs'
-  $goodTabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+  $goodTabsBuilder = [System.Text.StringBuilder]::new()
+  [void]$goodTabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
   $index = 0
 
   foreach ($category in $categoryOrder) {
@@ -6074,14 +6087,14 @@ if ($normals.Count -eq 0){
     $labelHtml = Encode-Html $labelText
     $panelContent = if ($count -gt 0) { ($cardsList -join '') } else { "<div class='report-card'><i>No positives captured in this category.</i></div>" }
 
-    $goodTabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
-    $goodTabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelHtml
-    $goodTabs += "<div class='report-tabs__panel'>$panelContent</div>"
+    [void]$goodTabsBuilder.Append("<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr)
+    [void]$goodTabsBuilder.Append("<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelHtml)
+    [void]$goodTabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
     $index++
   }
 
-  $goodTabs += "</div></div>"
-  $goodContent = $goodTabs
+  [void]$goodTabsBuilder.Append("</div></div>")
+  $goodContent = $goodTabsBuilder.ToString()
 }
 $goodHtml = New-ReportSection -Title $goodTitle -ContentHtml $goodContent -Open
 
@@ -6144,7 +6157,8 @@ if ($issues.Count -eq 0){
     $issuesContent = ($sortedIssues | ForEach-Object { New-IssueCardHtml -Entry $_ }) -join ''
   } else {
     $tabName = 'issue-tabs'
-    $issuesTabs = "<div class='report-tabs'><div class='report-tabs__list'>"
+    $issuesTabsBuilder = [System.Text.StringBuilder]::new()
+    [void]$issuesTabsBuilder.Append("<div class='report-tabs'><div class='report-tabs__list'>")
     $firstDefinition = $activeDefinitions[0]
     $firstKey = if ($firstDefinition.Key) { [string]$firstDefinition.Key } else { '' }
     $index = 0
@@ -6167,31 +6181,33 @@ if ($issues.Count -eq 0){
       $labelInner = "<span class='report-badge report-badge--{0} report-tabs__label-badge'>{1}</span><span class='report-tabs__label-count'>{2}</span>" -f $definition.BadgeClass, $badgeLabel, $countLabel
       $panelContent = if ($count -gt 0) { ($cardsList -join '') } else { "<div class='report-card'><i>No issues captured for this severity.</i></div>" }
 
-      $issuesTabs += "<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr
-      $issuesTabs += "<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelInner
-      $issuesTabs += "<div class='report-tabs__panel'>$panelContent</div>"
+      [void]$issuesTabsBuilder.Append("<input type='radio' name='{0}' id='{1}' class='report-tabs__radio'{2}>" -f $tabName, $tabId, $checkedAttr)
+      [void]$issuesTabsBuilder.Append("<label class='report-tabs__label' for='{0}'>{1}</label>" -f $tabId, $labelInner)
+      [void]$issuesTabsBuilder.Append("<div class='report-tabs__panel'>$panelContent</div>")
       $index++
     }
 
-    $issuesTabs += "</div></div>"
-    $issuesContent = $issuesTabs
+    [void]$issuesTabsBuilder.Append("</div></div>")
+    $issuesContent = $issuesTabsBuilder.ToString()
   }
 }
 $issuesHtml = New-ReportSection -Title $issuesTitle -ContentHtml $issuesContent -Open
 
 # Raw extracts (key files)
-$rawSections = ''
+$rawSectionsBuilder = [System.Text.StringBuilder]::new()
 foreach($key in @('ipconfig','route','nslookup','ping','os_cim','computerinfo','firewall','defender','bitlocker')){
   if ($files[$key]) {
     $fileName = [IO.Path]::GetFileName($files[$key])
     $content = Read-Text $files[$key]
     $fileNameHtml = Encode-Html $fileName
     $contentHtml = Encode-Html $content
-    $rawSections += "<details class='report-subsection'><summary>$fileNameHtml</summary><div class='report-subsection__body'><div class='report-card'><pre class='report-pre'>$contentHtml</pre></div></div></details>"
+    [void]$rawSectionsBuilder.Append("<details class='report-subsection'><summary>$fileNameHtml</summary><div class='report-subsection__body'><div class='report-card'><pre class='report-pre'>$contentHtml</pre></div></div></details>")
   }
 }
-if (-not $rawSections){
+if ($rawSectionsBuilder.Length -eq 0){
   $rawSections = "<div class='report-card'><i>No raw excerpts available.</i></div>"
+} else {
+  $rawSections = $rawSectionsBuilder.ToString()
 }
 $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml $rawSections
 
@@ -6209,7 +6225,7 @@ if (-not $rawDump){ $rawDump = "(no raw entries populated)" }
 $dnsDebugHtmlSection = ''
 if ($summary.ContainsKey('DnsDebug') -and $summary.DnsDebug) {
   $dnsDebugData = $summary.DnsDebug
-  $dnsDebugLines = @()
+  $dnsDebugBuilder = [System.Text.StringBuilder]::new()
 
   if ($dnsDebugData -is [System.Collections.IDictionary]) {
     foreach ($key in $dnsDebugData.Keys) {
@@ -6219,13 +6235,13 @@ if ($summary.ContainsKey('DnsDebug') -and $summary.DnsDebug) {
       } elseif ($value -is [string]) {
         $valueText = $value
       } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
-        $items = @()
+        $items = New-Object System.Collections.Generic.List[string]
         foreach ($item in $value) {
           if ($null -eq $item) {
-            $items += 'Unknown'
+            $items.Add('Unknown')
           } else {
             $itemText = [string]$item
-            if ([string]::IsNullOrWhiteSpace($itemText)) { $items += '(empty)' } else { $items += $itemText }
+            if ([string]::IsNullOrWhiteSpace($itemText)) { $items.Add('(empty)') } else { $items.Add($itemText) }
           }
         }
         if ($items.Count -eq 0) {
@@ -6238,24 +6254,25 @@ if ($summary.ContainsKey('DnsDebug') -and $summary.DnsDebug) {
       }
 
       if ([string]::IsNullOrWhiteSpace($valueText)) { $valueText = '(empty)' }
-      $dnsDebugLines += ("{0}: {1}" -f $key, $valueText)
+      [void]$dnsDebugBuilder.AppendLine("{0}: {1}" -f $key, $valueText)
     }
   } else {
-    $dnsDebugLines += [string]$dnsDebugData
+    [void]$dnsDebugBuilder.AppendLine([string]$dnsDebugData)
   }
 
-  if ($dnsDebugLines.Count -gt 0) {
-    $dnsDebugText = $dnsDebugLines -join "`n"
+  if ($dnsDebugBuilder.Length -gt 0) {
+    $dnsDebugText = $dnsDebugBuilder.ToString().TrimEnd()
     $dnsDebugHtmlSection = "<div class='report-card'><b>DNS heuristic data</b><pre class='report-pre'>$(Encode-Html $dnsDebugText)</pre></div>"
   }
 }
 
 $filesCardHtml = "<div class='report-card'><b>Files map</b><pre class='report-pre'>$(Encode-Html $filesDump)</pre></div>"
 $rawCardHtml = "<div class='report-card'><b>Raw samples</b><pre class='report-pre'>$(Encode-Html $rawDump)</pre></div>"
-$debugCards = @($filesCardHtml)
-if ($dnsDebugHtmlSection) { $debugCards += $dnsDebugHtmlSection }
-$debugCards += $rawCardHtml
-$debugBodyHtml = ($debugCards -join '')
+$debugCardsBuilder = [System.Text.StringBuilder]::new()
+[void]$debugCardsBuilder.Append($filesCardHtml)
+if ($dnsDebugHtmlSection) { [void]$debugCardsBuilder.Append($dnsDebugHtmlSection) }
+[void]$debugCardsBuilder.Append($rawCardHtml)
+$debugBodyHtml = $debugCardsBuilder.ToString()
 $debugHtml = "<details><summary>Debug</summary>$debugBodyHtml</details>"
 
 $tail = "</body></html>"
