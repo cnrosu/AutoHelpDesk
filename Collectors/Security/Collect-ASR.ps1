@@ -15,17 +15,17 @@ function Convert-AsrRules {
         [Parameter()]$Rules
     )
 
-    $result = @()
+    $result = [System.Collections.Generic.List[pscustomobject]]::new()
     if ($Rules) {
         foreach ($entry in $Rules.GetEnumerator()) {
-            $result += [PSCustomObject]@{
+            $result.Add([PSCustomObject]@{
                 RuleId = $entry.Key
                 Action = $entry.Value
-            }
+            })
         }
     }
 
-    return $result
+    return $result.ToArray()
 }
 
 function Get-AsrPolicy {

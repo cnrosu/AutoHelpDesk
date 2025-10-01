@@ -19,12 +19,12 @@ function ConvertTo-PlainValue {
     }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $list = @()
+        $list = [System.Collections.Generic.List[string]]::new()
         foreach ($item in $Value) {
             if ($null -eq $item) { continue }
-            $list += [string]$item
+            $list.Add([string]$item)
         }
-        return $list
+        return $list.ToArray()
     }
 
     return $Value
@@ -51,7 +51,7 @@ function Get-KernelDmaDeviceGuardState {
         }
     }
 
-    $converted = @()
+    $converted = [System.Collections.Generic.List[pscustomobject]]::new()
     $hasData = $false
     foreach ($instance in $instances) {
         $entry = [ordered]@{}
@@ -70,7 +70,7 @@ function Get-KernelDmaDeviceGuardState {
                 }
             }
         }
-        $converted += [pscustomobject]$entry
+        $converted.Add([pscustomobject]$entry)
     }
 
     if (-not $hasData) {
@@ -85,7 +85,7 @@ function Get-KernelDmaDeviceGuardState {
     return [pscustomobject]@{
         Status  = 'Success'
         Message = $null
-        Entries = $converted
+        Entries = $converted.ToArray()
         HasData = $true
     }
 }

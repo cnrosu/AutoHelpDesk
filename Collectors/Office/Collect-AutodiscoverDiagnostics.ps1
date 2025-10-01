@@ -53,7 +53,7 @@ function Resolve-DomainAutodiscover {
         [Parameter(Mandatory)][string]$Domain
     )
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     $recordTypes = @(
         @{ Label = 'Autodiscover'; Name = "autodiscover.$Domain"; Type = 'CNAME' },
         @{ Label = 'EnterpriseRegistration'; Name = "enterpriseregistration.$Domain"; Type = 'CNAME' },
@@ -79,26 +79,26 @@ function Resolve-DomainAutodiscover {
             $entry.Error = $_.Exception.Message
         }
 
-        $results += $entry
+        $results.Add([pscustomobject]$entry)
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-Main {
     $domains = Get-CandidateDomains
-    $lookups = @()
+    $lookups = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($domain in $domains) {
-        $lookups += [ordered]@{
+        $lookups.Add([pscustomobject]@{
             Domain  = $domain
             Lookups = Resolve-DomainAutodiscover -Domain $domain
-        }
+        })
     }
 
     $payload = [ordered]@{
         CapturedAt = (Get-Date).ToString('o')
         Domains    = $domains
-        Results    = $lookups
+        Results    = $lookups.ToArray()
     }
 
     $metadata = New-CollectorMetadata -Payload $payload

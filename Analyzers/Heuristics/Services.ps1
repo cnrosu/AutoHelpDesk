@@ -264,10 +264,10 @@ function Invoke-ServicesHeuristics {
     if (-not $selectedArtifact) {
         $evidenceLines = New-Object System.Collections.Generic.List[string]
         foreach ($entry in $candidateDiagnostics) {
-            $parts = @()
-            if ($entry.Path -and $entry.Path -ne '(missing)') { $parts += $entry.Path }
-            if ($entry.Message) { $parts += $entry.Message }
-            $detail = if ($parts.Count -gt 0) { ($parts -join ' | ') } else { $entry.Status }
+            $parts = [System.Collections.Generic.List[string]]::new()
+            if ($entry.Path -and $entry.Path -ne '(missing)') { $parts.Add($entry.Path) }
+            if ($entry.Message) { $parts.Add($entry.Message) }
+            $detail = if ($parts.Count -gt 0) { ($parts.ToArray() -join ' | ') } else { $entry.Status }
             $evidenceLines.Add(("{0}: {1}" -f $entry.Candidate, $detail)) | Out-Null
         }
 

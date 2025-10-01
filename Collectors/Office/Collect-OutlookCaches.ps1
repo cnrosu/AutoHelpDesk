@@ -17,13 +17,14 @@ function Get-OstFiles {
             (Join-Path -Path $env:USERPROFILE -ChildPath 'Documents\Outlook Files')
         ) | Where-Object { $_ }
 
-        $results = @()
+        $results = [System.Collections.Generic.List[psobject]]::new()
         foreach ($path in $rootPaths) {
             if (Test-Path -Path $path) {
-                $results += Get-ChildItem -Path $path -Include '*.ost','*.pst' -Recurse -ErrorAction Stop | Select-Object Name, FullName, Length, LastWriteTime
+                $items = Get-ChildItem -Path $path -Include '*.ost','*.pst' -Recurse -ErrorAction Stop | Select-Object Name, FullName, Length, LastWriteTime
+                foreach ($item in $items) { $results.Add($item) }
             }
         }
-        return $results
+        return $results.ToArray()
     } catch {
         return [PSCustomObject]@{
             Source = 'OutlookCacheScan'

@@ -62,7 +62,7 @@ function Get-StorageReliabilityCounters {
         }
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($disk in $physicalDisks) {
         $entry = [ordered]@{
             DeviceId      = $disk.DeviceId
@@ -112,10 +112,10 @@ function Get-StorageReliabilityCounters {
             $entry['Error'] = $_.Exception.Message
         }
 
-        $results += [pscustomobject]$entry
+        $results.Add([pscustomobject]$entry)
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-Main {
