@@ -59,5 +59,76 @@ function Invoke-EventsHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
     }
 
+    $userProfileArtifact = Get-AnalyzerArtifact -Context $Context -Name 'user-profile-events'
+    Write-HeuristicDebug -Source 'Events' -Message 'Resolved user profile events artifact' -Data ([ordered]@{
+        Found = [bool]$userProfileArtifact
+    })
+    if ($userProfileArtifact) {
+        $userProfilePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $userProfileArtifact)
+        Write-HeuristicDebug -Source 'Events' -Message 'Evaluating user profile payload' -Data ([ordered]@{
+            HasPayload = [bool]$userProfilePayload
+        })
+        if ($userProfilePayload -and $userProfilePayload.PSObject.Properties['Events']) {
+            $rawEvents = Ensure-Array $userProfilePayload.Events
+            if ($rawEvents.Count -eq 1 -and $rawEvents[0].PSObject.Properties['Error']) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'User Profile Service events unavailable, so profile unload conflicts may be hidden.' -Evidence $rawEvents[0].Error -Subcategory 'User Profile (Roaming/Registry)'
+            } else {
+                $events = $rawEvents | Where-Object { $_ -and $_.PSObject.Properties['Id'] }
+                if ($events -and $events.Count -gt 0) {
+                    $now = Get-Date
+                    $cutoff7 = $now.AddDays(-7)
+                    $cutoff14 = $now.AddDays(-14)
+
+                    $eventWrappers = foreach ($entry in $events) {
+                        $timestamp = $null
+                        if ($entry.TimeCreated) {
+                            $timestamp = ConvertFrom-Iso8601 $entry.TimeCreated
+                            if (-not $timestamp) {
+                                try {
+                                    $timestamp = [datetime]::Parse($entry.TimeCreated)
+                                } catch {
+                                    $timestamp = $null
+                                }
+                            }
+                        }
+
+                        [pscustomobject]@{
+                            Event = $entry
+                            Time  = $timestamp
+                        }
+                    }
+
+                    $recent7 = @($eventWrappers | Where-Object { $_.Time -and $_.Time -ge $cutoff7 })
+                    $recent14 = @($eventWrappers | Where-Object { $_.Time -and $_.Time -ge $cutoff14 })
+
+                    Write-HeuristicDebug -Source 'Events' -Message 'User profile event counts calculated' -Data ([ordered]@{
+                        Total    = $events.Count
+                        Recent7  = $recent7.Count
+                        Recent14 = $recent14.Count
+                    })
+
+                    if ($recent7.Count -ge 3 -and $recent14.Count -gt 1) {
+                        $latest = $recent7 | Sort-Object -Property Time -Descending | Select-Object -First 1
+                        $latestTime = if ($latest -and $latest.Time) { $latest.Time } else { $null }
+                        $lastUtc = if ($latestTime) { $latestTime.ToUniversalTime().ToString('o') } else { $null }
+                        $messageHint = $null
+                        if ($latest -and $latest.Event -and $latest.Event.Message) {
+                            $messageHint = Get-TopLines -Text $latest.Event.Message -Count 20
+                        }
+
+                        $evidence = [ordered]@{
+                            Count       = [int]$recent7.Count
+                            LastUtc     = $lastUtc
+                            MessageHint = $messageHint
+                            Advice      = 'Enable the "Verbose vs normal status messages" GPO to collect more detailed profile unload logging.'
+                        }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Profile unload conflicts detected' -Evidence $evidence -Subcategory 'User Profile (Roaming/Registry)'
+                    }
+                }
+            }
+        }
+    }
+
     return $result
 }
