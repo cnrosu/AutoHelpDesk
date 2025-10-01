@@ -110,20 +110,6 @@ details.report-card[open] > summary {
   margin-bottom: 0;
 }
 
-.report-card__body > .report-card__technical {
-  margin: 0 0 var(--space-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
-
-.report-card--critical .report-card__technical {
-  color: var(--color-state-critical-text);
-}
-
-.report-card__body > .report-card__technical:last-child {
-  margin-bottom: 0;
-}
-
 .report-card__body > .report-pre {
   margin-top: 0;
 }
