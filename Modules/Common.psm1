@@ -676,14 +676,9 @@ function New-IssueCardHtml {
 
   $bodyParts = @()
 
-  if ($Entry.PSObject.Properties['PlainLanguage'] -and -not [string]::IsNullOrWhiteSpace($Entry.PlainLanguage)) {
-    $plainHtml = Encode-Html $Entry.PlainLanguage
-    $bodyParts += "<p class='report-card__explanation'>$plainHtml</p>"
-  }
-
   if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
-    $technicalHtml = Encode-Html $Entry.Explanation
-    $bodyParts += "<p class='report-card__technical'><strong>Technical detail:</strong> $technicalHtml</p>"
+    $explanationHtml = Encode-Html $Entry.Explanation
+    $bodyParts += "<p class='report-card__explanation'>$explanationHtml</p>"
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
@@ -722,29 +717,15 @@ function New-GoodCardHtml {
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
 
-  $bodyParts = @()
-
-  if ($Entry.PSObject.Properties['PlainLanguage'] -and -not [string]::IsNullOrWhiteSpace($Entry.PlainLanguage)) {
-    $plainHtml = Encode-Html $Entry.PlainLanguage
-    $bodyParts += "<p class='report-card__explanation'>$plainHtml</p>"
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($Entry.Explanation)) {
-    $technicalHtml = Encode-Html $Entry.Explanation
-    $bodyParts += "<p class='report-card__technical'><strong>Technical detail:</strong> $technicalHtml</p>"
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
-    $evidenceHtml = Encode-Html $Entry.Evidence
-    $bodyParts += "<pre class='report-pre'>$evidenceHtml</pre>"
-  }
-
-  if ($bodyParts.Count -eq 0) {
+  if ([string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     return "<div class='report-card report-card--$cardClass report-card--static'><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></div>"
   }
 
   $cardHtml = "<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>"
-  $cardHtml += "<div class='report-card__body'>$($bodyParts -join '')</div>"
+
+  $evidenceHtml = Encode-Html $Entry.Evidence
+  $cardHtml += "<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>"
+
   $cardHtml += "</details>"
   return $cardHtml
 }

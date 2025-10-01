@@ -153,217 +153,6 @@ function Get-HeuristicSourceMetadata {
     return $null
 }
 
-$script:PlainLanguageAreaOverrides = @{
-    'System' = @{
-        'Firmware'           = 'System/Secure Boot'
-        'Power Configuration' = 'System/Fast Startup'
-        'Pending Reboot'     = 'System/Pending Reboot'
-        'Startup Programs'   = 'System/Startup Programs'
-        'Uptime'             = 'System/Uptime'
-    }
-    'Network' = @{
-        'IP Configuration'    = 'Network'
-        'Routing'             = 'Network'
-        'Latency'             = 'Network'
-        'Network Adapters'    = 'Network'
-        'Collection'          = 'Network'
-        'Proxy Configuration' = 'Network'
-        'Outlook Connectivity' = 'Outlook/Connectivity'
-        'Autodiscover DNS'    = 'Outlook/Autodiscover'
-        'DNS Autodiscover'    = 'Outlook/Autodiscover'
-        'DNS Client'          = 'Network/DNS/Internal'
-        'DNS Resolution'      = 'Network/DNS'
-        'DHCP'                = 'Security/DHCP'
-    }
-    'Office' = @{
-        'Autodiscover DNS'       = 'Outlook/Autodiscover'
-        'Macro Policies'         = 'Office/Macros'
-        'Outlook Cache'          = 'Outlook/OST'
-        'Outlook Data Files'     = 'Outlook/OST'
-        'Protected View Policies' = 'Office/Protected View'
-    }
-    'Security' = @{
-        'Microsoft Defender'              = 'Security/Microsoft Defender'
-        'BitLocker'                       = 'Security/BitLocker'
-        'TPM'                             = 'Security/TPM'
-        'Memory Integrity'                = 'Security/HVCI'
-        'Credential Guard'                = 'Security/Credential Guard'
-        'Kernel DMA'                      = 'Security/Kernel DMA'
-        'Windows Firewall'                = 'Security/Firewall'
-        'Windows Defender Application Control' = 'Security/WDAC'
-        'Smart App Control'               = 'Security/SmartAppControl'
-        'Credential Management'           = 'Security/LAPS'
-        'User Account Control'            = 'Security/UAC'
-        'PowerShell Logging'              = 'Security/PowerShellLogging'
-        'NTLM Hardening'                  = 'Security/NTLM'
-        'Attack Surface Reduction'        = 'Security/ASR'
-        'Exploit Protection'              = 'Security/ExploitProtection'
-    }
-    'Services' = @{
-        'Service Inventory'          = 'Services/Service Inventory'
-        'BITS Service'               = 'Services/Service Inventory'
-        'DNS Client Service'         = 'Services/Service Inventory'
-        'Network Location Awareness' = 'Services/Service Inventory'
-        'Office Click-to-Run'        = 'Services/Service Inventory'
-        'Print Spooler Service'      = 'Services/Service Inventory'
-        'RPC Services'               = 'Services/Service Inventory'
-        'WinHTTP Auto Proxy Service' = 'Services/Service Inventory'
-        'Windows Search Service'     = 'Services/Service Inventory'
-        'Workstation Service'        = 'Services/Service Inventory'
-    }
-    'Active Directory' = @{
-        'Discovery'           = 'Active Directory/DC Discovery'
-        'DNS Discovery'       = 'Active Directory/AD DNS'
-        'Secure Channel'      = 'Active Directory/Secure Channel'
-        'Time Synchronization' = 'Active Directory/Time & Kerberos'
-        'Kerberos'            = 'Active Directory/Time & Kerberos'
-        'SYSVOL'              = 'Active Directory/SYSVOL/NETLOGON'
-        'Connectivity'        = 'Active Directory/SYSVOL/NETLOGON'
-        'Group Policy'        = 'Active Directory/GPO Processing'
-    }
-    'Printing' = @{
-        'Collection'      = 'Printing'
-        'Event Logs'      = 'Printing'
-        'Network Tests'   = 'Printing'
-        'Printers'        = 'Printing'
-        'Queues'          = 'Printing'
-        'Spooler Service' = 'Printing'
-    }
-    'Storage' = @{
-        'SMART'       = 'Storage/SMART'
-        'SMART Wear'  = 'Storage/SMART Wear'
-        'Disk Health' = 'Storage/Disks'
-        'Free Space'  = 'Storage/Free Space'
-        'Collection'  = 'Storage'
-    }
-    'Events' = @{
-        'Collection' = 'Events'
-    }
-}
-
-$script:PlainLanguageExplanations = [ordered]@{
-    'System/Secure Boot' = 'Marks Secure Boot as high severity when disabled, unsupported, or reporting unexpected states, and still escalates when Secure Boot details are missing on UEFI hardware—plainly, if Secure Boot can''t be confirmed, the device might boot without firmware protections.'
-    'System/Fast Startup' = 'Flags warnings when Fast Startup is enabled or its state can''t be read, meaning hybrid shutdowns could hide issues; records a healthy status when it''s definitely off.'
-    'System/Pending Reboot' = 'Raises medium issues for Windows Update or servicing keys that demand a reboot, warns about outstanding file rename operations or rename evidence, and marks things healthy when no indicators exist—so administrators know when a restart is blocking fixes.'
-    'System/Startup Programs' = 'Escalates from low to medium when non-Microsoft autoruns grow beyond 5–10 items and warns when inventory is missing or empty, signaling login slowdowns or incomplete data.'
-    'System/Uptime' = 'Emits severity that matches long uptimes (e.g., medium/high/critical depending on days) so you know the box needs a reboot for stability.'
-    'Network' = 'Critically flags missing or APIPA IPv4 addresses, high-severity missing gateways/routes or ping failures, and low-severity traceroute stalls so you can chase connectivity gaps.'
-    'Network/DNS/Internal' = 'Scales to medium/high when too few AD-capable resolvers remain and warns when public DNS shows up on domain-joined hosts, indicating name-resolution risk.'
-    'Network/DNS/Order' = 'Reports low severity when a public DNS server precedes internal resolvers, hinting at potential leakage or slow lookups.'
-    'Network/DNS' = 'Raises medium issues for nslookup timeouts or NXDOMAIN responses, highlighting DNS resolution failures.'
-    'Security/Firewall' = 'Issues medium findings whenever a firewall profile is off and raises high severity when firewall status output is missing, ensuring you can verify network defenses.'
-    'Outlook/Connectivity' = 'Logs informational gaps when tests can''t run and high severity when HTTPS to outlook.office365.com fails—meaning users likely can''t reach Exchange Online.'
-    'Outlook/OST' = 'Flags OST caches as medium/high/critical when they exceed 5/15/25 GB so you can trim bloated mail caches that slow Outlook.'
-    'Outlook/Autodiscover' = 'Emits informational or medium findings for missing cmdlets, absent domains, bad CNAMEs, failed lookups, or missing records, pointing to Autodiscover onboarding trouble.'
-    'Outlook/SCP' = 'Medium severity when SCP queries fail and low when no SCP exists on domain-joined clients, signaling Autodiscover misconfiguration versus expected cloud-only setups.'
-    'Office/Macros' = 'High severity if MOTW blocking is disabled and medium when macro notifications still allow execution—indicating macro malware risk.'
-    'Office/Protected View' = 'Medium severity when Protected View is disabled in any context, warning that untrusted documents may open directly.'
-    'Security/Microsoft Defender' = 'High severity for disabled real-time protection, escalated tiers for stale signatures or missing engines/platforms, and informational warnings when data is absent—showing antivirus gaps or blind spots.'
-    'Security/BitLocker' = 'Ranges from low to critical for missing cmdlets, query failures, unprotected OS volumes, incomplete encryption, unclear states, absent recovery passwords, etc., highlighting encryption risk or missing data.'
-    'Security/TPM' = 'Medium severity when a TPM exists but isn''t ready and high when none is detected on compatible hardware, meaning hardware-backed key protection is missing.'
-    'Security/HVCI' = 'Medium findings when memory integrity is available but off or when Device Guard data is missing, flagging lost kernel exploit protections.'
-    'Security/Credential Guard' = 'High severity if Credential Guard/RunAsPPL isn''t enforced, indicating LSASS credential theft defenses are down.'
-    'Security/Kernel DMA' = 'Medium findings when Kernel DMA protection is disabled/unsupported or unknown, warning that Thunderbolt-style DMA attacks may succeed.'
-    'Security/RDP' = 'High when RDP lacks NLA and medium when it''s enabled on mobile systems even with NLA, warning about remote access risk.'
-    'Security/SMB' = 'High severity whenever SMBv1 is enabled, pointing to vulnerable legacy protocol usage.'
-    'Security/NTLM' = 'Medium severity if NTLM restriction policies aren''t configured, highlighting credential relay exposure.'
-    'Security/SmartScreen' = 'Medium findings when SmartScreen policies are disabled or unenforced, indicating reduced phishing/malware filtering.'
-    'Security/ASR' = 'High severity when mandated Attack Surface Reduction rules are missing or not blocking, leaving known exploit vectors open.'
-    'Security/ExploitProtection' = 'Medium items when CFG/DEP/ASLR aren’t enforced or data is missing, meaning exploit mitigations can''t be trusted.'
-    'Security/WDAC' = 'Warns (medium on modern clients) when no Windows Defender Application Control policy is detected, signaling unrestricted code execution paths.'
-    'Security/SmartAppControl' = 'Medium when Smart App Control is off on Windows 11, showing application control baselines aren''t met.'
-    'Security/LocalAdmin' = 'High severity when the current user remains a local admin, pointing to privilege escalation risk.'
-    'Security/LAPS' = 'High severity when neither legacy nor Windows LAPS protections exist, meaning local admin passwords may be reused or unmanaged.'
-    'Security/UAC' = 'High severity for insecure UAC configurations, indicating elevation prompts aren''t protecting administrative actions.'
-    'Security/PowerShellLogging' = 'Medium findings when script block/module logging or transcription is absent, leaving PowerShell activity untraceable.'
-    'Security/LDAPNTLM' = 'High severity if LDAP signing/channel binding/NTLM restrictions aren’t enforced on domain-joined systems, exposing directory services to relay attacks.'
-    'Security/DHCP' = 'High severity when DHCP servers have non-private addresses, hinting at rogue or misconfigured infrastructure.'
-    'Security/Office' = 'Medium/low informational items when macro blocking, notifications, or Protected View data is missing, nudging admins to verify Office hardening.'
-    'Active Directory/DC Discovery' = 'Critical when no domain controllers appear via SRV lookups, signaling AD is unreachable.'
-    'Active Directory/AD DNS' = 'Critical with zero AD-capable DNS servers, high with only one, and medium when public DNS is configured, all indicating AD name-resolution fragility.'
-    'Active Directory/Secure Channel' = 'Critical for broken machine secure channels, meaning the workstation can''t authenticate to the domain.'
-    'Active Directory/Time & Kerberos' = 'High severity for time sync or Kerberos errors in logs, pointing to authentication failures.'
-    'Active Directory/SYSVOL/NETLOGON' = 'High severity when SYSVOL/NETLOGON access fails, indicating GPOs and scripts can''t be delivered.'
-    'Active Directory/GPO Processing' = 'High severity when Group Policy processing fails, warning that device policies aren''t applying.'
-    'Services/Service Inventory' = 'Issues adopt per-service severity (medium/high/critical) for stopped essentials like Dhcp or WinDefend, highlighting key service outages.'
-    'Events' = 'Adds informational issues for logs with ≥5 errors and low-severity items for ≥10 warnings, so noisy event logs get attention.'
-    'Printing' = 'High severity for stopped/disabled spooler or unreachable hosts, medium/high for offline queues and long jobs, warnings for weak ports/SNMP/drivers, and good cards for healthy posture—plainly, it surfaces printing security and reliability gaps.'
-    'Hardware/Removable Media – Autorun/Autoplay' = 'Medium severity when Autorun/Autoplay remains enabled, meaning inserted media could auto-execute code.'
-    'Hardware/Removable Storage Control' = 'Medium-to-high severity when required removable storage restrictions aren''t enforced, signaling data leakage or malware risk from portable drives.'
-    'Hardware/Bluetooth & Wireless Sharing' = 'Low findings when Bluetooth, Wi-Fi sharing, or Nearby sharing deviate from the baseline on laptops, meaning users might share data wirelessly against policy.'
-    'Storage/SMART' = 'Critical when SMART output shows failure keywords, telling you a drive may be about to fail.'
-    'Storage/SMART Wear' = 'Medium at ~85% SSD wear, high at ≥95%, with normals for remaining life/temperature, so you know when flash storage is near end-of-life.'
-    'Storage/Disks' = 'Raises an issue at the worst observed severity when disks report offline/read-only/bad health states, flagging imminent disk problems.'
-    'Storage/Volumes' = 'Issues at the worst severity among volumes reporting health warnings, indicating logical volume problems.'
-    'Storage/Free Space' = 'Critical when free space breaches critical floors and high when below warning thresholds, showing storage depletion risk.'
-}
-
-function Resolve-AnalyzerCategoryGroup {
-    param([string]$Name)
-
-    if (-not $Name) { return 'General' }
-    $trimmed = $Name.Trim()
-    switch -regex ($trimmed) {
-        '^(?i)services'            { return 'Services' }
-        '^(?i)office'              { return 'Office' }
-        '^(?i)network|^dhcp'       { return 'Network' }
-        '^(?i)system'              { return 'System' }
-        '^(?i)storage'             { return 'Storage' }
-        '^(?i)hardware'            { return 'Hardware' }
-        '^(?i)security'            { return 'Security' }
-        '^(?i)active\s*directory' { return 'Active Directory' }
-        '^(?i)printing'            { return 'Printing' }
-        '^(?i)events'              { return 'Events' }
-        default                    { return $trimmed }
-    }
-}
-
-function Get-PlainLanguageFallback {
-    param([string]$Area)
-
-    $label = if ([string]::IsNullOrWhiteSpace($Area)) { 'this area' } else { $Area }
-    return "This card summarizes $label findings and the technical evidence below captures what the analyzer observed."
-}
-
-function Get-PlainLanguageMetadata {
-    param(
-        [string]$CategoryName,
-        [string]$Subcategory
-    )
-
-    $base = Resolve-AnalyzerCategoryGroup -Name $CategoryName
-    $subcategoryText = if ([string]::IsNullOrWhiteSpace($Subcategory)) { $null } else { $Subcategory.Trim() }
-
-    $canonical = $null
-    if ($base -and $subcategoryText) {
-        if ($script:PlainLanguageAreaOverrides.ContainsKey($base) -and $script:PlainLanguageAreaOverrides[$base].ContainsKey($subcategoryText)) {
-            $canonical = $script:PlainLanguageAreaOverrides[$base][$subcategoryText]
-        } else {
-            $canonical = ('{0}/{1}' -f $base, $subcategoryText)
-        }
-    } elseif ($base) {
-        $canonical = $base
-    }
-
-    if (-not $canonical -and $CategoryName) {
-        $canonical = $CategoryName.Trim()
-    }
-
-    $explanation = $null
-    if ($canonical -and $script:PlainLanguageExplanations.ContainsKey($canonical)) {
-        $explanation = $script:PlainLanguageExplanations[$canonical]
-    }
-
-    if (-not $explanation) {
-        $explanation = Get-PlainLanguageFallback -Area $canonical
-    }
-
-    return [pscustomobject]@{
-        Area        = $canonical
-        Explanation = $explanation
-    }
-}
-
 function Get-AnalyzerArtifact {
     param(
         [Parameter(Mandatory)]
@@ -432,19 +221,11 @@ function Add-CategoryIssue {
 
     $source = Get-HeuristicSourceMetadata
 
-    $subcategoryText = $null
-    if ($PSBoundParameters.ContainsKey('Subcategory') -and $null -ne $Subcategory) {
-        $subcategoryText = [string]$Subcategory
-    }
-
     $entry = [ordered]@{
-        Severity = $Severity
-        Title    = $Title
-        Evidence = $Evidence
-    }
-
-    if ($subcategoryText -and -not [string]::IsNullOrWhiteSpace($subcategoryText)) {
-        $entry['Subcategory'] = $subcategoryText
+        Severity    = $Severity
+        Title       = $Title
+        Evidence    = $Evidence
+        Subcategory = $Subcategory
     }
 
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
@@ -452,12 +233,6 @@ function Add-CategoryIssue {
     }
 
     if ($source) { $entry['Source'] = $source }
-
-    $plain = Get-PlainLanguageMetadata -CategoryName (if ($CategoryResult.PSObject.Properties['Name']) { [string]$CategoryResult.Name } else { $null }) -Subcategory $subcategoryText
-    if ($plain) {
-        if ($plain.Area) { $entry['Area'] = $plain.Area }
-        if ($plain.Explanation) { $entry['PlainLanguage'] = $plain.Explanation }
-    }
 
     $CategoryResult.Issues.Add([pscustomobject]$entry) | Out-Null
 }
@@ -479,18 +254,13 @@ function Add-CategoryNormal {
 
     $source = Get-HeuristicSourceMetadata
 
-    $subcategoryText = $null
-    if ($PSBoundParameters.ContainsKey('Subcategory') -and $null -ne $Subcategory) {
-        $subcategoryText = [string]$Subcategory
-    }
-
     $entry = [ordered]@{
         Title    = $Title
         Evidence = $Evidence
     }
 
-    if ($subcategoryText -and -not [string]::IsNullOrWhiteSpace($subcategoryText)) {
-        $entry['Subcategory'] = $subcategoryText
+    if ($PSBoundParameters.ContainsKey('Subcategory') -and $Subcategory) {
+        $entry['Subcategory'] = $Subcategory
     }
 
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
@@ -498,12 +268,6 @@ function Add-CategoryNormal {
     }
 
     if ($source) { $entry['Source'] = $source }
-
-    $plain = Get-PlainLanguageMetadata -CategoryName (if ($CategoryResult.PSObject.Properties['Name']) { [string]$CategoryResult.Name } else { $null }) -Subcategory $subcategoryText
-    if ($plain) {
-        if ($plain.Area) { $entry['Area'] = $plain.Area }
-        if ($plain.Explanation) { $entry['PlainLanguage'] = $plain.Explanation }
-    }
 
     $CategoryResult.Normals.Add([pscustomobject]$entry) | Out-Null
 }
