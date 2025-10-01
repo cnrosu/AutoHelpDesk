@@ -54,6 +54,74 @@ function Invoke-EventsHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
+
+            if ($payload.PSObject.Properties['ServicingStack']) {
+                $servicing = $payload.ServicingStack
+                Write-HeuristicDebug -Source 'Events' -Message 'Evaluating servicing stack signals' -Data ([ordered]@{
+                    HasNode = [bool]$servicing
+                })
+
+                if ($servicing) {
+                    $count = 0
+                    if ($servicing.PSObject.Properties['Servicing1016Count']) {
+                        try { $count = [int]$servicing.Servicing1016Count } catch { $count = 0 }
+                    }
+
+                    $lastUtc = $null
+                    if ($servicing.PSObject.Properties['LastUtc'] -and $servicing.LastUtc) {
+                        $lastUtc = [string]$servicing.LastUtc
+                    }
+
+                    $tailLines = @()
+                    if ($servicing.PSObject.Properties['CbsTailLines'] -and $servicing.CbsTailLines) {
+                        $tailValue = $servicing.CbsTailLines
+                        if ($tailValue -is [System.Collections.IEnumerable] -and -not ($tailValue -is [string])) {
+                            foreach ($line in $tailValue) {
+                                if ($null -ne $line) { $tailLines += [string]$line }
+                            }
+                        } else {
+                            $tailLines = @([string]$tailValue)
+                        }
+                    }
+
+                    $keywordRegex = [System.Text.RegularExpressions.Regex]::new('(?i)\b(cannot repair|corrupt)\b')
+                    $matchingLines = New-Object System.Collections.Generic.List[string]
+                    foreach ($line in $tailLines) {
+                        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                        if ($keywordRegex.IsMatch($line)) {
+                            $matchingLines.Add($line) | Out-Null
+                        }
+                    }
+
+                    $hasKeyword = ($matchingLines.Count -gt 0)
+                    $snippetLines = @()
+                    if ($hasKeyword) {
+                        $snippetLines = $matchingLines | Select-Object -First 5
+                    } elseif ($tailLines.Count -gt 0) {
+                        $snippetLines = $tailLines | Select-Object -Last ([math]::Min(5, $tailLines.Count))
+                    }
+
+                    $snippetText = if ($snippetLines -and $snippetLines.Count -gt 0) { ($snippetLines -join [System.Environment]::NewLine) } else { $null }
+
+                    $shouldFlag = ($count -gt 0) -or $hasKeyword
+                    Write-HeuristicDebug -Source 'Events' -Message 'Servicing stack heuristic evaluation' -Data ([ordered]@{
+                        EventCount   = $count
+                        HasKeyword   = $hasKeyword
+                        LastUtc      = $lastUtc
+                        TailLineCount = $tailLines.Count
+                    })
+
+                    if ($shouldFlag) {
+                        $evidence = [ordered]@{
+                            servicing1016Count = $count
+                            lastUtc            = if ($lastUtc) { $lastUtc } else { '(none)' }
+                            cbsTailSnippet     = if ($snippetText) { $snippetText } else { '(no tail data)' }
+                        }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Servicing stack reports corruption' -Evidence ([pscustomobject]$evidence) -Subcategory 'Servicing Stack / CBS'
+                    }
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
