@@ -193,9 +193,9 @@ function Invoke-SystemMicrosoftStoreChecks {
         if ($entry) {
             $startType = if ($entry.PSObject.Properties['startType']) { [string]$entry.startType } else { 'Unknown' }
             $status = if ($entry.PSObject.Properties['status']) { [string]$entry.status } else { 'Unknown' }
-            $evidenceLines.Add("$name: StartType=$startType; Status=$status") | Out-Null
+            $evidenceLines.Add("$($name): StartType=$startType; Status=$status") | Out-Null
         } else {
-            $evidenceLines.Add("$name: StartType=Unknown; Status=Unknown") | Out-Null
+            $evidenceLines.Add("$($name): StartType=Unknown; Status=Unknown") | Out-Null
         }
     }
 
