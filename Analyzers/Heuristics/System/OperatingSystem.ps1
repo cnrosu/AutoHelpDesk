@@ -67,14 +67,33 @@ function Invoke-SystemOperatingSystemChecks {
         }
         $systemInfoText = [string]$systemInfo
         if ($systemInfoText) {
+            $systemInfoLines = $systemInfoText -split "\r?\n"
             $biosModeMatch = [regex]::Match($systemInfoText,'(?im)^\s*BIOS\s+Mode\s*:\s*(?<value>.+)$')
             $secureBootMatch = [regex]::Match($systemInfoText,'(?im)^\s*Secure\s+Boot\s+State\s*:\s*(?<value>.+)$')
+            if ($secureBootMatch.Success) {
+                $secureBootState = $secureBootMatch.Groups['value'].Value.Trim()
+                $secureBootEvidenceLines = @($systemInfoLines | Where-Object { $_ -match '(?i)(Secure\s+Boot|BIOS\s+Mode)' } | Select-Object -First 5)
+                if ($secureBootEvidenceLines.Count -eq 0) {
+                    $secureBootEvidenceLines = @($systemInfoLines | Select-Object -First 10)
+                }
+                $secureBootEvidence = ($secureBootEvidenceLines | Where-Object { $_ }) -join "`n"
+
+                if ($secureBootState -match '^(?i)on$') {
+                    Add-CategoryNormal -CategoryResult $Result -Title 'Secure Boot is enabled, so firmware integrity protections are enforced.' -Evidence $secureBootEvidence -Subcategory 'Firmware'
+                } elseif ($secureBootState -match '^(?i)off$') {
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Secure Boot is disabled, so the device can boot untrusted firmware.' -Evidence $secureBootEvidence -Subcategory 'Firmware'
+                } elseif ($secureBootState -match '^(?i)unsupported$') {
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Secure Boot is unsupported on this hardware, so firmware integrity protections cannot run.' -Evidence $secureBootEvidence -Subcategory 'Firmware'
+                } else {
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title ("Secure Boot reported unexpected state '{0}', so firmware integrity protections may be unreliable." -f $secureBootState) -Evidence $secureBootEvidence -Subcategory 'Firmware'
+                }
+            }
             if ($biosModeMatch.Success) {
                 $biosMode = $biosModeMatch.Groups['value'].Value.Trim()
                 $uefi = ($biosMode -match '(?i)UEFI')
                 if ($uefi -and -not $secureBootMatch.Success) {
-                    $evidence = ($systemInfoText -split "\r?\n" | Where-Object { $_ -match '(?i)(BIOS\s+Mode|Secure\s+Boot)' } | Select-Object -First 5)
-                    if ($evidence.Count -eq 0) { $evidence = ($systemInfoText -split "\r?\n" | Select-Object -First 10) }
+                    $evidence = ($systemInfoLines | Where-Object { $_ -match '(?i)(BIOS\s+Mode|Secure\s+Boot)' } | Select-Object -First 5)
+                    if ($evidence.Count -eq 0) { $evidence = ($systemInfoLines | Select-Object -First 10) }
                     Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Secure Boot state not reported despite UEFI firmware, so the device may boot without firmware integrity protections.' -Evidence (($evidence | Where-Object { $_ }) -join "`n") -Subcategory 'Firmware'
                 }
             }
