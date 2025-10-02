@@ -169,6 +169,7 @@ function Test-StoreEndpointReachability {
             dnsOk    = $dnsOk
             tcp443Ok = $tcpOk
             rttMs    = $rttMs
+
         }) | Out-Null
     }
 
