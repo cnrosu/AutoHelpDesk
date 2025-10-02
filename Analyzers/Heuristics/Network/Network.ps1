@@ -1272,7 +1272,7 @@ function Invoke-NetworkHeuristics {
             } else {
                 $connectedInterfaces = $interfaces | Where-Object { $_.State -and $_.State -match '(?i)connected' }
                 if ($connectedInterfaces.Count -eq 0) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wi-Fi adapter not connected, so wireless encryption state is unknown.' -Subcategory 'Security'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Not connected to Wi-Fi, so wireless encryption state is unknown.' -Subcategory 'Security'
                 } else {
                     $primaryInterface = $connectedInterfaces | Select-Object -First 1
 
