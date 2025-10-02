@@ -67,6 +67,258 @@ function Get-EventsEventDataValue {
     return $null
 }
 
+function ConvertTo-EventsArray {
+    param($Value)
+
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [string]) { return @($Value) }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
+        $items = @()
+        foreach ($item in $Value) { $items += $item }
+        return $items
+    }
+
+    return @($Value)
+}
+
+function Test-EventsCorporateDnsServer {
+    param([string]$Server)
+
+    if ([string]::IsNullOrWhiteSpace($Server)) { return $false }
+
+    $candidate = $Server.Trim()
+    $candidate = $candidate.Split('%')[0]
+
+    $parsed = $null
+    if ([System.Net.IPAddress]::TryParse($candidate, [ref]$parsed)) {
+        $bytes = $parsed.GetAddressBytes()
+        if ($parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+            if ($bytes[0] -eq 10) { return $true }
+            if ($bytes[0] -eq 192 -and $bytes[1] -eq 168) { return $true }
+            if ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) { return $true }
+            return $false
+        }
+
+        if ($parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetworkV6) {
+            if (($bytes[0] -band 0xFE) -eq 0xFC) { return $true }
+            return $false
+        }
+
+        return $false
+    }
+
+    return $true
+}
+
+function Get-EventsVpnState {
+    param($Context)
+
+    $state = [ordered]@{
+        Connected = $false
+        DnsServers = @()
+    }
+
+    if (-not $Context) { return [pscustomobject]$state }
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'vpn-baseline'
+    if (-not $artifact) { return [pscustomobject]$state }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return [pscustomobject]$state }
+
+    $connected = $false
+    if ($payload.PSObject.Properties['connections']) {
+        foreach ($connection in (ConvertTo-EventsArray -Value $payload.connections)) {
+            if (-not $connection) { continue }
+            if ($connection.PSObject.Properties['lastStatus']) {
+                $status = $connection.lastStatus
+                if ($status -and $status.PSObject.Properties['connected'] -and $status.connected -eq $true) {
+                    $connected = $true
+                    break
+                }
+            }
+        }
+    }
+
+    $dnsServers = @()
+    if ($payload.PSObject.Properties['network']) {
+        $network = $payload.network
+        if ($network -and $network.PSObject.Properties['effectiveDnsServers']) {
+            $dnsServers = ConvertTo-EventsArray -Value $network.effectiveDnsServers | Where-Object { $_ }
+        }
+    }
+
+    $state.Connected = $connected
+    $state.DnsServers = @($dnsServers)
+
+    return [pscustomobject]$state
+}
+
+function Invoke-EventsDnsChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        [Parameter(Mandatory)]
+        $DnsClient,
+
+        $Context
+    )
+
+    Write-HeuristicDebug -Source 'Events/Dns' -Message 'Starting DNS client event analysis'
+
+    if (-not $DnsClient) { return }
+
+    if ($DnsClient.PSObject.Properties['Error'] -and $DnsClient.Error) {
+        Write-HeuristicDebug -Source 'Events/Dns' -Message 'DNS client event query reported error' -Data ([ordered]@{ Error = $DnsClient.Error })
+        return
+    }
+
+    $events = @()
+    if ($DnsClient.PSObject.Properties['Events']) {
+        $events = ConvertTo-EventsArray -Value $DnsClient.Events
+    }
+
+    if (-not $events -or $events.Count -eq 0) { return }
+
+    $cutoff = (Get-Date).ToUniversalTime().AddHours(-24)
+    $groups = @{}
+
+    foreach ($event in $events) {
+        if (-not $event) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        if (-not $timeUtc -or $timeUtc -lt $cutoff) { continue }
+
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) { $eventData = $event.EventData }
+
+        $queryName = $null
+        foreach ($field in @('QueryName','Name','Query','HostName')) {
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $field
+            if ($value) { $queryName = [string]$value; break }
+        }
+        if ($queryName) { $queryName = $queryName.Trim() }
+
+        $serverAddress = $null
+        foreach ($field in @('ServerAddress','Address','IP','IP4','IP6','DnsServerIpAddress')) {
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $field
+            if ($value) { $serverAddress = [string]$value; break }
+        }
+        if ($serverAddress) { $serverAddress = $serverAddress.Trim() }
+
+        $messageSnippet = $null
+        if ($event.PSObject.Properties['Message']) {
+            $messageText = [string]$event.Message
+            if ($messageText) {
+                $trimmed = $messageText.Trim()
+                if ($trimmed.Length -gt 150) {
+                    $messageSnippet = $trimmed.Substring(0, 150)
+                } else {
+                    $messageSnippet = $trimmed
+                }
+            }
+        }
+
+        if (-not $queryName) { $queryName = $messageSnippet }
+
+        $queryDisplay = if ($queryName) { $queryName } else { 'unknown query' }
+        $serverDisplay = if ($serverAddress) { $serverAddress } else { 'unknown' }
+
+        $queryKey = if ($queryName) { $queryName.ToLowerInvariant() } else { 'unknown' }
+        $serverKey = if ($serverAddress) { $serverAddress.ToLowerInvariant() } else { 'unknown' }
+        $key = ('{0}|{1}' -f $queryKey, $serverKey)
+
+        if (-not $groups.ContainsKey($key)) {
+            $samples = New-Object System.Collections.Generic.List[string]
+            if ($queryDisplay -and -not $samples.Contains($queryDisplay)) { $null = $samples.Add($queryDisplay) }
+            $groups[$key] = [pscustomobject]@{
+                Query   = $queryDisplay
+                Server  = $serverDisplay
+                Count   = 0
+                LastUtc = $null
+                Samples = $samples
+            }
+        }
+
+        $group = $groups[$key]
+        $group.Count++
+        if ($timeUtc -and (-not $group.LastUtc -or $timeUtc -gt $group.LastUtc)) { $group.LastUtc = $timeUtc }
+        if ($queryDisplay -and -not $group.Samples.Contains($queryDisplay) -and $group.Samples.Count -lt 5) {
+            $null = $group.Samples.Add($queryDisplay)
+        }
+        if (($group.Server -eq 'unknown' -or -not $group.Server) -and $serverAddress) {
+            $group.Server = $serverAddress
+        }
+    }
+
+    if ($groups.Count -eq 0) { return }
+
+    $flagged = @($groups.Values | Where-Object { $_.Count -ge 5 })
+    if ($flagged.Count -eq 0) { return }
+
+    $occurrences = ($flagged | Measure-Object -Property Count -Sum).Sum
+    if (-not $occurrences) { $occurrences = 0 }
+
+    $sampleNamesList = New-Object System.Collections.Generic.List[string]
+    $serversList = New-Object System.Collections.Generic.List[string]
+    $lastUtc = $null
+
+    foreach ($group in $flagged) {
+        if ($group.LastUtc -and (-not $lastUtc -or $group.LastUtc -gt $lastUtc)) { $lastUtc = $group.LastUtc }
+
+        if ($group.Server -and -not $serversList.Contains($group.Server) -and $serversList.Count -lt 5) {
+            $null = $serversList.Add($group.Server)
+        }
+
+        foreach ($sample in $group.Samples) {
+            if ($sample -and -not $sampleNamesList.Contains($sample) -and $sampleNamesList.Count -lt 5) {
+                $null = $sampleNamesList.Add($sample)
+            }
+        }
+    }
+
+    $lastUtcString = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+
+    $vpnState = Get-EventsVpnState -Context $Context
+    $tags = @()
+    if ($vpnState.Connected -and $vpnState.DnsServers -and $vpnState.DnsServers.Count -gt 0) {
+        $hasCorp = $false
+        foreach ($server in $vpnState.DnsServers) {
+            if (Test-EventsCorporateDnsServer -Server $server) {
+                $hasCorp = $true
+                break
+            }
+        }
+        if (-not $hasCorp) {
+            $tags += 'Possible DNS leak'
+        }
+    }
+
+    $evidence = [ordered]@{
+        occurrences24h = [int]$occurrences
+        sampleNames    = $sampleNamesList.ToArray()
+        servers        = $serversList.ToArray()
+        lastUtc        = $lastUtcString
+    }
+
+    if ($tags.Count -gt 0) { $evidence['tags'] = $tags }
+
+    Write-HeuristicDebug -Source 'Events/Dns' -Message 'DNS timeouts heuristic triggered' -Data ([ordered]@{
+        Groups      = $flagged.Count
+        Occurrences = $occurrences
+        LastUtc     = $lastUtcString
+        Tags        = $tags
+    })
+
+    $evidenceJson = $evidence | ConvertTo-Json -Depth 5 -Compress
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'DNS resolution timeouts observed' -Evidence $evidenceJson -Subcategory 'Networking / DNS'
+}
+
 function ConvertTo-EventsStatusCode {
     param(
         [Parameter(Mandatory)]
@@ -767,6 +1019,19 @@ function Invoke-EventsHeuristics {
 
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+            }
+            $dnsClientData = $null
+            if ($payload.PSObject.Properties['Networking']) {
+                $networking = $payload.Networking
+                if ($networking -and $networking.PSObject.Properties['DnsClient']) {
+                    $dnsClientData = $networking.DnsClient
+                }
+            } elseif ($payload.PSObject.Properties['DnsClient']) {
+                $dnsClientData = $payload.DnsClient
+            }
+
+            if ($dnsClientData) {
+                Invoke-EventsDnsChecks -Result $result -DnsClient $dnsClientData -Context $Context
             }
         }
     } else {
