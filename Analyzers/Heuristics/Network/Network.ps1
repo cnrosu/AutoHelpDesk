@@ -124,6 +124,67 @@ function Get-NetworkCanonicalIpv6 {
     return $parsed.ToString()
 }
 
+function Get-NetworkAliasKeys {
+    param([string]$Alias)
+
+    if (-not $Alias) { return @() }
+
+    $set = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+    $ordered = New-Object System.Collections.Generic.List[string]
+
+    $addKey = {
+        param([string]$Key)
+        if (-not $Key) { return }
+        if ($set.Add($Key)) { $ordered.Add($Key) | Out-Null }
+    }
+
+    & $addKey $Alias
+
+    $lower = $null
+    try { $lower = $Alias.ToLowerInvariant() } catch { $lower = $Alias.ToLower() }
+    & $addKey $lower
+
+    $compact = if ($lower) { [regex]::Replace($lower, '[^a-z0-9]', '') } else { $null }
+    & $addKey $compact
+
+    $noSpaces = if ($lower) { [regex]::Replace($lower, '\s+', '') } else { $null }
+    & $addKey $noSpaces
+
+    return $ordered.ToArray()
+}
+
+function Normalize-NetworkInventoryText {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $trimmed = $Text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $single = [regex]::Replace($trimmed, '\s+', ' ')
+
+    try { return $single.ToUpperInvariant() } catch { return $single.ToUpper() }
+}
+
+function Get-NetworkObjectPropertyValue {
+    param(
+        [object]$InputObject,
+        [string[]]$PropertyNames
+    )
+
+    if (-not $InputObject -or -not $PropertyNames) { return $null }
+
+    foreach ($name in $PropertyNames) {
+        if (-not $name) { continue }
+        if ($InputObject.PSObject -and $InputObject.PSObject.Properties[$name]) {
+            $value = $InputObject.$name
+            if ($null -ne $value -and $value -ne '') { return $value }
+        }
+    }
+
+    return $null
+}
+
 function ConvertTo-NetworkArpEntries {
     param($Value)
 
@@ -289,6 +350,266 @@ function ConvertTo-NetworkArray {
         return $items
     }
     return @($Value)
+}
+
+function ConvertTo-LldpNeighborRecords {
+    param($Payload)
+
+    $records = New-Object System.Collections.Generic.List[pscustomobject]
+
+    $entries = @()
+    if ($Payload -and $Payload.PSObject.Properties['Neighbors']) {
+        $entries = ConvertTo-NetworkArray $Payload.Neighbors
+    }
+
+    foreach ($entry in $entries) {
+        if (-not $entry) { continue }
+
+        $source = if ($entry.PSObject.Properties['Source']) { [string]$entry.Source } else { $null }
+        if (-not $source) { $source = 'LLDP' }
+
+        $alias = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('InterfaceAlias','Alias','Interface','InterfaceName','Name'))
+        $localPort = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('LocalPortId','LocalInterface','LocalInterfaceId'))
+        if (-not $alias -and $localPort) { $alias = $localPort }
+
+        $interfaceDescription = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('InterfaceDescription','Description'))
+        $localChassis = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('LocalChassisId','LocalMacAddress','LocalChassis'))
+        $neighborChassis = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborChassisId','ChassisId','PeerChassisId'))
+        $neighborSwitch = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborSystemName','SystemName','PeerSystemName'))
+        $neighborSwitchDescription = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborSystemDescription','SystemDescription','PeerSystemDescription'))
+        $neighborPortId = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborPortId','PortId','PeerPortId'))
+        $neighborPortDescription = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborPortDescription','PortDescription','PeerPortDescription'))
+        $neighborPortSubtype = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborPortIdSubtype','PortIdSubtype','PeerPortIdType'))
+        $neighborTtl = [string](Get-NetworkObjectPropertyValue -InputObject $entry -PropertyNames @('NeighborTtl','Ttl'))
+
+        $capabilityRaw = $null
+        foreach ($name in @('NeighborCapabilities','Capabilities','Capability','PeerCapability')) {
+            if ($entry.PSObject.Properties[$name]) { $capabilityRaw = $entry.$name; break }
+        }
+        $capabilities = Get-NetworkValueText $capabilityRaw
+
+        $managementRaw = $null
+        foreach ($name in @('NeighborManagementAddresses','ManagementAddresses','ManagementAddress','PeerManagementAddress')) {
+            if ($entry.PSObject.Properties[$name]) { $managementRaw = $entry.$name; break }
+        }
+        $managementAddresses = Get-NetworkValueText $managementRaw
+
+        $aliasSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+        $aliasList = New-Object System.Collections.Generic.List[string]
+        $addAliasKey = {
+            param([string]$Text)
+            if (-not $Text) { return }
+            foreach ($key in (Get-NetworkAliasKeys $Text)) {
+                if ($aliasSet.Add($key)) { $aliasList.Add($key) | Out-Null }
+            }
+        }
+
+        & $addAliasKey $alias
+        & $addAliasKey $localPort
+        & $addAliasKey $interfaceDescription
+
+        $observedLabelParts = New-Object System.Collections.Generic.List[string]
+        if ($neighborSwitch) { $observedLabelParts.Add($neighborSwitch) | Out-Null }
+        elseif ($neighborSwitchDescription) { $observedLabelParts.Add($neighborSwitchDescription) | Out-Null }
+        if ($neighborPortId) { $observedLabelParts.Add($neighborPortId) | Out-Null }
+        elseif ($neighborPortDescription) { $observedLabelParts.Add($neighborPortDescription) | Out-Null }
+        $observedLabel = if ($observedLabelParts.Count -gt 0) { $observedLabelParts -join ' ' } else { $null }
+
+        $record = [pscustomobject]@{
+            Source                    = $source
+            InterfaceAlias            = $alias
+            InterfaceDescription      = $interfaceDescription
+            AliasKeys                 = $aliasList.ToArray()
+            LocalPortId               = $localPort
+            LocalChassisId            = $localChassis
+            NeighborChassisId         = $neighborChassis
+            NeighborSystemName        = $neighborSwitch
+            NeighborSystemDescription = $neighborSwitchDescription
+            NeighborPortId            = $neighborPortId
+            NeighborPortDescription   = $neighborPortDescription
+            NeighborPortSubtype       = $neighborPortSubtype
+            NeighborTtl               = $neighborTtl
+            NeighborCapabilities      = $capabilities
+            NeighborManagementAddresses = $managementAddresses
+            ObservedLabel             = $observedLabel
+            NormalizedSwitch          = Normalize-NetworkInventoryText $neighborSwitch
+            NormalizedPort            = Normalize-NetworkInventoryText $neighborPortId
+            NormalizedObservedLabel   = Normalize-NetworkInventoryText $observedLabel
+            Raw                       = $entry
+        }
+
+        $records.Add($record) | Out-Null
+    }
+
+    return $records.ToArray()
+}
+
+function Get-NetworkSwitchPortExpectations {
+    param($Context)
+
+    $records = New-Object System.Collections.Generic.List[pscustomobject]
+    $aliasLookup = @{}
+    $sourcesUsed = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addRecord = {
+        param(
+            [string]$AliasValue,
+            [string]$SwitchValue,
+            [string]$PortValue,
+            [string]$LabelValue,
+            [string]$SourceLabel,
+            $RawValue
+        )
+
+        if (-not $AliasValue) { return }
+
+        $aliasText = [string]$AliasValue
+
+        $aliasSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+        $aliasList = New-Object System.Collections.Generic.List[string]
+        foreach ($key in (Get-NetworkAliasKeys $aliasText)) {
+            if ($aliasSet.Add($key)) { $aliasList.Add($key) | Out-Null }
+        }
+        if ($aliasList.Count -eq 0) {
+            $aliasList.Add($aliasText) | Out-Null
+        }
+
+        $primaryKey = $aliasList[0]
+        if ($aliasLookup.ContainsKey($primaryKey)) { return }
+
+        $displayLabel = $LabelValue
+        if (-not $displayLabel) {
+            $parts = New-Object System.Collections.Generic.List[string]
+            if ($SwitchValue) { $parts.Add([string]$SwitchValue) | Out-Null }
+            if ($PortValue) { $parts.Add([string]$PortValue) | Out-Null }
+            if ($parts.Count -gt 0) { $displayLabel = ($parts -join ' ') }
+        }
+
+        $record = [pscustomobject]@{
+            Alias            = $aliasText
+            AliasKeys        = $aliasList.ToArray()
+            ExpectedSwitch   = if ($SwitchValue) { [string]$SwitchValue } else { $null }
+            ExpectedPort     = if ($PortValue) { [string]$PortValue } else { $null }
+            ExpectedLabel    = if ($displayLabel) { [string]$displayLabel } else { $null }
+            Source           = $SourceLabel
+            Raw              = $RawValue
+            NormalizedSwitch = Normalize-NetworkInventoryText $SwitchValue
+            NormalizedPort   = Normalize-NetworkInventoryText $PortValue
+            NormalizedLabel  = Normalize-NetworkInventoryText $displayLabel
+        }
+
+        $records.Add($record) | Out-Null
+
+        foreach ($key in $aliasList) {
+            if (-not $aliasLookup.ContainsKey($key)) { $aliasLookup[$key] = $record }
+        }
+
+        if ($SourceLabel) { $sourcesUsed.Add($SourceLabel) | Out-Null }
+    }
+
+    $extractFields = {
+        param($Item)
+
+        $aliasCandidate = $null
+        $switchCandidate = $null
+        $portCandidate = $null
+        $labelCandidate = $null
+
+        if ($Item -is [System.Collections.IDictionary]) {
+            if ($Item.Contains('Alias')) { $aliasCandidate = [string]$Item['Alias'] }
+            elseif ($Item.Contains('InterfaceAlias')) { $aliasCandidate = [string]$Item['InterfaceAlias'] }
+            elseif ($Item.Contains('Interface')) { $aliasCandidate = [string]$Item['Interface'] }
+            elseif ($Item.Contains('Adapter')) { $aliasCandidate = [string]$Item['Adapter'] }
+            elseif ($Item.Contains('Name')) { $aliasCandidate = [string]$Item['Name'] }
+
+            foreach ($name in @('Switch','SwitchName','ExpectedSwitch','Device','Chassis','ExpectedDevice','SwitchHost','SwitchHostname')) {
+                if ($Item.Contains($name) -and $Item[$name]) { $switchCandidate = [string]$Item[$name]; break }
+            }
+
+            foreach ($name in @('Port','PortId','SwitchPort','ExpectedPort','Jack','PatchPort','PatchPanelPort','PortLabel')) {
+                if ($Item.Contains($name) -and $Item[$name]) { $portCandidate = [string]$Item[$name]; break }
+            }
+
+            foreach ($name in @('Label','ExpectedLabel','DocumentedPort','Expected','Display','Location','FullLabel','Notes')) {
+                if ($Item.Contains($name) -and $Item[$name]) { $labelCandidate = [string]$Item[$name]; break }
+            }
+        } elseif ($Item.PSObject) {
+            $aliasCandidate = [string](Get-NetworkObjectPropertyValue -InputObject $Item -PropertyNames @('Alias','InterfaceAlias','Interface','Adapter','Name'))
+            $switchCandidate = [string](Get-NetworkObjectPropertyValue -InputObject $Item -PropertyNames @('Switch','SwitchName','ExpectedSwitch','Device','Chassis','ExpectedDevice','SwitchHost','SwitchHostname'))
+            $portCandidate = [string](Get-NetworkObjectPropertyValue -InputObject $Item -PropertyNames @('Port','PortId','SwitchPort','ExpectedPort','Jack','PatchPort','PatchPanelPort','PortLabel'))
+            $labelCandidate = [string](Get-NetworkObjectPropertyValue -InputObject $Item -PropertyNames @('Label','ExpectedLabel','DocumentedPort','Expected','Display','Location','FullLabel','Notes'))
+        } elseif ($Item -is [string]) {
+            $labelCandidate = [string]$Item
+        } elseif ($Item -is [ValueType]) {
+            $labelCandidate = $Item.ToString()
+        }
+
+        return [pscustomobject]@{
+            Alias = $aliasCandidate
+            Switch = $switchCandidate
+            Port = $portCandidate
+            Label = $labelCandidate
+        }
+    }
+
+    $addCandidate = {
+        param([string]$SourceLabel, $Value)
+
+        if ($null -eq $Value) { return }
+
+        if ($Value -is [System.Collections.IDictionary]) {
+            foreach ($key in $Value.Keys) {
+                $rawItem = $Value[$key]
+                $fields = & $extractFields $rawItem
+                $aliasText = if ($fields.Alias) { $fields.Alias } else { [string]$key }
+                $label = $fields.Label
+                if (-not $label -and $fields.Switch -and $fields.Port) { $label = ('{0} {1}' -f $fields.Switch, $fields.Port).Trim() }
+                & $addRecord $aliasText $fields.Switch $fields.Port $label $SourceLabel $rawItem
+            }
+            return
+        }
+
+        $items = ConvertTo-NetworkArray $Value
+        foreach ($item in $items) {
+            if ($null -eq $item) { continue }
+
+            $fields = & $extractFields $item
+            $aliasText = $fields.Alias
+            if (-not $aliasText) { continue }
+            $label = $fields.Label
+            if (-not $label -and $fields.Switch -and $fields.Port) { $label = ('{0} {1}' -f $fields.Switch, $fields.Port).Trim() }
+            & $addRecord $aliasText $fields.Switch $fields.Port $label $SourceLabel $item
+        }
+    }
+
+    if ($Context) {
+        if ($Context.PSObject.Properties['SwitchPortInventory']) { & $addCandidate 'Context.SwitchPortInventory' $Context.SwitchPortInventory }
+        if ($Context.PSObject.Properties['SwitchPorts']) { & $addCandidate 'Context.SwitchPorts' $Context.SwitchPorts }
+        if ($Context.PSObject.Properties['ExpectedSwitchPorts']) { & $addCandidate 'Context.ExpectedSwitchPorts' $Context.ExpectedSwitchPorts }
+        if ($Context.PSObject.Properties['NetworkSwitchPorts']) { & $addCandidate 'Context.NetworkSwitchPorts' $Context.NetworkSwitchPorts }
+
+        if ($Context.PSObject.Properties['Inventory'] -and $Context.Inventory) {
+            $inventory = $Context.Inventory
+            if ($inventory.PSObject.Properties['SwitchPorts']) { & $addCandidate 'Context.Inventory.SwitchPorts' $inventory.SwitchPorts }
+            if ($inventory.PSObject.Properties['PortExpectations']) { & $addCandidate 'Context.Inventory.PortExpectations' $inventory.PortExpectations }
+            if ($inventory.PSObject.Properties['SwitchPortInventory']) { & $addCandidate 'Context.Inventory.SwitchPortInventory' $inventory.SwitchPortInventory }
+
+            if ($inventory.PSObject.Properties['Network'] -and $inventory.Network) {
+                $networkInventory = $inventory.Network
+                if ($networkInventory.PSObject.Properties['SwitchPorts']) { & $addCandidate 'Context.Inventory.Network.SwitchPorts' $networkInventory.SwitchPorts }
+                if ($networkInventory.PSObject.Properties['PortExpectations']) { & $addCandidate 'Context.Inventory.Network.PortExpectations' $networkInventory.PortExpectations }
+                if ($networkInventory.PSObject.Properties['SwitchPortInventory']) { & $addCandidate 'Context.Inventory.Network.SwitchPortInventory' $networkInventory.SwitchPortInventory }
+                if ($networkInventory.PSObject.Properties['ExpectedSwitchPorts']) { & $addCandidate 'Context.Inventory.Network.ExpectedSwitchPorts' $networkInventory.ExpectedSwitchPorts }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Records = $records.ToArray()
+        Map     = $aliasLookup
+        Sources = $sourcesUsed.ToArray()
+        Count   = $records.Count
+    }
 }
 
 function ConvertTo-Lan8021xLines {
@@ -2229,6 +2550,191 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match." -f $alias, $policyLabel, $linkLabel) -Evidence $evidence -Subcategory 'Adapters'
             }
         }
+    }
+
+    $lldpSubcategory = 'Switch Port Mapping'
+    $lldpArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-lldp'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-lldp artifact' -Data ([ordered]@{
+        Found = [bool]$lldpArtifact
+    })
+    if ($lldpArtifact) {
+        $lldpPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $lldpArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network-lldp payload' -Data ([ordered]@{
+            HasPayload = [bool]$lldpPayload
+        })
+
+        $lldpNeighbors = ConvertTo-LldpNeighborRecords -Payload $lldpPayload
+        $neighborCount = if ($lldpNeighbors) { $lldpNeighbors.Count } else { 0 }
+        Write-HeuristicDebug -Source 'Network' -Message 'Parsed LLDP neighbors' -Data ([ordered]@{
+            Count = $neighborCount
+        })
+
+        $switchPortExpectations = Get-NetworkSwitchPortExpectations -Context $Context
+        $expectationCount = if ($switchPortExpectations -and $switchPortExpectations.Records) { $switchPortExpectations.Records.Count } else { 0 }
+        Write-HeuristicDebug -Source 'Network' -Message 'Resolved switch port expectations' -Data ([ordered]@{
+            Count   = $expectationCount
+            Sources = if ($switchPortExpectations -and $switchPortExpectations.Sources) { ($switchPortExpectations.Sources -join ', ') } else { '(none)' }
+        })
+
+        if ($neighborCount -eq 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+        } else {
+            $neighborMap = @{}
+            foreach ($neighbor in $lldpNeighbors) {
+                if (-not $neighbor) { continue }
+                $keys = @()
+                if ($neighbor.PSObject.Properties['AliasKeys'] -and $neighbor.AliasKeys) {
+                    $keys = $neighbor.AliasKeys
+                } elseif ($neighbor.PSObject.Properties['InterfaceAlias'] -and $neighbor.InterfaceAlias) {
+                    $aliasKey = $neighbor.InterfaceAlias
+                    try { $keys = @($aliasKey.ToLowerInvariant()) } catch { $keys = @([string]$aliasKey) }
+                }
+
+                foreach ($key in $keys) {
+                    if (-not $key) { continue }
+                    if (-not $neighborMap.ContainsKey($key)) {
+                        $neighborMap[$key] = New-Object System.Collections.Generic.List[pscustomobject]
+                    }
+                    $neighborMap[$key].Add($neighbor) | Out-Null
+                }
+            }
+
+            if ($expectationCount -gt 0 -and $switchPortExpectations -and $switchPortExpectations.Records) {
+                foreach ($expected in $switchPortExpectations.Records) {
+                    if (-not $expected) { continue }
+
+                    $alias = if ($expected.PSObject.Properties['Alias']) { [string]$expected.Alias } else { 'Interface' }
+                    $aliasKeys = if ($expected.PSObject.Properties['AliasKeys'] -and $expected.AliasKeys) { $expected.AliasKeys } else { @() }
+
+                    $candidateNeighbors = New-Object System.Collections.Generic.List[pscustomobject]
+                    foreach ($aliasKey in $aliasKeys) {
+                        if (-not $aliasKey) { continue }
+                        if ($neighborMap.ContainsKey($aliasKey)) {
+                            foreach ($neighbor in $neighborMap[$aliasKey]) { $candidateNeighbors.Add($neighbor) | Out-Null }
+                        }
+                    }
+
+                    $selectedNeighbor = $null
+                    if ($candidateNeighbors.Count -gt 0) {
+                        $candidateArray = $candidateNeighbors.ToArray()
+                        $selectedNeighbor = $candidateArray | Where-Object { $_.Source -eq 'Get-NetAdapterLldpAgent' } | Select-Object -First 1
+                        if (-not $selectedNeighbor) {
+                            $selectedNeighbor = $candidateArray | Select-Object -First 1
+                        }
+                    }
+
+                    $interfaceInfo = $null
+                    if ($adapterInventory -and $adapterInventory.Map -and $aliasKeys) {
+                        foreach ($aliasKey in $aliasKeys) {
+                            if ($adapterInventory.Map.ContainsKey($aliasKey)) { $interfaceInfo = $adapterInventory.Map[$aliasKey]; break }
+                        }
+                    }
+
+                    $isPseudo = $false
+                    if ($interfaceInfo -and $interfaceInfo.PSObject.Properties['IsPseudo']) { $isPseudo = [bool]$interfaceInfo.IsPseudo }
+
+                    if (-not $selectedNeighbor) {
+                        if ($isPseudo) { continue }
+
+                        $expectedLabel = if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel) { [string]$expected.ExpectedLabel } else { $null }
+                        if (-not $expectedLabel) {
+                            $parts = @()
+                            if ($expected.PSObject.Properties['ExpectedSwitch'] -and $expected.ExpectedSwitch) { $parts += [string]$expected.ExpectedSwitch }
+                            if ($expected.PSObject.Properties['ExpectedPort'] -and $expected.ExpectedPort) { $parts += [string]$expected.ExpectedPort }
+                            if ($parts.Count -gt 0) { $expectedLabel = ($parts -join ' ') }
+                        }
+                        if (-not $expectedLabel) { $expectedLabel = 'the documented switch port' }
+
+                        $evidence = [ordered]@{ Adapter = $alias }
+                        if ($expected.PSObject.Properties['ExpectedSwitch'] -and $expected.ExpectedSwitch) { $evidence['ExpectedSwitch'] = [string]$expected.ExpectedSwitch }
+                        if ($expected.PSObject.Properties['ExpectedPort'] -and $expected.ExpectedPort) { $evidence['ExpectedPort'] = [string]$expected.ExpectedPort }
+                        if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel -and -not $evidence.Contains('ExpectedPort')) { $evidence['ExpectedLabel'] = [string]$expected.ExpectedLabel }
+                        if ($expected.PSObject.Properties['Source'] -and $expected.Source) { $evidence['InventorySource'] = [string]$expected.Source }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory
+                        continue
+                    }
+
+                    $observedSwitchNormalized = if ($selectedNeighbor.PSObject.Properties['NormalizedSwitch']) { $selectedNeighbor.NormalizedSwitch } else { $null }
+                    if (-not $observedSwitchNormalized -and $selectedNeighbor.PSObject.Properties['NeighborSystemDescription']) {
+                        $observedSwitchNormalized = Normalize-NetworkInventoryText $selectedNeighbor.NeighborSystemDescription
+                    }
+
+                    $observedPortNormalized = if ($selectedNeighbor.PSObject.Properties['NormalizedPort']) { $selectedNeighbor.NormalizedPort } else { $null }
+                    if (-not $observedPortNormalized -and $selectedNeighbor.PSObject.Properties['NeighborPortDescription']) {
+                        $observedPortNormalized = Normalize-NetworkInventoryText $selectedNeighbor.NeighborPortDescription
+                    }
+
+                    $observedLabelNormalized = if ($selectedNeighbor.PSObject.Properties['NormalizedObservedLabel']) { $selectedNeighbor.NormalizedObservedLabel } else { $null }
+
+                    $expectedSwitchNormalized = if ($expected.PSObject.Properties['NormalizedSwitch']) { $expected.NormalizedSwitch } else { $null }
+                    $expectedPortNormalized = if ($expected.PSObject.Properties['NormalizedPort']) { $expected.NormalizedPort } else { $null }
+                    $expectedLabelNormalized = if ($expected.PSObject.Properties['NormalizedLabel']) { $expected.NormalizedLabel } else { $null }
+
+                    $switchMatches = $true
+                    if ($expectedSwitchNormalized) {
+                        $switchMatches = ($observedSwitchNormalized -eq $expectedSwitchNormalized)
+                        if (-not $switchMatches -and $observedLabelNormalized) {
+                            $switchMatches = $observedLabelNormalized.Contains($expectedSwitchNormalized)
+                        }
+                    }
+
+                    $portMatches = $true
+                    if ($expectedPortNormalized) {
+                        $portMatches = ($observedPortNormalized -eq $expectedPortNormalized)
+                        if (-not $portMatches -and $observedLabelNormalized) {
+                            $portMatches = $observedLabelNormalized.Contains($expectedPortNormalized)
+                        }
+                    }
+
+                    $labelMatches = $true
+                    if ($expectedLabelNormalized) {
+                        $labelMatches = ($observedLabelNormalized -eq $expectedLabelNormalized)
+                    }
+
+                    if (-not ($switchMatches -and $portMatches -and $labelMatches)) {
+                        $expectedDisplay = $null
+                        if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel) {
+                            $expectedDisplay = [string]$expected.ExpectedLabel
+                        } else {
+                            $parts = @()
+                            if ($expected.PSObject.Properties['ExpectedSwitch'] -and $expected.ExpectedSwitch) { $parts += [string]$expected.ExpectedSwitch }
+                            if ($expected.PSObject.Properties['ExpectedPort'] -and $expected.ExpectedPort) { $parts += [string]$expected.ExpectedPort }
+                            if ($parts.Count -gt 0) { $expectedDisplay = ($parts -join ' ') }
+                        }
+                        if (-not $expectedDisplay) { $expectedDisplay = 'the documented switch port' }
+
+                        $observedDisplay = if ($selectedNeighbor.PSObject.Properties['ObservedLabel'] -and $selectedNeighbor.ObservedLabel) { [string]$selectedNeighbor.ObservedLabel } else { $null }
+                        if (-not $observedDisplay) {
+                            $parts = @()
+                            if ($selectedNeighbor.PSObject.Properties['NeighborSystemName'] -and $selectedNeighbor.NeighborSystemName) { $parts += [string]$selectedNeighbor.NeighborSystemName }
+                            elseif ($selectedNeighbor.PSObject.Properties['NeighborSystemDescription'] -and $selectedNeighbor.NeighborSystemDescription) { $parts += [string]$selectedNeighbor.NeighborSystemDescription }
+                            if ($selectedNeighbor.PSObject.Properties['NeighborPortId'] -and $selectedNeighbor.NeighborPortId) { $parts += [string]$selectedNeighbor.NeighborPortId }
+                            elseif ($selectedNeighbor.PSObject.Properties['NeighborPortDescription'] -and $selectedNeighbor.NeighborPortDescription) { $parts += [string]$selectedNeighbor.NeighborPortDescription }
+                            if ($parts.Count -gt 0) { $observedDisplay = ($parts -join ' ') }
+                        }
+                        if (-not $observedDisplay) { $observedDisplay = 'an unknown switch port' }
+
+                        $evidence = [ordered]@{ Adapter = $alias }
+                        if ($expected.PSObject.Properties['ExpectedSwitch'] -and $expected.ExpectedSwitch) { $evidence['ExpectedSwitch'] = [string]$expected.ExpectedSwitch }
+                        if ($expected.PSObject.Properties['ExpectedPort'] -and $expected.ExpectedPort) { $evidence['ExpectedPort'] = [string]$expected.ExpectedPort }
+                        if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel) { $evidence['ExpectedLabel'] = [string]$expected.ExpectedLabel }
+                        if ($expected.PSObject.Properties['Source'] -and $expected.Source) { $evidence['InventorySource'] = [string]$expected.Source }
+                        if ($selectedNeighbor.PSObject.Properties['NeighborSystemName'] -and $selectedNeighbor.NeighborSystemName) { $evidence['ObservedSwitch'] = [string]$selectedNeighbor.NeighborSystemName }
+                        elseif ($selectedNeighbor.PSObject.Properties['NeighborSystemDescription'] -and $selectedNeighbor.NeighborSystemDescription) { $evidence['ObservedSwitch'] = [string]$selectedNeighbor.NeighborSystemDescription }
+                        if ($selectedNeighbor.PSObject.Properties['NeighborPortId'] -and $selectedNeighbor.NeighborPortId) { $evidence['ObservedPort'] = [string]$selectedNeighbor.NeighborPortId }
+                        elseif ($selectedNeighbor.PSObject.Properties['NeighborPortDescription'] -and $selectedNeighbor.NeighborPortDescription) { $evidence['ObservedPort'] = [string]$selectedNeighbor.NeighborPortDescription }
+                        if ($selectedNeighbor.PSObject.Properties['Source'] -and $selectedNeighbor.Source) { $evidence['ObservationSource'] = [string]$selectedNeighbor.Source }
+
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port." -f $alias, $observedDisplay, $expectedDisplay) -Evidence $evidence -Subcategory $lldpSubcategory
+                    }
+                }
+            } else {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory
+            }
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'

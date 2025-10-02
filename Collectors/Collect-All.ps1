@@ -66,7 +66,7 @@ function Invoke-AllCollectors {
         return
     }
 
-    $expectedCollectors = @('Collect-Lan8021x.ps1')
+    $expectedCollectors = @('Collect-Lan8021x.ps1', 'Collect-Lldp.ps1')
     foreach ($expected in $expectedCollectors) {
         if (-not ($collectors | Where-Object { $_.Name -ieq $expected })) {
             Write-Warning ("Expected collector '{0}' was not discovered; wired 802.1X data will be missing." -f $expected)
