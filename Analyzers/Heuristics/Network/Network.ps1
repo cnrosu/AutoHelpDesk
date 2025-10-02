@@ -373,6 +373,19 @@ function Invoke-NetworkFirewallProfileAnalysis {
         Found = [bool]$artifact
     })
 
+    $usingFirewallAggregate = $false
+    if (-not $artifact) {
+        $firewallAggregate = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
+        Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall aggregate artifact fallback' -Data ([ordered]@{
+            Found = [bool]$firewallAggregate
+        })
+
+        if ($firewallAggregate) {
+            $artifact = $firewallAggregate
+            $usingFirewallAggregate = $true
+        }
+    }
+
     if (-not $artifact) {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId
         return
@@ -381,6 +394,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
     Write-HeuristicDebug -Source 'Network' -Message 'Evaluating firewall.profile payload' -Data ([ordered]@{
         HasPayload = [bool]$payload
+        UsingAggregateFallback = $usingFirewallAggregate
     })
 
     if (-not $payload) {
