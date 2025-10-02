@@ -1,0 +1,24 @@
+{
+  "CollectedAt": "2024-04-01T00:00:00Z",
+  "Payload": {
+    "Registry": [
+      {
+        "Path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Error": "The system was unable to find the specified registry key"
+      },
+      {
+        "Path": "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Values": {
+          "NoDriveTypeAutoRun": 145
+        }
+      },
+      {
+        "Path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+        "Values": {
+          "NoDriveTypeAutoRun": 91,
+          "NoAutoRun": 0
+        }
+      }
+    ]
+  }
+}

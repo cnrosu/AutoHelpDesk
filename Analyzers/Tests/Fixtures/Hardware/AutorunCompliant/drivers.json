@@ -1,0 +1,19 @@
+{
+  "CollectedAt": "2024-04-01T00:00:00Z",
+  "Payload": {
+    "DriverQuery": [
+      "Display Name: Example Driver",
+      "Driver Name: exampledrv",
+      "State: Running",
+      "Start Mode: Auto",
+      "Type: Kernel Driver",
+      "",
+      "Display Name: Second Driver",
+      "Driver Name: seconddrv",
+      "State: Running",
+      "Start Mode: Manual",
+      "Type: File System Driver"
+    ],
+    "PnpProblems": []
+  }
+}

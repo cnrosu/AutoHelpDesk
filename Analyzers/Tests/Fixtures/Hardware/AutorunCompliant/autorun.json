@@ -1,0 +1,31 @@
+{
+  "CollectedAt": "2024-04-01T00:00:00Z",
+  "Payload": {
+    "Registry": [
+      {
+        "Path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Values": {
+          "NoDriveTypeAutoRun": 255,
+          "NoAutoRun": 1
+        }
+      },
+      {
+        "Path": "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Values": {}
+      },
+      {
+        "Path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+        "Values": {
+          "NoDriveTypeAutoRun": 91,
+          "NoAutoRun": 1
+        }
+      },
+      {
+        "Path": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+        "Values": {
+          "NoDriveTypeAutoRun": 0
+        }
+      }
+    ]
+  }
+}

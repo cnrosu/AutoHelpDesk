@@ -5,6 +5,264 @@
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
+function Get-AutorunRegistryEntries {
+    param($Payload)
+
+    $entries = @()
+    if (-not $Payload) { return $entries }
+
+    $registry = $null
+    if ($Payload.PSObject.Properties['Registry']) { $registry = $Payload.Registry }
+    if ($null -eq $registry) { return $entries }
+
+    if ($registry -is [System.Collections.IEnumerable] -and -not ($registry -is [string])) {
+        foreach ($item in $registry) {
+            if ($null -eq $item) { continue }
+            $entries += ,$item
+        }
+    } else {
+        $entries = @($registry)
+    }
+
+    return $entries
+}
+
+function ConvertTo-AutorunNumericValue {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [bool]) {
+        return if ($Value) { 1 } else { 0 }
+    }
+
+    if ($Value -is [byte] -or $Value -is [sbyte] -or $Value -is [int16] -or $Value -is [uint16] -or $Value -is [int32] -or $Value -is [uint32] -or $Value -is [int64] -or $Value -is [uint64]) {
+        return [int64]$Value
+    }
+
+    if ($Value -is [string]) {
+        $trimmed = $Value.Trim()
+        if (-not $trimmed) { return $null }
+
+        if ($trimmed -match '^0x[0-9a-fA-F]+$') {
+            try {
+                return [int64]([Convert]::ToUInt64($trimmed.Substring(2), 16))
+            } catch {
+                return $null
+            }
+        }
+
+        $parsed = 0
+        if ([int]::TryParse($trimmed, [ref]$parsed)) {
+            return [int64]$parsed
+        }
+    }
+
+    return $null
+}
+
+function Format-AutorunRegistryValue {
+    param($Value)
+
+    if ($null -eq $Value) { return 'not set' }
+
+    if ($Value -is [bool]) {
+        return if ($Value) { 'True (1)' } else { 'False (0)' }
+    }
+
+    $numeric = ConvertTo-AutorunNumericValue -Value $Value
+    if ($null -ne $numeric) {
+        $hexComponent = $null
+        try {
+            $hexComponent = [Convert]::ToUInt32($numeric)
+        } catch {
+            try {
+                $hexComponent = [uint32]($numeric -band 0xFFFFFFFF)
+            } catch {
+                $hexComponent = $null
+            }
+        }
+
+        if ($null -ne $hexComponent) {
+            $hex = '0x{0}' -f ($hexComponent.ToString('X8'))
+            return ('{0} ({1})' -f $numeric, $hex)
+        }
+
+        return [string]$numeric
+    }
+
+    return [string]$Value
+}
+
+function Get-AutorunSettingDescription {
+    param($Setting)
+
+    if (-not $Setting) { return 'not configured' }
+    if (-not $Setting.PSObject.Properties['Value']) { return 'not configured' }
+    if ($null -eq $Setting.Value) { return 'not configured' }
+
+    return Format-AutorunRegistryValue -Value $Setting.Value
+}
+
+function Get-AutorunEffectiveSetting {
+    param(
+        [System.Collections.IEnumerable]$Entries,
+        [string]$Name
+    )
+
+    if (-not $Entries) { return $null }
+
+    $priority = @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+    )
+
+    foreach ($path in $priority) {
+        $entry = $Entries | Where-Object { $_ -and $_.PSObject.Properties['Path'] -and ($_.Path -eq $path) } | Select-Object -First 1
+        if (-not $entry) { continue }
+        if ($entry.PSObject.Properties['Error'] -and $entry.Error) { continue }
+        if (-not ($entry.PSObject.Properties['Values'] -and $entry.Values)) { continue }
+        if (-not $entry.Values.PSObject.Properties[$Name]) { continue }
+
+        return [pscustomobject]@{
+            Path  = $path
+            Value = $entry.Values.$Name
+        }
+    }
+
+    return $null
+}
+
+function Format-AutorunEvidence {
+    param(
+        [System.Collections.IEnumerable]$Entries,
+        [string[]]$Names
+    )
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($entry in $Entries) {
+        if (-not $entry) { continue }
+
+        $path = if ($entry.PSObject.Properties['Path']) { [string]$entry.Path } else { '(unknown path)' }
+
+        if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+            $lines.Add(("{0}: ERROR - {1}" -f $path, $entry.Error)) | Out-Null
+            continue
+        }
+
+        if (-not ($entry.PSObject.Properties['Values'] -and $entry.Values)) {
+            $lines.Add(("{0}: (no values captured)" -f $path)) | Out-Null
+            continue
+        }
+
+        foreach ($name in $Names) {
+            $value = $null
+            if ($entry.Values.PSObject.Properties[$name]) {
+                $value = $entry.Values.$name
+            }
+            $lines.Add(("{0}::{1} = {2}" -f $path, $name, (Format-AutorunRegistryValue -Value $value))) | Out-Null
+        }
+    }
+
+    if ($lines.Count -eq 0) { return $null }
+    return ($lines.ToArray() -join "`n")
+}
+
+function Invoke-AutorunPolicyAssessment {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $CategoryResult
+    )
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'autorun'
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
+
+    if (-not $artifact) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy artifact missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
+
+    if (-not $payload) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy payload missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $entries = Get-AutorunRegistryEntries -Payload $payload
+    $entryCount = if ($entries) { $entries.Count } else { 0 }
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Parsed autorun registry entries' -Data ([ordered]@{
+        EntryCount = $entryCount
+    })
+
+    if ($entryCount -eq 0) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy registry data missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $driveSetting = Get-AutorunEffectiveSetting -Entries $entries -Name 'NoDriveTypeAutoRun'
+    $autorunSetting = Get-AutorunEffectiveSetting -Entries $entries -Name 'NoAutoRun'
+
+    $driveNumeric = if ($driveSetting) { ConvertTo-AutorunNumericValue -Value $driveSetting.Value } else { $null }
+    $autorunNumeric = if ($autorunSetting) { ConvertTo-AutorunNumericValue -Value $autorunSetting.Value } else { $null }
+
+    $driveCompliant = ($null -ne $driveNumeric -and $driveNumeric -eq 255)
+    $autorunCompliant = ($null -ne $autorunNumeric -and $autorunNumeric -eq 1)
+
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Evaluated autorun hardening posture' -Data ([ordered]@{
+        DriveSetting       = Get-AutorunSettingDescription -Setting $driveSetting
+        AutorunSetting     = Get-AutorunSettingDescription -Setting $autorunSetting
+        DriveCompliant     = $driveCompliant
+        AutorunCompliant   = $autorunCompliant
+    })
+
+    $effectiveLines = [System.Collections.Generic.List[string]]::new()
+    $effectiveLines.Add(("NoDriveTypeAutoRun: {0}{1}" -f (Get-AutorunSettingDescription -Setting $driveSetting),
+        if ($driveSetting -and $driveSetting.Path) { " (from $($driveSetting.Path))" } else { '' })) | Out-Null
+    $effectiveLines.Add(("NoAutoRun: {0}{1}" -f (Get-AutorunSettingDescription -Setting $autorunSetting),
+        if ($autorunSetting -and $autorunSetting.Path) { " (from $($autorunSetting.Path))" } else { '' })) | Out-Null
+
+    $registryEvidence = Format-AutorunEvidence -Entries $entries -Names @('NoDriveTypeAutoRun','NoAutoRun')
+
+    $evidenceParts = [System.Collections.Generic.List[string]]::new()
+    if ($effectiveLines.Count -gt 0) {
+        $evidenceParts.Add("Effective configuration:`n$($effectiveLines.ToArray() -join "`n")") | Out-Null
+    }
+    if ($registryEvidence) {
+        $evidenceParts.Add("Registry snapshots:`n$registryEvidence") | Out-Null
+    }
+    $evidence = if ($evidenceParts.Count -gt 0) { $evidenceParts.ToArray() -join "`n`n" } else { $null }
+
+    if ($driveCompliant -and $autorunCompliant) {
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Autorun and Autoplay disabled via policy.' -Evidence $evidence -Subcategory 'Removable Media'
+        return
+    }
+
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    if (-not $driveCompliant) {
+        $reasons.Add("NoDriveTypeAutoRun is {0}" -f (Get-AutorunSettingDescription -Setting $driveSetting)) | Out-Null
+    }
+    if (-not $autorunCompliant) {
+        $reasons.Add("NoAutoRun is {0}" -f (Get-AutorunSettingDescription -Setting $autorunSetting)) | Out-Null
+    }
+
+    $reasonText = if ($reasons.Count -gt 0) { $reasons.ToArray() -join ' and ' } else { 'required registry values are not enforced' }
+    $title = "Autorun/Autoplay remains enabled because {0}, so removable media may execute automatically." -f $reasonText
+
+    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Removable Media'
+}
+
 function ConvertTo-HardwareDriverText {
     param(
         $Value
@@ -527,6 +785,8 @@ function Invoke-HardwareHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Hardware'
+
+    Invoke-AutorunPolicyAssessment -Context $Context -CategoryResult $result
 
     $driversArtifact = Get-AnalyzerArtifact -Context $Context -Name 'drivers'
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver artifact' -Data ([ordered]@{
