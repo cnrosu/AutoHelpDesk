@@ -456,6 +456,87 @@ function Get-NetworkValueText {
     return @()
 }
 
+function ConvertTo-NetworkBitsPerSecond {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $normalized = $Text.Trim()
+    if (-not $normalized) { return $null }
+
+    $normalized = $normalized -replace ',', ''
+
+    if ($normalized -match '(?i)(disconnected|disabled|not\s+present|not\s+available|unavailable|no\s+link)') { return 0 }
+
+    $speedMatch = [regex]::Match($normalized, '([0-9]+(?:\.[0-9]+)?)\s*(g|m|k)?\s*(?:b(?:it)?s?)(?:/s|ps)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($speedMatch.Success) {
+        $value = [double]::Parse($speedMatch.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        $unit = $speedMatch.Groups[2].Value.ToLowerInvariant()
+        switch ($unit) {
+            'g' { $factor = 1000000000 }
+            'm' { $factor = 1000000 }
+            'k' { $factor = 1000 }
+            default { $factor = 1 }
+        }
+        return [int64][math]::Round($value * $factor)
+    }
+
+    $wordMatch = [regex]::Match($normalized, '([0-9]+(?:\.[0-9]+)?)\s*(gigabit|megabit|kilobit)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($wordMatch.Success) {
+        $value = [double]::Parse($wordMatch.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        switch ($wordMatch.Groups[2].Value.ToLowerInvariant()) {
+            'gigabit' { $factor = 1000000000 }
+            'megabit' { $factor = 1000000 }
+            'kilobit' { $factor = 1000 }
+            default { $factor = 1 }
+        }
+        return [int64][math]::Round($value * $factor)
+    }
+
+    $numericMatch = [regex]::Match($normalized, '^[0-9]+$')
+    if ($numericMatch.Success) {
+        return [int64]$numericMatch.Value
+    }
+
+    return $null
+}
+
+function ConvertTo-NetworkLinkSpeedMetrics {
+    param([string]$Text)
+
+    $bits = ConvertTo-NetworkBitsPerSecond -Text $Text
+    $label = if ($Text) { $Text.Trim() } else { $null }
+
+    return [pscustomobject]@{
+        Text          = if ($label) { $label } else { $null }
+        BitsPerSecond = $bits
+    }
+}
+
+function ConvertTo-NetworkSpeedSetting {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $trimmed = $Text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $bits = ConvertTo-NetworkBitsPerSecond -Text $trimmed
+    $duplex = $null
+    if ($trimmed -match '(?i)half') { $duplex = 'Half' }
+    elseif ($trimmed -match '(?i)full') { $duplex = 'Full' }
+
+    $mode = $null
+    if ($trimmed -match '(?i)auto') { $mode = 'Auto' }
+
+    return [pscustomobject]@{
+        Text          = $trimmed
+        BitsPerSecond = $bits
+        Duplex        = $duplex
+        Mode          = $mode
+    }
+}
+
 function Test-NetworkPseudoInterface {
     param(
         [string]$Alias,
@@ -649,6 +730,150 @@ function Get-NetworkDnsInterfaceInventory {
         Map                     = $map
         EligibleAliases         = $eligible.ToArray()
         FallbackEligibleAliases = $fallbackEligible.ToArray()
+    }
+}
+
+function Get-NetworkAdapterLinkInventory {
+    param($AdapterPayload)
+
+    $map = @{}
+
+    if ($AdapterPayload -and $AdapterPayload.Adapters -and -not $AdapterPayload.Adapters.Error) {
+        $adapterEntries = ConvertTo-NetworkArray $AdapterPayload.Adapters
+        foreach ($adapter in $adapterEntries) {
+            if (-not $adapter) { continue }
+
+            $alias = $null
+            if ($adapter.PSObject.Properties['Name']) { $alias = [string]$adapter.Name }
+            if (-not $alias -and $adapter.PSObject.Properties['InterfaceAlias']) { $alias = [string]$adapter.InterfaceAlias }
+            if (-not $alias) { continue }
+
+            try {
+                $key = $alias.ToLowerInvariant()
+            } catch {
+                $key = $alias
+            }
+
+            $linkSpeedValue = if ($adapter.PSObject.Properties['LinkSpeed']) { [string]$adapter.LinkSpeed } else { $null }
+
+            if (-not $map.ContainsKey($key)) {
+                $map[$key] = [ordered]@{
+                    Alias            = $alias
+                    Description      = if ($adapter.PSObject.Properties['InterfaceDescription']) { [string]$adapter.InterfaceDescription } else { $null }
+                    Status           = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
+                    LinkSpeedText    = $linkSpeedValue
+                    LinkSpeed        = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedValue
+                    DriverInformation = if ($adapter.PSObject.Properties['DriverInformation']) { [string]$adapter.DriverInformation } else { $null }
+                    Properties       = New-Object System.Collections.Generic.List[object]
+                    Key              = $key
+                }
+            } else {
+                $info = $map[$key]
+                if (-not $info.Description -and $adapter.PSObject.Properties['InterfaceDescription']) { $info.Description = [string]$adapter.InterfaceDescription }
+                if (-not $info.Status -and $adapter.PSObject.Properties['Status']) { $info.Status = [string]$adapter.Status }
+                if (-not $info.LinkSpeedText -and $adapter.PSObject.Properties['LinkSpeed']) {
+                    $info.LinkSpeedText = $linkSpeedValue
+                    $info.LinkSpeed = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedValue
+                }
+                if (-not $info.DriverInformation -and $adapter.PSObject.Properties['DriverInformation']) { $info.DriverInformation = [string]$adapter.DriverInformation }
+            }
+        }
+    }
+
+    if ($AdapterPayload -and $AdapterPayload.Properties -and -not $AdapterPayload.Properties.Error) {
+        $propertyEntries = ConvertTo-NetworkArray $AdapterPayload.Properties
+        foreach ($property in $propertyEntries) {
+            if (-not $property) { continue }
+
+            $alias = if ($property.PSObject.Properties['Name']) { [string]$property.Name } else { $null }
+            if (-not $alias) { continue }
+
+            try {
+                $key = $alias.ToLowerInvariant()
+            } catch {
+                $key = $alias
+            }
+
+            if (-not $map.ContainsKey($key)) {
+                $map[$key] = [ordered]@{
+                    Alias             = $alias
+                    Description       = $null
+                    Status            = $null
+                    LinkSpeedText     = $null
+                    LinkSpeed         = ConvertTo-NetworkLinkSpeedMetrics $null
+                    DriverInformation = $null
+                    Properties        = New-Object System.Collections.Generic.List[object]
+                    Key               = $key
+                }
+            }
+
+            $map[$key].Properties.Add($property) | Out-Null
+        }
+    }
+
+    foreach ($key in @($map.Keys)) {
+        $info = $map[$key]
+        $properties = if ($info.Properties) { $info.Properties } else { @() }
+
+        $speedProperty = $null
+        foreach ($property in $properties) {
+            $displayName = if ($property.PSObject.Properties['DisplayName']) { [string]$property.DisplayName } else { $null }
+            if (-not $displayName) { continue }
+
+            $normalized = $null
+            try { $normalized = $displayName.ToLowerInvariant() } catch { $normalized = $displayName }
+
+            if ($normalized -match 'speed' -and $normalized -match 'duplex') { $speedProperty = $property; break }
+            if (-not $speedProperty -and $normalized -match 'duplex' -and $normalized -match 'mode') { $speedProperty = $property }
+        }
+
+        if (-not $speedProperty) {
+            foreach ($property in $properties) {
+                $values = Get-NetworkValueText ($property.PSObject.Properties['DisplayValue'] ? $property.DisplayValue : $null)
+                if (($values | Where-Object { $_ -match '(?i)duplex' }).Count -gt 0) { $speedProperty = $property; break }
+            }
+        }
+
+        $policyText = $null
+        if ($speedProperty) {
+            $valueTexts = Get-NetworkValueText ($speedProperty.PSObject.Properties['DisplayValue'] ? $speedProperty.DisplayValue : $null)
+            if ($valueTexts.Count -gt 0) {
+                $policyText = $valueTexts[0]
+            } elseif ($speedProperty.PSObject.Properties['DisplayValue']) {
+                $policyText = [string]$speedProperty.DisplayValue
+            } elseif ($speedProperty.PSObject.Properties['Value']) {
+                $valueTexts = Get-NetworkValueText $speedProperty.Value
+                if ($valueTexts.Count -gt 0) { $policyText = $valueTexts[0] }
+            }
+        }
+
+        $speedPolicy = if ($policyText) { ConvertTo-NetworkSpeedSetting $policyText } else { $null }
+
+        $info.SpeedPolicy = $speedPolicy
+        $info.SpeedPolicyText = $policyText
+        $info.SpeedPolicyDisplayName = if ($speedProperty -and $speedProperty.PSObject.Properties['DisplayName']) { [string]$speedProperty.DisplayName } else { $null }
+
+        if (-not $info.LinkSpeed) { $info.LinkSpeed = ConvertTo-NetworkLinkSpeedMetrics $info.LinkSpeedText }
+
+        $isGigabitCapable = $false
+        if ($speedPolicy -and $speedPolicy.BitsPerSecond -ge 1000000000) {
+            $isGigabitCapable = $true
+        } elseif ($info.LinkSpeed -and $info.LinkSpeed.BitsPerSecond -ge 1000000000) {
+            $isGigabitCapable = $true
+        } else {
+            $capabilityTexts = @($info.Description, $info.DriverInformation, $policyText)
+            foreach ($candidate in $capabilityTexts) {
+                if (-not $candidate) { continue }
+                if ($candidate -match '(?i)(gigabit|10/100/1000|\b1\s*g\b|1000base|gbe|gige|1\.0\s*g)') { $isGigabitCapable = $true; break }
+                if ($candidate -match '(?i)1000\s*(mbps|megabit)') { $isGigabitCapable = $true; break }
+            }
+        }
+
+        $info.IsGigabitCapable = $isGigabitCapable
+    }
+
+    return [pscustomobject]@{
+        Map = $map
     }
 }
 
@@ -1297,6 +1522,7 @@ function Invoke-NetworkHeuristics {
         })
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
+    $adapterLinkInventory = Get-NetworkAdapterLinkInventory -AdapterPayload $adapterPayload
 
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
@@ -1551,6 +1777,99 @@ function Invoke-NetworkHeuristics {
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection'
+    }
+
+    if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
+        $linkEntries = @()
+        foreach ($key in $adapterLinkInventory.Map.Keys) {
+            $linkEntries += $adapterLinkInventory.Map[$key]
+        }
+
+        foreach ($linkEntry in $linkEntries) {
+            if (-not $linkEntry) { continue }
+
+            $alias = if ($linkEntry.PSObject.Properties['Alias']) { [string]$linkEntry.Alias } else { $null }
+            if (-not $alias) { continue }
+
+            $aliasKey = if ($linkEntry.PSObject.Properties['Key'] -and $linkEntry.Key) { [string]$linkEntry.Key } else { $null }
+            if (-not $aliasKey) {
+                try { $aliasKey = $alias.ToLowerInvariant() } catch { $aliasKey = $alias }
+            }
+
+            $interfaceInfo = $null
+            if ($aliasKey -and $adapterInventory -and $adapterInventory.Map -and $adapterInventory.Map.ContainsKey($aliasKey)) {
+                $interfaceInfo = $adapterInventory.Map[$aliasKey]
+            }
+
+            $isPseudo = $false
+            if ($interfaceInfo -and $interfaceInfo.PSObject.Properties['IsPseudo']) {
+                $isPseudo = [bool]$interfaceInfo.IsPseudo
+            } else {
+                $description = if ($linkEntry.PSObject.Properties['Description']) { $linkEntry.Description } else { $null }
+                $isPseudo = Test-NetworkPseudoInterface -Alias $alias -Description $description
+            }
+            if ($isPseudo) { continue }
+
+            $isUp = $false
+            if ($interfaceInfo -and $interfaceInfo.PSObject.Properties['IsUp']) {
+                $isUp = [bool]$interfaceInfo.IsUp
+            } else {
+                $statusText = if ($linkEntry.PSObject.Properties['Status']) { [string]$linkEntry.Status } else { $null }
+                $normalizedStatus = if ($statusText) {
+                    try { $statusText.ToLowerInvariant() } catch { $statusText }
+                } else { '' }
+                if ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*') {
+                    $isUp = $true
+                }
+            }
+            if (-not $isUp) { continue }
+
+            $linkMetrics = if ($linkEntry.PSObject.Properties['LinkSpeed']) { $linkEntry.LinkSpeed } else { $null }
+            $linkBits = if ($linkMetrics) { $linkMetrics.BitsPerSecond } else { $null }
+            if ($linkBits -and $linkBits -le 0) { $linkBits = $null }
+
+            $policy = if ($linkEntry.PSObject.Properties['SpeedPolicy']) { $linkEntry.SpeedPolicy } else { $null }
+            $policyBits = if ($policy) { $policy.BitsPerSecond } else { $null }
+            $policyDuplex = if ($policy -and $policy.Duplex) { [string]$policy.Duplex } else { $null }
+
+            $linkText = $null
+            if ($linkMetrics -and $linkMetrics.Text) { $linkText = $linkMetrics.Text }
+            elseif ($linkEntry.PSObject.Properties['LinkSpeedText']) { $linkText = [string]$linkEntry.LinkSpeedText }
+
+            $policyText = if ($linkEntry.PSObject.Properties['SpeedPolicyText']) { [string]$linkEntry.SpeedPolicyText } else { $null }
+            $descriptionText = if ($linkEntry.PSObject.Properties['Description']) { [string]$linkEntry.Description } else { $null }
+
+            $isGigabitCapable = if ($linkEntry.PSObject.Properties['IsGigabitCapable']) { [bool]$linkEntry.IsGigabitCapable } else { $false }
+
+            $isHundredMegLink = ($linkBits -and $linkBits -ge 90000000 -and $linkBits -le 120000000)
+            $isHundredMegPolicy = ($policyBits -and $policyBits -ge 90000000 -and $policyBits -le 120000000)
+
+            if ($isGigabitCapable -and $isHundredMegLink -and $isHundredMegPolicy -and $policyDuplex -eq 'Half') {
+                $evidence = [ordered]@{}
+                $evidence['Adapter'] = $alias
+                if ($descriptionText) { $evidence['Description'] = $descriptionText }
+                if ($linkText) { $evidence['LinkSpeed'] = $linkText }
+                if ($policyText) { $evidence['Policy'] = $policyText }
+                $evidence['remediation'] = 'Re-enable auto-negotiation on the NIC and replace the cable or switch port until it links at gigabit full duplex.'
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput." -f $alias) -Evidence $evidence -Subcategory 'Adapters'
+                continue
+            }
+
+            if ($policyBits -and $linkBits -and ([math]::Abs($policyBits - $linkBits) -gt 1000000)) {
+                $policyLabel = if ($policyText) { $policyText } elseif ($policyBits) { ('{0:N0} bps' -f $policyBits) } else { 'policy' }
+                $linkLabel = if ($linkText) { $linkText } elseif ($linkBits) { ('{0:N0} bps' -f $linkBits) } else { 'link speed' }
+
+                $evidence = [ordered]@{}
+                $evidence['Adapter'] = $alias
+                if ($descriptionText) { $evidence['Description'] = $descriptionText }
+                if ($policyText) { $evidence['Policy'] = $policyText } elseif ($policyBits) { $evidence['Policy'] = ('{0:N0} bps' -f $policyBits) }
+                if ($linkText) { $evidence['LinkSpeed'] = $linkText } elseif ($linkBits) { $evidence['LinkSpeed'] = ('{0:N0} bps' -f $linkBits) }
+                $evidence['remediation'] = 'Set the NIC and switch port to matching speed/duplex or leave both on auto-negotiation so the link meets policy.'
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match." -f $alias, $policyLabel, $linkLabel) -Evidence $evidence -Subcategory 'Adapters'
+            }
+        }
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
