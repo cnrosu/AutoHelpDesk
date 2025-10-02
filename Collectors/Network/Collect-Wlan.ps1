@@ -208,7 +208,6 @@ function Format-WlanStrengthValue {
 
     return $Value
 }
-
 function Invoke-Main {
     if (-not (Test-IsWindows)) {
         $payload = [ordered]@{
@@ -280,7 +279,6 @@ function Invoke-Main {
                 $detail['PassphraseMetricsError'] = $_.Exception.Message
             }
         }
-
         $details.Add([pscustomobject]$detail) | Out-Null
     }
 

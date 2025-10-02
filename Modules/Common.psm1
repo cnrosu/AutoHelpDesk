@@ -742,45 +742,6 @@ function New-GoodCardHtml {
   return $cardBuilder.ToString()
 }
 
-function Get-HealthScores {
-  param(
-    [hashtable]$Checks
-  )
-  $scores = @{
-    Categories = @{}
-    Overall = @{ Achieved = 0.0; Max = 0.0; Percent = $null }
-  }
-  if (-not $Checks) { return $scores }
-
-  $sevScore = @{ critical=0.0; high=0.25; medium=0.5; warning=0.6; low=0.75; info=1.0 }
-  foreach($entry in $Checks.GetEnumerator()){
-    $c = $entry.Value
-    if (-not $c.Attempted) { continue }
-    if ($c.NA) { continue }
-    $cat = if ($c.Category) { $c.Category } else { 'General' }
-    if (-not $scores.Categories.ContainsKey($cat)) {
-      $scores.Categories[$cat] = @{ Achieved = 0.0; Max = 0.0; Percent = $null }
-    }
-    $w = [double]$c.Weight
-    $scores.Categories[$cat].Max += $w
-    $scores.Overall.Max += $w
-
-    $sev = if ($c.WorstSeverity) { $c.WorstSeverity } else { 'info' }
-    $val = $sevScore[$sev]
-    if ($null -eq $val) { $val = 1.0 }
-    $scores.Categories[$cat].Achieved += ($w * $val)
-    $scores.Overall.Achieved += ($w * $val)
-  }
-
-  foreach($cat in $scores.Categories.Keys){
-    $ach = $scores.Categories[$cat].Achieved
-    $mx  = $scores.Categories[$cat].Max
-    $scores.Categories[$cat].Percent = if ($mx -eq 0) { $null } else { [math]::Round(100.0 * $ach / $mx, 1) }
-  }
-  $scores.Overall.Percent = if ($scores.Overall.Max -eq 0) { $null } else { [math]::Round(100.0 * $scores.Overall.Achieved / $scores.Overall.Max, 1) }
-  return $scores
-}
-
 function Get-CategoryFromArea {
   param([string]$a)
 

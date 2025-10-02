@@ -720,7 +720,6 @@ function ConvertTo-WlanProfileInfo {
                         }
                     }
                 }
-
             }
 
             $eapNode = $xml.SelectSingleNode("//*[local-name()='EAPConfig']")
@@ -747,7 +746,7 @@ function ConvertTo-WlanProfileInfo {
             $info.EncryptionFallback = $Matches[1].Trim()
             continue
         }
-
+        
         if ($info.UseOneX -eq $null -and $trimmed -match '^Security key\s*:\s*(.+)$') {
             $keyType = $Matches[1].Trim()
             if ($keyType -match '802\.1X|EAP') { $info.UseOneX = $true }
@@ -757,7 +756,7 @@ function ConvertTo-WlanProfileInfo {
     if ($info.UseOneX -eq $null -and $info.EapConfigPresent) {
         $info.UseOneX = $true
     }
-
+    
     if ($Detail.PSObject.Properties['PassphraseMetrics'] -and $Detail.PassphraseMetrics) {
         $info.PassphraseMetrics = $Detail.PassphraseMetrics
     }
@@ -1421,6 +1420,7 @@ function Invoke-NetworkHeuristics {
 
                         if ($securityCategory -eq 'WPA2Personal') {
                             $profileLabel = if ($profileName) { $profileName } elseif ($ssid) { $ssid } else { 'Wi-Fi profile' }
+                            
                             if ($passphraseMetrics) {
                                 $scoreValue = $null
                                 $scoreCategory = 'Unknown'
