@@ -184,6 +184,21 @@ function Get-FirewallTokenList {
     return $tokens.ToArray()
 }
 
+function Get-FirewallRulePropertyValue {
+    param(
+        $Rule,
+        [string]$Name
+    )
+
+    if (-not $Rule) { return $null }
+    if (-not $Name) { return $null }
+
+    $property = $Rule.PSObject.Properties[$Name]
+    if (-not $property) { return $null }
+
+    return $property.Value
+}
+
 function Get-FirewallPortEntries {
     param($Value)
 
@@ -520,7 +535,7 @@ function ConvertTo-FirewallRuleInfo {
         try { $actionNormalized = $action.Trim().ToUpperInvariant() } catch { $actionNormalized = $action.Trim().ToUpper() }
     }
 
-    $profileTokens = Get-FirewallTokenList (if ($Rule.PSObject.Properties['Profile']) { $Rule.Profile } else { $null })
+    $profileTokens = Get-FirewallTokenList (Get-FirewallRulePropertyValue -Rule $Rule -Name 'Profile')
     if (-not $profileTokens -or $profileTokens.Count -eq 0) { $profileTokens = @('Any') }
 
     $profileNormalized = [System.Collections.Generic.List[string]]::new()
@@ -531,11 +546,10 @@ function ConvertTo-FirewallRuleInfo {
         $profileNormalized.Add($upper) | Out-Null
     }
 
-    $protocols = Get-FirewallProtocolList (if ($Rule.PSObject.Properties['Protocol']) { $Rule.Protocol } else { $null })
-    $localPorts = Get-FirewallPortEntries (if ($Rule.PSObject.Properties['LocalPort']) { $Rule.LocalPort } else { $null })
-    $remoteAddresses = Get-FirewallTokenList (if ($Rule.PSObject.Properties['RemoteAddress']) { $Rule.RemoteAddress } else { $null })
-    $localAddresses = Get-FirewallTokenList (if ($Rule.PSObject.Properties['LocalAddress']) { $Rule.LocalAddress } else { $null })
-
+    $protocols = Get-FirewallProtocolList (Get-FirewallRulePropertyValue -Rule $Rule -Name 'Protocol')
+    $localPorts = Get-FirewallPortEntries (Get-FirewallRulePropertyValue -Rule $Rule -Name 'LocalPort')
+    $remoteAddresses = Get-FirewallTokenList (Get-FirewallRulePropertyValue -Rule $Rule -Name 'RemoteAddress')
+    $localAddresses = Get-FirewallTokenList (Get-FirewallRulePropertyValue -Rule $Rule -Name 'LocalAddress')
     $profileText = if ($profileTokens -and $profileTokens.Count -gt 0) { ($profileTokens -join ', ') } else { 'Any' }
     $remoteAddressText = if ($remoteAddresses -and $remoteAddresses.Count -gt 0) { ($remoteAddresses -join ', ') } else { 'Any' }
     $localAddressText = if ($localAddresses -and $localAddresses.Count -gt 0) { ($localAddresses -join ', ') } else { 'Any' }
