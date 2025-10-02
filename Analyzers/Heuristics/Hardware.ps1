@@ -205,6 +205,187 @@ function Get-DriverNameCandidates {
     return $list.ToArray()
 }
 
+function ConvertTo-AutorunIntValue {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    try {
+        $converted = [Convert]::ToInt64($Value)
+        return [int]$converted
+    } catch {
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+    $trimmed = $text.Trim()
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $parsed = 0
+
+    if ($trimmed.StartsWith('0x', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $hex = $trimmed.Substring(2)
+        if ([long]::TryParse($hex, [System.Globalization.NumberStyles]::HexNumber, $culture, [ref]$parsed)) {
+            return [int]$parsed
+        }
+    }
+
+    if ([long]::TryParse($trimmed, [System.Globalization.NumberStyles]::Integer, $culture, [ref]$parsed)) {
+        return [int]$parsed
+    }
+
+    return $null
+}
+
+function Find-AutorunPolicyValue {
+    param(
+        [System.Collections.IEnumerable]$Entries,
+        [string[]]$Paths,
+        [string[]]$Names
+    )
+
+    if (-not $Entries -or -not $Paths -or -not $Names) { return $null }
+
+    foreach ($path in $Paths) {
+        if (-not $path) { continue }
+
+        foreach ($entry in $Entries) {
+            if (-not $entry) { continue }
+
+            $entryPath = if ($entry.PSObject.Properties['Path']) { [string]$entry.Path } else { $null }
+            if (-not $entryPath) { continue }
+            if (-not [string]::Equals($entryPath, $path, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+            if (-not ($entry.PSObject.Properties['Values'] -and $entry.Values)) { continue }
+            foreach ($name in $Names) {
+                if (-not $name) { continue }
+
+                $property = $entry.Values.PSObject.Properties[$name]
+                if (-not $property) { continue }
+
+                return [pscustomobject]@{
+                    Path  = $entryPath
+                    Name  = $property.Name
+                    Value = $property.Value
+                }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Format-AutorunEvidenceEntry {
+    param(
+        [string]$Label,
+        $Info
+    )
+
+    if (-not $Label) { $Label = 'Value' }
+
+    if (-not $Info) {
+        return "{0}: not configured" -f $Label
+    }
+
+    $intValue = ConvertTo-AutorunIntValue -Value $Info.Value
+    if ($null -ne $intValue) {
+        $hex = '0x{0:X}' -f ($intValue -band 0xFFFFFFFF)
+        return "{0} ({1}\\{2}) = {3} ({4})" -f $Label, $Info.Path, $Info.Name, $hex, $intValue
+    }
+
+    $raw = if ($null -ne $Info.Value) { [string]$Info.Value } else { '(null)' }
+    return "{0} ({1}\\{2}) = {3}" -f $Label, $Info.Path, $Info.Name, $raw
+}
+
+function Invoke-AutorunHeuristic {
+    param(
+        [Parameter(Mandatory)]$Context,
+        [Parameter(Mandatory)]$CategoryResult
+    )
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'autorun'
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
+
+    if (-not $artifact) { return }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
+
+    if (-not $payload) { return }
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    $candidateEntries = $null
+    if ($payload.PSObject.Properties['ExplorerPolicies']) {
+        $candidateEntries = $payload.ExplorerPolicies
+    } elseif ($payload.PSObject.Properties['Policies']) {
+        $candidateEntries = $payload.Policies
+    }
+
+    if ($candidateEntries) {
+        foreach ($item in $candidateEntries) {
+            if ($item) { $entries.Add($item) | Out-Null }
+        }
+    }
+
+    $entriesArray = $entries.ToArray()
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Autorun policy entries resolved' -Data ([ordered]@{
+        EntryCount = $entriesArray.Count
+    })
+
+    $machinePaths = @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+    )
+    $userPaths = @(
+        'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+    )
+
+    $machineNoDrive = Find-AutorunPolicyValue -Entries $entriesArray -Paths $machinePaths -Names @('NoDriveTypeAutoRun')
+    $machineNoAuto = Find-AutorunPolicyValue -Entries $entriesArray -Paths $machinePaths -Names @('NoAutoRun','NoAutorun')
+    $userNoDrive = Find-AutorunPolicyValue -Entries $entriesArray -Paths $userPaths -Names @('NoDriveTypeAutoRun')
+    $userNoAuto = Find-AutorunPolicyValue -Entries $entriesArray -Paths $userPaths -Names @('NoAutoRun','NoAutorun')
+
+    $machineNoDriveValue = if ($machineNoDrive) { ConvertTo-AutorunIntValue -Value $machineNoDrive.Value } else { $null }
+    $machineNoAutoValue = if ($machineNoAuto) { ConvertTo-AutorunIntValue -Value $machineNoAuto.Value } else { $null }
+    $userNoDriveValue = if ($userNoDrive) { ConvertTo-AutorunIntValue -Value $userNoDrive.Value } else { $null }
+    $userNoAutoValue = if ($userNoAuto) { ConvertTo-AutorunIntValue -Value $userNoAuto.Value } else { $null }
+
+    $machineConfigured = ($machineNoDriveValue -eq 255) -and ($machineNoAutoValue -eq 1)
+    $userOverridesValid = $true
+    if ($userNoDrive) {
+        $userOverridesValid = $userOverridesValid -and ($userNoDriveValue -eq 255)
+    }
+    if ($userNoAuto) {
+        $userOverridesValid = $userOverridesValid -and ($userNoAutoValue -eq 1)
+    }
+
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Evaluated autorun configuration' -Data ([ordered]@{
+        MachineConfigured = $machineConfigured
+        MachineNoDrive    = $machineNoDriveValue
+        MachineNoAuto     = $machineNoAutoValue
+        UserOverrideOk    = $userOverridesValid
+        UserNoDrive       = if ($userNoDrive) { $userNoDriveValue } else { $null }
+        UserNoAuto        = if ($userNoAuto) { $userNoAutoValue } else { $null }
+    })
+
+    if ($machineConfigured -and $userOverridesValid) { return }
+
+    $evidenceParts = [System.Collections.Generic.List[string]]::new()
+    $evidenceParts.Add(Format-AutorunEvidenceEntry -Label 'Machine NoDriveTypeAutoRun' -Info $machineNoDrive) | Out-Null
+    $evidenceParts.Add(Format-AutorunEvidenceEntry -Label 'Machine NoAutoRun' -Info $machineNoAuto) | Out-Null
+    $evidenceParts.Add(Format-AutorunEvidenceEntry -Label 'User NoDriveTypeAutoRun' -Info $userNoDrive) | Out-Null
+    $evidenceParts.Add(Format-AutorunEvidenceEntry -Label 'User NoAutoRun' -Info $userNoAuto) | Out-Null
+
+    $evidence = $evidenceParts.ToArray() -join '; '
+    $title = 'Autorun or Autoplay remains enabled, so removable media might automatically execute.'
+    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Removable Media'
+}
+
 function Get-DriverEvidence {
     param($Entry)
 
@@ -527,6 +708,8 @@ function Invoke-HardwareHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Hardware'
+
+    Invoke-AutorunHeuristic -Context $Context -CategoryResult $result
 
     $driversArtifact = Get-AnalyzerArtifact -Context $Context -Name 'drivers'
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver artifact' -Data ([ordered]@{
