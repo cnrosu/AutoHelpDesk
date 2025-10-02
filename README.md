@@ -80,6 +80,7 @@ The following sections list the analysis functions and issue card heuristics gro
 
 ## Network & DNS Heuristics
 - **Network** – Critical issues are raised for missing IPv4 addresses or APIPA addresses, high for missing default gateways or default routes, high for failed pings, and low when traceroute never completes, highlighting likely connectivity faults.
+- **Network/Wired 802.1X** – Raises high severity when wired ports report Not authenticated or depend on MSCHAPv2, medium when interfaces fall back to guest VLANs, high when no valid machine certificate exists or a certificate expires within seven days, and medium when certificates expire within thirty days so teams can renew them in time.
 - **DNS/Internal** – Adjusts severity based on domain-join health: medium/high when only one or no AD-capable resolvers are detected (with special handling if the secure channel is already broken) and medium when public DNS servers appear on a domain-joined device.
 - **DNS/Order** – Creates a low-severity issue when a public DNS server sits ahead of an internal resolver in the configuration order.
 - **DNS** – Reports a medium-severity issue whenever `nslookup` results show timeouts or NXDOMAIN responses.
