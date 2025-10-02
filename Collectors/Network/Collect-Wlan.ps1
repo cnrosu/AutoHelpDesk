@@ -14,6 +14,13 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
+$collectorRoot = Split-Path -Path $PSScriptRoot -Parent
+$repositoryRoot = Split-Path -Path $collectorRoot -Parent
+$passwordStrengthModule = Join-Path -Path $repositoryRoot -ChildPath 'Modules\\PasswordStrength\\PasswordStrength.psm1'
+if (Test-Path -LiteralPath $passwordStrengthModule) {
+    Import-Module -Name $passwordStrengthModule -ErrorAction Stop
+}
+
 function Test-IsWindows {
     try {
         return [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)
@@ -119,6 +126,88 @@ function Get-WlanProfileXml {
     }
 }
 
+function ConvertTo-WlanLines {
+    param($Value)
+
+    if ($null -eq $Value) { return @() }
+
+    if ($Value -is [string]) { return @($Value) }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $lines = @()
+        foreach ($item in $Value) {
+            if ($null -ne $item) { $lines += [string]$item }
+        }
+        return $lines
+    }
+
+    return @([string]$Value)
+}
+
+function Sanitize-WlanProfileOutput {
+    param($Output)
+
+    $lines = ConvertTo-WlanLines $Output
+    $sanitized = @()
+    $passphrase = $null
+
+    foreach ($line in $lines) {
+        if ($null -eq $line) { continue }
+        $text = [string]$line
+        if ($text -match '^(\s*Key\s+Content\s*:\s*)(.+)$') {
+            if (-not $passphrase) { $passphrase = $Matches[2].Trim() }
+            $sanitized += ($Matches[1] + '[REDACTED]')
+        } else {
+            $sanitized += $text
+        }
+    }
+
+    return [pscustomobject]@{
+        Lines      = $sanitized
+        Passphrase = $passphrase
+    }
+}
+
+function Sanitize-WlanProfileXml {
+    param([string]$Xml)
+
+    if (-not $Xml) {
+        return [pscustomobject]@{ Text = $null; Passphrase = $null }
+    }
+
+    $captured = $null
+    $pattern = '(?is)(<\s*keyMaterial\s*>)(.*?)(<\s*/\s*keyMaterial\s*>)'
+
+    $sanitized = [regex]::Replace($Xml, $pattern, {
+        param($match)
+        if (-not $captured) {
+            $captured = $match.Groups[2].Value.Trim()
+        }
+        return $match.Groups[1].Value + '[REDACTED]' + $match.Groups[3].Value
+    })
+
+    return [pscustomobject]@{
+        Text       = $sanitized
+        Passphrase = $captured
+    }
+}
+
+function Format-WlanStrengthValue {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [double]) {
+        if ([double]::IsNaN($Value)) { return 'NaN' }
+        if ([double]::IsInfinity($Value)) { return 'Inf' }
+        if ([math]::Abs($Value) -ge 1e6) {
+            return [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.###E+0}' -f $Value)
+        }
+        return [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.###}' -f $Value)
+    }
+
+    return $Value
+}
 function Invoke-Main {
     if (-not (Test-IsWindows)) {
         $payload = [ordered]@{
@@ -139,13 +228,57 @@ function Invoke-Main {
     foreach ($profileName in $profileNames) {
         $detail = [ordered]@{ Name = $profileName }
 
+        $passphrase = $null
+
         $profileOutput = Get-WlanProfileDetail -Name $profileName
-        if ($profileOutput) { $detail['ShowProfile'] = $profileOutput }
+        if ($profileOutput) {
+            $sanitizedOutput = Sanitize-WlanProfileOutput -Output $profileOutput
+            if ($sanitizedOutput -and $sanitizedOutput.Lines) {
+                $detail['ShowProfile'] = $sanitizedOutput.Lines
+            }
+            if (-not $passphrase -and $sanitizedOutput.Passphrase) {
+                $passphrase = $sanitizedOutput.Passphrase
+            }
+        }
 
         $xmlInfo = Get-WlanProfileXml -Name $profileName
-        if ($xmlInfo.Xml) { $detail['Xml'] = $xmlInfo.Xml }
+        if ($xmlInfo.Xml) {
+            $sanitizedXml = Sanitize-WlanProfileXml -Xml $xmlInfo.Xml
+            if ($sanitizedXml -and $sanitizedXml.Text) {
+                $detail['Xml'] = $sanitizedXml.Text
+            }
+            if (-not $passphrase -and $sanitizedXml.Passphrase) {
+                $passphrase = $sanitizedXml.Passphrase
+            }
+        }
         if ($xmlInfo.Error) { $detail['XmlError'] = $xmlInfo.Error }
 
+        if ($passphrase) {
+            try {
+                $strength = Test-PasswordStrength -Password $passphrase
+                if ($strength) {
+                    $metrics = [ordered]@{
+                        Score              = $strength.Score
+                        Category           = $strength.Category
+                        Length             = $strength.Length
+                        AlphabetSizeUsed   = $strength.AlphabetSizeUsed
+                        EstimatedBits      = $strength.EstimatedBits
+                        EstimatedGuesses   = $strength.EstimatedGuesses
+                        CrackTimeOnline    = Format-WlanStrengthValue -Value $strength.CrackTimeOnline_s
+                        CrackTimeOffline   = Format-WlanStrengthValue -Value $strength.CrackTimeOffline_s
+                        Warnings           = $strength.Warnings
+                        Suggestions        = $strength.Suggestions
+                        Signals            = $strength.Signals
+                        BaselineBits       = $strength.BaselineBits
+                        PenaltyBits        = $strength.PenaltyBits
+                        Notes              = $strength.Notes
+                    }
+                    $detail['PassphraseMetrics'] = $metrics
+                }
+            } catch {
+                $detail['PassphraseMetricsError'] = $_.Exception.Message
+            }
+        }
         $details.Add([pscustomobject]$detail) | Out-Null
     }
 
