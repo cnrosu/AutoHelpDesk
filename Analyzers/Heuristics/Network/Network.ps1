@@ -6,6 +6,11 @@
 $analyzersRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 . (Join-Path -Path $analyzersRoot -ChildPath 'AnalyzerCommon.ps1')
 
+$baselineHelperPath = Join-Path -Path $PSScriptRoot -ChildPath 'Network-BaselineHelper.ps1'
+if (Test-Path -LiteralPath $baselineHelperPath) {
+    . $baselineHelperPath
+}
+
 $vpnAnalyzerPath = Join-Path -Path $analyzersRoot -ChildPath 'Network/Analyze-Vpn.ps1'
 if (Test-Path -LiteralPath $vpnAnalyzerPath) {
     . $vpnAnalyzerPath
@@ -953,6 +958,15 @@ function Invoke-NetworkHeuristics {
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
 
+    $corporateExpectations = Get-NetworkCorporateExpectations -Context $Context
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved corporate network expectations' -Data ([ordered]@{
+        HasProfile = [bool]$corporateExpectations
+        Source     = if ($corporateExpectations) { $corporateExpectations.Source } else { $null }
+        Subnets    = if ($corporateExpectations -and $corporateExpectations.Subnets) { $corporateExpectations.Subnets.Count } else { 0 }
+        Gateways   = if ($corporateExpectations -and $corporateExpectations.Gateways) { $corporateExpectations.Gateways.Count } else { 0 }
+        Servers    = if ($corporateExpectations -and $corporateExpectations.DhcpServers) { $corporateExpectations.DhcpServers.Count } else { 0 }
+    })
+
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
         Found = [bool]$networkArtifact
@@ -975,6 +989,191 @@ function Invoke-NetworkHeuristics {
             $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
             if ($routeText -notmatch '0\.0\.0\.0') {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing'
+            }
+        }
+
+        if ($payload -and $payload.ConnectivityProbes) {
+            $probePayload = $payload.ConnectivityProbes
+
+            foreach ($error in (ConvertTo-NetworkArray $probePayload.Errors)) {
+                if (-not $error) { continue }
+
+                $message = if ($error.PSObject.Properties['Message'] -and $error.Message) { [string]$error.Message } else { 'Network probes unavailable' }
+                $title = "$message, so captive portal detection may be incomplete."
+                $evidence = [ordered]@{}
+                foreach ($property in @('Source','Error','Message')) {
+                    if ($error.PSObject.Properties[$property] -and $error.$property) { $evidence[$property] = $error.$property }
+                }
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Captive Portal'
+            }
+
+            foreach ($httpProbe in (ConvertTo-NetworkArray $probePayload.Http)) {
+                if (-not $httpProbe) { continue }
+
+                $probeName = if ($httpProbe.PSObject.Properties['Name'] -and $httpProbe.Name) { [string]$httpProbe.Name } elseif ($httpProbe.PSObject.Properties['Url'] -and $httpProbe.Url) { [string]$httpProbe.Url } else { 'HTTP probe' }
+
+                $statusParts = New-Object System.Collections.Generic.List[string]
+                if ($httpProbe.Success -eq $true) {
+                    $statusParts.Add('Success') | Out-Null
+                } else {
+                    $statusParts.Add('Failed') | Out-Null
+                }
+                if ($httpProbe.PSObject.Properties['StatusCode'] -and $httpProbe.StatusCode) {
+                    $statusParts.Add(("HTTP {0}" -f $httpProbe.StatusCode)) | Out-Null
+                }
+                Add-CategoryCheck -CategoryResult $result -Name ("HTTP probe ({0})" -f $probeName) -Status ($statusParts -join ' ')
+
+                $httpEvidence = [ordered]@{}
+                foreach ($property in @('Url','FinalUrl','FinalHost','StatusCode','Error','BodyPreview')) {
+                    if ($httpProbe.PSObject.Properties[$property] -and $httpProbe.$property) {
+                        $httpEvidence[$property] = $httpProbe.$property
+                    }
+                }
+                if ($httpProbe.PSObject.Properties['Definition'] -and $httpProbe.Definition) {
+                    $definitionEvidence = [ordered]@{}
+                    foreach ($property in @('ExpectHost','AllowedRedirectHosts','ExpectedStatus','ExpectContentPattern')) {
+                        if ($httpProbe.Definition.PSObject.Properties[$property] -and $httpProbe.Definition.$property) {
+                            $definitionEvidence[$property] = $httpProbe.Definition.$property
+                        }
+                    }
+                    if ($definitionEvidence.Count -gt 0) { $httpEvidence['Definition'] = $definitionEvidence }
+                }
+
+                $issueRaised = $false
+                if ($httpProbe.Success -ne $true) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("HTTP probe '{0}' failed, so users may be stuck behind a captive portal or blocked from intranet resources." -f $probeName) -Evidence $httpEvidence -Subcategory 'Captive Portal'
+                    $issueRaised = $true
+                } else {
+                    $expectedHost = $null
+                    if ($httpProbe.PSObject.Properties['Definition'] -and $httpProbe.Definition -and $httpProbe.Definition.PSObject.Properties['ExpectHost'] -and $httpProbe.Definition.ExpectHost) {
+                        $expectedHost = [string]$httpProbe.Definition.ExpectHost
+                    } elseif ($httpProbe.PSObject.Properties['ExpectHost'] -and $httpProbe.ExpectHost) {
+                        $expectedHost = [string]$httpProbe.ExpectHost
+                    } elseif ($httpProbe.PSObject.Properties['Url'] -and $httpProbe.Url) {
+                        try { $expectedHost = ([System.Uri]$httpProbe.Url).Host } catch { }
+                    }
+
+                    $finalHost = $null
+                    if ($httpProbe.PSObject.Properties['FinalHost'] -and $httpProbe.FinalHost) {
+                        $finalHost = [string]$httpProbe.FinalHost
+                    } elseif ($httpProbe.PSObject.Properties['FinalUrl'] -and $httpProbe.FinalUrl) {
+                        try { $finalHost = ([System.Uri]$httpProbe.FinalUrl).Host } catch { }
+                    }
+
+                    $allowedHosts = @()
+                    if ($httpProbe.PSObject.Properties['Definition'] -and $httpProbe.Definition -and $httpProbe.Definition.PSObject.Properties['AllowedRedirectHosts']) {
+                        $allowedHosts = ConvertTo-NetworkArray $httpProbe.Definition.AllowedRedirectHosts
+                    } elseif ($httpProbe.PSObject.Properties['AllowedRedirectHosts'] -and $httpProbe.AllowedRedirectHosts) {
+                        $allowedHosts = ConvertTo-NetworkArray $httpProbe.AllowedRedirectHosts
+                    }
+
+                    $normalizedAllowed = @()
+                    foreach ($host in $allowedHosts) {
+                        if (-not $host) { continue }
+                        $text = [string]$host
+                        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+                        $normalizedAllowed += $text.Trim().ToLowerInvariant()
+                    }
+                    if ($expectedHost) {
+                        $expectedNormalized = $expectedHost.Trim().ToLowerInvariant()
+                        if (-not ($normalizedAllowed -contains $expectedNormalized)) { $normalizedAllowed += $expectedNormalized }
+                    }
+
+                    $finalNormalized = $null
+                    if ($finalHost) {
+                        try { $finalNormalized = $finalHost.Trim().ToLowerInvariant() } catch { $finalNormalized = $finalHost }
+                    }
+
+                    if ($finalNormalized -and $expectedHost) {
+                        $expectedNormalized = $expectedHost.Trim().ToLowerInvariant()
+                        if ($finalNormalized -ne $expectedNormalized -and -not ($normalizedAllowed -contains $finalNormalized)) {
+                            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("HTTP probe '{0}' redirected to {1}, so a captive portal is intercepting corporate traffic." -f $probeName, $finalHost) -Evidence $httpEvidence -Subcategory 'Captive Portal'
+                            $issueRaised = $true
+                        }
+                    }
+
+                    if (-not $issueRaised -and $httpProbe.PSObject.Properties['ExpectedStatus'] -and $httpProbe.ExpectedStatus -and $httpProbe.StatusCode -ne $httpProbe.ExpectedStatus) {
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("HTTP probe '{0}' returned status {1} instead of {2}, so captive portal filtering may be altering corporate access." -f $probeName, $httpProbe.StatusCode, $httpProbe.ExpectedStatus) -Evidence $httpEvidence -Subcategory 'Captive Portal'
+                        $issueRaised = $true
+                    }
+
+                    if (-not $issueRaised -and $httpProbe.PSObject.Properties['ExpectContentPattern'] -and $httpProbe.ExpectContentPattern -and $httpProbe.BodyPreview) {
+                        $pattern = [string]$httpProbe.ExpectContentPattern
+                        if ($pattern -and ($httpProbe.BodyPreview -notmatch $pattern)) {
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("HTTP probe '{0}' returned unexpected content, so captive portal rewriting may block the intranet." -f $probeName) -Evidence $httpEvidence -Subcategory 'Captive Portal'
+                            $issueRaised = $true
+                        }
+                    }
+
+                    if (-not $issueRaised) {
+                        Add-CategoryNormal -CategoryResult $result -Title ("HTTP probe '{0}' reached the intranet endpoint" -f $probeName) -Subcategory 'Captive Portal'
+                    }
+                }
+            }
+
+            foreach ($dnsProbe in (ConvertTo-NetworkArray $probePayload.Dns)) {
+                if (-not $dnsProbe) { continue }
+
+                $probeName = if ($dnsProbe.PSObject.Properties['Name'] -and $dnsProbe.Name) { [string]$dnsProbe.Name } elseif ($dnsProbe.PSObject.Properties['Query'] -and $dnsProbe.Query) { [string]$dnsProbe.Query } else { 'DNS probe' }
+                $statusLabel = if ($dnsProbe.Success -eq $true) { 'Success' } else { 'Failed' }
+                Add-CategoryCheck -CategoryResult $result -Name ("DNS probe ({0})" -f $probeName) -Status $statusLabel
+
+                $dnsEvidence = [ordered]@{}
+                foreach ($property in @('Query','RecordType','Server','LookupMethod','Addresses','CanonicalNames','Error')) {
+                    if ($dnsProbe.PSObject.Properties[$property] -and $dnsProbe.$property) { $dnsEvidence[$property] = $dnsProbe.$property }
+                }
+                if ($dnsProbe.PSObject.Properties['Definition'] -and $dnsProbe.Definition) {
+                    $definitionEvidence = [ordered]@{}
+                    foreach ($property in @('ExpectedSubnets','ExpectedAddresses')) {
+                        if ($dnsProbe.Definition.PSObject.Properties[$property] -and $dnsProbe.Definition.$property) { $definitionEvidence[$property] = $dnsProbe.Definition.$property }
+                    }
+                    if ($definitionEvidence.Count -gt 0) { $dnsEvidence['Definition'] = $definitionEvidence }
+                }
+
+                if ($dnsProbe.Success -ne $true) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("DNS probe '{0}' failed, so captive portal DNS rewrites may block intranet access." -f $probeName) -Evidence $dnsEvidence -Subcategory 'DNS Probes'
+                    continue
+                }
+
+                $addresses = ConvertTo-NetworkArray $dnsProbe.Addresses
+                $unexpected = New-Object System.Collections.Generic.List[string]
+                foreach ($address in $addresses) {
+                    if (-not $address) { continue }
+                    $text = [string]$address
+                    if (-not $text -or $text -notmatch '^\d+\.\d+\.\d+\.\d+$') { continue }
+
+                    $matchesExpectation = $false
+                    if ($dnsProbe.PSObject.Properties['Definition'] -and $dnsProbe.Definition -and $dnsProbe.Definition.PSObject.Properties['ExpectedAddresses'] -and $dnsProbe.Definition.ExpectedAddresses) {
+                        foreach ($expected in (ConvertTo-NetworkArray $dnsProbe.Definition.ExpectedAddresses)) {
+                            if ($expected -and ([string]$expected).Trim().ToLowerInvariant() -eq $text.Trim().ToLowerInvariant()) {
+                                $matchesExpectation = $true
+                                break
+                            }
+                        }
+                    }
+
+                    if (-not $matchesExpectation -and $corporateExpectations -and $corporateExpectations.Subnets -and (Test-NetworkBaselineIpv4Match -Address $text -Subnets $corporateExpectations.Subnets)) {
+                        $matchesExpectation = $true
+                    }
+
+                    if (-not $matchesExpectation -and (-not $corporateExpectations -or -not $corporateExpectations.Subnets)) {
+                        if (Test-NetworkPrivateIpv4 $text) { $matchesExpectation = $true }
+                    }
+
+                    if (-not $matchesExpectation) { $unexpected.Add($text) | Out-Null }
+                }
+
+                if ($unexpected.Count -gt 0) {
+                    if ($corporateExpectations -and $corporateExpectations.Subnets) {
+                        $dnsEvidence['ExpectedSubnets'] = ($corporateExpectations.Subnets | ForEach-Object { $_.Text })
+                    }
+
+                    $addressList = $unexpected -join ', '
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("DNS probe '{0}' returned {1}, so a captive portal is rewriting intranet lookups." -f $probeName, $addressList) -Evidence $dnsEvidence -Subcategory 'DNS Probes'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title ("DNS probe '{0}' resolved within corporate ranges" -f $probeName) -Subcategory 'DNS Probes'
+                }
             }
         }
     } else {
