@@ -68,80 +68,79 @@ When adding or updating heuristics that emit issue cards, always include a singl
 
 ## Heuristic catalogue
 
-The following sections list the analysis functions and issue card heuristics grouped by their respective categories. Each heuristic summarizes the conditions that raise issues and the severity levels applied.
+The catalogue below summarizes every analyzer heuristic grouped by category. Each bullet highlights the evidence the analyzer records and the conditions that raise issue cards or positive findings.
 
-## System Heuristics
-- **System/Firmware** – Raises a medium issue when firmware is still in legacy BIOS mode and a low issue when the analyzer cannot determine firmware mode from `Get-ComputerInfo`.
-- **System/Secure Boot** – Marks Secure Boot as a high-severity issue if it is disabled, unsupported, or reports an unexpected state, and still escalates to high if Secure Boot details are missing even though UEFI is present.
-- **System/Fast Startup** – Emits warning-severity findings when Fast Startup is enabled or when its state cannot be determined from power settings; otherwise records a healthy status when it is disabled.
-- **System/Pending Reboot** – Highlights medium-severity issues when Windows Update or servicing registry keys signal a required reboot, warns on outstanding file rename operations, and captures pending computer rename evidence, while recording a normal finding when no reboot indicators are detected.
-- **System/Startup Programs** – Flags low issues when Autoruns output is unrecognized or empty, escalates to medium when non-Microsoft startup items exceed 10, and warns at low severity when the count is between 6 and 10.
-- **System/Uptime** – Uses the uptime classification to emit issues whose severity matches the computed range (for example, medium/high/critical depending on days since reboot) when the device exceeds healthy thresholds.
+### System
 
-## Network & DNS Heuristics
-- **Network** – Critical issues are raised for missing IPv4 addresses or APIPA addresses, high for missing default gateways or default routes, high for failed pings, and low when traceroute never completes, highlighting likely connectivity faults.
-- **Network/Wired 802.1X** – Raises high severity when wired ports report Not authenticated or depend on MSCHAPv2, medium when interfaces fall back to guest VLANs, high when no valid machine certificate exists or a certificate expires within seven days, and medium when certificates expire within thirty days so teams can renew them in time.
-- **DNS/Internal** – Adjusts severity based on domain-join health: medium/high when only one or no AD-capable resolvers are detected (with special handling if the secure channel is already broken) and medium when public DNS servers appear on a domain-joined device.
-- **DNS/Order** – Creates a low-severity issue when a public DNS server sits ahead of an internal resolver in the configuration order.
-- **DNS** – Reports a medium-severity issue whenever `nslookup` results show timeouts or NXDOMAIN responses.
-- **Firewall profiles** – Each firewall profile that is turned off generates a medium-severity item so profile gaps are surfaced promptly.
+* **Collection & operating system inventory** – Records informational gaps when system inventory is missing or unreadable, reports Windows 11 as supported, and raises critical issues for unsupported Windows 7/8/10 installs while still publishing OS build and last boot checks when the payload is available.【F:Analyzers/Heuristics/System/OperatingSystem.ps1†L11-L61】
+* **Firmware posture** – Confirms Secure Boot when it is enabled and emits high-severity issues when Secure Boot is disabled, unsupported, reports an unexpected state, or is missing despite UEFI firmware, giving technicians the System Information evidence that triggered the finding.【F:Analyzers/Heuristics/System/OperatingSystem.ps1†L63-L99】
+* **Uptime** – Adds a check that records the current uptime in days, warns when the device has run longer than 30 days without a reboot, and celebrates recent reboots with a normal card.【F:Analyzers/Heuristics/System/Uptime.ps1†L11-L37】
+* **Pending reboot tracking** – Flags missing or unreadable pending reboot payloads, surfaces medium issues for Windows Update indicators, pending file rename operations, and rename mismatches, and documents a clean bill of health when no triggers are present.【F:Analyzers/Heuristics/System/PendingReboot.ps1†L11-L144】
+* **Power configuration** – Warns when Fast Startup is enabled or unreadable and records a normal finding when the feature is disabled so hybrid shutdown side effects are clear.【F:Analyzers/Heuristics/System/Power.ps1†L11-L30】
+* **Performance snapshot** – Publishes memory utilization checks, raises a medium issue when RAM usage exceeds 90%, captures the top CPU consumer, and flags failures to enumerate running processes.【F:Analyzers/Heuristics/System/Performance.ps1†L11-L45】
+* **Startup programs** – Reports missing or incomplete Autoruns data, counts startup entries, and escalates from low to medium severity as non-Microsoft autoruns exceed five and ten items while documenting evidence for technicians; healthy counts and empty lists are recorded as normal findings.【F:Analyzers/Heuristics/System/Startup.ps1†L11-L77】
+* **Microsoft Store functional checks** – Correlates Store package integrity, critical services, proxy posture, and endpoint reachability, emitting high/medium issues when binaries or services are missing or endpoints fail, an informational card when the Store is inapplicable, and a normal finding when all tests succeed with supporting evidence.【F:Analyzers/Heuristics/System/MicrosoftStore.ps1†L11-L245】
 
-## Outlook & Office Heuristics
-- **Outlook/Connectivity** – Records informational findings when Test-NetConnection is unavailable or inconclusive and elevates to high severity when HTTPS tests to outlook.office365.com fail.
-- **Outlook/OST** – Flags OST caches as critical (>25 GB), high (15–25 GB), or medium (5–15 GB) to highlight sync bloat issues.
-- **Outlook/Autodiscover** – Emits info/medium issues for missing cmdlets, absent domain candidates, incorrect CNAME targets, failed lookups, or missing records so onboarding problems are obvious.
-- **Outlook/SCP** – Alerts with medium severity when SCP queries fail and low severity when no SCP exists on a domain-joined client (acceptable for Exchange Online only tenants).
-- **Office/Macros** – Produces a high severity when MOTW blocking is disabled and medium when macro notification policies still allow macros.
-- **Office/Protected View** – Adds medium-severity findings when Protected View is disabled for any Office app context.
+### Network, DHCP & Connectivity
 
-## Security Heuristics
-- **Security (Microsoft Defender)** – Surfaces high severity when real-time protection is off, escalates signature age (medium/high/critical tiers), and reports high issues for missing engine/platform updates or informational gaps when Defender data is absent.
-- **Security/BitLocker** – Covers missing cmdlets (low), query failures (low), OS volumes without protection (critical), incomplete encryption (high), unclear state (low), no protected volumes (high), unparsed output (low), empty files (low), and missing recovery passwords (high).
-- **Security/Measured Boot** – Records healthy findings when PCR bindings, Secure Boot confirmation, and TPM attestation events are present, and raises informational issues when those signals are missing (flagging MDM requirements for attestation data gaps).
-- **Security/TPM** – Issues medium severity when a TPM exists but is not ready and high severity when no TPM is detected on hardware that should have one.
-- **Security/HVCI** – Marks medium issues when virtualization-based memory integrity is available but off or when Device Guard data is missing.
-- **Security/Credential Guard** – Raises a high-severity item if Credential Guard or RunAsPPL is not enforced.
-- **Security/Kernel DMA** – Produces medium findings when Kernel DMA protection is disabled/unsupported on mobile hardware or when the status cannot be determined.
-- **Security/Firewall** – Warns at high severity if firewall status output is missing so administrators know to recollect data.
-- **Security/RDP** – Flags high severity when RDP lacks NLA and medium when RDP is enabled on mobile systems (even with NLA).
-- **Security/SMB** – Highlights a high-severity issue whenever SMBv1 is enabled.
-- **Security/NTLM** – Triggers medium severity if NTLM restriction policies are not configured.
-- **Security/SmartScreen** – Emits medium issues when SmartScreen policies are disabled or not enforced.
-- **Security/ASR** – Issues high-severity findings whenever mandated Attack Surface Reduction rules are missing or not blocking.
-- **Security/ExploitProtection** – Creates medium items when CFG/DEP/ASLR aren’t all enforced or when exploit protection data is missing.
-- **Security/WDAC** – Warns (and, on modern clients, raises medium severity) when no Windows Defender Application Control policy is detected.
-- **Security/SmartAppControl** – Reports medium severity when Smart App Control is not enabled on Windows 11, helping ensure application control baselines.
-- **Security/LocalAdmin** – Adds a high issue when the current user remains in the local Administrators group.
-- **Security/LAPS** – Surfaces a high severity whenever neither legacy LAPS nor Windows LAPS protections are detected.
-- **Security/UAC** – Raises high severity for insecure UAC configurations (e.g., disabled UAC, insecure prompts).
-- **Security/PowerShellLogging** – Creates medium issues when script block/module logging or transcription is absent.
-- **Security/LDAPNTLM** – Flags high severity if LDAP signing, channel binding, or NTLM restrictions are not enforced on domain-joined systems.
-- **Security/DHCP** – Raises high severity when DHCP servers with non-private addresses are detected.
-- **Security/Office** – Emits medium/low informational issues when macro blocking, notifications, or Protected View data is missing (prompting further investigation).
+* **Base collection & adapter quality** – Warns when base diagnostics are missing, when adapter inventory cannot be read, or when no interfaces report an active link, and highlights adapters stuck at 100 Mb half duplex or with mismatched speed/duplex policies to expose physical link problems.【F:Analyzers/Heuristics/Network/Network.ps1†L1620-L2105】【F:Analyzers/Heuristics/Network/Network.ps1†L1840-L1871】
+* **IP configuration & routing** – Confirms IPv4 addressing, raises high-severity issues when no IPv4 configuration exists, and flags missing default routes so technicians can resolve core connectivity gaps.【F:Analyzers/Heuristics/Network/Network.ps1†L1763-L1776】
+* **DNS health** – Captures DNS lookup and latency results, reports failures or missing diagnostics, inventories per-interface resolvers, calls out adapters without DNS servers or using public resolvers on domain devices, and records suffix/registration policy issues alongside positive checks when everything is healthy.【F:Analyzers/Heuristics/Network/Network.ps1†L1875-L2019】【F:Analyzers/Heuristics/Network/Network.ps1†L1917-L2014】
+* **Autodiscover & Outlook connectivity** – Tests Outlook HTTPS reachability and Autodiscover lookups, emitting high-severity failures, medium informational cards when testing is impossible, and normal findings when Exchange Online endpoints respond as expected.【F:Analyzers/Heuristics/Network/Network.ps1†L2022-L2087】
+* **Proxy configuration** – Documents user and WinHTTP proxy settings, praising direct access and flagging configured proxies to explain unexpected traffic flows.【F:Analyzers/Heuristics/Network/Network.ps1†L2107-L2131】
+* **ARP cache integrity** – Detects gateway MAC changes, duplicate or suspicious vendor OUIs, poisoned ARP replies, and hosts impersonating multiple IPs so potential man-in-the-middle attacks are surfaced quickly.【F:Analyzers/Heuristics/Network/Network.ps1†L1620-L1739】
+* **Wired 802.1X posture** – Warns when diagnostics are missing, interfaces are unauthenticated or on guest VLANs, highlights insecure MSCHAPv2 use, and raises high/medium issues for missing, expiring, or unreadable machine certificates so wired NAC problems are actionable.【F:Analyzers/Heuristics/Network/Network.ps1†L2135-L2315】
+* **Wi-Fi security** – Flags missing wireless data, open or WEP networks, WPA2 networks that still allow TKIP, mixed WPA2/WPA3 transition modes, poor WPA2-Personal passphrase scores, and clients falling back to WPA2 when the AP supports WPA3, while reporting modern WPA3 usage for visibility.【F:Analyzers/Heuristics/Network/Network.ps1†L2318-L2607】
+* **DHCP analyzers** – Correlate collector output to detect non-private DHCP servers, adapters that require DHCP but never received leases, profiles with DHCP disabled and no static configuration, scopes nearing exhaustion, stale leases, and frequent DHCP client failures.【F:Analyzers/Heuristics/Network/DHCP/Analyze-DhcpUnexpectedServers.ps1†L21-L61】【F:Analyzers/Heuristics/Network/DHCP/Analyze-DhcpStaticConfiguration.ps1†L35-L56】【F:Analyzers/Heuristics/Network/DHCP/Analyze-DhcpLeaseExpiry.ps1†L24-L76】
+* **VPN baselines** – Reviews VPN profiles for deprecated tunnel types, split tunneling, weak MS-CHAPv2 authentication, missing certificates, unused profiles, overlapping routes, misconfigured DNS, unhealthy services, and recurring RasClient/IKEEXT errors while also recording healthy VPN profiles when security criteria are met.【F:Analyzers/Network/Analyze-Vpn.ps1†L211-L451】
 
-## Active Directory Heuristics
-- **Active Directory/DC Discovery** – Critical when no domain controllers are located via SRV lookups.
-- **Active Directory/AD DNS** – Critical if no AD-capable DNS servers exist, high if only one resolver remains, and medium when public DNS servers are configured on a domain client.
-- **Active Directory/Secure Channel** – Critical for broken machine secure channels.
-- **Active Directory/Time & Kerberos** – High severity when time sync or Kerberos errors appear in recent logs.
-- **Active Directory/SYSVOL/NETLOGON** – High severity for SYSVOL or NETLOGON access errors.
-- **Active Directory/GPO Processing** – High severity when Group Policy processing reports failures.
+### Outlook & Office
 
-## Services & Events Heuristics
-- **Services** – Issues adopt the per-service severity computed earlier (e.g., medium/high/critical for critical service failures) and explicitly raise high severity when legacy essentials like Dhcp or WinDefend are stopped.
-- **Events** – Adds informational issues for logs showing five or more errors and low-severity issues for logs with at least ten warnings in the sampled data.
-- **Printing** – Flags high severity when the Spooler service is stopped/disabled or when print hosts are unreachable, raises medium/high issues for offline queues and long-running jobs, warns on WSD ports, SNMP "public" communities, and legacy drivers, enforces Point-and-Print hardening posture, surfaces PrintService event storms and recurring driver crashes, and records GOOD findings for healthy spooler state, reachable printer ports, packaged drivers, and quiet event logs.
+* **Outlook cache & data files** – Flags missing inventory and large OST caches so oversized profiles can be remediated quickly.【F:Analyzers/Heuristics/Office.ps1†L78-L117】
+* **Autodiscover DNS diagnostics** – Reports missing lookups, unexpected targets, or absent records to highlight onboarding issues for Exchange Online tenants.【F:Analyzers/Heuristics/Network/Network.ps1†L2046-L2083】
+* **Macro policies** – Detects when MOTW blocking or macro notification policies are absent, confirms macro blocking when enforced, and marks missing payloads so macro malware exposure is obvious.【F:Analyzers/Heuristics/Office.ps1†L9-L77】
+* **Protected View** – Raises issues whenever Protected View is disabled or data is missing to ensure untrusted Office documents are opened safely.【F:Analyzers/Heuristics/Office.ps1†L118-L147】
 
-## Hardware Heuristics
-- **Hardware/Removable Media – Autorun/Autoplay** – Flags medium severity when Autorun or Autoplay remains enabled by checking `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF` (or equivalent policy) and `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoAutoRun = 1`.
-- **Hardware/Removable Storage Control** – Raises medium-to-high severity when removable storage controls (such as deny write/allow read policies or BitLocker To Go requirements) are not enforced in environments where policy forbids unrestricted removable storage.
-- **Hardware/Device Manager** – Surfaces high-severity issues when drivers report error states or fail to start despite boot/system/automatic start modes, flags missing-driver scenarios (Code 28) from Device Manager problem listings, and medium severity when Device Manager marks drivers as degraded so malfunctioning hardware is highlighted quickly.
-- **Hardware/Bluetooth & Wireless Sharing** – Emits low-severity findings when Bluetooth, Wi-Fi sharing, or Nearby sharing features deviate from the required baseline on laptops.
+### Security
 
-## Storage Heuristics
-- **Storage/SMART** – Critical when SMART output contains failure keywords (Pred Fail, Bad, Caution, etc.).
-- **Storage/SMART Wear** – Surfaces medium issues when SSD wear reaches ~85% of its rated lifetime, high issues once wear exceeds ~95%, and records health checks/normals showing remaining life and temperature for each drive when SMART wear data is available.
-- **Storage/Disks** – Aggregates disk health problems (offline, read-only, non-OK operational/health status) and raises an issue at the worst severity observed across affected disks.
-- **Storage/Volumes** – Collates per-volume health warnings and emits an issue at the worst severity among those volumes.
-- **Storage/Free Space** – Issues critical warnings when free space drops below critical floors and high warnings when volumes fall under warning thresholds.
+* **Microsoft Defender** – Tracks Defender status, recent detections, tamper protection, cloud-delivered protection, and payload collection gaps to highlight antivirus health or praise compliant baselines.【F:Analyzers/Heuristics/Security.ps1†L237-L373】
+* **BitLocker** – Surfaces missing artifacts, command failures, unprotected volumes, incomplete encryption, absent recovery passwords, and healthy TPM-backed protectors so disk encryption posture is explicit.【F:Analyzers/Heuristics/Security.ps1†L407-L575】
+* **Measured boot & attestation** – Confirms TPM PCR bindings, Secure Boot confirmation, and attestation events when present, and documents the MDM requirements or data gaps when signals are missing.【F:Analyzers/Heuristics/Security.ps1†L577-L779】
+* **TPM, memory integrity, and Credential Guard** – Flags missing or uninitialized TPMs, disabled virtualization-based protection, and absent Credential Guard/LSA protection, while acknowledging healthy configurations.【F:Analyzers/Heuristics/Security.ps1†L781-L890】
+* **Kernel DMA, Smart App Control, WDAC, and App Control gaps** – Evaluates DMA protection, Smart App Control state, and Windows Defender Application Control enforcement to expose device control weaknesses or confirm policy enforcement.【F:Analyzers/Heuristics/Security.ps1†L892-L1013】
+* **Attack surface policies** – Reviews Attack Surface Reduction rules, Exploit Protection configuration, SmartScreen, NTLM hardening, PowerShell logging, autorun policies, LAPS, local admin membership, firewall profile status, LDAP/NTLM enforcement, and DHCP server hygiene, flagging missing controls and celebrating hardened configurations.【F:Analyzers/Heuristics/Security.ps1†L1015-L1464】
+
+### Active Directory
+
+* **Discovery & connectivity** – Reports missing AD diagnostics, absence of discovered domain controllers, and successful Azure AD join detection.【F:Analyzers/Heuristics/AD.ps1†L9-L40】
+* **Secure channel & SYSVOL access** – Flags broken machine secure channels, unreachable domain shares, and successful verification findings.【F:Analyzers/Heuristics/AD.ps1†L41-L78】
+* **DNS, time, and Group Policy** – Highlights DNS SRV lookup failures, public resolvers on domain clients, Kerberos time skew, manual NTP configuration, Group Policy processing failures, and records healthy DNS/time/GPO posture when all checks pass.【F:Analyzers/Heuristics/AD.ps1†L15-L72】
+
+### Services
+
+* **Artifact collection** – Raises a high-severity issue when the baseline or fallback service inventory cannot be loaded so technicians know to recollect data.【F:Analyzers/Heuristics/Services.ps1†L260-L315】
+* **Critical service probes** – Audits Windows Search, DNS Client, Network Location Awareness, Workstation, Print Spooler, RPC, WinHTTP Auto Proxy, BITS, and Office Click-to-Run services, emitting issues for missing entries, disabled or stopped services, manual misconfigurations, and praising healthy baselines with per-service evidence.【F:Analyzers/Heuristics/Services/Services.Checks.ps1†L1-L335】
+* **Automatic service outages** – Summarizes non-running automatic services and collection errors so outages surface alongside remediation clues.【F:Analyzers/Heuristics/Services.ps1†L316-L400】
+
+### Event log heuristics
+
+* **Authentication & Netlogon** – Spots Kerberos pre-authentication failures, account lockouts, and secure channel or domain join errors by mining event logs, raising issues when thresholds are exceeded and confirming healthy synchronization otherwise.【F:Analyzers/Heuristics/Events.ps1†L735-L906】【F:Analyzers/Heuristics/Events.ps1†L1293-L1426】
+* **DNS & VPN noise** – Surfaces DNS timeout bursts and VPN authentication or IKE failures so transient outages appear in the report.【F:Analyzers/Heuristics/Events.ps1†L311-L461】【F:Analyzers/Heuristics/Events.ps1†L1107-L1252】
+
+### Printing
+
+* **Collection & spooler state** – Flags missing collection artifacts, unreadable payloads, and spooler service issues while recording checks for spooler status and startup configuration.【F:Analyzers/Heuristics/Printing.ps1†L82-L144】
+* **Printer queues & health** – Reports offline default printers, stuck jobs, WSD ports, weak SNMP communities, connectivity failures, and quiet healthy queues with checks summarizing queue metrics.【F:Analyzers/Heuristics/Printing.ps1†L148-L229】
+* **Print event volume** – Counts PrintService Admin/Operational log warnings and errors, escalating when noisy and recording quiet logs as checks.【F:Analyzers/Heuristics/Printing.ps1†L187-L211】
+
+### Hardware
+
+* **Driver inventory** – Raises informational gaps when driver artifacts are missing or unreadable, correlates driver status and start modes with Device Manager evidence, and acknowledges healthy drivers when no issues are raised.【F:Analyzers/Heuristics/Hardware/InvokeHardware.ps1†L1-L160】
+* **Problem devices** – Calls out missing drivers (Code 28) and generic Device Manager problem states with the parsed evidence so failing hardware is easy to locate.【F:Analyzers/Heuristics/Hardware/InvokeHardware.ps1†L161-L210】
+
+### Storage
+
+* **Collection gaps** – Warns when storage inventories or SMART snapshots are missing so collectors can be rerun.【F:Analyzers/Heuristics/Storage.ps1†L419-L423】
+* **Disk & volume health** – Aggregates degraded disk states, unreadable inventories, and per-volume capacity checks to emit issues at the worst observed severity while publishing checks for each volume.【F:Analyzers/Heuristics/Storage.ps1†L208-L307】
+* **SMART wear & status** – Flags missing SMART data, per-disk wear nearing end of life, healthy wear percentages, and explicit SMART failure keywords to prioritize disk replacements.【F:Analyzers/Heuristics/Storage.ps1†L317-L410】
 
