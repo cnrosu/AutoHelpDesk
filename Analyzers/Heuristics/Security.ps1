@@ -88,6 +88,72 @@ function Get-RegistryValueFromEntries {
     return $null
 }
 
+function Test-FirewallPortListIncludesValue {
+    param(
+        $PortValues,
+        [int]$TargetPort
+    )
+
+    foreach ($value in (ConvertTo-List $PortValues)) {
+        if ($null -eq $value) { continue }
+        $text = [string]$value
+        if (-not $text) { continue }
+
+        $segments = $text -split ','
+        foreach ($segment in $segments) {
+            $trimmed = $segment.Trim()
+            if (-not $trimmed) { continue }
+
+            if ($trimmed -match '^(?i)any$') { return $true }
+
+            $rangeMatch = [regex]::Match($trimmed, '^(\d+)\s*-\s*(\d+)$')
+            if ($rangeMatch.Success) {
+                $start = 0
+                $end = 0
+                if ([int]::TryParse($rangeMatch.Groups[1].Value, [ref]$start) -and [int]::TryParse($rangeMatch.Groups[2].Value, [ref]$end)) {
+                    if ($TargetPort -ge [Math]::Min($start, $end) -and $TargetPort -le [Math]::Max($start, $end)) {
+                        return $true
+                    }
+                }
+                continue
+            }
+
+            $parsed = 0
+            if ([int]::TryParse($trimmed, [ref]$parsed)) {
+                if ($parsed -eq $TargetPort) { return $true }
+            }
+        }
+    }
+
+    return $false
+}
+
+function Test-FirewallRemoteAddressIsAny {
+    param($AddressValues)
+
+    $sawValue = $false
+    foreach ($value in (ConvertTo-List $AddressValues)) {
+        if ($null -eq $value) { continue }
+        $sawValue = $true
+        $text = [string]$value
+        if (-not $text) { continue }
+        $segments = $text -split ','
+        foreach ($segment in $segments) {
+            $trimmed = $segment.Trim()
+            if (-not $trimmed) { continue }
+            $upper = $null
+            try { $upper = $trimmed.ToUpperInvariant() } catch { $upper = $trimmed.ToUpper() }
+
+            if ($upper -eq 'ANY' -or $upper -eq '*' -or $upper -eq 'ANY IP ADDRESS') { return $true }
+            if ($upper -eq '0.0.0.0/0' -or $upper -eq '::/0') { return $true }
+            if ($upper -eq '0.0.0.0-255.255.255.255') { return $true }
+        }
+    }
+
+    if (-not $sawValue) { return $false }
+    return $false
+}
+
 function ConvertTo-NullablePolicyInt {
     param($Value)
 
@@ -403,6 +469,126 @@ function Invoke-SecurityHeuristics {
             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed, so the network defense posture is unknown.' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
+        }
+
+        if ($payload.Rules) {
+            if ($payload.Rules.PSObject -and $payload.Rules.PSObject.Properties['Error'] -and $payload.Rules.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall rule inventory failed, so risky allow rules may be undetected.' -Evidence $payload.Rules.Error -Subcategory 'Windows Firewall'
+            } else {
+                $smbRiskRules = [System.Collections.Generic.List[object]]::new()
+                foreach ($rule in (ConvertTo-List $payload.Rules)) {
+                    if (-not $rule) { continue }
+
+                    $enabled = $null
+                    if ($rule.PSObject.Properties['Enabled']) {
+                        $enabled = ConvertTo-NullableBool $rule.Enabled
+                    }
+                    if ($enabled -eq $false) { continue }
+
+                    $direction = $null
+                    if ($rule.PSObject.Properties['Direction']) {
+                        $direction = [string]$rule.Direction
+                    }
+                    if (-not $direction -or ($direction -notmatch '(?i)out')) { continue }
+
+                    $action = $null
+                    if ($rule.PSObject.Properties['Action']) {
+                        $action = [string]$rule.Action
+                    }
+                    if (-not $action -or ($action -notmatch '(?i)allow')) { continue }
+
+                    $portFilters = @()
+                    if ($rule.PSObject.Properties['PortFilters']) {
+                        $portFilters = ConvertTo-List $rule.PortFilters
+                    }
+                    if (-not $portFilters -or $portFilters.Count -eq 0) { continue }
+
+                    $matchesPort = $false
+                    foreach ($filter in $portFilters) {
+                        if (-not $filter) { continue }
+                        $protocol = $null
+                        if ($filter.PSObject.Properties['Protocol']) { $protocol = [string]$filter.Protocol }
+                        if (-not $protocol -or ($protocol -notmatch '(?i)tcp')) { continue }
+
+                        $remotePortValues = $null
+                        if ($filter.PSObject.Properties['RemotePort']) { $remotePortValues = $filter.RemotePort }
+                        if (Test-FirewallPortListIncludesValue $remotePortValues 445) {
+                            $matchesPort = $true
+                            break
+                        }
+                    }
+                    if (-not $matchesPort) { continue }
+
+                    $addressFilters = @()
+                    if ($rule.PSObject.Properties['AddressFilters']) {
+                        $addressFilters = ConvertTo-List $rule.AddressFilters
+                    }
+                    if (-not $addressFilters -or $addressFilters.Count -eq 0) { continue }
+
+                    $allowsAnyRemote = $false
+                    foreach ($addressFilter in $addressFilters) {
+                        if (-not $addressFilter) { continue }
+                        $remoteAddresses = $null
+                        if ($addressFilter.PSObject.Properties['RemoteAddress']) { $remoteAddresses = $addressFilter.RemoteAddress }
+                        if (Test-FirewallRemoteAddressIsAny $remoteAddresses) {
+                            $allowsAnyRemote = $true
+                            break
+                        }
+                    }
+                    if (-not $allowsAnyRemote) { continue }
+
+                    $smbRiskRules.Add($rule) | Out-Null
+                }
+
+                if ($smbRiskRules.Count -gt 0) {
+                    $evidenceLines = [System.Collections.Generic.List[string]]::new()
+                    foreach ($rule in $smbRiskRules) {
+                        $displayName = if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { 'Unnamed rule' }
+                        $profile = if ($rule.PSObject.Properties['Profile']) { [string]$rule.Profile } else { 'Any' }
+                        $policyStore = if ($rule.PSObject.Properties['PolicyStore']) { [string]$rule.PolicyStore } else { 'Unknown store' }
+
+                        $remotePortText = 'Unknown'
+                        if ($rule.PSObject.Properties['PortFilters']) {
+                            $portTexts = [System.Collections.Generic.List[string]]::new()
+                            foreach ($filter in (ConvertTo-List $rule.PortFilters)) {
+                                if (-not $filter) { continue }
+                                if (-not ($filter.PSObject.Properties['RemotePort'])) { continue }
+                                $parts = @()
+                                foreach ($value in (ConvertTo-List $filter.RemotePort)) {
+                                    if ($null -eq $value) { continue }
+                                    $parts += [string]$value
+                                }
+                                if ($parts.Count -gt 0) {
+                                    $portTexts.Add(($parts -join ',')) | Out-Null
+                                }
+                            }
+                            if ($portTexts.Count -gt 0) { $remotePortText = ($portTexts.ToArray() -join '; ') }
+                        }
+
+                        $remoteAddressText = 'Any'
+                        if ($rule.PSObject.Properties['AddressFilters']) {
+                            $addressTexts = [System.Collections.Generic.List[string]]::new()
+                            foreach ($filter in (ConvertTo-List $rule.AddressFilters)) {
+                                if (-not $filter) { continue }
+                                if (-not ($filter.PSObject.Properties['RemoteAddress'])) { continue }
+                                $parts = @()
+                                foreach ($value in (ConvertTo-List $filter.RemoteAddress)) {
+                                    if ($null -eq $value) { continue }
+                                    $parts += [string]$value
+                                }
+                                if ($parts.Count -gt 0) {
+                                    $addressTexts.Add(($parts -join ',')) | Out-Null
+                                }
+                            }
+                            if ($addressTexts.Count -gt 0) { $remoteAddressText = ($addressTexts.ToArray() -join '; ') }
+                        }
+
+                        $evidenceLines.Add(('{0} (Profile: {1}; RemotePort: {2}; RemoteAddress: {3}; Policy: {4})' -f $displayName, $profile, $remotePortText, $remoteAddressText, $policyStore)) | Out-Null
+                    }
+
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Outbound SMB (TCP 445) is allowed to any remote host, exposing file shares to the internet.' -Evidence ($evidenceLines -join "`n") -Subcategory 'Windows Firewall' -CheckId 'Security/FirewallOutboundSmb'
+                }
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
