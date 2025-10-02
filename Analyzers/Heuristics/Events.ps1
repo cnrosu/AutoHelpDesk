@@ -179,6 +179,29 @@ function Normalize-EventsHostName {
     return $value.ToUpperInvariant()
 }
 
+function Normalize-EventsSid {
+    param([string]$Sid)
+
+    if ([string]::IsNullOrWhiteSpace($Sid)) { return $null }
+
+    return $Sid.Trim().ToUpperInvariant()
+}
+
+function Get-EventsSidTail {
+    param([string]$Sid)
+
+    if ([string]::IsNullOrWhiteSpace($Sid)) { return $null }
+
+    $normalized = Normalize-EventsSid -Sid $Sid
+    if (-not $normalized) { return $null }
+
+    if ($normalized -match 'S-\d-(?:\d+-)+(?<tail>\d+)$') {
+        return $matches['tail']
+    }
+
+    return $null
+}
+
 function ConvertTo-EventsMaskedUser {
     param([string]$Value)
 
@@ -277,6 +300,294 @@ function Get-EventsCurrentDeviceName {
     }
 
     return $null
+}
+
+function Invoke-EventsUserProfileChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        $UserProfileService
+    )
+
+    Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'Starting user profile service heuristics evaluation'
+
+    if (-not $UserProfileService) { return }
+
+    $logName = $null
+    if ($UserProfileService.PSObject.Properties['LogName']) {
+        $logName = [string]$UserProfileService.LogName
+    }
+
+    $usedFallback = $false
+    if ($UserProfileService.PSObject.Properties['UsedFallback']) {
+        $usedFallback = [bool]$UserProfileService.UsedFallback
+    }
+
+    $eventsContainer = $null
+    if ($UserProfileService.PSObject.Properties['Events']) {
+        $eventsContainer = $UserProfileService.Events
+    }
+
+    $operationalData = $null
+    if ($UserProfileService.PSObject.Properties['Operational']) {
+        $operationalData = $UserProfileService.Operational
+    }
+
+    $systemData = $null
+    if ($UserProfileService.PSObject.Properties['System']) {
+        $systemData = $UserProfileService.System
+    }
+
+    $registryData = $null
+    if ($UserProfileService.PSObject.Properties['Registry']) {
+        $registryData = $UserProfileService.Registry
+    }
+
+    $eventErrors = New-Object System.Collections.Generic.List[string]
+    if ($eventsContainer -and $eventsContainer.PSObject.Properties['Error'] -and $eventsContainer.Error) {
+        $eventErrors.Add([string]$eventsContainer.Error) | Out-Null
+    }
+
+    if (-not $eventsContainer -or ($eventsContainer.Error -and ((-not $eventsContainer.PSObject.Properties['Events']) -or -not $eventsContainer.Events))) {
+        if ($operationalData -and $operationalData.PSObject.Properties['Error'] -and $operationalData.Error) {
+            $eventErrors.Add([string]$operationalData.Error) | Out-Null
+        }
+        if ($systemData -and $systemData.PSObject.Properties['Error'] -and $systemData.Error) {
+            $eventErrors.Add([string]$systemData.Error) | Out-Null
+        }
+
+        $evidence = $null
+        if ($eventErrors.Count -gt 0) {
+            $evidence = (@($eventErrors | Sort-Object -Unique) -join '; ')
+        }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'User profile event data unavailable, so temporary profile issues may be hidden.' -Evidence $evidence -Subcategory 'User Profile'
+        return
+    }
+
+    $eventsRaw = @()
+    if ($eventsContainer.PSObject.Properties['Events']) {
+        $eventsRaw = @($eventsContainer.Events)
+    }
+
+    $registryProfiles = @()
+    $registryError = $null
+    if ($registryData) {
+        if ($registryData.PSObject.Properties['Profiles']) {
+            $registryProfiles = @($registryData.Profiles)
+        }
+
+        if ($registryData.PSObject.Properties['Error']) {
+            $registryError = $registryData.Error
+        }
+    }
+
+    $profileMap = @{}
+    foreach ($profile in $registryProfiles) {
+        if (-not $profile) { continue }
+
+        $sidRaw = $null
+        if ($profile.PSObject.Properties['Sid']) {
+            $sidRaw = $profile.Sid
+        }
+
+        $sidNormalized = Normalize-EventsSid -Sid $sidRaw
+        if (-not $sidNormalized) { continue }
+
+        $profilePath = $null
+        if ($profile.PSObject.Properties['ProfileImagePath']) {
+            $profilePath = [string]$profile.ProfileImagePath
+        }
+
+        $stateValue = $null
+        if ($profile.PSObject.Properties['State']) {
+            $stateRaw = $profile.State
+            if ($stateRaw -is [int]) {
+                $stateValue = [int]$stateRaw
+            } elseif ($stateRaw) {
+                $parsedState = 0
+                if ([int]::TryParse([string]$stateRaw, [ref]$parsedState)) {
+                    $stateValue = $parsedState
+                }
+            }
+        }
+
+        $profileMap[$sidNormalized] = [pscustomobject]@{
+            ProfileImagePath = if ($profilePath) { $profilePath } else { $null }
+            State            = $stateValue
+        }
+    }
+
+    $registryHealthy = $false
+    if ($profileMap.Count -gt 0 -and -not $registryError) {
+        $registryHealthy = $true
+        foreach ($entry in $profileMap.GetEnumerator()) {
+            $state = $entry.Value.State
+            if ($null -ne $state -and $state -ne 0) {
+                $registryHealthy = $false
+                break
+            }
+        }
+    }
+
+    $parsedEvents = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($event in $eventsRaw) {
+        if (-not $event) { continue }
+
+        $idValue = $null
+        if ($event.PSObject.Properties['Id']) {
+            $rawId = $event.Id
+            if ($rawId -is [int]) {
+                $idValue = [int]$rawId
+            } elseif ($rawId) {
+                $parsedId = 0
+                if ([int]::TryParse([string]$rawId, [ref]$parsedId)) {
+                    $idValue = $parsedId
+                }
+            }
+        }
+
+        if ($null -eq $idValue) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) {
+            $eventData = $event.EventData
+        }
+
+        $message = $null
+        if ($event.PSObject.Properties['Message']) {
+            $message = [string]$event.Message
+        }
+
+        $sidCandidate = $null
+        foreach ($name in @('Sid','UserSid','SecurityId','SubjectUserSid','TargetUserSid')) {
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $name
+            if ($value) {
+                $sidCandidate = [string]$value
+                break
+            }
+        }
+
+        if (-not $sidCandidate -and $message) {
+            $sidMatch = [regex]::Match($message, 'S-1-[0-9-]+')
+            if ($sidMatch.Success) {
+                $sidCandidate = $sidMatch.Value
+            }
+        }
+
+        $sidNormalized = Normalize-EventsSid -Sid $sidCandidate
+        $sidTail = Get-EventsSidTail -Sid $sidNormalized
+
+        $profilePath = $null
+        foreach ($name in @('ProfileImagePath','ProfilePath','FullProfilePath')) {
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $name
+            if ($value) {
+                $profilePath = [string]$value
+                break
+            }
+        }
+
+        if (-not $profilePath -and $sidNormalized -and $profileMap.ContainsKey($sidNormalized)) {
+            $profileEntry = $profileMap[$sidNormalized]
+            if ($profileEntry -and $profileEntry.PSObject.Properties['ProfileImagePath']) {
+                $profilePath = $profileEntry.ProfileImagePath
+            }
+        }
+
+        $parsedEvents.Add([pscustomobject]@{
+            Id          = $idValue
+            TimeUtc     = $timeUtc
+            Sid         = $sidNormalized
+            SidTail     = $sidTail
+            ProfilePath = if ($profilePath) { $profilePath } else { $null }
+        }) | Out-Null
+    }
+
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $issueWindowStart = $nowUtc.AddDays(-7)
+    $issueIds = @(1511, 1515)
+
+    $issueEvents = @($parsedEvents | Where-Object { $issueIds -contains $_.Id -and $_.TimeUtc -and $_.TimeUtc -ge $issueWindowStart })
+
+    if ($issueEvents.Count -gt 0) {
+        $grouped = $issueEvents | Group-Object -Property { if ($_.Sid) { $_.Sid } elseif ($_.ProfilePath) { $_.ProfilePath } else { 'unknown' } }
+        $evidenceEntries = New-Object System.Collections.Generic.List[object]
+
+        foreach ($group in $grouped) {
+            if (-not $group -or -not $group.Group) { continue }
+            $latest = $group.Group | Sort-Object -Property { if ($_.TimeUtc) { $_.TimeUtc } else { [datetime]::MinValue } } -Descending | Select-Object -First 1
+            if (-not $latest) { continue }
+
+            $entrySidTail = $latest.SidTail
+            if (-not $entrySidTail -and $latest.Sid) {
+                $entrySidTail = Get-EventsSidTail -Sid $latest.Sid
+            }
+
+            if (-not $entrySidTail -and $latest.Sid) {
+                $entrySidTail = $latest.Sid
+            }
+
+            if (-not $entrySidTail) {
+                $entrySidTail = 'unknown'
+            }
+
+            $evidenceEntry = [ordered]@{ sidTail = $entrySidTail }
+
+            if ($latest.ProfilePath) {
+                $evidenceEntry['profilePath'] = $latest.ProfilePath
+            }
+
+            if ($latest.TimeUtc) {
+                $evidenceEntry['lastUtc'] = $latest.TimeUtc.ToString('o')
+            }
+
+            $evidenceEntries.Add([pscustomobject]$evidenceEntry) | Out-Null
+        }
+
+        $evidenceJson = $evidenceEntries | ConvertTo-Json -Depth 4 -Compress
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Temporary profile loaded' -Evidence $evidenceJson -Subcategory 'User Profile'
+    }
+
+    $monitoredIds = @(1511, 1515, 1518, 1530, 1533)
+    $healthWindowStart = $nowUtc.AddDays(-14)
+
+    $recentMonitored = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($evt in $parsedEvents) {
+        if (-not $evt) { continue }
+        if (-not ($monitoredIds -contains $evt.Id)) { continue }
+
+        if ($evt.TimeUtc) {
+            if ($evt.TimeUtc -ge $healthWindowStart) {
+                $recentMonitored.Add($evt) | Out-Null
+            }
+        } else {
+            $recentMonitored.Add($evt) | Out-Null
+        }
+    }
+
+    $summary = [ordered]@{
+        LogName         = $logName
+        UsedFallback    = $usedFallback
+        EventsInspected = $parsedEvents.Count
+        IssueEvents7d   = $issueEvents.Count
+        RegistryProfiles = $profileMap.Count
+        RegistryHealthy = $registryHealthy
+        RecentMonitored = $recentMonitored.Count
+        RegistryError   = $registryError
+    }
+
+    Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'User profile analysis summary' -Data $summary
+
+    if (($recentMonitored.Count -eq 0) -and $registryHealthy) {
+        Add-CategoryNormal -CategoryResult $Result -Title 'Profiles healthy — no 1511/1515/1518/1530/1533 in last 14 days and ProfileList states normal.' -Subcategory 'User Profile'
+    }
 }
 
 function Invoke-EventsAuthenticationChecks {
@@ -767,6 +1078,10 @@ function Invoke-EventsHeuristics {
 
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+            }
+
+            if ($payload.PSObject.Properties['UserProfileService']) {
+                Invoke-EventsUserProfileChecks -Result $result -UserProfileService $payload.UserProfileService
             }
         }
     } else {

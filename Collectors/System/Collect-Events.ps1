@@ -232,6 +232,133 @@ function Get-W32tmStatus {
     return [pscustomobject]$result
 }
 
+function Get-UserProfileRegistryEntries {
+    $result = [ordered]@{
+        BasePath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList'
+        Profiles = @()
+        Error    = $null
+    }
+
+    try {
+        if (-not (Test-Path -LiteralPath $result.BasePath)) {
+            return [pscustomobject]$result
+        }
+
+        $entries = Get-ChildItem -LiteralPath $result.BasePath -ErrorAction Stop
+        $profileList = New-Object System.Collections.Generic.List[object]
+
+        foreach ($entry in $entries) {
+            if (-not $entry) { continue }
+
+            $sid = $null
+            if ($entry.PSObject.Properties['PSChildName']) {
+                $sid = [string]$entry.PSChildName
+            }
+
+            $properties = $null
+            try {
+                $properties = Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction Stop
+            } catch {
+                $properties = $null
+            }
+
+            $profileImagePath = $null
+            $state = $null
+            $flags = $null
+            $refCount = $null
+
+            if ($properties) {
+                foreach ($name in @('ProfileImagePath','ProfilePath')) {
+                    if ($properties.PSObject.Properties[$name]) {
+                        $value = $properties.$name
+                        if ($value) {
+                            $profileImagePath = [string]$value
+                            break
+                        }
+                    }
+                }
+
+                foreach ($name in @('State','Flags','RefCount')) {
+                    if ($properties.PSObject.Properties[$name]) {
+                        try {
+                            $value = [int]$properties.$name
+                        } catch {
+                            $value = $properties.$name
+                        }
+
+                        switch ($name) {
+                            'State'    { $state = $value }
+                            'Flags'    { $flags = $value }
+                            'RefCount' { $refCount = $value }
+                        }
+                    }
+                }
+            }
+
+            $lastWrite = $null
+            try {
+                if ($entry.PSObject.Properties['LastWriteTime']) {
+                    $lastWrite = $entry.LastWriteTime
+                    if ($lastWrite) {
+                        $lastWrite = $lastWrite.ToUniversalTime().ToString('o')
+                    }
+                }
+            } catch {
+                $lastWrite = $null
+            }
+
+            $profileList.Add([pscustomobject]@{
+                Sid             = $sid
+                ProfileImagePath = $profileImagePath
+                State           = $state
+                Flags           = $flags
+                RefCount        = $refCount
+                LastWriteTimeUtc = $lastWrite
+            }) | Out-Null
+        }
+
+        $result.Profiles = $profileList.ToArray()
+    } catch {
+        $result.Error = $_.Exception.Message
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-UserProfileServiceData {
+    $eventIds = @(1511, 1515, 1518, 1530, 1533)
+    $windowDays = 14
+    $startTime = (Get-Date).AddDays(-$windowDays)
+
+    $operational = Get-EventRecords -LogName 'Microsoft-Windows-User Profile Service/Operational' -EventIds $eventIds -StartTime $startTime -MaxEvents 400
+    $selectedLog = $operational
+    $selectedName = 'Microsoft-Windows-User Profile Service/Operational'
+    $usedFallback = $false
+    $systemLog = $null
+
+    if ($operational -and $operational.Error) {
+        $systemLog = Get-EventRecords -LogName 'System' -EventIds $eventIds -StartTime $startTime -MaxEvents 400
+        if ($systemLog -and -not $systemLog.Error) {
+            $selectedLog = $systemLog
+            $selectedName = 'System'
+            $usedFallback = $true
+        }
+    }
+
+    $registry = Get-UserProfileRegistryEntries
+
+    return [pscustomobject]@{
+        WindowDays  = $windowDays
+        EventIds    = $eventIds
+        LogName     = $selectedName
+        Events      = $selectedLog
+        UsedFallback = $usedFallback
+        Operational = $operational
+        System      = $systemLog
+        Registry    = $registry
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
@@ -243,6 +370,7 @@ function Invoke-Main {
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
         }
+        UserProfileService = Get-UserProfileServiceData
     }
 
     $result = New-CollectorMetadata -Payload $payload
