@@ -765,6 +765,89 @@ function Invoke-EventsHeuristics {
                 }
             }
 
+            if ($payload.PSObject.Properties['Servicing']) {
+                $servicingData = $payload.Servicing
+                Write-HeuristicDebug -Source 'Events/Servicing' -Message 'Evaluating servicing diagnostics'
+
+                $servicingEventsContainer = $null
+                if ($servicingData -and $servicingData.PSObject.Properties['ServicingOperations']) {
+                    $servicingEventsContainer = $servicingData.ServicingOperations
+                }
+
+                $servicingEvents = New-Object System.Collections.Generic.List[pscustomobject]
+                if ($servicingEventsContainer -and -not $servicingEventsContainer.Error -and $servicingEventsContainer.PSObject.Properties['Events']) {
+                    foreach ($evt in @($servicingEventsContainer.Events)) {
+                        if ($evt) { $servicingEvents.Add($evt) | Out-Null }
+                    }
+                }
+
+                $servicing1016Count = $servicingEvents.Count
+
+                $latestEventUtc = $null
+                if ($servicing1016Count -gt 0) {
+                    foreach ($evt in $servicingEvents) {
+                        if ($evt.PSObject.Properties['TimeCreated']) {
+                            $eventTime = ConvertTo-EventsDateTimeUtc -Value $evt.TimeCreated
+                            if ($eventTime) {
+                                if (-not $latestEventUtc -or $eventTime -gt $latestEventUtc) { $latestEventUtc = $eventTime }
+                            }
+                        }
+                    }
+                }
+
+                $cbsTail = $null
+                if ($servicingData -and $servicingData.PSObject.Properties['CbsLogTail']) {
+                    $cbsTail = $servicingData.CbsLogTail
+                }
+
+                $cbsTailMatches = New-Object System.Collections.Generic.List[string]
+                if ($cbsTail -and $cbsTail.PSObject.Properties['TailLines']) {
+                    foreach ($line in @($cbsTail.TailLines)) {
+                        if (-not $line) { continue }
+                        if ($line -match '(?i)corrupt' -or $line -match '(?i)cannot\s+repair') {
+                            $cbsTailMatches.Add([string]$line) | Out-Null
+                        }
+                    }
+                }
+
+                $cbsTailSnippet = $null
+                if ($cbsTailMatches.Count -gt 0) {
+                    $sampleLines = $cbsTailMatches | Select-Object -First 5
+                    $cbsTailSnippet = ($sampleLines -join "`n")
+                }
+
+                $cbsLastWriteUtc = $null
+                if ($cbsTail -and $cbsTail.PSObject.Properties['LastWriteTimeUtc'] -and $cbsTail.LastWriteTimeUtc) {
+                    $cbsLastWriteUtc = ConvertTo-EventsDateTimeUtc -Value $cbsTail.LastWriteTimeUtc
+                }
+
+                $lastUtc = $latestEventUtc
+                if ($cbsLastWriteUtc) {
+                    if (-not $lastUtc -or $cbsLastWriteUtc -gt $lastUtc) { $lastUtc = $cbsLastWriteUtc }
+                }
+
+                $issueTriggered = ($servicing1016Count -gt 0) -or ($cbsTailMatches.Count -gt 0)
+
+                if ($issueTriggered) {
+                    $lastUtcString = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+
+                    $evidence = [ordered]@{
+                        servicing1016Count = $servicing1016Count
+                        cbsTailSnippet     = $cbsTailSnippet
+                        lastUtc            = $lastUtcString
+                    }
+
+                    Write-HeuristicDebug -Source 'Events/Servicing' -Message 'Servicing stack corruption indicators found' -Data ([ordered]@{
+                        Servicing1016Count = $servicing1016Count
+                        CbsTailMatches     = $cbsTailMatches.Count
+                        LastUtc            = $lastUtcString
+                    })
+
+                    $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Servicing stack reports corruption' -Evidence $evidenceJson -Subcategory 'Servicing Stack / CBS'
+                }
+            }
+
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
             }

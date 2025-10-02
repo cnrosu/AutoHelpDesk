@@ -193,6 +193,97 @@ function Get-TimeServiceEvents {
     return Get-EventRecords -LogName 'Microsoft-Windows-Time-Service/Operational' -EventIds @(29, 36, 47, 50) -StartTime $startTime -MaxEvents 400
 }
 
+function Redact-CbsLogLine {
+    param(
+        [string]$Line
+    )
+
+    if (-not $Line) { return $Line }
+
+    $text = [string]$Line
+
+    try {
+        $text = [regex]::Replace($text, '(?i)[A-Z]:\\Users\\[^\\\r\n"]+', 'C:\Users\[REDACTED]')
+    } catch {
+    }
+
+    return $text
+}
+
+function Get-CbsLogTail {
+    $result = [ordered]@{
+        Path             = $null
+        Exists           = $false
+        TailLines        = @()
+        LastWriteTimeUtc = $null
+        Error            = $null
+    }
+
+    $windowsFolder = $env:windir
+    if (-not $windowsFolder) { return [pscustomobject]$result }
+
+    $path = Join-Path -Path $windowsFolder -ChildPath 'Logs\\CBS\\CBS.log'
+    $result.Path = $path
+
+    if (-not (Test-Path -LiteralPath $path)) { return [pscustomobject]$result }
+
+    $result.Exists = $true
+
+    try {
+        $item = Get-Item -LiteralPath $path -ErrorAction Stop
+        if ($item -and $item.PSObject.Properties['LastWriteTimeUtc']) {
+            try {
+                $result.LastWriteTimeUtc = $item.LastWriteTimeUtc.ToString('o')
+            } catch {
+                $result.LastWriteTimeUtc = $item.LastWriteTimeUtc.ToString()
+            }
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+        return [pscustomobject]$result
+    }
+
+    try {
+        $lines = Get-Content -LiteralPath $path -Tail 200 -ErrorAction Stop
+        if ($lines) {
+            $sanitized = foreach ($line in $lines) { Redact-CbsLogLine -Line $line }
+            $result.TailLines = @($sanitized)
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-ServicingOperationsEvents {
+    $startTime = (Get-Date).AddDays(-14)
+
+    $result = [ordered]@{
+        LogName    = 'Microsoft-Windows-Servicing/Operations'
+        EventId    = 1016
+        WindowDays = 14
+        Events     = @()
+        Error      = $null
+    }
+
+    $filter = @{ LogName = $result.LogName; Id = $result.EventId }
+    if ($startTime) { $filter['StartTime'] = $startTime }
+
+    try {
+        $eventRecords = Get-WinEvent -FilterHashtable $filter -MaxEvents 200 -ErrorAction Stop
+        if ($eventRecords) {
+            $ordered = @($eventRecords) | Sort-Object TimeCreated
+            $converted = foreach ($event in $ordered) { ConvertTo-EventPayload -Event $event }
+            $result.Events = @($converted)
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+    }
+
+    return [pscustomobject]$result
+}
+
 function Get-W32tmStatus {
     $result = [ordered]@{
         CommandPath = $null
@@ -242,6 +333,11 @@ function Invoke-Main {
             TimeServiceEvents       = Get-TimeServiceEvents
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
+        }
+        Servicing = [ordered]@{
+            WindowDays          = 14
+            ServicingOperations = Get-ServicingOperationsEvents
+            CbsLogTail          = Get-CbsLogTail
         }
     }
 
