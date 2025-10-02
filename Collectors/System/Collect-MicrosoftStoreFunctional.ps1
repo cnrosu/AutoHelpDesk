@@ -132,13 +132,13 @@ function Test-StoreEndpointReachability {
     $hosts = 'storeedgefd.dsx.mp.microsoft.com','login.live.com','dl.delivery.mp.microsoft.com'
     $results = New-Object System.Collections.Generic.List[object]
 
-    foreach ($host in $hosts) {
+    foreach ($endpoint in $hosts) {
         $dnsOk = $false
         $tcpOk = $false
         $rttMs = $null
 
         try {
-            $null = Resolve-DnsName -Name $host -ErrorAction Stop
+            $null = Resolve-DnsName -Name $endpoint -ErrorAction Stop
             $dnsOk = $true
         } catch [System.Management.Automation.CommandNotFoundException] {
             $dnsOk = $null
@@ -147,7 +147,7 @@ function Test-StoreEndpointReachability {
         }
 
         try {
-            $test = Test-NetConnection -ComputerName $host -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue -ErrorAction Stop
+            $test = Test-NetConnection -ComputerName $endpoint -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue -ErrorAction Stop
             if ($test) {
                 if ($test.PSObject.Properties['TcpTestSucceeded']) {
                     $tcpOk = [bool]$test.TcpTestSucceeded
@@ -165,10 +165,11 @@ function Test-StoreEndpointReachability {
         }
 
         $results.Add([pscustomobject]@{
-            host    = $host
-            dnsOk   = $dnsOk
+            host     = $endpoint
+            dnsOk    = $dnsOk
             tcp443Ok = $tcpOk
-            rttMs   = $rttMs
+            rttMs    = $rttMs
+
         }) | Out-Null
     }
 
