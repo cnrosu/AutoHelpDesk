@@ -164,14 +164,22 @@ function Get-FirewallRules {
 }
 
 function Invoke-Main {
+    $profiles = Get-FirewallProfiles
+    $rules = Get-FirewallRules
+
     $payload = [ordered]@{
-        Profiles = Get-FirewallProfiles
-        Rules    = Get-FirewallRules
+        Profiles = $profiles
+        Rules    = $rules
     }
 
     $result = New-CollectorMetadata -Payload $payload
     $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'firewall.json' -Data $result -Depth 6
+
+    $profileResult = New-CollectorMetadata -Payload $profiles
+    $profilePath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'firewall.profile.json' -Data $profileResult -Depth 6
+
     Write-Output $outputPath
+    Write-Output $profilePath
 }
 
 Invoke-Main

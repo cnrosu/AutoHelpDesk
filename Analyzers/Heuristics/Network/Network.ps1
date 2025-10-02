@@ -352,6 +352,160 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function Invoke-NetworkFirewallProfileAnalysis {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $CategoryResult
+    )
+
+    $subcategory = 'Windows Firewall'
+    $collectorMissingCheckId = 'fw.collector.missing'
+    $disabledCheckId = 'fw.profile.disabled'
+    $enabledCheckId = 'fw.profile.enabled'
+    $errorCheckId = 'fw.profile.error'
+    $unparsedCheckId = 'fw.profile.unparsed'
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall.profile'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall.profile artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
+
+    if (-not $artifact) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId
+        return
+    }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    Write-HeuristicDebug -Source 'Network' -Message 'Evaluating firewall.profile payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
+
+    if (-not $payload) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data missing, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $errorCheckId
+        return
+    }
+
+    $profilesRaw = $payload
+    if ($payload.PSObject -and $payload.PSObject.Properties['Profiles']) {
+        $profilesRaw = $payload.Profiles
+    }
+
+    $payloadError = $null
+    if ($profilesRaw -and $profilesRaw.PSObject -and $profilesRaw.PSObject.Properties['Error'] -and $profilesRaw.Error) {
+        $payloadError = [string]$profilesRaw.Error
+    } elseif ($payload.PSObject -and $payload.PSObject.Properties['Error'] -and $payload.Error) {
+        $payloadError = [string]$payload.Error
+    }
+
+    if ($payloadError) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.' -Evidence $payloadError -Subcategory $subcategory -CheckId $errorCheckId
+        return
+    }
+
+    $profileEntries = ConvertTo-NetworkArray $profilesRaw
+    Write-HeuristicDebug -Source 'Network' -Message 'Parsed firewall profile entries' -Data ([ordered]@{
+        Count = $profileEntries.Count
+    })
+
+    if ($profileEntries.Count -eq 0) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data empty, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $unparsedCheckId
+        return
+    }
+
+    $recognizedProfiles = New-Object System.Collections.Generic.List[pscustomobject]
+    $disabledProfiles = New-Object System.Collections.Generic.List[string]
+    $unparsedEntries = New-Object System.Collections.Generic.List[object]
+
+    foreach ($profile in $profileEntries) {
+        if (-not $profile) { continue }
+
+        $hasNameProperty = ($profile.PSObject -and $profile.PSObject.Properties['Name'])
+        if (-not $hasNameProperty) {
+            $unparsedEntries.Add($profile) | Out-Null
+            continue
+        }
+
+        $name = if ($profile.Name) { [string]$profile.Name } else { 'Profile' }
+
+        $enabledState = $null
+        if ($profile.PSObject.Properties['Enabled']) {
+            $enabledValue = $profile.Enabled
+            if ($enabledValue -is [bool]) {
+                $enabledState = $enabledValue
+            } elseif ($enabledValue -is [int]) {
+                $enabledState = ($enabledValue -ne 0)
+            } else {
+                $enabledText = [string]$enabledValue
+                if (-not [string]::IsNullOrWhiteSpace($enabledText)) {
+                    $normalized = $enabledText.Trim()
+                    try {
+                        $normalized = $normalized.ToLowerInvariant()
+                    } catch {
+                        $normalized = $normalized.ToLower()
+                    }
+
+                    if ($normalized -in @('true', '1', 'enabled', 'on', 'yes')) {
+                        $enabledState = $true
+                    } elseif ($normalized -in @('false', '0', 'disabled', 'off', 'no')) {
+                        $enabledState = $false
+                    }
+                }
+            }
+        }
+
+        if ($enabledState -eq $false) {
+            $disabledProfiles.Add($name) | Out-Null
+        }
+
+        $summary = [ordered]@{
+            Name    = $name
+            Enabled = if ($profile.PSObject.Properties['Enabled']) { $profile.Enabled } else { $null }
+        }
+
+        if ($profile.PSObject.Properties['DefaultInboundAction']) {
+            $summary['DefaultInboundAction'] = [string]$profile.DefaultInboundAction
+        }
+        if ($profile.PSObject.Properties['DefaultOutboundAction']) {
+            $summary['DefaultOutboundAction'] = [string]$profile.DefaultOutboundAction
+        }
+        if ($profile.PSObject.Properties['NotifyOnListen']) {
+            $summary['NotifyOnListen'] = $profile.NotifyOnListen
+        }
+        if ($profile.PSObject.Properties['AllowInboundRules']) {
+            $summary['AllowInboundRules'] = $profile.AllowInboundRules
+        }
+        if ($profile.PSObject.Properties['AllowLocalFirewallRules']) {
+            $summary['AllowLocalFirewallRules'] = $profile.AllowLocalFirewallRules
+        }
+        if ($profile.PSObject.Properties['AllowLocalIPsecRules']) {
+            $summary['AllowLocalIPsecRules'] = $profile.AllowLocalIPsecRules
+        }
+
+        $recognizedProfiles.Add([pscustomobject]$summary) | Out-Null
+    }
+
+    if ($recognizedProfiles.Count -eq 0) {
+        $unparsedEvidence = if ($unparsedEntries.Count -gt 0) { $unparsedEntries.ToArray() } else { $profilesRaw }
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data could not be parsed, so firewall enforcement is unknown.' -Evidence $unparsedEvidence -Subcategory $subcategory -CheckId $unparsedCheckId
+        return
+    }
+
+    $evidence = [ordered]@{
+        Profiles = $recognizedProfiles.ToArray()
+        Artifact = $profilesRaw
+    }
+
+    if ($disabledProfiles.Count -gt 0) {
+        $evidence['DisabledProfiles'] = $disabledProfiles.ToArray()
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title 'Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.' -Evidence $evidence -Subcategory $subcategory -CheckId $disabledCheckId
+    } else {
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'PASS: All firewall profiles enabled (Domain, Private, Public).' -Evidence $evidence -Subcategory $subcategory -CheckId $enabledCheckId
+    }
+}
+
 function ConvertTo-LldpNeighborRecords {
     param($Payload)
 
@@ -1951,6 +2105,8 @@ function Invoke-NetworkHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Network'
+
+    Invoke-NetworkFirewallProfileAnalysis -Context $Context -CategoryResult $result
 
     $computerSystem = $null
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'

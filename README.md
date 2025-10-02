@@ -97,6 +97,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Autodiscover DNS** – Flags high issues when CNAME lookups fail, medium issues when records point to incorrect targets, and records normals when autodiscover.outlook.com is published.
 - **Outlook Connectivity** – Raises high severity when HTTPS connectivity to outlook.office365.com fails and medium issues when the diagnostic cannot run.
 - **Proxy Configuration** – Surfaces informational issues when user or WinHTTP proxies are configured and escalates to medium/high severity when the WinHTTP Auto Proxy service is stopped or disabled while a proxy is required.
+- **Endpoint Firewall** – Raises critical issues when any Windows Firewall profile is disabled, records passes when all profiles are enabled, and emits informational findings when the firewall profile collector is missing or unreadable.
 - **Security (Wi-Fi)** – Produces critical findings for open, WEP, or TKIP networks, medium issues for mixed WPA2/WPA3 modes, weak passphrases, or WPA3 fallback, and informational findings when wireless diagnostics are unavailable.
 
 ### Outlook & Office
