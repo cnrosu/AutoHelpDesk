@@ -557,32 +557,167 @@ function Sanitize-VpnEventMessage {
     return $text
 }
 
+function ConvertTo-VpnEventData {
+    param($Event)
+
+    if (-not $Event) { return $null }
+
+    $xmlText = $null
+    try {
+        $xmlText = $Event.ToXml()
+    } catch {
+        return $null
+    }
+
+    if (-not $xmlText) { return $null }
+
+    try {
+        $doc = [xml]$xmlText
+    } catch {
+        return $null
+    }
+
+    $map = [ordered]@{}
+
+    if ($doc.Event -and $doc.Event.EventData -and $doc.Event.EventData.Data) {
+        foreach ($node in $doc.Event.EventData.Data) {
+            if (-not $node) { continue }
+
+            $name = $null
+            try { $name = [string]$node.Name } catch { $name = $null }
+            if (-not $name) {
+                try { $name = [string]$node.GetAttribute('Name') } catch { $name = $null }
+            }
+            if (-not $name -and $node.Attributes) {
+                foreach ($attr in $node.Attributes) {
+                    if ($attr -and $attr.Name -eq 'Name') {
+                        $name = [string]$attr.Value
+                        break
+                    }
+                }
+            }
+
+            $value = $null
+            if ($node.'#text') {
+                $value = [string]$node.'#text'
+            }
+            if (-not $value) {
+                try { $value = [string]$node.InnerText } catch { $value = $null }
+            }
+
+            if ($name) {
+                $map[$name] = $value
+            } elseif ($value) {
+                $map[[string]::Format('Data{0}', $map.Count)] = $value
+            }
+        }
+    }
+
+    if ($doc.Event -and $doc.Event.UserData) {
+        foreach ($child in $doc.Event.UserData.ChildNodes) {
+            if (-not $child) { continue }
+            foreach ($node in $child.ChildNodes) {
+                if (-not $node) { continue }
+                $name = $null
+                try { $name = [string]$node.LocalName } catch { $name = $null }
+                $value = $null
+                try { $value = [string]$node.InnerText } catch { $value = $null }
+                if ($name) {
+                    $map[$name] = $value
+                } elseif ($value) {
+                    $map[[string]::Format('UserData{0}', $map.Count)] = $value
+                }
+            }
+        }
+    }
+
+    if ($map.Count -eq 0) { return $null }
+
+    return $map
+}
+
 function Get-VpnEvents {
     $events = @()
-    $cutoff = (Get-Date).AddDays(-14)
-    $channels = @(
-        'Microsoft-Windows-RasClient/Operational',
-        'Microsoft-Windows-RasMan/Operational',
-        'Microsoft-Windows-IKE-EXT/Operational'
+    $cutoffLocal = (Get-Date).AddDays(-7)
+    $cutoffUtc = $cutoffLocal.ToUniversalTime()
+
+    $queries = @(
+        @{ LogName = 'Microsoft-Windows-RasClient/Operational'; Provider = $null; EventIds = @(20227,20226) },
+        @{ LogName = 'Microsoft-Windows-IKE/Operational';     Provider = $null; EventIds = @(4653,4654) },
+        @{ LogName = 'Microsoft-Windows-IKE-EXT/Operational'; Provider = $null; EventIds = @(4653,4654) },
+        @{ LogName = 'System';                                Provider = 'IKEEXT'; EventIds = @(4653,4654) }
     )
 
-    foreach ($channel in $channels) {
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+
+    foreach ($query in $queries) {
+        $filter = @{ LogName = $query.LogName; StartTime = $cutoffLocal; Id = $query.EventIds }
+        if ($query.Provider) {
+            $filter['ProviderName'] = $query.Provider
+        }
+
         try {
-            $winEvents = Get-WinEvent -FilterHashtable @{ LogName = $channel; StartTime = $cutoff } -ErrorAction Stop -MaxEvents 200
+            $winEvents = Get-WinEvent -FilterHashtable $filter -ErrorAction Stop -MaxEvents 200
         } catch {
             continue
         }
 
         foreach ($event in (ConvertTo-VpnArray -Value $winEvents)) {
             if (-not $event) { continue }
+
+            $timeUtc = $null
+            if ($event.PSObject.Properties['TimeCreated']) {
+                try { $timeUtc = $event.TimeCreated.ToUniversalTime() } catch { $timeUtc = $event.TimeCreated }
+            }
+
+            if ($timeUtc -and $timeUtc -lt $cutoffUtc) { continue }
+
+            $provider = $null
+            if ($event.PSObject.Properties['ProviderName'] -and $event.ProviderName) {
+                $provider = [string]$event.ProviderName
+            } elseif ($query.Provider) {
+                $provider = $query.Provider
+            } else {
+                $provider = $query.LogName
+            }
+
+            $eventId = $null
+            if ($event.PSObject.Properties['Id']) {
+                $eventId = [int]$event.Id
+            } elseif ($event.PSObject.Properties['RecordId']) {
+                $eventId = [int]$event.RecordId
+            }
+
+            $recordId = $null
+            if ($event.PSObject.Properties['RecordId']) {
+                $recordId = [long]$event.RecordId
+            }
+
+            $keyBuilder = [System.Text.StringBuilder]::new()
+            if ($provider) { $null = $keyBuilder.Append($provider.ToLowerInvariant()) }
+            $null = $keyBuilder.Append('|')
+            if ($eventId) { $null = $keyBuilder.Append($eventId) }
+            $null = $keyBuilder.Append('|')
+            if ($timeUtc) { $null = $keyBuilder.Append($timeUtc.ToString('o')) }
+            if ($recordId) { $null = $keyBuilder.Append('|').Append($recordId) }
+            $key = $keyBuilder.ToString()
+
+            if ($seen.Contains($key)) { continue }
+            $seen.Add($key) | Out-Null
+
             $message = $null
             try { $message = $event.Message } catch { }
+
+            $eventData = ConvertTo-VpnEventData -Event $event
+
             $events += [ordered]@{
-                timeCreatedUtc = if ($event.PSObject.Properties['TimeCreated']) { ($event.TimeCreated.ToUniversalTime().ToString('o')) } else { $null }
-                provider       = if ($event.PSObject.Properties['ProviderName']) { [string]$event.ProviderName } else { $channel }
+                timeCreatedUtc = if ($timeUtc) { $timeUtc.ToString('o') } else { $null }
+                provider       = $provider
                 level          = if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null }
-                eventId        = if ($event.PSObject.Properties['Id']) { [int]$event.Id } elseif ($event.PSObject.Properties['RecordId']) { [int]$event.RecordId } else { $null }
+                eventId        = $eventId
+                recordId       = $recordId
                 message        = Sanitize-VpnEventMessage -Message $message
+                eventData      = $eventData
             }
         }
     }
