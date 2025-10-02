@@ -104,6 +104,26 @@ function Get-NetworkCanonicalIpv4 {
     return $null
 }
 
+function Get-NetworkCanonicalIpv6 {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $trimmed = $Text.Trim()
+    if (-not $trimmed) { return $null }
+
+    $clean = $trimmed -replace '/\d+$',''
+    if ($clean -match '%') {
+        $clean = $clean.Split('%')[0]
+    }
+
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse($clean, [ref]$parsed)) { return $null }
+    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetworkV6) { return $null }
+
+    return $parsed.ToString()
+}
+
 function ConvertTo-NetworkArpEntries {
     param($Value)
 
@@ -143,6 +163,115 @@ function ConvertTo-NetworkArpEntries {
             PhysicalAddress = $macRaw
             NormalizedMac   = $normalizedMac
             Type            = $type
+        }) | Out-Null
+    }
+
+    return $entries.ToArray()
+}
+
+function ConvertTo-Ipv6NeighborEntries {
+    param($Value)
+
+    $entries = New-Object System.Collections.Generic.List[pscustomobject]
+    $lines = ConvertTo-NetworkArray $Value
+
+    $currentInterfaceIndex = $null
+    $currentInterfaceName = $null
+
+    foreach ($rawLine in $lines) {
+        if (-not $rawLine) { continue }
+
+        $line = if ($rawLine -is [string]) { $rawLine } else { [string]$rawLine }
+        if (-not $line) { continue }
+
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        $interfaceMatch = [regex]::Match($trimmed, '^Interface\s+(\d+)\s*:\s*(.+)$')
+        if ($interfaceMatch.Success) {
+            $currentInterfaceIndex = $interfaceMatch.Groups[1].Value
+            $currentInterfaceName = $interfaceMatch.Groups[2].Value.Trim()
+            continue
+        }
+
+        if ($trimmed -match '^(Internet\s+Address|Address\s+Type)') { continue }
+        if ($trimmed -match '^-{3,}') { continue }
+
+        $segments = @($trimmed -split '\s{2,}' | Where-Object { $_ })
+        if ($segments.Count -lt 2) {
+            $segments = @($trimmed -split '\s+' | Where-Object { $_ })
+        }
+
+        if ($segments.Count -lt 2) { continue }
+
+        $address = $segments[0].Trim()
+        $physical = if ($segments.Count -ge 2) { $segments[1].Trim() } else { $null }
+        $type = if ($segments.Count -ge 3) { $segments[2].Trim() } else { $null }
+
+        $entries.Add([pscustomobject]@{
+            InterfaceIndex   = $currentInterfaceIndex
+            InterfaceName    = $currentInterfaceName
+            Address          = $address
+            CanonicalAddress = Get-NetworkCanonicalIpv6 $address
+            PhysicalAddress  = $physical
+            NormalizedMac    = Normalize-NetworkMacAddress $physical
+            Type             = $type
+        }) | Out-Null
+    }
+
+    return $entries.ToArray()
+}
+
+function ConvertTo-Ipv6RouterEntries {
+    param($Value)
+
+    $entries = New-Object System.Collections.Generic.List[pscustomobject]
+    $lines = ConvertTo-NetworkArray $Value
+
+    $currentInterfaceIndex = $null
+    $currentInterfaceName = $null
+
+    foreach ($rawLine in $lines) {
+        if (-not $rawLine) { continue }
+
+        $line = if ($rawLine -is [string]) { $rawLine } else { [string]$rawLine }
+        if (-not $line) { continue }
+
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        $interfaceMatch = [regex]::Match($trimmed, '^Interface\s+(\d+)\s*:\s*(.+)$')
+        if ($interfaceMatch.Success) {
+            $currentInterfaceIndex = $interfaceMatch.Groups[1].Value
+            $currentInterfaceName = $interfaceMatch.Groups[2].Value.Trim()
+            continue
+        }
+
+        if ($trimmed -match '^(Address\s+Type|Address\s+|Type\s+Preference)') { continue }
+        if ($trimmed -match '^-{3,}') { continue }
+
+        $segments = @($trimmed -split '\s{2,}' | Where-Object { $_ })
+        if ($segments.Count -lt 2) {
+            $segments = @($trimmed -split '\s+' | Where-Object { $_ })
+        }
+
+        if ($segments.Count -lt 2) { continue }
+
+        $address = $segments[0].Trim()
+        $type = if ($segments.Count -ge 2) { $segments[1].Trim() } else { $null }
+        $preference = if ($segments.Count -ge 3) { $segments[2].Trim() } else { $null }
+        $lifetime = if ($segments.Count -ge 4) { $segments[3].Trim() } else { $null }
+        $state = if ($segments.Count -ge 5) { $segments[4].Trim() } else { $null }
+
+        $entries.Add([pscustomobject]@{
+            InterfaceIndex   = $currentInterfaceIndex
+            InterfaceName    = $currentInterfaceName
+            Address          = $address
+            CanonicalAddress = Get-NetworkCanonicalIpv6 $address
+            Type             = $type
+            Preference       = $preference
+            Lifetime         = $lifetime
+            State            = $state
         }) | Out-Null
     }
 
@@ -646,6 +775,7 @@ function Get-NetworkDnsInterfaceInventory {
                     IPv4        = @()
                     IPv6        = @()
                     Gateways    = @()
+                    IPv6Gateways = @()
                     MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
                 }
             }
@@ -674,6 +804,12 @@ function Get-NetworkDnsInterfaceInventory {
                 }
             }
 
+            if ($entry.PSObject.Properties['IPv6DefaultGateway']) {
+                foreach ($value in Get-NetworkValueText $entry.IPv6DefaultGateway) {
+                    if (-not ($info.IPv6Gateways -contains $value)) { $info.IPv6Gateways += $value }
+                }
+            }
+
             if (-not $info.MacAddress -and $macMap.ContainsKey($key)) {
                 $info.MacAddress = $macMap[$key]
             }
@@ -690,6 +826,7 @@ function Get-NetworkDnsInterfaceInventory {
                 IPv4        = @()
                 IPv6        = @()
                 Gateways    = @()
+                IPv6Gateways = @()
                 MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
             }
         }
@@ -1740,9 +1877,17 @@ function Invoke-NetworkHeuristics {
 
             if ($Context) {
                 if (-not $Context.PSObject.Properties['NetworkAnalyzerState'] -or -not $Context.NetworkAnalyzerState) {
-                    $Context | Add-Member -NotePropertyName 'NetworkAnalyzerState' -NotePropertyValue ([pscustomobject]@{ GatewayMacs = New-Object System.Collections.Generic.List[string] }) -Force
-                } elseif (-not $Context.NetworkAnalyzerState.PSObject.Properties['GatewayMacs']) {
-                    $Context.NetworkAnalyzerState | Add-Member -NotePropertyName 'GatewayMacs' -NotePropertyValue (New-Object System.Collections.Generic.List[string]) -Force
+                    $Context | Add-Member -NotePropertyName 'NetworkAnalyzerState' -NotePropertyValue ([pscustomobject]@{
+                        GatewayMacs = New-Object System.Collections.Generic.List[string]
+                        RouterMacs  = New-Object System.Collections.Generic.List[string]
+                    }) -Force
+                } else {
+                    if (-not $Context.NetworkAnalyzerState.PSObject.Properties['GatewayMacs']) {
+                        $Context.NetworkAnalyzerState | Add-Member -NotePropertyName 'GatewayMacs' -NotePropertyValue (New-Object System.Collections.Generic.List[string]) -Force
+                    }
+                    if (-not $Context.NetworkAnalyzerState.PSObject.Properties['RouterMacs']) {
+                        $Context.NetworkAnalyzerState | Add-Member -NotePropertyName 'RouterMacs' -NotePropertyValue (New-Object System.Collections.Generic.List[string]) -Force
+                    }
                 }
 
                 $existingSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -1756,6 +1901,220 @@ function Invoke-NetworkHeuristics {
                     if ($existingSet.Add($mac)) {
                         $Context.NetworkAnalyzerState.GatewayMacs.Add($mac) | Out-Null
                     }
+                }
+            }
+        }
+
+        $ipv6RoutingArtifact = Get-AnalyzerArtifact -Context $Context -Name 'ipv6-routing'
+        Write-HeuristicDebug -Source 'Network' -Message 'Resolved ipv6-routing artifact' -Data ([ordered]@{
+            Found = [bool]$ipv6RoutingArtifact
+        })
+
+        $ipv6Payload = $null
+        if ($ipv6RoutingArtifact) {
+            $ipv6Payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $ipv6RoutingArtifact)
+        }
+
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating IPv6 routing payload' -Data ([ordered]@{
+            HasPayload = [bool]$ipv6Payload
+        })
+
+        $ipv6Neighbors = @()
+        $ipv6Routers = @()
+        $ipv6Sections = @()
+        $neighborPayloadError = $false
+        $routerPayloadError = $false
+
+        if ($ipv6Payload) {
+            if ($ipv6Payload.PSObject.Properties['Neighbors']) {
+                $neighborsRaw = $ipv6Payload.Neighbors
+                if ($neighborsRaw -is [psobject] -and $neighborsRaw.PSObject.Properties['Error']) {
+                    $neighborPayloadError = $true
+                } elseif ($neighborsRaw) {
+                    $ipv6Neighbors = ConvertTo-Ipv6NeighborEntries -Value $neighborsRaw
+                }
+            }
+
+            if ($ipv6Payload.PSObject.Properties['Routers']) {
+                $routersRaw = $ipv6Payload.Routers
+                if ($routersRaw -is [psobject] -and $routersRaw.PSObject.Properties['Error']) {
+                    $routerPayloadError = $true
+                } elseif ($routersRaw) {
+                    $ipv6Routers = ConvertTo-Ipv6RouterEntries -Value $routersRaw
+                }
+            }
+
+            if ($ipv6Payload.PSObject.Properties['IpConfigIpv6']) {
+                $sectionsRaw = $ipv6Payload.IpConfigIpv6
+                if (-not ($sectionsRaw -is [psobject] -and $sectionsRaw.PSObject.Properties['Error'])) {
+                    $ipv6Sections = ConvertTo-NetworkArray $sectionsRaw
+                }
+            }
+        }
+
+        Write-HeuristicDebug -Source 'Network' -Message 'Parsed IPv6 routing data' -Data ([ordered]@{
+            NeighborCount = if ($ipv6Neighbors) { $ipv6Neighbors.Count } else { 0 }
+            RouterCount   = if ($ipv6Routers) { $ipv6Routers.Count } else { 0 }
+            NeighborError = $neighborPayloadError
+            RouterError   = $routerPayloadError
+        })
+
+        $globalIpv6Records = New-Object System.Collections.Generic.List[pscustomobject]
+        if ($adapterInventory -and $adapterInventory.Map) {
+            foreach ($entry in $adapterInventory.Map.Values) {
+                if (-not $entry) { continue }
+
+                $addressSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($ipText in $entry.IPv6) {
+                    if (Test-NetworkValidIpv6Address $ipText) {
+                        $addressSet.Add($ipText) | Out-Null
+                    }
+                }
+
+                if ($addressSet.Count -gt 0) {
+                    $aliasLabel = if ($entry.PSObject.Properties['Alias']) { [string]$entry.Alias } else { $null }
+                    $globalIpv6Records.Add([pscustomobject]@{
+                        Alias     = $aliasLabel
+                        Addresses = $addressSet.ToArray()
+                    }) | Out-Null
+                }
+            }
+        }
+
+        $hasIpv6Gateways = $false
+        if ($adapterInventory -and $adapterInventory.Map) {
+            foreach ($entry in $adapterInventory.Map.Values) {
+                if (-not $entry) { continue }
+                foreach ($gatewayValue in $entry.IPv6Gateways) {
+                    if ($gatewayValue) { $hasIpv6Gateways = $true; break }
+                }
+                if ($hasIpv6Gateways) { break }
+            }
+        }
+
+        if ($globalIpv6Records.Count -gt 0 -and $ipv6RoutingArtifact -and -not $routerPayloadError -and $ipv6Routers.Count -eq 0 -and -not $hasIpv6Gateways) {
+            $evidenceItems = $globalIpv6Records | ForEach-Object {
+                $aliasLabel = if ($_.Alias) { $_.Alias } else { 'Interface' }
+                $addresses = $_.Addresses | Sort-Object -Unique
+                if ($addresses.Count -gt 0) {
+                    '{0}: {1}' -f $aliasLabel, ($addresses -join ', ')
+                }
+            }
+
+            $evidenceText = $evidenceItems | Where-Object { $_ } | Sort-Object
+            $evidence = if ($evidenceText) { $evidenceText -join '; ' } else { 'Global IPv6 addresses were assigned.' }
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Global IPv6 addresses appeared on an IPv4-only network, so rogue router advertisements may break connectivity.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+        }
+
+        $neighborMap = @{}
+        foreach ($neighbor in $ipv6Neighbors) {
+            if (-not $neighbor -or -not $neighbor.CanonicalAddress) { continue }
+            $key = $neighbor.CanonicalAddress.ToLowerInvariant()
+            if (-not $neighborMap.ContainsKey($key)) {
+                $neighborMap[$key] = New-Object System.Collections.Generic.List[object]
+            }
+            $neighborMap[$key].Add($neighbor) | Out-Null
+        }
+
+        $routerMacRecords = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($router in $ipv6Routers) {
+            if (-not $router) { continue }
+
+            $key = if ($router.CanonicalAddress) { $router.CanonicalAddress.ToLowerInvariant() } else { $null }
+            $macs = New-Object System.Collections.Generic.List[string]
+            if ($key -and $neighborMap.ContainsKey($key)) {
+                foreach ($neighbor in $neighborMap[$key]) {
+                    if ($neighbor.NormalizedMac) { $macs.Add($neighbor.NormalizedMac) | Out-Null }
+                }
+            }
+
+            $routerMacRecords.Add([pscustomobject]@{
+                InterfaceName = if ($router.InterfaceName) { [string]$router.InterfaceName } else { $null }
+                Address       = if ($router.Address) { [string]$router.Address } else { $null }
+                Macs          = ($macs | Sort-Object -Unique)
+            }) | Out-Null
+        }
+
+        $observedRouterMacSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($record in $routerMacRecords) {
+            foreach ($mac in $record.Macs) {
+                if ($mac) { $observedRouterMacSet.Add($mac) | Out-Null }
+            }
+        }
+
+        $routerBaselineSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+        $routerBaselineArtifact = Get-AnalyzerArtifact -Context $Context -Name 'ipv6-router-baseline'
+        if ($routerBaselineArtifact) {
+            $baselinePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $routerBaselineArtifact)
+            if ($baselinePayload) {
+                $baselineValues = if ($baselinePayload.PSObject.Properties['RouterMacs']) { ConvertTo-NetworkArray $baselinePayload.RouterMacs } else { ConvertTo-NetworkArray $baselinePayload }
+                foreach ($baselineValue in $baselineValues) {
+                    $normalizedBaseline = Normalize-NetworkMacAddress $baselineValue
+                    if ($normalizedBaseline) { $routerBaselineSet.Add($normalizedBaseline) | Out-Null }
+                }
+            }
+        }
+
+        if ($Context -and $Context.PSObject.Properties['NetworkAnalyzerState'] -and $Context.NetworkAnalyzerState -and $Context.NetworkAnalyzerState.PSObject.Properties['RouterMacs']) {
+            foreach ($historical in (ConvertTo-NetworkArray $Context.NetworkAnalyzerState.RouterMacs)) {
+                $normalizedHistorical = Normalize-NetworkMacAddress $historical
+                if ($normalizedHistorical) { $routerBaselineSet.Add($normalizedHistorical) | Out-Null }
+            }
+        }
+
+        $observedRouterMacs = @()
+        foreach ($mac in $observedRouterMacSet) {
+            if ($mac) { $observedRouterMacs += $mac }
+        }
+
+        $unexpectedRouterMacs = @()
+        if ($routerBaselineSet.Count -gt 0) {
+            foreach ($mac in $observedRouterMacs) {
+                if (-not $routerBaselineSet.Contains($mac)) { $unexpectedRouterMacs += $mac }
+            }
+        }
+
+        if ($unexpectedRouterMacs.Count -gt 0) {
+            $evidence = ($unexpectedRouterMacs | Sort-Object -Unique) -join ', '
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+        }
+
+        if ($observedRouterMacs.Count -gt 1) {
+            $evidenceParts = $routerMacRecords | ForEach-Object {
+                $macText = if ($_.Macs -and $_.Macs.Count -gt 0) { $_.Macs -join ', ' } else { 'no MAC learned' }
+                $labelParts = @()
+                if ($_.InterfaceName) { $labelParts += $_.InterfaceName }
+                if ($_.Address) { $labelParts += $_.Address }
+                $label = if ($labelParts.Count -gt 0) { $labelParts -join ' → ' } else { 'Router' }
+                '{0} = {1}' -f $label, $macText
+            }
+
+            $evidence = ($evidenceParts | Where-Object { $_ }) -join '; '
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+        }
+
+        if ($Context) {
+            if (-not $Context.PSObject.Properties['NetworkAnalyzerState'] -or -not $Context.NetworkAnalyzerState) {
+                $Context | Add-Member -NotePropertyName 'NetworkAnalyzerState' -NotePropertyValue ([pscustomobject]@{
+                    GatewayMacs = New-Object System.Collections.Generic.List[string]
+                    RouterMacs  = New-Object System.Collections.Generic.List[string]
+                }) -Force
+            } elseif (-not $Context.NetworkAnalyzerState.PSObject.Properties['RouterMacs']) {
+                $Context.NetworkAnalyzerState | Add-Member -NotePropertyName 'RouterMacs' -NotePropertyValue (New-Object System.Collections.Generic.List[string]) -Force
+            }
+        }
+
+        if ($Context -and $Context.NetworkAnalyzerState -and $Context.NetworkAnalyzerState.PSObject.Properties['RouterMacs']) {
+            $existingRouterSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($existingMac in $Context.NetworkAnalyzerState.RouterMacs) {
+                $normalizedExisting = Normalize-NetworkMacAddress $existingMac
+                if ($normalizedExisting) { $existingRouterSet.Add($normalizedExisting) | Out-Null }
+            }
+
+            foreach ($mac in $observedRouterMacSet) {
+                if (-not $mac) { continue }
+                if ($existingRouterSet.Add($mac)) {
+                    $Context.NetworkAnalyzerState.RouterMacs.Add($mac) | Out-Null
                 }
             }
         }
