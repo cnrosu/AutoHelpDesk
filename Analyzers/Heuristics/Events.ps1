@@ -37,6 +37,28 @@ function ConvertTo-EventsDateTimeUtc {
     return $null
 }
 
+function Get-EventsStringSha256 {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text
+    )
+
+    if ($null -eq $Text) { return $null }
+
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+            $hash = $sha.ComputeHash($bytes)
+            return ($hash | ForEach-Object { $_.ToString('x2') }) -join ''
+        } finally {
+            if ($sha) { $sha.Dispose() }
+        }
+    } catch {
+        return $null
+    }
+}
+
 function Get-EventsEventDataValue {
     param(
         [Parameter()]
@@ -277,6 +299,199 @@ function Get-EventsCurrentDeviceName {
     }
 
     return $null
+}
+
+function Invoke-EventsPendingRenamePersistenceCheck {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $Result
+    )
+
+    Write-HeuristicDebug -Source 'Events/PendingReboot' -Message 'Starting pending rename persistence evaluation'
+
+    if (-not $Context) { return }
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'pendingreboot'
+    Write-HeuristicDebug -Source 'Events/PendingReboot' -Message 'Resolved pendingreboot artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
+
+    if (-not $artifact) { return }
+
+    $artifactEntries = New-Object System.Collections.Generic.List[object]
+    if ($artifact -is [System.Collections.IEnumerable] -and -not ($artifact -is [string]) -and ($artifact -isnot [pscustomobject])) {
+        foreach ($item in $artifact) {
+            if ($item) { $artifactEntries.Add($item) | Out-Null }
+        }
+    } else {
+        if ($artifact) { $artifactEntries.Add($artifact) | Out-Null }
+    }
+
+    if ($artifactEntries.Count -eq 0) { return }
+
+    $runs = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($entry in $artifactEntries) {
+        if (-not $entry) { continue }
+
+        $data = $null
+        if ($entry.PSObject.Properties['Data']) {
+            $data = $entry.Data
+        } else {
+            $data = $entry
+        }
+
+        if (-not $data) { continue }
+
+        $collectedRaw = $null
+        if ($data.PSObject.Properties['CollectedAt']) {
+            $collectedRaw = $data.CollectedAt
+        }
+
+        $collectedUtc = if ($collectedRaw) { ConvertTo-EventsDateTimeUtc -Value $collectedRaw } else { $null }
+
+        $payload = $null
+        if ($data.PSObject.Properties['Payload']) {
+            $payload = $data.Payload
+        }
+
+        if (-not $payload) { continue }
+
+        $renameContainer = $null
+        if ($payload.PSObject.Properties['PendingFileRenames']) {
+            $renameContainer = $payload.PendingFileRenames
+        }
+
+        if (-not $renameContainer) { continue }
+
+        $renameValuesRaw = $null
+        if ($renameContainer.PSObject.Properties['PendingFileRenameOperations']) {
+            $renameValuesRaw = $renameContainer.PendingFileRenameOperations
+        }
+
+        if (-not $renameValuesRaw) { continue }
+
+        $hashSource = New-Object System.Collections.Generic.List[string]
+        $entryCount = 0
+        $encounteredError = $false
+
+        if ($renameValuesRaw -is [System.Collections.IEnumerable] -and -not ($renameValuesRaw -is [string])) {
+            foreach ($value in $renameValuesRaw) {
+                if ($value -is [pscustomobject] -and $value.PSObject.Properties['Error'] -and $value.Error) {
+                    $encounteredError = $true
+                    break
+                }
+
+                $textValue = if ($null -eq $value) { '' } else { [string]$value }
+                if (-not [string]::IsNullOrWhiteSpace($textValue)) { $entryCount++ }
+                $hashSource.Add($textValue) | Out-Null
+            }
+        } else {
+            if ($renameValuesRaw -is [pscustomobject] -and $renameValuesRaw.PSObject.Properties['Error'] -and $renameValuesRaw.Error) {
+                $encounteredError = $true
+            } else {
+                $textValue = if ($null -eq $renameValuesRaw) { '' } else { [string]$renameValuesRaw }
+                if (-not [string]::IsNullOrWhiteSpace($textValue)) { $entryCount++ }
+                $hashSource.Add($textValue) | Out-Null
+            }
+        }
+
+        if ($encounteredError) { continue }
+        if ($hashSource.Count -eq 0) { continue }
+        if ($entryCount -le 0) { continue }
+
+        $hashInput = [string]::Join("`n", $hashSource.ToArray())
+        $hashValue = if ($hashInput) { Get-EventsStringSha256 -Text $hashInput } else { $null }
+        if (-not $hashValue) { continue }
+
+        $hasServicingKeys = $false
+        $indicators = @()
+        if ($payload.PSObject.Properties['Indicators']) {
+            $indicators = @($payload.Indicators)
+        }
+
+        foreach ($indicator in $indicators) {
+            if (-not $indicator) { continue }
+            $name = if ($indicator.PSObject.Properties['Name']) { [string]$indicator.Name } else { $null }
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            if ($name -in @('WindowsUpdateRebootRequired','ComponentBasedServicingRebootPending')) {
+                $present = $false
+                if ($indicator.PSObject.Properties['Present']) {
+                    $present = [bool]$indicator.Present
+                }
+                if ($present) {
+                    $hasServicingKeys = $true
+                    break
+                }
+            }
+        }
+
+        $collectedUtcString = if ($collectedUtc) { $collectedUtc.ToString('o') } else { $null }
+
+        Write-HeuristicDebug -Source 'Events/PendingReboot' -Message 'Observed pending rename state' -Data ([ordered]@{
+            CollectedAt = $collectedUtcString
+            EntryCount  = $entryCount
+            Hash        = $hashValue
+            Servicing   = $hasServicingKeys
+        })
+
+        $runs.Add([pscustomobject]@{
+            CollectedUtc     = $collectedUtc
+            RenameCount      = $entryCount
+            RenameHash       = $hashValue
+            HasServicingKeys = $hasServicingKeys
+        }) | Out-Null
+    }
+
+    $runArray = @($runs | Where-Object { $_ -and $_.RenameCount -gt 0 -and $_.RenameHash })
+    Write-HeuristicDebug -Source 'Events/PendingReboot' -Message 'Evaluated pending rename runs' -Data ([ordered]@{
+        RunCount = $runArray.Count
+    })
+
+    if ($runArray.Count -lt 2) { return }
+
+    $groups = $runArray | Group-Object -Property RenameHash
+    foreach ($group in $groups) {
+        if (-not $group -or -not $group.Name) { continue }
+
+        $members = @($group.Group | Where-Object { $_ -and -not $_.HasServicingKeys -and $_.CollectedUtc })
+        if ($members.Count -lt 2) { continue }
+
+        $orderedMembers = $members | Sort-Object -Property CollectedUtc
+        $first = $orderedMembers | Select-Object -First 1
+        $last = $orderedMembers | Select-Object -Last 1
+
+        if (-not $first -or -not $last -or -not $first.CollectedUtc -or -not $last.CollectedUtc) { continue }
+
+        $duration = ($last.CollectedUtc - $first.CollectedUtc)
+        if ($duration.TotalHours -lt 24) { continue }
+
+        $entryCount = $first.RenameCount
+        $firstUtcString = $first.CollectedUtc.ToString('o')
+        $lastUtcString = $last.CollectedUtc.ToString('o')
+
+        Write-HeuristicDebug -Source 'Events/PendingReboot' -Message 'Persistent pending rename operations detected' -Data ([ordered]@{
+            Hash       = $group.Name
+            EntryCount = $entryCount
+            FirstUtc   = $firstUtcString
+            LastUtc    = $lastUtcString
+            Samples    = $members.Count
+        })
+
+        $evidence = [ordered]@{
+            entryCount   = $entryCount
+            firstSeenUtc = $firstUtcString
+            lastSeenUtc  = $lastUtcString
+        }
+
+        $evidenceJson = $evidence | ConvertTo-Json -Compress
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Pending reboot appears stuck (rename operations persist)' -Evidence $evidenceJson -Subcategory 'Servicing / Reboot Coordination'
+        return
+    }
 }
 
 function Invoke-EventsAuthenticationChecks {
@@ -726,6 +941,8 @@ function Invoke-EventsHeuristics {
     $deviceName = Get-EventsCurrentDeviceName -Context $Context
 
     $result = New-CategoryResult -Name 'Events'
+
+    Invoke-EventsPendingRenamePersistenceCheck -Context $Context -Result $result
 
     $eventsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
     Write-HeuristicDebug -Source 'Events' -Message 'Resolved events artifact' -Data ([ordered]@{
