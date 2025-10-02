@@ -79,6 +79,170 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function ConvertTo-NetshLines {
+    param($Value)
+
+    if ($null -eq $Value) { return @() }
+
+    if ($Value -is [string]) { return @([string]$Value) }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $lines = @()
+        foreach ($item in $Value) {
+            if ($null -ne $item) { $lines += [string]$item }
+        }
+        return $lines
+    }
+
+    return @([string]$Value)
+}
+
+function ConvertTo-NetworkSubinterfaceEntries {
+    param(
+        $Value,
+        [string]$AddressFamily
+    )
+
+    $lines = ConvertTo-NetshLines $Value
+    $entries = New-Object System.Collections.Generic.List[pscustomobject]
+    if ($lines.Count -eq 0) { return $entries.ToArray() }
+
+    $inTable = $false
+
+    foreach ($line in $lines) {
+        if ($null -eq $line) { continue }
+        $text = [string]$line
+        if (-not $inTable) {
+            if ($text -match '^\s*-{2,}\s+-{2,}\s+-{2,}\s+-{2,}\s+-{2,}') {
+                $inTable = $true
+            }
+            continue
+        }
+
+        if (-not $text.Trim()) { continue }
+
+        if ($text -match '^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+?)\s*$') {
+            try {
+                $mtu = [long]$Matches[1]
+            } catch {
+                $mtu = $null
+            }
+
+            try {
+                $mediaSense = [long]$Matches[2]
+            } catch {
+                $mediaSense = $null
+            }
+
+            try {
+                $bytesIn = [long]$Matches[3]
+            } catch {
+                $bytesIn = $null
+            }
+
+            try {
+                $bytesOut = [long]$Matches[4]
+            } catch {
+                $bytesOut = $null
+            }
+
+            $interfaceName = $Matches[5].Trim()
+            if (-not $interfaceName) { continue }
+
+            $entry = [pscustomobject]@{
+                AddressFamily   = $AddressFamily
+                Interface       = $interfaceName
+                Mtu             = $mtu
+                MediaSenseState = $mediaSense
+                BytesIn         = $bytesIn
+                BytesOut        = $bytesOut
+                RawLine         = $text
+            }
+
+            $entries.Add($entry) | Out-Null
+        }
+    }
+
+    return $entries.ToArray()
+}
+
+function Merge-NetworkSubinterfaceEntries {
+    param(
+        [System.Collections.IEnumerable]$Ipv4Entries,
+        [System.Collections.IEnumerable]$Ipv6Entries
+    )
+
+    $map = @{}
+
+    $addEntry = {
+        param($entry, [string]$family)
+
+        if (-not $entry) { return }
+        $name = if ($entry.Interface) { [string]$entry.Interface } else { $null }
+        if (-not $name) { return }
+
+        $key = $name
+        try { $key = $name.ToLowerInvariant() } catch { $key = $name }
+
+        if (-not $map.ContainsKey($key)) {
+            $map[$key] = [pscustomobject]@{
+                Name = $name
+                IPv4 = $null
+                IPv6 = $null
+            }
+        }
+
+        if ($family -eq 'IPv4') {
+            $map[$key].IPv4 = $entry
+        } else {
+            $map[$key].IPv6 = $entry
+        }
+
+        if (-not $map[$key].Name -and $name) {
+            $map[$key] | Add-Member -NotePropertyName 'Name' -NotePropertyValue $name -Force
+        }
+    }
+
+    foreach ($entry in @($Ipv4Entries)) { & $addEntry $entry 'IPv4' }
+    foreach ($entry in @($Ipv6Entries)) { & $addEntry $entry 'IPv6' }
+
+    return $map.Values
+}
+
+function Test-NetworkInterfaceVpnCandidate {
+    param([string]$Name)
+
+    if (-not $Name) { return $false }
+
+    $normalized = $Name
+    try { $normalized = $Name.ToLowerInvariant() } catch { $normalized = [string]$Name }
+    if (-not $normalized) { return $false }
+
+    $patterns = @(
+        'vpn',
+        'wan miniport',
+        'ikev2',
+        'l2tp',
+        'pptp',
+        'sstp',
+        'secure socket tunneling',
+        'anyconnect',
+        'globalprotect',
+        'pulse',
+        'forticlient',
+        'zscaler',
+        'wireguard',
+        'openvpn',
+        'tunnel'
+    )
+
+    foreach ($pattern in $patterns) {
+        if ($normalized -match $pattern) { return $true }
+    }
+
+    return $false
+}
+
 function Get-NetworkValueText {
     param($Value)
 
@@ -1211,6 +1375,152 @@ function Invoke-NetworkHeuristics {
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
+    }
+
+    $subinterfacesArtifact = Get-AnalyzerArtifact -Context $Context -Name 'netsh-subinterfaces'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved netsh subinterfaces artifact' -Data ([ordered]@{
+        Found = [bool]$subinterfacesArtifact
+    })
+    if ($subinterfacesArtifact) {
+        $subinterfacesPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $subinterfacesArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating subinterface payload' -Data ([ordered]@{
+            HasPayload = [bool]$subinterfacesPayload
+        })
+
+        $ipv4Entries = @()
+        $ipv6Entries = @()
+
+        if ($subinterfacesPayload) {
+            if ($subinterfacesPayload.PSObject.Properties['IPv4']) {
+                $ipv4Raw = $subinterfacesPayload.IPv4
+                if ($ipv4Raw -is [pscustomobject] -and $ipv4Raw.PSObject.Properties['Error'] -and $ipv4Raw.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'IPv4 MTU query failed, so interface MTU compliance is unknown.' -Evidence $ipv4Raw.Error -Subcategory 'MTU'
+                } else {
+                    $ipv4Entries = ConvertTo-NetworkSubinterfaceEntries -Value $ipv4Raw -AddressFamily 'IPv4'
+                }
+            }
+
+            if ($subinterfacesPayload.PSObject.Properties['IPv6']) {
+                $ipv6Raw = $subinterfacesPayload.IPv6
+                if ($ipv6Raw -is [pscustomobject] -and $ipv6Raw.PSObject.Properties['Error'] -and $ipv6Raw.Error) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'IPv6 MTU query failed, so interface MTU compliance is unknown.' -Evidence $ipv6Raw.Error -Subcategory 'MTU'
+                } else {
+                    $ipv6Entries = ConvertTo-NetworkSubinterfaceEntries -Value $ipv6Raw -AddressFamily 'IPv6'
+                }
+            }
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'MTU payload empty, so jumbo frame policy checks are inconclusive.' -Subcategory 'MTU'
+        }
+
+        $mergedSubinterfaces = Merge-NetworkSubinterfaceEntries -Ipv4Entries $ipv4Entries -Ipv6Entries $ipv6Entries
+        $interfaceMap = if ($adapterInventory -and $adapterInventory.Map) { $adapterInventory.Map } else { @{} }
+
+        $corporateBaselineMtu = 1500
+        $vpnExpectedMtu = 1400
+        $jumboThreshold = 1600
+
+        foreach ($entry in $mergedSubinterfaces) {
+            if (-not $entry) { continue }
+            $name = if ($entry.PSObject.Properties['Name']) { [string]$entry.Name } elseif ($entry.PSObject.Properties['Interface']) { [string]$entry.Interface } else { $null }
+            if (-not $name) { continue }
+
+            $ipv4Mtu = $null
+            if ($entry.PSObject.Properties['IPv4'] -and $entry.IPv4 -and $entry.IPv4.PSObject.Properties['Mtu']) {
+                $ipv4Mtu = $entry.IPv4.Mtu
+            }
+
+            $ipv6Mtu = $null
+            if ($entry.PSObject.Properties['IPv6'] -and $entry.IPv6 -and $entry.IPv6.PSObject.Properties['Mtu']) {
+                $ipv6Mtu = $entry.IPv6.Mtu
+            }
+
+            if ($null -eq $ipv4Mtu -and $null -eq $ipv6Mtu) { continue }
+
+            $effectiveMtu = $ipv4Mtu
+            if ($null -eq $effectiveMtu -or ($null -ne $ipv6Mtu -and $ipv6Mtu -lt $effectiveMtu)) {
+                $effectiveMtu = $ipv6Mtu
+            }
+
+            if ($null -eq $effectiveMtu) { continue }
+
+            $aliasKey = $name
+            try { $aliasKey = $name.ToLowerInvariant() } catch { $aliasKey = $name }
+            $interfaceInfo = $null
+            if ($interfaceMap -and $aliasKey -and $interfaceMap.ContainsKey($aliasKey)) {
+                $interfaceInfo = $interfaceMap[$aliasKey]
+            }
+
+            $description = $null
+            if ($interfaceInfo -and $interfaceInfo.PSObject.Properties['Description']) {
+                $description = $interfaceInfo.Description
+            }
+
+            $isPseudo = $false
+            if ($interfaceInfo -and $interfaceInfo.PSObject.Properties['IsPseudo']) {
+                $isPseudo = [bool]$interfaceInfo.IsPseudo
+            } else {
+                $isPseudo = Test-NetworkPseudoInterface -Alias $name -Description $description
+            }
+
+            $isVpnCandidate = Test-NetworkInterfaceVpnCandidate -Name $name
+            if ($isPseudo -and -not $isVpnCandidate) { continue }
+
+            $severity = $null
+            $title = $null
+            $remediation = $null
+
+            if ($isVpnCandidate) {
+                if ($null -eq $effectiveMtu -or $effectiveMtu -eq $vpnExpectedMtu) { continue }
+
+                if ($effectiveMtu -gt $vpnExpectedMtu) {
+                    $severity = 'high'
+                    $title = ('{0} MTU is {1}, so VPN tunnels will fragment and disconnect users.' -f $name, $effectiveMtu)
+                    $remediation = ('Set the VPN adapter MTU to {0} using netsh or the VPN profile so packets avoid fragmentation.' -f $vpnExpectedMtu)
+                } else {
+                    $severity = 'medium'
+                    $title = ('{0} MTU is {1}, so VPN throughput is throttled below corporate standards.' -f $name, $effectiveMtu)
+                    $remediation = ('Adjust the VPN adapter MTU to {0} to restore full tunnel throughput.' -f $vpnExpectedMtu)
+                }
+            } elseif ($effectiveMtu -ge $jumboThreshold) {
+                if ($effectiveMtu -ge 8000) {
+                    $severity = 'high'
+                } else {
+                    $severity = 'medium'
+                }
+                $title = ('{0} MTU is {1}, so jumbo frames are enabled and will fail on switches without jumbo support.' -f $name, $effectiveMtu)
+                $remediation = 'Disable jumbo frames or align switch and router policies before enabling 9000 MTU on this NIC.'
+            } elseif ($effectiveMtu -lt $corporateBaselineMtu) {
+                $gap = $corporateBaselineMtu - $effectiveMtu
+                if ($gap -ge 400) {
+                    $severity = 'high'
+                    $impact = 'so large packets will drop and cut users off from corporate services.'
+                } elseif ($gap -ge 100) {
+                    $severity = 'medium'
+                    $impact = 'so VPN and Teams traffic will fragment and slow down.'
+                } else {
+                    $severity = 'low'
+                    $impact = 'so large packets will fragment and reduce throughput.'
+                }
+                $title = ('{0} MTU is {1}, {2}' -f $name, $effectiveMtu, $impact)
+                $remediation = ('Set the adapter MTU to {0} via NIC advanced properties or "netsh interface ipv4 set subinterface "{1}" mtu={0} store=persistent".' -f $corporateBaselineMtu, $name)
+            }
+
+            if (-not $severity -or -not $title) { continue }
+
+            $evidence = [ordered]@{
+                interface    = $name
+                ipv4Mtu      = $ipv4Mtu
+                ipv6Mtu      = $ipv6Mtu
+                effectiveMtu = $effectiveMtu
+                expectedMtu  = if ($isVpnCandidate) { $vpnExpectedMtu } else { $corporateBaselineMtu }
+                remediation  = $remediation
+                source       = 'netsh interface ipv4/ipv6 show subinterfaces'
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'MTU'
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'MTU diagnostics not collected, so jumbo frame or VPN MTU misconfigurations may be missed.' -Subcategory 'MTU'
     }
 
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
