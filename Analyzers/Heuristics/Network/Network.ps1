@@ -79,6 +79,257 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function ConvertTo-Lan8021xLines {
+    param($Value)
+
+    $results = New-Object System.Collections.Generic.List[string]
+    foreach ($item in (ConvertTo-NetworkArray $Value)) {
+        if ($null -eq $item) { continue }
+        $text = [string]$item
+        if ($null -eq $text) { continue }
+        $results.Add($text) | Out-Null
+    }
+
+    return $results.ToArray()
+}
+
+function ConvertTo-Lan8021xInterfaceRecords {
+    param([string[]]$Lines)
+
+    if (-not $Lines) { return @() }
+
+    $records = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    $currentLines = $null
+
+    foreach ($line in $Lines) {
+        if ($null -eq $line) { continue }
+        $text = [string]$line
+        if (-not $text) { continue }
+
+        if ($text -match '^\s*Name\s*:\s*(.+)$') {
+            if ($current) {
+                if ($currentLines) { $current['RawLines'] = $currentLines.ToArray() }
+                $records.Add([pscustomobject]$current) | Out-Null
+            }
+
+            $nameValue = $Matches[1].Trim()
+            $current = [ordered]@{ Name = $nameValue }
+            $currentLines = New-Object System.Collections.Generic.List[string]
+            $currentLines.Add($text.TrimEnd()) | Out-Null
+            continue
+        }
+
+        if (-not $current) { continue }
+        if (-not $currentLines) { $currentLines = New-Object System.Collections.Generic.List[string] }
+        $currentLines.Add($text.TrimEnd()) | Out-Null
+
+        if ($text -match '^\s*([^:]+?)\s*:\s*(.*)$') {
+            $key = $Matches[1].Trim()
+            $value = $Matches[2].Trim()
+            if (-not $key) { continue }
+
+            try { $keyLower = $key.ToLowerInvariant() } catch { $keyLower = $key }
+
+            switch ($keyLower) {
+                'description'           { $current['Description'] = $value }
+                'state'                  { $current['State'] = $value }
+                'authentication state'   { $current['AuthenticationState'] = $value }
+                'authentication mode'    { $current['AuthenticationMode'] = $value }
+                'authentication method'  { $current['AuthenticationMethod'] = $value }
+                'eap type'               { $current['EapType'] = $value }
+                '802.1x profile'         { $current['Profile'] = $value }
+                'guest vlan'             { $current['GuestVlan'] = $value }
+                'guest vlan id'          { $current['GuestVlanId'] = $value }
+                'vlan'                   { if (-not $current.Contains('Vlan')) { $current['Vlan'] = $value } }
+            }
+        }
+    }
+
+    if ($current) {
+        if ($currentLines) { $current['RawLines'] = $currentLines.ToArray() }
+        $records.Add([pscustomobject]$current) | Out-Null
+    }
+
+    return $records.ToArray()
+}
+
+function ConvertTo-Lan8021xProfileRecords {
+    param([string[]]$Lines)
+
+    if (-not $Lines) { return @() }
+
+    $records = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    $currentLines = $null
+    $currentInterface = $null
+
+    foreach ($line in $Lines) {
+        if ($null -eq $line) { continue }
+        $text = [string]$line
+        if (-not $text) { continue }
+
+        $trimmed = $text.Trim()
+        if ($trimmed -match '^(?i)Profiles\s+on\s+interface\s+(.+?):\s*$') {
+            $currentInterface = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^(?i)Profile\s+name\s*:\s*(.+)$') {
+            if ($current) {
+                if ($currentLines) { $current['RawLines'] = $currentLines.ToArray() }
+                $records.Add([pscustomobject]$current) | Out-Null
+            }
+
+            $nameValue = $Matches[1].Trim()
+            $current = [ordered]@{ Name = $nameValue }
+            if ($currentInterface) { $current['Interface'] = $currentInterface }
+            $currentLines = New-Object System.Collections.Generic.List[string]
+            $currentLines.Add($text.TrimEnd()) | Out-Null
+            continue
+        }
+
+        if (-not $current) { continue }
+        if (-not $currentLines) { $currentLines = New-Object System.Collections.Generic.List[string] }
+        $currentLines.Add($text.TrimEnd()) | Out-Null
+
+        if ($trimmed -match '^(?i)(Authentication(?:\s+mode|\s+method)?|EAP\s*type)\s*:\s*(.+)$') {
+            $key = $Matches[1].ToLowerInvariant()
+            $value = $Matches[2].Trim()
+            switch ($key) {
+                'authentication'        { $current['Authentication'] = $value }
+                'authentication mode'   { $current['AuthenticationMode'] = $value }
+                'authentication method' { $current['AuthenticationMethod'] = $value }
+                'eap type'              { $current['EapType'] = $value }
+            }
+        }
+    }
+
+    if ($current) {
+        if ($currentLines) { $current['RawLines'] = $currentLines.ToArray() }
+        $records.Add([pscustomobject]$current) | Out-Null
+    }
+
+    return $records.ToArray()
+}
+
+function Test-Lan8021xContainsMsChap {
+    param($Values)
+
+    foreach ($item in (ConvertTo-NetworkArray $Values)) {
+        if ($null -eq $item) { continue }
+        $text = [string]$item
+        if (-not $text) { continue }
+        if ($text -match '(?i)ms\s*-?chap\s*v?2') { return $true }
+    }
+
+    return $false
+}
+
+function ConvertTo-Lan8021xBoolean {
+    param($Value)
+
+    if ($Value -is [bool]) { return [bool]$Value }
+    if ($null -eq $Value) { return $false }
+
+    $text = [string]$Value
+    if (-not $text) { return $false }
+
+    $trim = $text.Trim()
+    if (-not $trim) { return $false }
+
+    return ($trim -match '^(?i)(true|yes|enabled|1)$')
+}
+
+function ConvertTo-Lan8021xDate {
+    param([string]$Value)
+
+    if (-not $Value) { return $null }
+
+    try {
+        return [datetime]::Parse($Value, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+    } catch {
+        try { return [datetime]::Parse($Value) } catch { return $null }
+    }
+}
+
+function ConvertTo-Lan8021xCertificateRecords {
+    param($Value)
+
+    $records = New-Object System.Collections.Generic.List[object]
+
+    foreach ($item in (ConvertTo-NetworkArray $Value)) {
+        if (-not $item) { continue }
+
+        $subject = $null
+        $thumbprint = $null
+        $issuer = $null
+        $notBefore = $null
+        $notAfter = $null
+        $hasPrivateKey = $false
+        $ekuValues = @()
+
+        if ($item.PSObject.Properties['Subject']) { $subject = [string]$item.Subject }
+        if ($item.PSObject.Properties['Thumbprint']) { $thumbprint = [string]$item.Thumbprint }
+        if ($item.PSObject.Properties['Issuer']) { $issuer = [string]$item.Issuer }
+        if ($item.PSObject.Properties['NotBeforeUtc']) { $notBefore = ConvertTo-Lan8021xDate -Value $item.NotBeforeUtc }
+        if (-not $notBefore -and $item.PSObject.Properties['NotBefore']) { $notBefore = ConvertTo-Lan8021xDate -Value $item.NotBefore }
+        if ($item.PSObject.Properties['NotAfterUtc']) { $notAfter = ConvertTo-Lan8021xDate -Value $item.NotAfterUtc }
+        if (-not $notAfter -and $item.PSObject.Properties['NotAfter']) { $notAfter = ConvertTo-Lan8021xDate -Value $item.NotAfter }
+        if ($item.PSObject.Properties['HasPrivateKey']) { $hasPrivateKey = ConvertTo-Lan8021xBoolean -Value $item.HasPrivateKey }
+        if ($item.PSObject.Properties['EnhancedKeyUsage']) { $ekuValues = ConvertTo-NetworkArray $item.EnhancedKeyUsage }
+
+        $ekuText = New-Object System.Collections.Generic.List[string]
+        $clientAuthCapable = $false
+
+        foreach ($eku in $ekuValues) {
+            if (-not $eku) { continue }
+            $friendly = $null
+            $oid = $null
+
+            if ($eku.PSObject) {
+                if ($eku.PSObject.Properties['FriendlyName']) { $friendly = [string]$eku.FriendlyName }
+                if ($eku.PSObject.Properties['friendlyName']) { $friendly = [string]$eku.friendlyName }
+                if ($eku.PSObject.Properties['Oid']) { $oid = [string]$eku.Oid }
+                if ($eku.PSObject.Properties['oid']) { $oid = [string]$eku.oid }
+            }
+
+            if (-not $friendly) { $friendly = [string]$eku }
+            if (-not $oid -and $eku.PSObject -and $eku.PSObject.Properties['Value']) { $oid = [string]$eku.Value }
+
+            $display = $null
+            if ($friendly -and $oid) { $display = ('{0} ({1})' -f $friendly, $oid) }
+            elseif ($friendly) { $display = $friendly }
+            elseif ($oid) { $display = $oid }
+            else { $display = [string]$eku }
+
+            if ($display) { $ekuText.Add($display) | Out-Null }
+
+            if ($oid) {
+                if ($oid -eq '1.3.6.1.5.5.7.3.2' -or $oid -eq '1.3.6.1.4.1.311.20.2.2' -or $oid -eq '1.3.6.1.5.2.3.4') {
+                    $clientAuthCapable = $true
+                }
+            } elseif ($friendly -and $friendly -match '(?i)client\s+auth') {
+                $clientAuthCapable = $true
+            }
+        }
+
+        $records.Add([pscustomobject]@{
+            Subject              = $subject
+            Issuer               = $issuer
+            Thumbprint           = $thumbprint
+            NotBefore            = $notBefore
+            NotAfter             = $notAfter
+            HasPrivateKey        = $hasPrivateKey
+            ClientAuthCapable    = $clientAuthCapable
+            EnhancedKeyUsageText = $ekuText.ToArray()
+            Raw                  = $item
+        }) | Out-Null
+    }
+
+    return $records.ToArray()
+}
+
 function Get-NetworkValueText {
     param($Value)
 
@@ -1239,6 +1490,189 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration'
             }
         }
+    }
+
+    $lan8021xArtifact = Get-AnalyzerArtifact -Context $Context -Name 'lan-8021x'
+    $wiredSubcategory = 'Wired 802.1X'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved lan-8021x artifact' -Data ([ordered]@{
+        Found = [bool]$lan8021xArtifact
+    })
+    if ($lan8021xArtifact) {
+        $lanPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $lan8021xArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating lan-8021x payload' -Data ([ordered]@{
+            HasPayload = [bool]$lanPayload
+        })
+
+        if (-not $lanPayload) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
+        } elseif ($lanPayload.PSObject.Properties['Error'] -and $lanPayload.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.' -Evidence $lanPayload.Error -Subcategory $wiredSubcategory
+        } else {
+            $netshData = if ($lanPayload.PSObject.Properties['Netsh']) { $lanPayload.Netsh } else { $null }
+            $interfaces = @()
+            $interfaceError = $null
+            if ($netshData -and $netshData.PSObject.Properties['Interfaces']) {
+                $interfacesRaw = $netshData.Interfaces
+                if ($interfacesRaw -is [pscustomobject] -and $interfacesRaw.PSObject.Properties['Error'] -and $interfacesRaw.Error) {
+                    $interfaceError = if ($interfacesRaw.PSObject.Properties['Source'] -and $interfacesRaw.Source) { [string]$interfacesRaw.Source + ': ' + $interfacesRaw.Error } else { [string]$interfacesRaw.Error }
+                } elseif ($interfacesRaw) {
+                    $interfaceLines = if ($interfacesRaw.PSObject -and $interfacesRaw.PSObject.Properties['Lines']) { ConvertTo-Lan8021xLines $interfacesRaw.Lines } else { ConvertTo-Lan8021xLines $interfacesRaw }
+                    $interfaces = ConvertTo-Lan8021xInterfaceRecords -Lines $interfaceLines
+                }
+            }
+
+            $profiles = @()
+            if ($netshData -and $netshData.PSObject.Properties['Profiles']) {
+                $profilesRaw = $netshData.Profiles
+                if ($profilesRaw -and -not ($profilesRaw -is [pscustomobject] -and $profilesRaw.PSObject.Properties['Error'] -and $profilesRaw.Error)) {
+                    $profileLines = if ($profilesRaw.PSObject -and $profilesRaw.PSObject.Properties['Lines']) { ConvertTo-Lan8021xLines $profilesRaw.Lines } else { ConvertTo-Lan8021xLines $profilesRaw }
+                    $profiles = ConvertTo-Lan8021xProfileRecords -Lines $profileLines
+                }
+            }
+
+            $profileLookup = @{}
+            foreach ($profile in $profiles) {
+                if ($profile -and $profile.PSObject.Properties['Name'] -and $profile.Name) {
+                    $nameKey = [string]$profile.Name
+                    if (-not $profileLookup.ContainsKey($nameKey)) { $profileLookup[$nameKey] = $profile }
+                }
+            }
+
+            if ($interfaceError) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.' -Evidence $interfaceError -Subcategory $wiredSubcategory
+            } elseif ($interfaces.Count -eq 0) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'No wired interfaces reported by netsh, so 802.1X status is unknown.' -Subcategory $wiredSubcategory
+            } else {
+                foreach ($interface in $interfaces) {
+                    if (-not $interface) { continue }
+                    $name = if ($interface.PSObject.Properties['Name']) { [string]$interface.Name } else { $null }
+
+                    $evidence = [ordered]@{}
+                    if ($name) { $evidence['Interface'] = $name }
+                    if ($interface.PSObject.Properties['State'] -and $interface.State) { $evidence['State'] = [string]$interface.State }
+                    if ($interface.PSObject.Properties['AuthenticationState'] -and $interface.AuthenticationState) { $evidence['AuthenticationState'] = [string]$interface.AuthenticationState }
+                    if ($interface.PSObject.Properties['Profile'] -and $interface.Profile) { $evidence['Profile'] = [string]$interface.Profile }
+                    if ($interface.PSObject.Properties['EapType'] -and $interface.EapType) { $evidence['EapType'] = [string]$interface.EapType }
+                    if ($interface.PSObject.Properties['AuthenticationMethod'] -and $interface.AuthenticationMethod) { $evidence['AuthenticationMethod'] = [string]$interface.AuthenticationMethod }
+
+                    $authState = if ($interface.PSObject.Properties['AuthenticationState']) { [string]$interface.AuthenticationState } else { $null }
+                    if ($authState -and $authState -match '(?i)not\s+auth') {
+                        $title = if ($name) { "Wired interface $name reports 'Not authenticated', so the device cannot reach the secured LAN." } else { "A wired interface reports 'Not authenticated', so the device cannot reach the secured LAN." }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory $wiredSubcategory
+                    }
+
+                    $guestValue = $null
+                    foreach ($candidate in @($interface.GuestVlanId, $interface.GuestVlan)) {
+                        if (-not $candidate) { continue }
+                        $text = [string]$candidate
+                        if (-not $text) { continue }
+                        $trim = $text.Trim()
+                        if (-not $trim) { continue }
+                        if ($trim -match '(?i)(not\s+in\s+use|not\s+configured|disabled|none)') { continue }
+                        $guestValue = $trim
+                        break
+                    }
+
+                    if ($guestValue) {
+                        $evidence['GuestVlan'] = $guestValue
+                        $title = if ($name) { "Wired interface $name is using the guest VLAN ($guestValue), so the port has fallen back to an isolated network." } else { "A wired interface is using the guest VLAN ($guestValue), so the port has fallen back to an isolated network." }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence -Subcategory $wiredSubcategory
+                    }
+
+                    $profileDetails = $null
+                    if ($interface.PSObject.Properties['Profile'] -and $interface.Profile) {
+                        $profileName = [string]$interface.Profile
+                        if ($profileName -and $profileLookup.ContainsKey($profileName)) { $profileDetails = $profileLookup[$profileName] }
+                    }
+
+                    $msChapDetected = $false
+                    if ($interface.PSObject.Properties['AuthenticationMethod'] -and $interface.AuthenticationMethod) {
+                        if (Test-Lan8021xContainsMsChap -Values $interface.AuthenticationMethod) { $msChapDetected = $true }
+                    }
+                    if (-not $msChapDetected -and $interface.PSObject.Properties['EapType'] -and $interface.EapType) {
+                        if (Test-Lan8021xContainsMsChap -Values $interface.EapType) { $msChapDetected = $true }
+                    }
+                    if (-not $msChapDetected -and $interface.PSObject.Properties['RawLines'] -and $interface.RawLines) {
+                        if (Test-Lan8021xContainsMsChap -Values $interface.RawLines) { $msChapDetected = $true }
+                    }
+                    if (-not $msChapDetected -and $profileDetails) {
+                        $profileValues = @()
+                        foreach ($prop in @('AuthenticationMethod','AuthenticationMode','EapType','RawLines')) {
+                            if ($profileDetails.PSObject.Properties[$prop]) { $profileValues += $profileDetails.$prop }
+                        }
+                        if ($profileValues.Count -gt 0 -and (Test-Lan8021xContainsMsChap -Values $profileValues)) { $msChapDetected = $true }
+                    }
+
+                    if ($msChapDetected) {
+                        $title = if ($name) { "Wired interface $name relies on MSCHAPv2, so attackers can capture or crack the 802.1X credentials." } else { 'A wired interface relies on MSCHAPv2, so attackers can capture or crack the 802.1X credentials.' }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory $wiredSubcategory
+                    }
+                }
+            }
+
+            $machineCerts = @()
+            $certError = $null
+            if ($lanPayload.PSObject.Properties['Certificates'] -and $lanPayload.Certificates -and $lanPayload.Certificates.PSObject.Properties['Machine']) {
+                $machinePayload = $lanPayload.Certificates.Machine
+                if ($machinePayload -is [pscustomobject] -and $machinePayload.PSObject.Properties['Error'] -and $machinePayload.Error) {
+                    $certError = if ($machinePayload.PSObject.Properties['Source'] -and $machinePayload.Source) { [string]$machinePayload.Source + ': ' + $machinePayload.Error } else { [string]$machinePayload.Error }
+                } else {
+                    $machineCerts = ConvertTo-Lan8021xCertificateRecords -Value $machinePayload
+                }
+            }
+
+            if ($certError) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Machine certificate inventory failed, so 802.1X certificate health is unknown.' -Evidence $certError -Subcategory $wiredSubcategory
+            } else {
+                $nowUtc = (Get-Date).ToUniversalTime()
+                $validCerts = @()
+                foreach ($cert in $machineCerts) {
+                    if (-not $cert) { continue }
+                    if (-not $cert.HasPrivateKey) { continue }
+                    if (-not $cert.ClientAuthCapable) { continue }
+                    if ($cert.PSObject.Properties['NotAfter'] -and $cert.NotAfter) {
+                        if ($cert.NotAfter -le $nowUtc) { continue }
+                    } else {
+                        continue
+                    }
+                    if ($cert.PSObject.Properties['NotBefore'] -and $cert.NotBefore -gt $nowUtc) { continue }
+                    $validCerts += $cert
+                }
+
+                if ($validCerts.Count -eq 0) {
+                    $evidence = [ordered]@{
+                        CertificatesFound = $machineCerts.Count
+                    }
+                    if ($machineCerts.Count -gt 0) {
+                        $evidence['FirstCertificate'] = if ($machineCerts[0].PSObject.Properties['Subject']) { [string]$machineCerts[0].Subject } else { 'n/a' }
+                    }
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory
+                } else {
+                    foreach ($cert in $validCerts) {
+                        if (-not $cert.PSObject.Properties['NotAfter'] -or -not $cert.NotAfter) { continue }
+                        $remaining = $cert.NotAfter - $nowUtc
+                        $daysRemaining = [math]::Ceiling($remaining.TotalDays)
+                        if ($daysRemaining -lt 0) { continue }
+
+                        $certEvidence = [ordered]@{}
+                        if ($cert.PSObject.Properties['Subject'] -and $cert.Subject) { $certEvidence['Subject'] = [string]$cert.Subject }
+                        if ($cert.PSObject.Properties['Thumbprint'] -and $cert.Thumbprint) { $certEvidence['Thumbprint'] = [string]$cert.Thumbprint }
+                        $certEvidence['ExpiresUtc'] = $cert.NotAfter.ToString('o')
+                        if ($cert.EnhancedKeyUsageText -and $cert.EnhancedKeyUsageText.Count -gt 0) { $certEvidence['EnhancedKeyUsage'] = $cert.EnhancedKeyUsageText -join '; ' }
+
+                        if ($remaining.TotalDays -le 7) {
+                            $title = if ($cert.Subject) { "Machine certificate '$($cert.Subject)' expires in $daysRemaining day(s), so wired 802.1X will fail imminently without renewal." } else { 'A machine certificate expires within seven days, so wired 802.1X will fail imminently without renewal.' }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $certEvidence -Subcategory $wiredSubcategory
+                        } elseif ($remaining.TotalDays -le 30) {
+                            $title = if ($cert.Subject) { "Machine certificate '$($cert.Subject)' expires in $daysRemaining day(s), so wired 802.1X will fail soon without renewal." } else { 'A machine certificate expires within thirty days, so wired 802.1X will fail soon without renewal.' }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $certEvidence -Subcategory $wiredSubcategory
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics not collected, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
     }
 
     $wlanArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wlan'
