@@ -713,6 +713,115 @@ function Invoke-EventsAuthenticationChecks {
     }
 }
 
+function Invoke-EventsUserProfileChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        $UserProfileService
+    )
+
+    $subCategory = 'User Profile (Roaming/Registry)'
+    Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'Starting user profile service heuristics evaluation' -Data ([ordered]@{
+        HasPayload = [bool]$UserProfileService
+    })
+
+    if (-not $UserProfileService) { return }
+
+    if ($UserProfileService.PSObject.Properties['Error'] -and $UserProfileService.Error) {
+        Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'User profile service query reported an error' -Data ([ordered]@{
+            Error = $UserProfileService.Error
+        })
+        return
+    }
+
+    $eventsRaw = @()
+    if ($UserProfileService.PSObject.Properties['Events']) {
+        $eventsRaw = @($UserProfileService.Events | Where-Object { $_ })
+    }
+
+    if (-not $eventsRaw -or $eventsRaw.Count -eq 0) {
+        Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'No user profile service events captured in window'
+        return
+    }
+
+    $parsedEvents = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($event in $eventsRaw) {
+        if (-not $event) { continue }
+
+        $eventId = $null
+        if ($event.PSObject.Properties['Id']) { $eventId = $event.Id }
+        if ($eventId -and ($eventId -ne 1530 -and $eventId -ne 1533)) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        $message = $null
+        if ($event.PSObject.Properties['Message']) {
+            $message = [string]$event.Message
+        }
+
+        $parsedEvents.Add([pscustomobject]@{
+            TimeUtc = $timeUtc
+            Id      = if ($eventId) { [int]$eventId } else { $null }
+            Message = $message
+        }) | Out-Null
+    }
+
+    if ($parsedEvents.Count -eq 0) {
+        Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'No qualifying user profile service events after filtering'
+        return
+    }
+
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $window7Start = $nowUtc.AddDays(-7)
+    $window14Start = $nowUtc.AddDays(-14)
+
+    $window14Events = @($parsedEvents | Where-Object { $_.TimeUtc -and $_.TimeUtc -ge $window14Start })
+    if ($window14Events.Count -le 1) {
+        Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'User profile service events suppressed due to single occurrence within 14 days' -Data ([ordered]@{
+            EventsCaptured = $window14Events.Count
+        })
+        return
+    }
+
+    $window7Events = @($window14Events | Where-Object { $_.TimeUtc -ge $window7Start })
+    $recentCount = $window7Events.Count
+
+    Write-HeuristicDebug -Source 'Events/UserProfile' -Message 'User profile service conflict summary' -Data ([ordered]@{
+        Count7Days  = $recentCount
+        Count14Days = $window14Events.Count
+    })
+
+    if ($recentCount -lt 3) { return }
+
+    $lastEvent = $window7Events | Sort-Object TimeUtc -Descending | Select-Object -First 1
+    $lastUtcText = $null
+    if ($lastEvent -and $lastEvent.TimeUtc) {
+        $lastUtcText = $lastEvent.TimeUtc.ToString('o')
+    }
+
+    $messageHint = $null
+    if ($lastEvent -and $lastEvent.Message) {
+        $messageHint = ($lastEvent.Message -replace '\s+', ' ').Trim()
+        if ($messageHint.Length -gt 220) {
+            $messageHint = $messageHint.Substring(0, 220).TrimEnd() + '…'
+        }
+    }
+
+    $evidence = [ordered]@{
+        Count       = $recentCount
+        LastUtc     = $lastUtcText
+        MessageHint = if ($messageHint) { $messageHint } else { $null }
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Profile unload conflicts detected' -Evidence ([pscustomobject]$evidence) -Subcategory $subCategory
+
+    Add-CategoryCheck -CategoryResult $Result -Name 'User Profile Service triage recommendation' -Status 'Consider enabling the "Verbose vs normal status messages" GPO to collect additional User Profile Service diagnostics.' -Subcategory $subCategory
+}
+
 function Invoke-EventsHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -767,6 +876,10 @@ function Invoke-EventsHeuristics {
 
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+            }
+
+            if ($payload.PSObject.Properties['UserProfileService']) {
+                Invoke-EventsUserProfileChecks -Result $result -UserProfileService $payload.UserProfileService
             }
         }
     } else {

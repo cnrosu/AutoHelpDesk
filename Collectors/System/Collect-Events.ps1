@@ -139,6 +139,11 @@ function Get-EventRecords {
     return [pscustomobject]$result
 }
 
+function Get-UserProfileServiceEvents {
+    $startTime = (Get-Date).AddDays(-7)
+    return Get-EventRecords -LogName 'Microsoft-Windows-User Profile Service/Operational' -EventIds @(1530, 1533) -StartTime $startTime -MaxEvents 400
+}
+
 function Get-AccountLockoutEvents {
     $startTime = (Get-Date).AddDays(-7)
 
@@ -237,6 +242,7 @@ function Invoke-Main {
         System      = Get-RecentEvents -LogName 'System'
         Application = Get-RecentEvents -LogName 'Application'
         GroupPolicy = Get-RecentEvents -LogName 'Microsoft-Windows-GroupPolicy/Operational' -MaxEvents 200
+        UserProfileService = Get-UserProfileServiceEvents
         Authentication = [ordered]@{
             KerberosPreAuthFailures = Get-KerberosPreAuthFailures
             TimeServiceEvents       = Get-TimeServiceEvents
