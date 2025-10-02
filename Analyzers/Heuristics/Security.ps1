@@ -380,31 +380,8 @@ function Invoke-SecurityHeuristics {
     if ($firewallArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $firewallArtifact)
         Write-HeuristicDebug -Source 'Security' -Message 'Evaluating firewall payload' -Data ([ordered]@{
-            HasProfiles = [bool]($payload -and $payload.Profiles)
+            HasRules = [bool]($payload -and $payload.Rules)
         })
-        if ($payload -and $payload.Profiles) {
-            $disabledProfiles = [System.Collections.Generic.List[string]]::new()
-            foreach ($profile in $payload.Profiles) {
-                if ($profile.PSObject.Properties['Enabled']) {
-                    $enabled = ConvertTo-NullableBool $profile.Enabled
-                    if ($enabled -eq $false) {
-                        $disabledProfiles.Add($profile.Name)
-                    }
-                    Add-CategoryCheck -CategoryResult $result -Name ("Firewall profile: {0}" -f $profile.Name) -Status ($(if ($enabled) { 'Enabled' } elseif ($enabled -eq $false) { 'Disabled' } else { 'Unknown' })) -Details ("Inbound: {0}; Outbound: {1}" -f $profile.DefaultInboundAction, $profile.DefaultOutboundAction)
-                }
-            }
-
-            if ($disabledProfiles.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall'
-            } else {
-                Add-CategoryNormal -CategoryResult $result -Title 'All firewall profiles enabled' -Subcategory 'Windows Firewall'
-            }
-        } elseif ($payload -and $payload.Profiles -and $payload.Profiles.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall profile query failed, so the network defense posture is unknown.' -Evidence $payload.Profiles.Error -Subcategory 'Windows Firewall'
-        } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
-        }
-
         if ($payload -and $payload.Rules) {
             $ruleEntries = ConvertTo-List $payload.Rules
             $ruleErrors = @($ruleEntries | Where-Object { $_ -and $_.PSObject.Properties['Error'] -and $_.Error })
@@ -531,9 +508,11 @@ function Invoke-SecurityHeuristics {
                     Add-CategoryNormal -CategoryResult $result -Title 'Remote Desktop firewall rules exclude the Public profile so unsolicited internet access is blocked.' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
                 }
             }
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Firewall rule data missing, so Remote Desktop exposure cannot be verified.' -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Firewall rules not collected, so Remote Desktop exposure cannot be verified.' -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
     }
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'

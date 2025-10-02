@@ -90,6 +90,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Adapters** – Surfaces high issues for interfaces stuck at 100 Mb half-duplex and medium issues when negotiated speeds disagree with policy, pointing to throughput problems.
 - **ARP Cache** – Detects gateway MAC changes, duplicate MAC addresses, invalid broadcast replies, and hosts answering for multiple IPs to warn about spoofing or neighbor instability.
 - **Network Adapters** – Reports informational gaps when adapter inventories are missing, raises high severity when no active adapters are detected, and records normals when link data is healthy.
+- **Windows Firewall Profiles** – Flags critical issues when any Windows Firewall profile is disabled, records normals when Domain, Private, and Public stay enabled, and raises informational findings when the profile collector is missing or errors occur.
 - **DHCP** – Runs dedicated analyzers that flag unexpected (non-private) DHCP servers, missing server metadata, static configurations, stale or expiring leases, scope exhaustion, and client event log errors while recording normals when each check passes.
 - **DNS Resolution** – Issues high severity when lookups fail, medium when latency probes timeout, and notes when DNS diagnostics were not collected.
 - **DNS Client** – Warns when adapters lack DNS servers, when public resolvers are configured on domain devices, when registration is disabled, and when policy queries fail.
@@ -108,7 +109,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 
 ### Security
 - **Microsoft Defender** – Detects disabled AV engines, real-time protection, tamper protection, and cloud-delivered protection, surfaces recent threat detections, and notes when Defender status or preferences cannot be queried.
-- **Windows Firewall** – Records normals when all profiles are enabled and raises high-severity issues or informational gaps when profiles are disabled or inventory is missing.
+- **Remote Desktop Firewall Rules** – Flags high severity when RDP firewall rules allow the Public profile, records normals when rules exclude the Public profile, and issues informational findings when firewall rule inventory is missing.
 - **BitLocker** – Highlights unprotected OS volumes, weak protector configurations, missing recovery passwords, and collection failures while documenting TPM- or TPM+PIN-backed protection when present.
 - **Measured Boot** – Confirms Secure Boot and TPM attestation data when available, and otherwise records informational gaps for missing PCR bindings, attestation events, or Secure Boot confirmation.
 - **TPM** – Raises issues when the TPM is absent or not ready and records normals when hardware key protection is available.

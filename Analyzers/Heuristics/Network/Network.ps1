@@ -352,6 +352,125 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function Get-NetworkArtifactFirstEntry {
+    param($Artifact)
+
+    if (-not $Artifact) { return $null }
+    if ($Artifact -is [System.Collections.IEnumerable] -and -not ($Artifact -is [string])) {
+        foreach ($entry in $Artifact) {
+            if ($entry) { return $entry }
+        }
+        return $null
+    }
+
+    return $Artifact
+}
+
+function Get-NetworkArtifactRawJson {
+    param($Artifact)
+
+    $entry = Get-NetworkArtifactFirstEntry $Artifact
+    if (-not $entry -or -not $entry.PSObject.Properties['Path']) { return $null }
+
+    $path = $entry.Path
+    if (-not $path) { return $null }
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+
+    try {
+        return Get-Content -LiteralPath $path -Raw -ErrorAction Stop
+    } catch {
+        return $null
+    }
+}
+
+function Get-NetworkErrorText {
+    param($Value)
+
+    if (-not $Value) { return $null }
+    if ($Value -is [string]) { return $Value }
+    if ($Value.PSObject -and $Value.PSObject.Properties['Message'] -and $Value.Message) {
+        return [string]$Value.Message
+    }
+
+    try {
+        return ($Value | ConvertTo-Json -Depth 4 -Compress)
+    } catch {
+        try { return ($Value | Out-String).Trim() } catch { return $null }
+    }
+}
+
+function Get-NetworkFirewallProfileData {
+    param($Artifact)
+
+    $entry = Get-NetworkArtifactFirstEntry $Artifact
+    $rawJson = Get-NetworkArtifactRawJson $Artifact
+    $fileName = $null
+    if ($entry -and $entry.PSObject.Properties['Path'] -and $entry.Path) {
+        try {
+            $fileName = [System.IO.Path]::GetFileName($entry.Path)
+        } catch {
+            $fileName = $entry.Path
+        }
+    }
+
+    $profiles = New-Object System.Collections.Generic.List[object]
+    $errors = New-Object System.Collections.Generic.List[string]
+
+    $collectProfiles = {
+        param($Candidate)
+        foreach ($item in (ConvertTo-NetworkArray $Candidate)) {
+            if ($item) { $profiles.Add($item) | Out-Null }
+        }
+    }
+
+    $inspect = {
+        param($Candidate)
+
+        if (-not $Candidate) { return }
+
+        if ($Candidate.PSObject -and $Candidate.PSObject.Properties['Error'] -and $Candidate.Error) {
+            $errorText = Get-NetworkErrorText $Candidate.Error
+            if ($errorText) { $errors.Add($errorText) | Out-Null }
+        }
+
+        if ($Candidate.PSObject -and $Candidate.PSObject.Properties['Profiles'] -and $Candidate.Profiles) {
+            & $collectProfiles $Candidate.Profiles
+            return
+        }
+
+        if ($Candidate -is [System.Collections.IEnumerable] -and -not ($Candidate -is [string])) {
+            & $collectProfiles $Candidate
+            return
+        }
+
+        if ($Candidate.PSObject -and ($Candidate.PSObject.Properties['Name'] -or $Candidate.PSObject.Properties['Enabled'])) {
+            $profiles.Add($Candidate) | Out-Null
+        }
+    }
+
+    if ($entry) {
+        & $inspect $entry
+
+        if ($entry.PSObject.Properties['Data'] -and $entry.Data) {
+            & $inspect $entry.Data
+
+            if ($entry.Data.PSObject.Properties['Payload'] -and $entry.Data.Payload) {
+                & $inspect $entry.Data.Payload
+            }
+        }
+
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $entry)
+        & $inspect $payload
+    }
+
+    return [pscustomobject]@{
+        Profiles     = $profiles.ToArray()
+        Errors       = $errors.ToArray()
+        ArtifactName = $fileName
+        RawJson      = $rawJson
+    }
+}
+
 function ConvertTo-LldpNeighborRecords {
     param($Payload)
 
@@ -2449,14 +2568,102 @@ function Invoke-NetworkHeuristics {
             }
         }
 
-        if ($payload -and $payload.Route) {
-            $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
-            if ($routeText -notmatch '0\.0\.0\.0') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing'
+    if ($payload -and $payload.Route) {
+        $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
+        if ($routeText -notmatch '0\.0\.0\.0') {
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing'
+        }
+    }
+} else {
+    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection'
+}
+
+    $firewallProfileSource = 'firewall.profile.json'
+    $firewallProfileArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall.profile.json'
+    if (-not $firewallProfileArtifact) {
+        $firewallProfileArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall'
+        $firewallProfileSource = 'firewall'
+    }
+
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall profile artifact' -Data ([ordered]@{
+        Found  = [bool]$firewallProfileArtifact
+        Source = $firewallProfileSource
+    })
+
+    if ($firewallProfileArtifact) {
+        $firewallData = Get-NetworkFirewallProfileData -Artifact $firewallProfileArtifact
+        $profileEntries = if ($firewallData -and $firewallData.Profiles) { ConvertTo-NetworkArray $firewallData.Profiles } else { @() }
+        $profileSummaries = New-Object System.Collections.Generic.List[pscustomobject]
+        $disabledProfiles = New-Object System.Collections.Generic.List[string]
+
+        foreach ($profile in $profileEntries) {
+            if (-not $profile) { continue }
+
+            $name = if ($profile.PSObject.Properties['Name'] -and $profile.Name) { [string]$profile.Name } else { 'Unknown' }
+
+            $enabledBool = $null
+            $enabledDisplay = 'Unknown'
+            if ($profile.PSObject.Properties['Enabled']) {
+                $enabledBool = ConvertTo-NullableBool $profile.Enabled
+                if ($enabledBool -eq $true) {
+                    $enabledDisplay = 'True'
+                } elseif ($enabledBool -eq $false) {
+                    $enabledDisplay = 'False'
+                } elseif ($null -ne $profile.Enabled) {
+                    $enabledDisplay = [string]$profile.Enabled
+                }
+            }
+
+            $profileSummaries.Add([pscustomobject]@{
+                Name    = $name
+                Enabled = $enabledDisplay
+            }) | Out-Null
+
+            if ($enabledBool -eq $false) {
+                $disabledProfiles.Add($name) | Out-Null
             }
         }
+
+        $errorsList = New-Object System.Collections.Generic.List[string]
+        if ($firewallData -and $firewallData.Errors) {
+            foreach ($error in (ConvertTo-NetworkArray $firewallData.Errors)) {
+                if (-not $error) { continue }
+                $errorsList.Add([string]$error) | Out-Null
+            }
+        }
+
+        $artifactKey = if ($firewallData -and $firewallData.ArtifactName) { $firewallData.ArtifactName } elseif ($firewallProfileSource -eq 'firewall') { 'firewall.json' } else { 'firewall.profile.json' }
+        $rawJson = if ($firewallData) { $firewallData.RawJson } else { $null }
+
+        $evidence = [ordered]@{
+            Profiles = $profileSummaries.ToArray()
+        }
+        if ($rawJson) {
+            $evidence[$artifactKey] = $rawJson
+        }
+        if ($errorsList.Count -gt 0) {
+            $evidence['Errors'] = $errorsList.ToArray()
+        }
+
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluated firewall profiles' -Data ([ordered]@{
+            ProfileCount  = $profileSummaries.Count
+            DisabledCount = $disabledProfiles.Count
+            ErrorCount    = $errorsList.Count
+        })
+
+        if ($disabledProfiles.Count -gt 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.' -Evidence $evidence -Subcategory 'Endpoint/Firewall (Port Exposure)' -CheckId 'fw.profile.disabled'
+        } elseif ($profileSummaries.Count -gt 0) {
+            Add-CategoryNormal -CategoryResult $result -Title 'PASS: All firewall profiles enabled (Domain, Private, Public).' -Evidence $evidence -Subcategory 'Endpoint/Firewall (Port Exposure)' -CheckId 'fw.profile.enabled'
+        } elseif ($errorsList.Count -gt 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Windows Firewall profile query failed, so the endpoint firewall state is unknown.' -Evidence $evidence -Subcategory 'Endpoint/Firewall (Port Exposure)' -CheckId 'fw.status.unknown'
+        } else {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Windows Firewall profile data missing values, so the endpoint firewall state is unknown.' -Evidence $evidence -Subcategory 'Endpoint/Firewall (Port Exposure)' -CheckId 'fw.status.unknown'
+        }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Windows Firewall profile artifact missing, so the endpoint firewall state cannot be verified.' -Evidence ([ordered]@{
+            Guidance = 'Run the firewall profile collector (Get-NetFirewallProfile) to produce firewall.profile.json.'
+        }) -Subcategory 'Endpoint/Firewall (Port Exposure)' -CheckId 'fw.collector.missing'
     }
 
     if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
