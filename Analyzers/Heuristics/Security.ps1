@@ -404,6 +404,134 @@ function Invoke-SecurityHeuristics {
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
         }
+
+        if ($payload -and $payload.Rules) {
+            $ruleEntries = ConvertTo-List $payload.Rules
+            $ruleErrors = @($ruleEntries | Where-Object { $_ -and $_.PSObject.Properties['Error'] -and $_.Error })
+
+            if ($ruleErrors.Count -gt 0) {
+                $ruleError = $ruleErrors | Select-Object -First 1
+                $errorEvidence = if ($ruleError -and $ruleError.Error) { [string]$ruleError.Error } else { 'Unknown error enumerating firewall rules.' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Firewall rule query failed, so Remote Desktop exposure cannot be verified.' -Evidence $errorEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
+            } else {
+                $rdpRules = [System.Collections.Generic.List[object]]::new()
+                $rdpPublicEvidence = [System.Collections.Generic.List[string]]::new()
+                $rdpRestrictedEvidence = [System.Collections.Generic.List[string]]::new()
+
+                foreach ($rule in $ruleEntries) {
+                    if (-not $rule) { continue }
+
+                    $enabled = $null
+                    if ($rule.PSObject.Properties['Enabled']) {
+                        $enabled = ConvertTo-NullableBool $rule.Enabled
+                    }
+                    if ($enabled -ne $true) { continue }
+
+                    $direction = ([string]$rule.Direction).Trim()
+                    if (-not $direction) { continue }
+                    try {
+                        $direction = $direction.ToLowerInvariant()
+                    } catch {
+                        $direction = $direction.ToLower()
+                    }
+                    if ($direction -notin @('inbound', 'in')) { continue }
+
+                    $action = ([string]$rule.Action).Trim()
+                    if (-not $action) { continue }
+                    try {
+                        $action = $action.ToLowerInvariant()
+                    } catch {
+                        $action = $action.ToLower()
+                    }
+                    if ($action -notin @('allow', 'permitted', 'permit')) { continue }
+
+                    $textCandidates = [System.Collections.Generic.List[string]]::new()
+                    if ($rule.PSObject.Properties['DisplayName'] -and $rule.DisplayName) {
+                        $textCandidates.Add([string]$rule.DisplayName) | Out-Null
+                    }
+                    if ($rule.PSObject.Properties['Group'] -and $rule.Group) {
+                        $textCandidates.Add([string]$rule.Group) | Out-Null
+                    }
+                    if ($rule.PSObject.Properties['Description'] -and $rule.Description) {
+                        $textCandidates.Add([string]$rule.Description) | Out-Null
+                    }
+
+                    $isRdpRule = $false
+                    foreach ($text in $textCandidates) {
+                        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+                        try {
+                            $textValue = $text.ToLowerInvariant()
+                        } catch {
+                            $textValue = $text.ToLower()
+                        }
+
+                        if ($textValue -match 'remote\s*desktop' -or $textValue -match '\brdp\b') {
+                            $isRdpRule = $true
+                            break
+                        }
+                    }
+
+                    if (-not $isRdpRule) { continue }
+
+                    $null = $rdpRules.Add($rule)
+
+                    $profileText = ([string]$rule.Profile).Trim()
+                    $profileTokens = @()
+                    if ($profileText) {
+                        $profileTokens = $profileText -split '[,;]'
+                    }
+
+                    $includesPublic = $false
+                    foreach ($token in $profileTokens) {
+                        $tokenTrimmed = ([string]$token).Trim()
+                        if (-not $tokenTrimmed) { continue }
+                        try {
+                            $tokenValue = $tokenTrimmed.ToLowerInvariant()
+                        } catch {
+                            $tokenValue = $tokenTrimmed.ToLower()
+                        }
+
+                        if ($tokenValue -in @('public', 'any', 'all')) {
+                            $includesPublic = $true
+                            break
+                        }
+                    }
+
+                    $detailParts = [System.Collections.Generic.List[string]]::new()
+                    if ($rule.PSObject.Properties['DisplayName'] -and $rule.DisplayName) {
+                        $detailParts.Add(("Name={0}" -f $rule.DisplayName)) | Out-Null
+                    }
+                    if ($rule.PSObject.Properties['Group'] -and $rule.Group) {
+                        $detailParts.Add(("Group={0}" -f $rule.Group)) | Out-Null
+                    }
+                    if ($profileText) {
+                        $detailParts.Add(("Profiles={0}" -f $profileText)) | Out-Null
+                    }
+                    if ($rule.PSObject.Properties['PolicyStore'] -and $rule.PolicyStore) {
+                        $detailParts.Add(("PolicyStore={0}" -f $rule.PolicyStore)) | Out-Null
+                    }
+                    if ($rule.PSObject.Properties['Service'] -and $rule.Service) {
+                        $detailParts.Add(("Service={0}" -f $rule.Service)) | Out-Null
+                    }
+
+                    $evidenceText = if ($detailParts.Count -gt 0) { $detailParts -join '; ' } else { 'Remote Desktop firewall rule detected' }
+
+                    if ($includesPublic) {
+                        $rdpPublicEvidence.Add($evidenceText) | Out-Null
+                    } else {
+                        $rdpRestrictedEvidence.Add($evidenceText) | Out-Null
+                    }
+                }
+
+                if ($rdpPublicEvidence.Count -gt 0) {
+                    $evidence = $rdpPublicEvidence -join ' | '
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
+                } elseif ($rdpRules.Count -gt 0) {
+                    $evidence = if ($rdpRestrictedEvidence.Count -gt 0) { $rdpRestrictedEvidence -join ' | ' } else { 'Remote Desktop rules detected without Public profile access.' }
+                    Add-CategoryNormal -CategoryResult $result -Title 'Remote Desktop firewall rules exclude the Public profile so unsolicited internet access is blocked.' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
+                }
+            }
+        }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
     }
