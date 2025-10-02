@@ -79,6 +79,273 @@ function ConvertTo-NetworkArray {
     return @($Value)
 }
 
+function Normalize-NetworkGuid {
+    param([string]$Value)
+
+    if (-not $Value) { return $null }
+
+    $text = $Value
+    try { $text = $Value.Trim() } catch { $text = [string]$Value }
+    if (-not $text) { return $null }
+
+    $text = $text -replace '^Tcpip_', ''
+    $text = $text.Trim('{}')
+
+    try { return $text.ToUpperInvariant() } catch { return $text }
+}
+
+function Test-NetworkAdapterIsWireless {
+    param(
+        [string]$Alias,
+        [string]$Description
+    )
+
+    $candidates = @()
+    if ($Alias) { $candidates += $Alias }
+    if ($Description) { $candidates += $Description }
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+
+        $normalized = $candidate
+        try { $normalized = $candidate.ToLowerInvariant() } catch { $normalized = [string]$candidate }
+
+        if (-not $normalized) { continue }
+
+        $patterns = @(
+            'wi-?fi',
+            'wireless',
+            'wlan',
+            'wwan',
+            'cellular',
+            'mobile broadband',
+            'bluetooth'
+        )
+
+        foreach ($pattern in $patterns) {
+            if ($normalized -match $pattern) { return $true }
+        }
+    }
+
+    return $false
+}
+
+function Get-NetworkAdapterReference {
+    param(
+        $DiscoveryAdapters,
+        $AdapterPayload
+    )
+
+    $aliasMap = @{}
+    $descriptionMap = @{}
+
+    $sources = @()
+    $sources += ConvertTo-NetworkArray $DiscoveryAdapters
+    if ($AdapterPayload -and $AdapterPayload.PSObject.Properties['Adapters']) {
+        $sources += ConvertTo-NetworkArray $AdapterPayload.Adapters
+    }
+
+    foreach ($adapter in $sources) {
+        if (-not $adapter) { continue }
+        if ($adapter.PSObject.Properties['Error'] -and $adapter.Error) { continue }
+
+        $name = $null
+        if ($adapter.PSObject.Properties['Name']) { $name = $adapter.Name }
+        elseif ($adapter.PSObject.Properties['InterfaceAlias']) { $name = $adapter.InterfaceAlias }
+
+        $description = if ($adapter.PSObject.Properties['InterfaceDescription']) { $adapter.InterfaceDescription } else { $null }
+        $status = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
+        $guid = $null
+        if ($adapter.PSObject.Properties['InterfaceGuid']) { $guid = Normalize-NetworkGuid $adapter.InterfaceGuid }
+
+        $entry = [pscustomobject]@{
+            Name                = $name
+            InterfaceDescription= $description
+            Status              = $status
+            InterfaceGuid       = $guid
+        }
+
+        if ($name) {
+            $aliasKey = $name
+            try { $aliasKey = $name.ToLowerInvariant() } catch { $aliasKey = $name }
+            if ($aliasKey -and -not $aliasMap.ContainsKey($aliasKey)) { $aliasMap[$aliasKey] = $entry }
+        }
+
+        if ($description) {
+            $descKey = $description
+            try { $descKey = $description.ToLowerInvariant() } catch { $descKey = $description }
+            if ($descKey -and -not $descriptionMap.ContainsKey($descKey)) { $descriptionMap[$descKey] = $entry }
+        }
+    }
+
+    return [pscustomobject]@{
+        AliasMap       = $aliasMap
+        DescriptionMap = $descriptionMap
+    }
+}
+
+function Get-WiredDomainProfiles {
+    param(
+        $ConnectionProfiles,
+        $AdapterReference
+    )
+
+    $results = New-Object System.Collections.Generic.List[object]
+    $entries = ConvertTo-NetworkArray $ConnectionProfiles
+
+    foreach ($profile in $entries) {
+        if (-not $profile) { continue }
+        if ($profile.PSObject.Properties['Error'] -and $profile.Error) { continue }
+
+        $alias = if ($profile.PSObject.Properties['InterfaceAlias']) { $profile.InterfaceAlias } else { $null }
+        if (-not $alias) { continue }
+
+        $category = if ($profile.PSObject.Properties['NetworkCategory']) { [string]$profile.NetworkCategory } else { $null }
+        if ($category -ne 'DomainAuthenticated') { continue }
+
+        $aliasKey = $alias
+        try { $aliasKey = $alias.ToLowerInvariant() } catch { $aliasKey = $alias }
+
+        $adapterInfo = $null
+        if ($AdapterReference -and $AdapterReference.AliasMap -and $aliasKey -and $AdapterReference.AliasMap.ContainsKey($aliasKey)) {
+            $adapterInfo = $AdapterReference.AliasMap[$aliasKey]
+        }
+
+        $description = if ($profile.PSObject.Properties['InterfaceDescription']) { $profile.InterfaceDescription } else { $null }
+        if (-not $adapterInfo -and $AdapterReference -and $AdapterReference.DescriptionMap -and $description) {
+            $descKey = $description
+            try { $descKey = $description.ToLowerInvariant() } catch { $descKey = $description }
+            if ($descKey -and $AdapterReference.DescriptionMap.ContainsKey($descKey)) {
+                $adapterInfo = $AdapterReference.DescriptionMap[$descKey]
+            }
+        }
+
+        $referenceDescription = if ($adapterInfo) { $adapterInfo.InterfaceDescription } else { $description }
+        if (Test-NetworkAdapterIsWireless -Alias $alias -Description $referenceDescription) { continue }
+
+        $status = if ($adapterInfo) { $adapterInfo.Status } else { $null }
+        if ($status) {
+            $statusToken = $status
+            try { $statusToken = $status.ToLowerInvariant() } catch { $statusToken = $status }
+            if ($statusToken -in @('down','disabled','disconnected')) { continue }
+        }
+
+        $results.Add([pscustomobject]@{
+            InterfaceAlias       = $alias
+            ProfileName          = if ($profile.PSObject.Properties['Name']) { $profile.Name } else { $null }
+            NetworkCategory      = $category
+            InterfaceDescription = $referenceDescription
+            Status               = $status
+            InterfaceGuid        = if ($adapterInfo) { $adapterInfo.InterfaceGuid } else { $null }
+        }) | Out-Null
+    }
+
+    return $results.ToArray()
+}
+
+function Test-NetworkFirewallLocalPortMatch {
+    param(
+        $PortValue,
+        [int]$TargetPort
+    )
+
+    if ($null -eq $PortValue) { return $false }
+
+    if ($PortValue -is [int]) { return ($PortValue -eq $TargetPort) }
+
+    $values = @()
+    if ($PortValue -is [string]) {
+        $values = $PortValue -split ','
+    } elseif ($PortValue -is [System.Collections.IEnumerable] -and -not ($PortValue -is [string])) {
+        foreach ($item in $PortValue) {
+            if ($item -ne $null) { $values += [string]$item }
+        }
+    } else {
+        $values = @([string]$PortValue)
+    }
+
+    foreach ($value in $values) {
+        $text = ($value | Out-String).Trim()
+        if (-not $text) { continue }
+        if ($text -eq 'Any' -or $text -eq '*') { continue }
+
+        $range = [regex]::Match($text, '^(?<start>\d+)\s*-\s*(?<end>\d+)$')
+        if ($range.Success) {
+            $start = [int]$range.Groups['start'].Value
+            $end = [int]$range.Groups['end'].Value
+            if ($TargetPort -ge $start -and $TargetPort -le $end) { return $true }
+            continue
+        }
+
+        $number = $null
+        if ([int]::TryParse($text, [ref]$number)) {
+            if ($number -eq $TargetPort) { return $true }
+        }
+    }
+
+    return $false
+}
+
+function Get-NetworkDiscoveryProfileLabels {
+    param($Profiles)
+
+    $labels = New-Object System.Collections.Generic.List[string]
+    $entries = ConvertTo-NetworkArray $Profiles
+
+    foreach ($profile in $entries) {
+        if (-not $profile) { continue }
+
+        $alias = if ($profile.PSObject.Properties['InterfaceAlias']) { $profile.InterfaceAlias } else { $null }
+        $name = if ($profile.PSObject.Properties['ProfileName']) { $profile.ProfileName } else { $null }
+
+        $label = $alias
+        if ($alias -and $name) {
+            $label = ('{0} ({1})' -f $alias, $name)
+        } elseif (-not $label) {
+            $label = $name
+        }
+
+        if (-not $label) { continue }
+
+        $trim = $label.Trim()
+        if (-not $trim) { continue }
+
+        if (-not ($labels -contains $trim)) { $labels.Add($trim) | Out-Null }
+    }
+
+    return $labels.ToArray()
+}
+
+function Get-NetworkDiscoveryUdpByPort {
+    param(
+        $Listeners,
+        [int]$Port
+    )
+
+    $results = New-Object System.Collections.Generic.List[object]
+    $entries = ConvertTo-NetworkArray $Listeners
+
+    foreach ($entry in $entries) {
+        if (-not $entry) { continue }
+        if ($entry.PSObject.Properties['Error'] -and $entry.Error) { continue }
+
+        $value = $null
+        if ($entry.PSObject.Properties['LocalPort']) { $value = $entry.LocalPort }
+
+        if ($value -is [int]) {
+            if ($value -eq $Port) { $results.Add($entry) | Out-Null }
+            continue
+        }
+
+        $parsed = $null
+        if ([int]::TryParse([string]$value, [ref]$parsed) -and $parsed -eq $Port) {
+            $results.Add($entry) | Out-Null
+        }
+    }
+
+    return $results.ToArray()
+}
+
 function Get-NetworkValueText {
     param($Value)
 
@@ -953,6 +1220,88 @@ function Invoke-NetworkHeuristics {
     }
     $adapterInventory = Get-NetworkDnsInterfaceInventory -AdapterPayload $adapterPayload
 
+    $discoveryPayload = $null
+    $discoveryArtifact = Get-AnalyzerArtifact -Context $Context -Name 'discovery-protocols'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved discovery-protocols artifact' -Data ([ordered]@{
+        Found = [bool]$discoveryArtifact
+    })
+    if ($discoveryArtifact) {
+        $discoveryPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $discoveryArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating discovery payload' -Data ([ordered]@{
+            HasPayload = [bool]$discoveryPayload
+        })
+    }
+
+    $discoveryAdapters = $null
+    if ($discoveryPayload -and $discoveryPayload.PSObject.Properties['AdapterGuids']) {
+        $discoveryAdapters = $discoveryPayload.AdapterGuids
+    }
+
+    $discoveryFirewallRules = @()
+    $discoveryUdpListeners = @()
+    $discoveryRegistry = $null
+    $wiredDomainProfiles = @()
+
+    $adapterReference = Get-NetworkAdapterReference -DiscoveryAdapters $discoveryAdapters -AdapterPayload $adapterPayload
+
+    if ($discoveryPayload) {
+        if ($discoveryPayload.PSObject.Properties['FirewallRules']) {
+            $discoveryFirewallRules = ConvertTo-NetworkArray $discoveryPayload.FirewallRules
+            if ($discoveryFirewallRules.Count -eq 1 -and $discoveryFirewallRules[0] -and $discoveryFirewallRules[0].PSObject.Properties['Error'] -and $discoveryFirewallRules[0].Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Firewall rule enumeration failed, so discovery protocol filtering is unknown.' -Evidence $discoveryFirewallRules[0].Error -Subcategory 'Discovery Protocols'
+                $discoveryFirewallRules = @()
+            }
+        }
+
+        if ($discoveryPayload.PSObject.Properties['UdpListeners']) {
+            $discoveryUdpListeners = ConvertTo-NetworkArray $discoveryPayload.UdpListeners
+            if ($discoveryUdpListeners.Count -eq 1 -and $discoveryUdpListeners[0] -and $discoveryUdpListeners[0].PSObject.Properties['Error'] -and $discoveryUdpListeners[0].Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'UDP listener enumeration failed, so discovery protocol exposure is unknown.' -Evidence $discoveryUdpListeners[0].Error -Subcategory 'Discovery Protocols'
+                $discoveryUdpListeners = @()
+            }
+        }
+
+        if ($discoveryPayload.PSObject.Properties['Registry']) {
+            $discoveryRegistry = $discoveryPayload.Registry
+        }
+
+        if ($discoveryPayload.PSObject.Properties['ConnectionProfiles']) {
+            $connectionProfiles = ConvertTo-NetworkArray $discoveryPayload.ConnectionProfiles
+            if ($connectionProfiles.Count -eq 1 -and $connectionProfiles[0] -and $connectionProfiles[0].PSObject.Properties['Error'] -and $connectionProfiles[0].Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network connection profiles, so wired policy compliance is unknown.' -Evidence $connectionProfiles[0].Error -Subcategory 'Discovery Protocols'
+            } else {
+                $wiredDomainProfiles = Get-WiredDomainProfiles -ConnectionProfiles $connectionProfiles -AdapterReference $adapterReference
+            }
+        }
+    }
+
+    $llmnrPolicy = $null
+    $nbnsPolicy = $null
+    $netbtEntries = @()
+    if ($discoveryRegistry) {
+        if ($discoveryRegistry.PSObject.Properties['Llmnr']) {
+            $llmnrPolicy = $discoveryRegistry.Llmnr
+            if ($llmnrPolicy -and $llmnrPolicy.PSObject.Properties['Error'] -and $llmnrPolicy.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'LLMNR policy registry query failed, so discovery hardening is unknown.' -Evidence $llmnrPolicy.Error -Subcategory 'Discovery Protocols'
+                $llmnrPolicy = $null
+            }
+        }
+        if ($discoveryRegistry.PSObject.Properties['Nbns']) {
+            $nbnsPolicy = $discoveryRegistry.Nbns
+            if ($nbnsPolicy -and $nbnsPolicy.PSObject.Properties['Error'] -and $nbnsPolicy.Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'NBNS policy registry query failed, so discovery hardening is unknown.' -Evidence $nbnsPolicy.Error -Subcategory 'Discovery Protocols'
+                $nbnsPolicy = $null
+            }
+        }
+        if ($discoveryRegistry.PSObject.Properties['Netbt']) {
+            $netbtEntries = ConvertTo-NetworkArray $discoveryRegistry.Netbt
+            if ($netbtEntries.Count -eq 1 -and $netbtEntries[0] -and $netbtEntries[0].PSObject.Properties['Error'] -and $netbtEntries[0].Error) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'NetBIOS registry query failed, so discovery hardening is unknown.' -Evidence $netbtEntries[0].Error -Subcategory 'Discovery Protocols'
+                $netbtEntries = @()
+            }
+        }
+    }
+
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
         Found = [bool]$networkArtifact
@@ -979,6 +1328,137 @@ function Invoke-NetworkHeuristics {
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection'
+    }
+
+    if ($wiredDomainProfiles -and $wiredDomainProfiles.Count -gt 0) {
+        $profileLabels = Get-NetworkDiscoveryProfileLabels -Profiles $wiredDomainProfiles
+
+        $llmnrDisabled = $false
+        $llmnrConfigured = $false
+        $llmnrValue = $null
+        if ($llmnrPolicy) {
+            if ($llmnrPolicy.PSObject.Properties['EnableMulticast']) {
+                $llmnrValue = $llmnrPolicy.EnableMulticast
+                $llmnrConfigured = $true
+                try {
+                    if ([int]$llmnrValue -eq 0) { $llmnrDisabled = $true }
+                } catch {
+                    $textValue = ([string]$llmnrValue).Trim()
+                    if ($textValue -eq '0') { $llmnrDisabled = $true }
+                }
+            }
+        }
+
+        $llmnrListeners = Get-NetworkDiscoveryUdpByPort -Listeners $discoveryUdpListeners -Port 5355
+        $llmnrFirewall = @()
+        if ($discoveryFirewallRules.Count -gt 0) {
+            $llmnrFirewall = $discoveryFirewallRules | Where-Object { Test-NetworkFirewallLocalPortMatch -PortValue $_.LocalPort -TargetPort 5355 }
+        }
+
+        if (-not $llmnrDisabled) {
+            $llmnrEvidence = [ordered]@{
+                profiles        = $profileLabels
+                enableMulticast = if ($llmnrConfigured) { $llmnrValue } else { 'NotConfigured' }
+                udpListeners    = ($llmnrListeners | Select-Object LocalAddress, LocalPort, OwningProcess -First 5)
+                firewallRules   = ($llmnrFirewall | Select-Object DisplayName, Profile, Enabled, Action -First 5)
+                remediation     = 'Set "Turn off multicast name resolution" to Enabled under Computer Configuration > Administrative Templates > Network > DNS Client and block UDP/5355 on the Domain profile.'
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'LLMNR still active on corporate wired networks, so attackers can spoof name resolution.' -Evidence $llmnrEvidence -Subcategory 'Discovery Protocols'
+        }
+
+        $netbtMap = @{}
+        foreach ($entry in $netbtEntries) {
+            if (-not $entry) { continue }
+            $guidKey = $null
+            if ($entry.PSObject.Properties['InterfaceGuid'] -and $entry.InterfaceGuid) {
+                $guidKey = Normalize-NetworkGuid $entry.InterfaceGuid
+            } elseif ($entry.PSObject.Properties['InterfaceKey'] -and $entry.InterfaceKey) {
+                $guidKey = Normalize-NetworkGuid $entry.InterfaceKey
+            }
+            if ($guidKey -and -not $netbtMap.ContainsKey($guidKey)) {
+                $netbtMap[$guidKey] = $entry
+            }
+        }
+
+        $nbnsNonCompliant = New-Object System.Collections.Generic.List[object]
+        foreach ($profile in $wiredDomainProfiles) {
+            if (-not $profile) { continue }
+
+            $guid = $null
+            if ($profile.PSObject.Properties['InterfaceGuid'] -and $profile.InterfaceGuid) {
+                $guid = Normalize-NetworkGuid $profile.InterfaceGuid
+            }
+
+            $entry = $null
+            if ($guid -and $netbtMap.ContainsKey($guid)) {
+                $entry = $netbtMap[$guid]
+            }
+
+            $netbiosValue = $null
+            $dhcpValue = $null
+            $disabled = $false
+            if ($entry) {
+                if ($entry.PSObject.Properties['NetbiosOptions']) { $netbiosValue = $entry.NetbiosOptions }
+                if ($entry.PSObject.Properties['DhcpNetbiosOptions']) { $dhcpValue = $entry.DhcpNetbiosOptions }
+
+                if ($netbiosValue -ne $null) {
+                    try { if ([int]$netbiosValue -eq 2) { $disabled = $true } } catch { if (([string]$netbiosValue).Trim() -eq '2') { $disabled = $true } }
+                } elseif ($dhcpValue -ne $null) {
+                    try { if ([int]$dhcpValue -eq 2) { $disabled = $true } } catch { if (([string]$dhcpValue).Trim() -eq '2') { $disabled = $true } }
+                }
+            }
+
+            if (-not $disabled) {
+                $nbnsNonCompliant.Add([pscustomobject]@{
+                    InterfaceAlias     = if ($profile.PSObject.Properties['InterfaceAlias']) { $profile.InterfaceAlias } else { $null }
+                    ProfileName        = if ($profile.PSObject.Properties['ProfileName']) { $profile.ProfileName } else { $null }
+                    NetbiosOptions     = $netbiosValue
+                    DhcpNetbiosOptions = $dhcpValue
+                }) | Out-Null
+            }
+        }
+
+        $nbnsFirewall = @()
+        if ($discoveryFirewallRules.Count -gt 0) {
+            $nbnsFirewall = $discoveryFirewallRules | Where-Object { Test-NetworkFirewallLocalPortMatch -PortValue $_.LocalPort -TargetPort 137 }
+        }
+        $nbnsListeners = Get-NetworkDiscoveryUdpByPort -Listeners $discoveryUdpListeners -Port 137
+
+        if ($nbnsNonCompliant.Count -gt 0) {
+            $nbnsPolicyValue = 'NotConfigured'
+            if ($nbnsPolicy -and $nbnsPolicy.PSObject.Properties['EnableNBNS']) {
+                $nbnsPolicyValue = $nbnsPolicy.EnableNBNS
+            }
+
+            $nbnsEvidence = [ordered]@{
+                profiles         = $profileLabels
+                netbiosStates    = ($nbnsNonCompliant | Select-Object InterfaceAlias, ProfileName, NetbiosOptions, DhcpNetbiosOptions)
+                policyEnableNBNS = $nbnsPolicyValue
+                udpListeners     = ($nbnsListeners | Select-Object LocalAddress, LocalPort, OwningProcess -First 5)
+                firewallRules    = ($nbnsFirewall | Select-Object DisplayName, Profile, Enabled, Action -First 5)
+                remediation      = 'Disable NetBIOS over TCP/IP for wired adapters via DHCP option 001 or adapter settings, and block UDP/137 on the Domain profile.'
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'NetBIOS name service still active on corporate wired networks, so legacy broadcasts can be hijacked.' -Evidence $nbnsEvidence -Subcategory 'Discovery Protocols'
+        }
+
+        $mdnsListeners = Get-NetworkDiscoveryUdpByPort -Listeners $discoveryUdpListeners -Port 5353
+        if ($mdnsListeners.Count -gt 0) {
+            $mdnsFirewall = @()
+            if ($discoveryFirewallRules.Count -gt 0) {
+                $mdnsFirewall = $discoveryFirewallRules | Where-Object { Test-NetworkFirewallLocalPortMatch -PortValue $_.LocalPort -TargetPort 5353 }
+            }
+
+            $mdnsEvidence = [ordered]@{
+                profiles      = $profileLabels
+                udpListeners  = ($mdnsListeners | Select-Object LocalAddress, LocalPort, OwningProcess -First 5)
+                firewallRules = ($mdnsFirewall | Select-Object DisplayName, Profile, Enabled, Action -First 5)
+                remediation   = 'Disable the Function Discovery services or block UDP/5353 on the Domain profile to stop multicast DNS on wired networks.'
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'mDNS still active on corporate wired networks, so link-local discovery traffic can leak to rogue devices.' -Evidence $mdnsEvidence -Subcategory 'Discovery Protocols'
+        }
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
