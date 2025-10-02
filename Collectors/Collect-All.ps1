@@ -95,6 +95,7 @@ function Invoke-AllCollectors {
             Write-Verbose ("Collector '{0}' finished successfully." -f $collector.FullName)
             $resultsList.Add([pscustomobject]@{
                 Script  = $collector.FullName
+                Area    = $areaName
                 Output  = $result
                 Success = $true
                 Error   = $null
@@ -104,6 +105,7 @@ function Invoke-AllCollectors {
             Write-Warning ("Collector failed: {0} - {1}" -f $collector.FullName, $_.Exception.Message)
             $resultsList.Add([pscustomobject]@{
                 Script  = $collector.FullName
+                Area    = $areaName
                 Output  = $null
                 Success = $false
                 Error   = $_.Exception.Message
