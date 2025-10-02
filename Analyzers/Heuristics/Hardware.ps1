@@ -5,6 +5,263 @@
 
 . (Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'AnalyzerCommon.ps1')
 
+function ConvertTo-AutorunInt {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [bool]) { return if ($Value) { 1 } else { 0 } }
+    if ($Value -is [byte] -or $Value -is [sbyte] -or $Value -is [int16] -or $Value -is [uint16] -or $Value -is [int32] -or $Value -is [uint32] -or $Value -is [int64] -or $Value -is [uint64]) {
+        return [int64]$Value
+    }
+
+    if ($Value -is [string]) {
+        $trimmed = $Value.Trim()
+        if (-not $trimmed) { return $null }
+
+        if ($trimmed -match '^(?i:true|false)$') {
+            return if ($trimmed -match '^(?i:true)$') { 1 } else { 0 }
+        }
+
+        if ($trimmed -match '^0x[0-9a-fA-F]+$') {
+            try {
+                return [int64]([Convert]::ToUInt64($trimmed.Substring(2), 16))
+            } catch {
+                return $null
+            }
+        }
+
+        $parsed = 0
+        if ([int64]::TryParse($trimmed, [ref]$parsed)) {
+            return $parsed
+        }
+    }
+
+    return $null
+}
+
+function Format-AutorunValueText {
+    param($Value)
+
+    if ($null -eq $Value) { return 'not set' }
+
+    $numeric = ConvertTo-AutorunInt -Value $Value
+    if ($null -ne $numeric) {
+        try {
+            $hex = [Convert]::ToUInt32($numeric).ToString('X')
+            return ('{0} (0x{1})' -f $numeric, $hex)
+        } catch {
+            return [string]$numeric
+        }
+    }
+
+    return [string]$Value
+}
+
+function Get-AutorunEntries {
+    param($Payload)
+
+    $entries = @()
+    if (-not $Payload -or -not $Payload.PSObject.Properties['Registry']) { return $entries }
+
+    foreach ($snapshot in @($Payload.Registry)) {
+        if (-not $snapshot) { continue }
+
+        $normalized = [ordered]@{}
+        if ($snapshot.PSObject.Properties['Path'] -and $snapshot.Path) {
+            $normalized.Path = [string]$snapshot.Path
+        }
+        if ($snapshot.PSObject.Properties['Error'] -and $snapshot.Error) {
+            $normalized.Error = [string]$snapshot.Error
+        }
+
+        $values = @{}
+        if ($snapshot.PSObject.Properties['Values'] -and $snapshot.Values) {
+            foreach ($prop in $snapshot.Values.PSObject.Properties) {
+                $values[$prop.Name] = $prop.Value
+            }
+        }
+        if ($values.Count -gt 0) {
+            $normalized.Values = [pscustomobject]$values
+        }
+
+        $entries += ,([pscustomobject]$normalized)
+    }
+
+    return $entries
+}
+
+function Get-AutorunEffectiveSetting {
+    param(
+        [pscustomobject[]]$Entries,
+        [string[]]$Names
+    )
+
+    if (-not $Entries) { return $null }
+    if (-not $Names -or $Names.Count -eq 0) { return $null }
+
+    $priority = @(
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+    )
+
+    foreach ($path in $priority) {
+        $entry = $Entries | Where-Object { $_ -and $_.Path -eq $path } | Select-Object -First 1
+        if (-not $entry -or $entry.Error) { continue }
+        if (-not ($entry.PSObject.Properties['Values'] -and $entry.Values)) { continue }
+        foreach ($name in $Names) {
+            if (-not $name) { continue }
+            if ($entry.Values.PSObject.Properties[$name]) {
+                return [pscustomobject]@{
+                    Path  = $entry.Path
+                    Name  = $name
+                    Value = $entry.Values.$name
+                }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Build-AutorunEvidence {
+    param(
+        [pscustomobject[]]$Entries,
+        [string[]]$Names
+    )
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($entry in $Entries) {
+        if (-not $entry) { continue }
+
+        $path = if ($entry.Path) { $entry.Path } else { '(unknown path)' }
+
+        if ($entry.Error) {
+            $lines.Add(("{0}: ERROR - {1}" -f $path, $entry.Error)) | Out-Null
+            continue
+        }
+
+        if (-not ($entry.PSObject.Properties['Values'] -and $entry.Values)) {
+            $lines.Add(("{0}: (no values captured)" -f $path)) | Out-Null
+            continue
+        }
+
+        foreach ($name in $Names) {
+            $value = $null
+            if ($entry.Values.PSObject.Properties[$name]) { $value = $entry.Values.$name }
+            $lines.Add(("{0}::{1} = {2}" -f $path, $name, (Format-AutorunValueText -Value $value))) | Out-Null
+        }
+    }
+
+    if ($lines.Count -eq 0) { return $null }
+    return ($lines.ToArray() -join "`n")
+}
+
+function Get-AutorunSettingSummary {
+    param($Setting)
+
+    if (-not $Setting -or -not $Setting.PSObject.Properties['Value']) { return 'not configured' }
+    if ($null -eq $Setting.Value) { return 'not configured' }
+
+    return Format-AutorunValueText -Value $Setting.Value
+}
+
+function Invoke-AutorunPolicyAssessment {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $CategoryResult
+    )
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'autorun'
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun artifact' -Data ([ordered]@{
+        Found = [bool]$artifact
+    })
+
+    if (-not $artifact) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy artifact missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved autorun payload' -Data ([ordered]@{
+        HasPayload = [bool]$payload
+    })
+
+    if (-not $payload) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy payload missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $entries = Get-AutorunEntries -Payload $payload
+    $entryCount = if ($entries) { $entries.Count } else { 0 }
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Parsed autorun registry entries' -Data ([ordered]@{
+        EntryCount = $entryCount
+    })
+
+    if ($entryCount -eq 0) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Autorun policy registry data missing, so removable media settings can't be evaluated." -Subcategory 'Removable Media'
+        return
+    }
+
+    $driveSetting = Get-AutorunEffectiveSetting -Entries $entries -Names @('NoDriveTypeAutoRun')
+    $autorunSetting = Get-AutorunEffectiveSetting -Entries $entries -Names @('NoAutoRun', 'NoAutorun')
+
+    $driveNumeric = if ($driveSetting) { ConvertTo-AutorunInt -Value $driveSetting.Value } else { $null }
+    $autorunNumeric = if ($autorunSetting) { ConvertTo-AutorunInt -Value $autorunSetting.Value } else { $null }
+
+    $driveCompliant = ($null -ne $driveNumeric -and $driveNumeric -eq 255)
+    $autorunCompliant = ($null -ne $autorunNumeric -and $autorunNumeric -eq 1)
+
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Evaluated autorun hardening posture' -Data ([ordered]@{
+        DriveSetting       = Get-AutorunSettingSummary -Setting $driveSetting
+        AutorunSetting     = Get-AutorunSettingSummary -Setting $autorunSetting
+        DriveCompliant     = $driveCompliant
+        AutorunCompliant   = $autorunCompliant
+    })
+
+    $effectiveLines = [System.Collections.Generic.List[string]]::new()
+    $driveName = if ($driveSetting -and $driveSetting.Name) { $driveSetting.Name } else { 'NoDriveTypeAutoRun' }
+    $autorunName = if ($autorunSetting -and $autorunSetting.Name) { $autorunSetting.Name } else { 'NoAutoRun' }
+    $effectiveLines.Add(("{0}: {1}{2}" -f $driveName, (Get-AutorunSettingSummary -Setting $driveSetting),
+        if ($driveSetting -and $driveSetting.Path) { " (from $($driveSetting.Path))" } else { '' })) | Out-Null
+    $effectiveLines.Add(("{0}: {1}{2}" -f $autorunName, (Get-AutorunSettingSummary -Setting $autorunSetting),
+        if ($autorunSetting -and $autorunSetting.Path) { " (from $($autorunSetting.Path))" } else { '' })) | Out-Null
+
+    $registryEvidence = Build-AutorunEvidence -Entries $entries -Names @('NoDriveTypeAutoRun','NoAutoRun','NoAutorun')
+
+    $evidenceParts = [System.Collections.Generic.List[string]]::new()
+    if ($effectiveLines.Count -gt 0) {
+        $evidenceParts.Add("Effective configuration:`n$($effectiveLines.ToArray() -join "`n")") | Out-Null
+    }
+    if ($registryEvidence) {
+        $evidenceParts.Add("Registry snapshots:`n$registryEvidence") | Out-Null
+    }
+    $evidence = if ($evidenceParts.Count -gt 0) { $evidenceParts.ToArray() -join "`n`n" } else { $null }
+
+    if ($driveCompliant -and $autorunCompliant) {
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Autorun and Autoplay disabled via policy.' -Evidence $evidence -Subcategory 'Removable Media'
+        return
+    }
+
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    if (-not $driveCompliant) {
+        $reasons.Add(("{0} is {1}" -f $driveName, (Get-AutorunSettingSummary -Setting $driveSetting))) | Out-Null
+    }
+    if (-not $autorunCompliant) {
+        $reasons.Add(("{0} is {1}" -f $autorunName, (Get-AutorunSettingSummary -Setting $autorunSetting))) | Out-Null
+    }
+
+    $reasonText = if ($reasons.Count -gt 0) { $reasons.ToArray() -join ' and ' } else { 'required registry values are not enforced' }
+    $title = "Autorun/Autoplay remains enabled because {0}, so removable media may execute automatically." -f $reasonText
+
+    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Removable Media'
+}
+
 function ConvertTo-HardwareDriverText {
     param(
         $Value
@@ -527,6 +784,8 @@ function Invoke-HardwareHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Hardware'
+
+    Invoke-AutorunPolicyAssessment -Context $Context -CategoryResult $result
 
     $driversArtifact = Get-AnalyzerArtifact -Context $Context -Name 'drivers'
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver artifact' -Data ([ordered]@{
