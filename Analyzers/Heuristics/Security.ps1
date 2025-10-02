@@ -735,11 +735,35 @@ function Invoke-SecurityHeuristics {
             $tpm = $payload.Tpm
             $present = ConvertTo-NullableBool $tpm.TpmPresent
             $ready = ConvertTo-NullableBool $tpm.TpmReady
+            $specVersionText = $null
+            $legacySpecVersion = $false
+            if ($tpm.PSObject.Properties['SpecVersion']) {
+                $specVersionText = [string]$tpm.SpecVersion
+                if (-not [string]::IsNullOrWhiteSpace($specVersionText)) {
+                    $specVersionMatches = [regex]::Matches($specVersionText, '(?<num>\d+(?:\.\d+)?)')
+                    $maxSpecVersion = $null
+                    foreach ($match in $specVersionMatches) {
+                        if (-not $match.Success) { continue }
+                        $numText = $match.Groups['num'].Value
+                        if (-not $numText) { continue }
+                        $parsedVersion = 0.0
+                        if ([double]::TryParse($numText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsedVersion)) {
+                            if ($null -eq $maxSpecVersion -or $parsedVersion -gt $maxSpecVersion) {
+                                $maxSpecVersion = $parsedVersion
+                            }
+                        }
+                    }
+                    if ($null -ne $maxSpecVersion -and $maxSpecVersion -lt 2.0) {
+                        $legacySpecVersion = $true
+                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("TPM spec version {0} reported, so modern key protection features that require TPM 2.0 are unavailable." -f $specVersionText) -Evidence ("Get-Tpm reported SpecVersion = {0}." -f $specVersionText) -Subcategory 'TPM'
+                    }
+                }
+            }
             if ($present -eq $false) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No TPM detected, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmPresent = False.' -Subcategory 'TPM'
             } elseif ($ready -eq $false) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'TPM not initialized, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmReady = False.' -Subcategory 'TPM'
-            } else {
+            } elseif (-not $legacySpecVersion) {
                 Add-CategoryNormal -CategoryResult $result -Title 'TPM present and ready' -Subcategory 'TPM'
             }
         } elseif ($payload -and $payload.Tpm -and $payload.Tpm.Error) {

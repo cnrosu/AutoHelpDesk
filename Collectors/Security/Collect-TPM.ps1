@@ -13,7 +13,7 @@ param(
 function Get-TpmStatus {
     try {
         $tpm = Get-Tpm -ErrorAction Stop
-        return $tpm | Select-Object TpmPresent, TpmReady, TpmEnabled, TpmActivated, ManagedAuthLevel, ManufacturerId, ManufacturerVersion, LockoutHealTime, LockoutCount, LockedOut
+        return $tpm | Select-Object TpmPresent, TpmReady, TpmEnabled, TpmActivated, SpecVersion, ManagedAuthLevel, ManufacturerId, ManufacturerVersion, LockoutHealTime, LockoutCount, LockedOut
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-Tpm'
