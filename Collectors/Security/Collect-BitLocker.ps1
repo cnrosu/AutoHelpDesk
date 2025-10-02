@@ -13,7 +13,47 @@ param(
 function Get-BitLockerVolumes {
     try {
         $volumes = Get-BitLockerVolume -ErrorAction Stop
-        return $volumes | Select-Object MountPoint, VolumeType, CapacityGB, EncryptionMethod, ProtectionStatus, LockStatus, AutoUnlockEnabled, KeyProtector
+        return $volumes | ForEach-Object {
+            $volume = $_
+            $keyProtectors = @()
+
+            if ($null -ne $volume.KeyProtector) {
+                foreach ($protector in @($volume.KeyProtector)) {
+                    if ($null -eq $protector) { continue }
+
+                    $entry = [ordered]@{}
+
+                    if ($protector.PSObject.Properties['KeyProtectorId']) {
+                        $entry['KeyProtectorId'] = $protector.KeyProtectorId
+                    }
+
+                    if ($protector.PSObject.Properties['KeyProtectorType']) {
+                        $entry['KeyProtectorType'] = $protector.KeyProtectorType
+                    }
+
+                    if ($protector.PSObject.Properties['KeyProtectorFriendlyName']) {
+                        $entry['KeyProtectorFriendlyName'] = $protector.KeyProtectorFriendlyName
+                    }
+
+                    if ($entry.Count -eq 0) {
+                        $keyProtectors += $protector
+                    } else {
+                        $keyProtectors += [pscustomobject]$entry
+                    }
+                }
+            }
+
+            [pscustomobject][ordered]@{
+                MountPoint        = $volume.MountPoint
+                VolumeType        = $volume.VolumeType
+                CapacityGB        = $volume.CapacityGB
+                EncryptionMethod  = $volume.EncryptionMethod
+                ProtectionStatus  = $volume.ProtectionStatus
+                LockStatus        = $volume.LockStatus
+                AutoUnlockEnabled = $volume.AutoUnlockEnabled
+                KeyProtector      = $keyProtectors
+            }
+        }
     } catch {
         Write-Verbose "Get-BitLockerVolume failed: $($_.Exception.Message)"
         return [PSCustomObject]@{

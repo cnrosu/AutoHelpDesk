@@ -419,7 +419,7 @@ function Invoke-SecurityHeuristics {
         })
         if ($payload -and $payload.Volumes) {
             $volumes = ConvertTo-List $payload.Volumes
-            $osVolumes = [System.Collections.Generic.List[object]]::new()
+            $osVolumeDetails = [System.Collections.Generic.List[object]]::new()
             $osUnprotected = [System.Collections.Generic.List[object]]::new()
             $osProtectedEvidence = [System.Collections.Generic.List[string]]::new()
             $hasRecoveryProtector = $false
@@ -433,7 +433,7 @@ function Invoke-SecurityHeuristics {
                 if (-not $isOs -and $mount) {
                     if ($mount.Trim().ToUpperInvariant() -eq 'C:') { $isOs = $true }
                 }
-                if ($isOs) { $osVolumes.Add($volume) }
+                $protectorTypes = [System.Collections.Generic.List[string]]::new()
 
                 foreach ($protector in (ConvertTo-List $volume.KeyProtector)) {
                     if ($null -eq $protector) { continue }
@@ -444,10 +444,28 @@ function Invoke-SecurityHeuristics {
                     if ($protectorText -match '(?i)RecoveryPassword') {
                         $hasRecoveryProtector = $true
                     }
+                    if (-not [string]::IsNullOrWhiteSpace($protectorText)) {
+                        $null = $protectorTypes.Add($protectorText)
+                    }
+                }
+
+                $distinctProtectorTypes = @($protectorTypes.ToArray() | Sort-Object -Unique)
+                if ($null -eq $distinctProtectorTypes) { $distinctProtectorTypes = @() }
+                if ($isOs) {
+                    $osVolumeDetails.Add([pscustomobject]@{
+                        Volume          = $volume
+                        MountPoint      = $mount
+                        ProtectorTypes  = $distinctProtectorTypes
+                    })
                 }
             }
 
-            foreach ($osVolume in $osVolumes) {
+            $osPasswordOrRecoveryOnly = [System.Collections.Generic.List[object]]::new()
+            $osTpmVolumes = [System.Collections.Generic.List[object]]::new()
+            $osTpmPinVolumes = [System.Collections.Generic.List[object]]::new()
+
+            foreach ($detail in $osVolumeDetails) {
+                $osVolume = $detail.Volume
                 $status = if ($osVolume.ProtectionStatus) { $osVolume.ProtectionStatus.ToString() } else { '' }
                 $isProtected = $false
                 if ($status) {
@@ -457,6 +475,29 @@ function Invoke-SecurityHeuristics {
                     $osProtectedEvidence.Add((Format-BitLockerVolume $osVolume))
                 } else {
                     $osUnprotected.Add($osVolume)
+                }
+
+                $types = if ($detail.ProtectorTypes) { @($detail.ProtectorTypes) } else { @() }
+                $nonPasswordRecovery = @($types | Where-Object { $_ -notmatch '(?i)^(password|recovery.*)$' })
+                if ($types.Count -gt 0 -and $nonPasswordRecovery.Count -eq 0) {
+                    $osPasswordOrRecoveryOnly.Add($detail)
+                }
+
+                $hasTpm = $false
+                $hasTpmPin = $false
+                foreach ($protectorType in $types) {
+                    if ($protectorType -match '(?i)tpm.*pin') {
+                        $hasTpm = $true
+                        $hasTpmPin = $true
+                    } elseif ($protectorType -match '(?i)^tpm$') {
+                        $hasTpm = $true
+                    }
+                }
+
+                if ($hasTpmPin) {
+                    $osTpmPinVolumes.Add($detail)
+                } elseif ($hasTpm) {
+                    $osTpmVolumes.Add($detail)
                 }
             }
 
@@ -474,6 +515,39 @@ function Invoke-SecurityHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title ("BitLocker is OFF for system volume(s): {0}, risking data exposure." -f $mountList) -Evidence $evidence -Subcategory 'BitLocker'
             } elseif ($osProtectedEvidence.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title 'BitLocker protection active for system volume(s).' -Evidence ($osProtectedEvidence.ToArray() -join "`n") -Subcategory 'BitLocker'
+            }
+
+            if ($osPasswordOrRecoveryOnly.Count -gt 0) {
+                $mountSummary = [System.Collections.Generic.List[string]]::new()
+                $evidenceLines = [System.Collections.Generic.List[string]]::new()
+                foreach ($detail in $osPasswordOrRecoveryOnly) {
+                    $mountLabel = if ($detail.MountPoint) { $detail.MountPoint } else { 'Unknown volume' }
+                    $protectorSummary = if ($detail.ProtectorTypes -and $detail.ProtectorTypes.Count -gt 0) { $detail.ProtectorTypes -join ', ' } else { 'None' }
+                    $null = $mountSummary.Add($mountLabel)
+                    $null = $evidenceLines.Add(('{0} -> Protectors: {1}' -f $mountLabel, $protectorSummary))
+                }
+                $null = $evidenceLines.Add('Remediation: Configure TPM+PIN BitLocker protectors where mandated by policy to enforce strong pre-boot authentication.')
+                $volumeList = ($mountSummary | Sort-Object -Unique) -join ', '
+                if (-not $volumeList) { $volumeList = 'Unknown volume' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("System volume(s) {0} only use password-based BitLocker protectors, so attackers who obtain those secrets can unlock the device." -f $volumeList) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'BitLocker'
+            }
+
+            if ($osTpmPinVolumes.Count -gt 0) {
+                $evidence = ($osTpmPinVolumes | ForEach-Object {
+                        $label = if ($_.MountPoint) { $_.MountPoint } else { 'Unknown volume' }
+                        $types = if ($_.ProtectorTypes -and $_.ProtectorTypes.Count -gt 0) { $_.ProtectorTypes -join ', ' } else { 'None' }
+                        '{0} -> Protectors: {1}' -f $label, $types
+                    }) -join "`n"
+                Add-CategoryNormal -CategoryResult $result -Title 'System volume(s) configured with TPM+PIN BitLocker protectors, reducing pre-boot compromise risk.' -Evidence $evidence -Subcategory 'BitLocker'
+            }
+
+            if ($osTpmVolumes.Count -gt 0) {
+                $evidence = ($osTpmVolumes | ForEach-Object {
+                        $label = if ($_.MountPoint) { $_.MountPoint } else { 'Unknown volume' }
+                        $types = if ($_.ProtectorTypes -and $_.ProtectorTypes.Count -gt 0) { $_.ProtectorTypes -join ', ' } else { 'None' }
+                        '{0} -> Protectors: {1}' -f $label, $types
+                    }) -join "`n"
+                Add-CategoryNormal -CategoryResult $result -Title 'System volume(s) protected with TPM-backed BitLocker keys, limiting exposure if the drive is removed.' -Evidence $evidence -Subcategory 'BitLocker'
             }
 
             if (-not $hasRecoveryProtector) {
