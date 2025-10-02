@@ -238,6 +238,101 @@ function ConvertTo-EventsMaskedHost {
     return ('{0}***{1}' -f $text.Substring(0, 1), $text.Substring($text.Length - 1))
 }
 
+function ConvertTo-EventsMaskedFilePath {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+    $text = $Value.Trim()
+    if ($text.Length -eq 0) { return $null }
+
+    if ($text -match '^[A-Za-z]:\\' -or $text.StartsWith('\\')) {
+        try {
+            $leaf = Split-Path -Path $text -Leaf
+            if ($leaf) { return ('...\\{0}' -f $leaf) }
+        } catch {
+        }
+        if ($text.Length -le 3) { return '***' }
+        return ('***{0}' -f $text.Substring($text.Length - 3))
+    }
+
+    if ($text.Length -le 2) { return ('{0}***' -f $text.Substring(0, 1)) }
+
+    return ('{0}***{1}' -f $text.Substring(0, 1), $text.Substring($text.Length - 1))
+}
+
+function Get-EventsAppLockerSampleValue {
+    param($Event)
+
+    if (-not $Event) { return $null }
+
+    $eventData = $null
+    if ($Event.PSObject.Properties['EventData']) {
+        $eventData = $Event.EventData
+    }
+
+    $publisherCandidates = @('PublisherName','ApplicationPublisherName','Company','IssuerName')
+    foreach ($field in $publisherCandidates) {
+        $value = Get-EventsEventDataValue -EventData $eventData -Name $field
+        if ($value) {
+            $text = [string]$value
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                return ('Publisher: {0}' -f $text.Trim())
+            }
+        }
+    }
+
+    $pathCandidates = @('TargetProcessName','FilePath','Path','CommandLine')
+    foreach ($field in $pathCandidates) {
+        $value = Get-EventsEventDataValue -EventData $eventData -Name $field
+        if ($value) {
+            $masked = ConvertTo-EventsMaskedFilePath -Value ([string]$value)
+            if ($masked) { return ('Path: {0}' -f $masked) }
+        }
+    }
+
+    if ($Event.PSObject.Properties['Message'] -and $Event.Message) {
+        $message = [string]$Event.Message
+        if (-not [string]::IsNullOrWhiteSpace($message)) {
+            if ($message.Length -gt 160) {
+                return ($message.Substring(0, 157) + '...')
+            }
+            return $message
+        }
+    }
+
+    return $null
+}
+
+function Test-EventsAppLockerAuditEvent {
+    param($Event)
+
+    if (-not $Event) { return $false }
+
+    $eventId = $null
+    if ($Event.PSObject.Properties['Id']) {
+        try {
+            $eventId = [int]$Event.Id
+        } catch {
+            $eventId = $null
+        }
+    }
+
+    $auditIds = @(8003, 8004, 8006, 8007)
+    if ($eventId -and ($auditIds -contains $eventId)) { return $true }
+
+    $message = $null
+    if ($Event.PSObject.Properties['Message']) {
+        $message = [string]$Event.Message
+    }
+
+    if ($message -and ($message -match '(?i)was\s+prevented' -or $message -match '(?i)would\s+have\s+been\s+prevented' -or $message -match '(?i)was\s+not\s+allowed' -or $message -match '(?i)was\s+blocked')) {
+        return $true
+    }
+
+    return $false
+}
+
 function Get-EventsCurrentDeviceName {
     param($Context)
 
@@ -713,6 +808,117 @@ function Invoke-EventsAuthenticationChecks {
     }
 }
 
+function Invoke-EventsApplicationControlChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        $ApplicationControl
+    )
+
+    Write-HeuristicDebug -Source 'Events/AppControl' -Message 'Starting application control heuristics'
+
+    if (-not $ApplicationControl) { return }
+
+    $windowDays = 7
+    if ($ApplicationControl.PSObject.Properties['WindowDays'] -and $ApplicationControl.WindowDays) {
+        try {
+            $windowDays = [int]$ApplicationControl.WindowDays
+        } catch {
+            $windowDays = 7
+        }
+    }
+
+    $channels = @()
+    if ($ApplicationControl.PSObject.Properties['Channels']) {
+        $channels = @($ApplicationControl.Channels)
+    }
+
+    if (-not $channels -or $channels.Count -eq 0) {
+        Set-CategoryVisibility -CategoryResult $Result -Visibility 'partial'
+        return
+    }
+
+    $availableChannels = New-Object System.Collections.Generic.List[object]
+    $missingChannels = 0
+
+    foreach ($channel in $channels) {
+        if (-not $channel) { continue }
+
+        $available = $false
+        if ($channel.PSObject.Properties['Available']) {
+            $available = [bool]$channel.Available
+        } elseif ($channel.PSObject.Properties['Error'] -and $channel.Error) {
+            $available = $false
+        } elseif ($channel.PSObject.Properties['Events'] -and $channel.Events) {
+            $available = $true
+        }
+
+        if ($available) {
+            $availableChannels.Add($channel) | Out-Null
+        } else {
+            $missingChannels++
+        }
+    }
+
+    if ($missingChannels -gt 0) {
+        Set-CategoryVisibility -CategoryResult $Result -Visibility 'partial'
+    }
+
+    if ($availableChannels.Count -eq 0) { return }
+
+    $cutoff = (Get-Date).ToUniversalTime().AddDays(-[double]$windowDays)
+    $relevantEvents = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($channel in $availableChannels) {
+        if (-not $channel.PSObject.Properties['RuleType']) { continue }
+        if (-not [string]::Equals([string]$channel.RuleType, 'ExeDll', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+        $events = @()
+        if ($channel.PSObject.Properties['Events']) {
+            $events = @($channel.Events)
+        }
+
+        foreach ($event in $events) {
+            if (-not $event) { continue }
+            if (-not (Test-EventsAppLockerAuditEvent -Event $event)) { continue }
+
+            $timeUtc = $null
+            if ($event.PSObject.Properties['TimeCreated']) {
+                $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+            }
+
+            if ($timeUtc -and $timeUtc -lt $cutoff) { continue }
+
+            $relevantEvents.Add([pscustomobject]@{ Event = $event; TimeUtc = $timeUtc }) | Out-Null
+        }
+    }
+
+    if ($relevantEvents.Count -lt 3) { return }
+
+    $orderedEvents = $relevantEvents.ToArray() | Sort-Object -Property TimeUtc
+    $lastEntry = $orderedEvents[$orderedEvents.Length - 1]
+    $lastUtcString = $null
+    if ($lastEntry.TimeUtc) { $lastUtcString = $lastEntry.TimeUtc.ToString('o') }
+
+    $sampleValue = Get-EventsAppLockerSampleValue -Event $lastEntry.Event
+
+    $evidence = [ordered]@{
+        count                      = $relevantEvents.Count
+        samplePublisherOrPathMasked = $sampleValue
+        lastUtc                    = $lastUtcString
+    }
+
+    $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+
+    Write-HeuristicDebug -Source 'Events/AppControl' -Message 'AppLocker audit/denial threshold met' -Data ([ordered]@{
+        Count   = $relevantEvents.Count
+        LastUtc = $lastUtcString
+    })
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Application blocked or audited by policy' -Evidence $evidenceJson -Subcategory 'Application Control'
+}
+
 function Invoke-EventsHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -767,6 +973,10 @@ function Invoke-EventsHeuristics {
 
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+            }
+
+            if ($payload.PSObject.Properties['ApplicationControl']) {
+                Invoke-EventsApplicationControlChecks -Result $result -ApplicationControl $payload.ApplicationControl
             }
         }
     } else {

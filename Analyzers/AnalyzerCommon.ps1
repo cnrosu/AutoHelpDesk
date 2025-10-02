@@ -196,11 +196,12 @@ function New-CategoryResult {
     $source = Get-HeuristicSourceMetadata
 
     return [pscustomobject]@{
-        Name    = $Name
-        Issues  = New-Object System.Collections.Generic.List[pscustomobject]
-        Normals = New-Object System.Collections.Generic.List[pscustomobject]
-        Checks  = New-Object System.Collections.Generic.List[pscustomobject]
-        Source  = $source
+        Name        = $Name
+        Issues      = New-Object System.Collections.Generic.List[pscustomobject]
+        Normals     = New-Object System.Collections.Generic.List[pscustomobject]
+        Checks      = New-Object System.Collections.Generic.List[pscustomobject]
+        Source      = $source
+        Visibility  = 'full'
     }
 }
 
@@ -238,6 +239,42 @@ function Add-CategoryIssue {
     if ($source) { $entry['Source'] = $source }
 
     $CategoryResult.Issues.Add([pscustomobject]$entry) | Out-Null
+}
+
+function Set-CategoryVisibility {
+    param(
+        [Parameter(Mandatory)]
+        $CategoryResult,
+
+        [Parameter(Mandatory)]
+        [string]$Visibility
+    )
+
+    if (-not $CategoryResult) { return }
+
+    $normalized = $Visibility
+    if ($normalized) {
+        $normalized = $normalized.Trim().ToLowerInvariant()
+    }
+
+    switch ($normalized) {
+        'full'     { $normalized = 'full' }
+        'partial'  { $normalized = 'partial' }
+        'none'     { $normalized = 'none' }
+        default    {
+            if (-not [string]::IsNullOrWhiteSpace($Visibility)) {
+                $normalized = $Visibility
+            } else {
+                $normalized = 'full'
+            }
+        }
+    }
+
+    if ($CategoryResult.PSObject.Properties['Visibility']) {
+        $CategoryResult.Visibility = $normalized
+    } else {
+        $CategoryResult | Add-Member -MemberType NoteProperty -Name 'Visibility' -Value $normalized
+    }
 }
 
 function Add-CategoryNormal {

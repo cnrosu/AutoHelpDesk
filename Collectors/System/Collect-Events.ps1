@@ -232,6 +232,52 @@ function Get-W32tmStatus {
     return [pscustomobject]$result
 }
 
+function Get-AppLockerEvents {
+    $windowDays = 7
+    $startTime = (Get-Date).AddDays(-$windowDays)
+
+    $channels = @(
+        [pscustomobject]@{ RuleType = 'ExeDll'; LogName = 'Microsoft-Windows-AppLocker/EXE and DLL' },
+        [pscustomobject]@{ RuleType = 'MsiScript'; LogName = 'Microsoft-Windows-AppLocker/MSI and Script' }
+    )
+
+    $channelResults = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($channel in $channels) {
+        $record = Get-EventRecords -LogName $channel.LogName -StartTime $startTime -MaxEvents 600
+
+        $entry = [ordered]@{
+            RuleType  = $channel.RuleType
+            LogName   = $channel.LogName
+            Available = $false
+            Error     = $null
+            Events    = @()
+        }
+
+        if ($record) {
+            if ($record.PSObject.Properties['LogName'] -and $record.LogName) {
+                $entry.LogName = $record.LogName
+            }
+
+            if ($record.Error) {
+                $entry.Error = $record.Error
+            } else {
+                $entry.Available = $true
+                if ($record.PSObject.Properties['Events'] -and $record.Events) {
+                    $entry.Events = @($record.Events)
+                }
+            }
+        }
+
+        $channelResults.Add([pscustomobject]$entry) | Out-Null
+    }
+
+    return [pscustomobject]@{
+        WindowDays = $windowDays
+        Channels   = $channelResults.ToArray()
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
@@ -243,6 +289,7 @@ function Invoke-Main {
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
         }
+        ApplicationControl = Get-AppLockerEvents
     }
 
     $result = New-CollectorMetadata -Payload $payload
