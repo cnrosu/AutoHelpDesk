@@ -193,6 +193,11 @@ function Get-TimeServiceEvents {
     return Get-EventRecords -LogName 'Microsoft-Windows-Time-Service/Operational' -EventIds @(29, 36, 47, 50) -StartTime $startTime -MaxEvents 400
 }
 
+function Get-DnsClientEvents {
+    $startTime = (Get-Date).AddDays(-14)
+    return Get-EventRecords -LogName 'Microsoft-Windows-DNS-Client/Operational' -EventIds @(1014) -StartTime $startTime -MaxEvents 800
+}
+
 function Get-W32tmStatus {
     $result = [ordered]@{
         CommandPath = $null
@@ -242,6 +247,9 @@ function Invoke-Main {
             TimeServiceEvents       = Get-TimeServiceEvents
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
+        }
+        Networking = [ordered]@{
+            DnsClient = Get-DnsClientEvents
         }
     }
 
