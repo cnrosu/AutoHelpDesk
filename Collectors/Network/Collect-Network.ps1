@@ -11,7 +11,19 @@ param(
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
 function Get-IpConfiguration {
-    return Invoke-CollectorNativeCommand -FilePath 'ipconfig.exe' -ArgumentList '/all' -SourceLabel 'ipconfig.exe'
+    $result = Invoke-IpconfigAll
+
+    if ($null -eq $result) { return $result }
+
+    if ($result -is [psobject] -and $result.PSObject.Properties.Name -contains 'Error') {
+        return $result
+    }
+
+    if ($result -is [psobject] -and $result.PSObject.Properties.Name -contains 'Lines') {
+        return $result.Lines
+    }
+
+    return $result
 }
 
 function Get-RoutingTable {
