@@ -238,6 +238,90 @@ function ConvertTo-EventsMaskedHost {
     return ('{0}***{1}' -f $text.Substring(0, 1), $text.Substring($text.Length - 1))
 }
 
+function Normalize-EventsDeviceInstanceTail {
+    param([string]$DeviceId)
+
+    if ([string]::IsNullOrWhiteSpace($DeviceId)) { return $null }
+
+    $trimmed = $DeviceId.Trim()
+    if ([string]::IsNullOrEmpty($trimmed)) { return $null }
+
+    $upper = $trimmed.ToUpperInvariant()
+
+    $patterns = @(
+        'VID_[0-9A-F]{4}&PID_[0-9A-F]{4}[A-Z0-9_#&\\-]*',
+        'VEN_[0-9A-F]{4}&DEV_[0-9A-F]{4}[A-Z0-9_#&\\-]*'
+    )
+
+    foreach ($pattern in $patterns) {
+        $match = [regex]::Match($upper, $pattern)
+        if ($match.Success -and $match.Value) {
+            return $match.Value.TrimEnd('\\')
+        }
+    }
+
+    $segments = $upper -split '[\\#]'
+    $filtered = @($segments | Where-Object { $_ })
+    if ($filtered.Count -gt 0) {
+        return $filtered[-1]
+    }
+
+    return $upper
+}
+
+function Get-EventsDeviceInstallDeviceIdTail {
+    param($Event)
+
+    if (-not $Event) { return $null }
+
+    $eventData = $null
+    if ($Event.PSObject.Properties['EventData']) {
+        $eventData = $Event.EventData
+    }
+
+    $candidateNames = @(
+        'DeviceInstanceId','DeviceInstanceID','DeviceId','DeviceID','InstanceId','InstanceID','TargetDeviceInstance','TargetDeviceId','TargetDeviceID','ParentId','ParentID'
+    )
+
+    foreach ($name in $candidateNames) {
+        $value = Get-EventsEventDataValue -EventData $eventData -Name $name
+        if ($value) {
+            $tail = Normalize-EventsDeviceInstanceTail -DeviceId ([string]$value)
+            if ($tail) { return $tail }
+        }
+    }
+
+    if ($eventData -and $eventData -is [System.Collections.IDictionary]) {
+        foreach ($key in $eventData.Keys) {
+            if (-not $key) { continue }
+            $upperKey = ([string]$key).ToUpperInvariant()
+            if (-not $upperKey.Contains('DEVICE')) { continue }
+            if (-not $upperKey.Contains('ID')) { continue }
+            $value = $eventData[$key]
+            if (-not $value) { continue }
+            $tail = Normalize-EventsDeviceInstanceTail -DeviceId ([string]$value)
+            if ($tail) { return $tail }
+        }
+    }
+
+    $message = $null
+    if ($Event.PSObject.Properties['Message']) {
+        $message = [string]$Event.Message
+    }
+
+    if ($message) {
+        $upperMessage = $message.ToUpperInvariant()
+        $pattern = 'VID_[0-9A-F]{4}&PID_[0-9A-F]{4}[A-Z0-9_#&\\-]*'
+        $match = [regex]::Match($upperMessage, $pattern)
+        if ($match.Success -and $match.Value) {
+            $tail = Normalize-EventsDeviceInstanceTail -DeviceId $match.Value
+            if ($tail) { return $tail }
+        }
+    }
+
+    return $null
+}
+
 function Get-EventsCurrentDeviceName {
     param($Context)
 
@@ -713,6 +797,138 @@ function Invoke-EventsAuthenticationChecks {
     }
 }
 
+function Invoke-EventsDeviceInstallChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        $DeviceInstall
+    )
+
+    $windowDays = $null
+    if ($DeviceInstall -and $DeviceInstall.PSObject.Properties['WindowDays']) {
+        $windowDays = $DeviceInstall.WindowDays
+    }
+
+    Write-HeuristicDebug -Source 'Events/DeviceInstall' -Message 'Starting device install heuristics evaluation' -Data ([ordered]@{
+        WindowDays = $windowDays
+    })
+
+    if (-not $DeviceInstall) { return }
+
+    $userPnp = $null
+    if ($DeviceInstall.PSObject.Properties['UserPnp']) {
+        $userPnp = $DeviceInstall.UserPnp
+    }
+
+    $kernelPnP = $null
+    if ($DeviceInstall.PSObject.Properties['KernelPnP']) {
+        $kernelPnP = $DeviceInstall.KernelPnP
+    }
+
+    $containers = New-Object System.Collections.Generic.List[pscustomobject]
+    if ($userPnp) { $containers.Add([pscustomobject]@{ Name = 'UserPnp'; Data = $userPnp }) | Out-Null }
+    if ($kernelPnP) { $containers.Add([pscustomobject]@{ Name = 'KernelPnP'; Data = $kernelPnP }) | Out-Null }
+
+    if ($containers.Count -eq 0) { return }
+
+    $deviceMap = @{}
+
+    foreach ($container in $containers) {
+        if (-not $container -or -not $container.Data) { continue }
+
+        $data = $container.Data
+
+        if ($data.PSObject.Properties['Error'] -and $data.Error) {
+            Write-HeuristicDebug -Source 'Events/DeviceInstall' -Message 'Device install event query reported error' -Data ([ordered]@{
+                Source = $container.Name
+                Error  = $data.Error
+            })
+            continue
+        }
+
+        if (-not $data.PSObject.Properties['Events']) { continue }
+
+        foreach ($event in @($data.Events)) {
+            if (-not $event) { continue }
+
+            $tail = Get-EventsDeviceInstallDeviceIdTail -Event $event
+            if (-not $tail) { continue }
+
+            if (-not $deviceMap.ContainsKey($tail)) {
+                $deviceMap[$tail] = [ordered]@{ Count = 0; LastUtc = $null }
+            }
+
+            $deviceMap[$tail]['Count'] = [int]$deviceMap[$tail]['Count'] + 1
+
+            $timeUtc = $null
+            if ($event.PSObject.Properties['TimeCreated']) {
+                $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+            }
+
+            if ($timeUtc) {
+                $currentLast = $deviceMap[$tail]['LastUtc']
+                if (-not $currentLast -or $timeUtc -gt $currentLast) {
+                    $deviceMap[$tail]['LastUtc'] = $timeUtc
+                }
+            }
+        }
+    }
+
+    if ($deviceMap.Count -eq 0) { return }
+
+    $repeated = New-Object System.Collections.Generic.List[pscustomobject]
+    $sporadic = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($tail in $deviceMap.Keys) {
+        $entry = $deviceMap[$tail]
+        $count = 0
+        if ($entry.ContainsKey('Count')) { $count = [int]$entry['Count'] }
+
+        if ($count -le 0) { continue }
+
+        $lastUtc = $null
+        if ($entry.ContainsKey('LastUtc')) { $lastUtc = $entry['LastUtc'] }
+
+        $lastUtcString = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+
+        $evidenceEntry = [ordered]@{
+            deviceIdTail = $tail
+            count        = $count
+            lastUtc      = $lastUtcString
+        }
+
+        if ($count -ge 3) {
+            $repeated.Add([pscustomobject]$evidenceEntry) | Out-Null
+        } else {
+            $sporadic.Add([pscustomobject]$evidenceEntry) | Out-Null
+        }
+    }
+
+    if ($repeated.Count -eq 0 -and $sporadic.Count -eq 0) { return }
+
+    $summary = [ordered]@{
+        Devices  = $deviceMap.Count
+        Repeated = $repeated.Count
+        Sporadic = $sporadic.Count
+    }
+
+    Write-HeuristicDebug -Source 'Events/DeviceInstall' -Message 'Device install failure summary' -Data $summary
+
+    $severity = if ($repeated.Count -gt 0) { 'medium' } else { 'low' }
+
+    $evidence = [ordered]@{}
+    if ($repeated.Count -gt 0) { $evidence['repeated'] = $repeated.ToArray() }
+    if ($sporadic.Count -gt 0) { $evidence['sporadic'] = $sporadic.ToArray() }
+
+    $evidenceJson = $null
+    if ($evidence.Count -gt 0) {
+        $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated device install failures detected' -Evidence $evidenceJson -Subcategory 'USB / Device Install'
+}
+
 function Invoke-EventsHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -767,6 +983,10 @@ function Invoke-EventsHeuristics {
 
             if ($payload.PSObject.Properties['Authentication']) {
                 Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+            }
+
+            if ($payload.PSObject.Properties['DeviceInstall']) {
+                Invoke-EventsDeviceInstallChecks -Result $result -DeviceInstall $payload.DeviceInstall
             }
         }
     } else {

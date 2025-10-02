@@ -232,6 +232,43 @@ function Get-W32tmStatus {
     return [pscustomobject]$result
 }
 
+function Get-DeviceInstallDiagnostics {
+    $startTime = (Get-Date).AddDays(-7)
+
+    $userPnp = Get-EventRecords -LogName 'Microsoft-Windows-UserPnp/DeviceInstall' -EventIds @(20001, 20002, 20003, 20004, 20005, 20006, 20007) -StartTime $startTime -MaxEvents 600
+    $kernelPnP = Get-EventRecords -LogName 'System' -EventIds @(219) -StartTime $startTime -MaxEvents 600
+
+    $logPath = 'C:\Windows\INF\setupapi.dev.log'
+    $setupApiLog = [ordered]@{
+        Path          = $logPath
+        TailLineCount = 100
+        Lines         = @()
+        Error         = $null
+    }
+
+    try {
+        if (Test-Path -Path $logPath) {
+            $lines = Get-Content -Path $logPath -Tail 100 -ErrorAction Stop
+            if ($lines) {
+                $setupApiLog.Lines = @($lines)
+            }
+        } else {
+            $setupApiLog.Error = 'File not found.'
+        }
+    } catch {
+        $setupApiLog.Error = $_.Exception.Message
+    }
+
+    $result = [ordered]@{
+        WindowDays  = 7
+        UserPnp     = $userPnp
+        KernelPnP   = $kernelPnP
+        SetupApiLog = [pscustomobject]$setupApiLog
+    }
+
+    return [pscustomobject]$result
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         System      = Get-RecentEvents -LogName 'System'
@@ -243,6 +280,7 @@ function Invoke-Main {
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
         }
+        DeviceInstall = Get-DeviceInstallDiagnostics
     }
 
     $result = New-CollectorMetadata -Payload $payload
