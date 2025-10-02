@@ -307,6 +307,315 @@ function Get-NetworkDnsInterfaceInventory {
     }
 }
 
+function Normalize-NetworkIpv6Key {
+    param([string]$Address)
+
+    if (-not $Address) { return $null }
+
+    $trimmed = $Address.Trim()
+    if (-not $trimmed) { return $null }
+
+    $clean = $trimmed -replace '%.*$',''
+
+    try {
+        return $clean.ToLowerInvariant()
+    } catch {
+        return $clean
+    }
+}
+
+function Normalize-NetworkMacAddress {
+    param([string]$MacAddress)
+
+    if (-not $MacAddress) { return $null }
+
+    $trimmed = $MacAddress.Trim()
+    if (-not $trimmed) { return $null }
+
+    $hex = ($trimmed -replace '[^0-9A-Fa-f]', '')
+    if ($hex.Length -eq 12) {
+        $pairs = New-Object System.Collections.Generic.List[string]
+        for ($i = 0; $i -lt 12; $i += 2) {
+            $segment = $hex.Substring($i, 2).ToUpperInvariant()
+            $pairs.Add($segment) | Out-Null
+        }
+        return ($pairs -join '-')
+    }
+
+    try {
+        return $trimmed.ToUpperInvariant()
+    } catch {
+        return $trimmed
+    }
+}
+
+function Get-NetworkIpv6AddressesFromLines {
+    param([string[]]$Lines)
+
+    $results = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    if (-not $Lines) { return $results.ToArray() }
+
+    foreach ($line in $Lines) {
+        if (-not $line) { continue }
+
+        $matches = [regex]::Matches($line, '([0-9A-Fa-f:]{2,})(?:%[0-9A-Za-z_.-]+)?')
+        foreach ($match in $matches) {
+            $candidate = $match.Value
+            if (-not (Test-NetworkValidIpv6Address $candidate)) { continue }
+            if ($seen.Add($candidate)) { $results.Add($candidate) | Out-Null }
+        }
+    }
+
+    return $results.ToArray()
+}
+
+function ConvertTo-NetworkIpv6SectionEntries {
+    param($IpconfigData)
+
+    $sections = New-Object System.Collections.Generic.List[object]
+
+    if ($IpconfigData -and $IpconfigData.PSObject -and $IpconfigData.PSObject.Properties['Sections']) {
+        foreach ($section in (ConvertTo-NetworkArray $IpconfigData.Sections)) {
+            if (-not $section) { continue }
+
+            $lines = @()
+            if ($section.PSObject -and $section.PSObject.Properties['Lines']) {
+                $lines = (ConvertTo-NetworkArray $section.Lines) | ForEach-Object { [string]$_ }
+            } elseif ($section -is [string[]]) {
+                $lines = $section | ForEach-Object { [string]$_ }
+            } elseif ($section -is [string]) {
+                $lines = @([string]$section)
+            } else {
+                continue
+            }
+
+            $label = $null
+            $alias = $null
+            if ($section.PSObject) {
+                if ($section.PSObject.Properties['InterfaceLabel'] -and $section.InterfaceLabel) {
+                    $label = [string]$section.InterfaceLabel
+                }
+                if ($section.PSObject.Properties['Alias'] -and $section.Alias) {
+                    $alias = [string]$section.Alias
+                }
+            }
+
+            if (-not $label -and $lines.Count -gt 0) {
+                $label = $lines[0]
+            }
+
+            if (-not $alias -and $label) {
+                $alias = $label.TrimEnd(':')
+            }
+
+            $sections.Add([pscustomobject]@{
+                Alias = if ($alias) { $alias.Trim() } else { $null }
+                Label = if ($label) { $label.TrimEnd(':') } else { $null }
+                Lines = $lines
+            }) | Out-Null
+        }
+    }
+
+    if ($sections.Count -gt 0) { return $sections.ToArray() }
+
+    $lines = @()
+    if ($IpconfigData -is [string]) {
+        $lines = @([string]$IpconfigData)
+    } elseif ($IpconfigData -is [string[]]) {
+        $lines = $IpconfigData | ForEach-Object { [string]$_ }
+    } elseif ($IpconfigData -and $IpconfigData.PSObject -and $IpconfigData.PSObject.Properties['RawLines']) {
+        $lines = (ConvertTo-NetworkArray $IpconfigData.RawLines) | ForEach-Object { [string]$_ }
+    }
+
+    if ($lines.Count -eq 0) { return @() }
+
+    $buffer = New-Object System.Collections.Generic.List[string]
+    $rawSections = New-Object System.Collections.Generic.List[object]
+
+    foreach ($line in $lines) {
+        if ($null -eq $line) { continue }
+        $text = [string]$line
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            if ($buffer.Count -gt 0) {
+                $rawSections.Add($buffer.ToArray()) | Out-Null
+                $buffer.Clear()
+            }
+            continue
+        }
+
+        $buffer.Add($text) | Out-Null
+    }
+
+    if ($buffer.Count -gt 0) {
+        $rawSections.Add($buffer.ToArray()) | Out-Null
+        $buffer.Clear()
+    }
+
+    foreach ($section in $rawSections) {
+        if (-not $section) { continue }
+        $containsIpv6 = $false
+        foreach ($entry in $section) {
+            if ($entry -match '(?i)ipv6') { $containsIpv6 = $true; break }
+        }
+        if (-not $containsIpv6) { continue }
+
+        $firstLine = $section | Select-Object -First 1
+        $label = $null
+        $alias = $null
+        if ($firstLine) {
+            $trimmed = $firstLine.Trim()
+            $label = $trimmed.TrimEnd(':')
+            $match = [regex]::Match($trimmed, '(?i)adapter\s+([^:]+):')
+            if ($match.Success) {
+                $alias = $match.Groups[1].Value.Trim()
+            } else {
+                $alias = $label
+            }
+        }
+
+        $sections.Add([pscustomobject]@{
+            Alias = if ($alias) { $alias.Trim() } else { $null }
+            Label = if ($label) { $label.TrimEnd(':') } else { $null }
+            Lines = $section | ForEach-Object { [string]$_ }
+        }) | Out-Null
+    }
+
+    return $sections.ToArray()
+}
+
+function ConvertTo-NetworkIpv6RouterEntries {
+    param($Routers)
+
+    $lines = @()
+    if ($Routers -is [string]) {
+        $lines = @([string]$Routers)
+    } elseif ($Routers -is [string[]]) {
+        $lines = $Routers | ForEach-Object { [string]$_ }
+    } elseif ($Routers -and $Routers.PSObject -and $Routers.PSObject.Properties['Lines']) {
+        $lines = (ConvertTo-NetworkArray $Routers.Lines) | ForEach-Object { [string]$_ }
+    }
+
+    if ($lines.Count -eq 0) { return @() }
+
+    $results = New-Object System.Collections.Generic.List[object]
+    $currentIndex = $null
+    $currentName = $null
+
+    foreach ($line in $lines) {
+        if (-not $line) { continue }
+
+        $match = [regex]::Match($line, '^\s*Interface\s+(\d+)\s*:\s*(.+)$')
+        if ($match.Success) {
+            $indexText = $match.Groups[1].Value.Trim()
+            $parsed = $null
+            if ([int]::TryParse($indexText, [ref]$parsed)) {
+                $currentIndex = $parsed
+            } else {
+                $currentIndex = $null
+            }
+            $currentName = $match.Groups[2].Value.Trim()
+            continue
+        }
+
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+        if ($trimmed -match '^-+$') { continue }
+        if ($trimmed -match '^(Address|Router|---)') { continue }
+
+        $parts = $trimmed -split '\s+'
+        if ($parts.Count -lt 1) { continue }
+        $candidate = $parts[0]
+        if (-not $candidate -or $candidate -notmatch ':') { continue }
+
+        $key = Normalize-NetworkIpv6Key $candidate
+        if (-not $key) { continue }
+
+        $results.Add([pscustomobject]@{
+            InterfaceIndex = $currentIndex
+            InterfaceName  = $currentName
+            Address        = $candidate
+            AddressKey     = $key
+        }) | Out-Null
+    }
+
+    return $results.ToArray()
+}
+
+function ConvertTo-NetworkIpv6NeighborEntries {
+    param($Neighbors)
+
+    $lines = @()
+    if ($Neighbors -is [string]) {
+        $lines = @([string]$Neighbors)
+    } elseif ($Neighbors -is [string[]]) {
+        $lines = $Neighbors | ForEach-Object { [string]$_ }
+    } elseif ($Neighbors -and $Neighbors.PSObject -and $Neighbors.PSObject.Properties['Lines']) {
+        $lines = (ConvertTo-NetworkArray $Neighbors.Lines) | ForEach-Object { [string]$_ }
+    }
+
+    if ($lines.Count -eq 0) { return @() }
+
+    $results = New-Object System.Collections.Generic.List[object]
+    $currentIndex = $null
+    $currentName = $null
+
+    foreach ($line in $lines) {
+        if (-not $line) { continue }
+
+        $match = [regex]::Match($line, '^\s*Interface\s+(\d+)\s*:\s*(.+)$')
+        if ($match.Success) {
+            $indexText = $match.Groups[1].Value.Trim()
+            $parsed = $null
+            if ([int]::TryParse($indexText, [ref]$parsed)) {
+                $currentIndex = $parsed
+            } else {
+                $currentIndex = $null
+            }
+            $currentName = $match.Groups[2].Value.Trim()
+            continue
+        }
+
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+        if ($trimmed -match '^-+$') { continue }
+        if ($trimmed -match '^(Internet|Neighbor|Address|---)') { continue }
+
+        $addressMatch = [regex]::Match($line, '([0-9A-Fa-f:]{2,})(?:%[0-9A-Za-z_.-]+)?')
+        if (-not $addressMatch.Success) { continue }
+        $address = $addressMatch.Value
+
+        $macMatch = [regex]::Match($line, '([0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5})')
+        if (-not $macMatch.Success) { continue }
+        $mac = $macMatch.Groups[1].Value
+
+        $state = $null
+        $tailIndex = $macMatch.Index + $macMatch.Length
+        if ($tailIndex -lt $line.Length) {
+            $tail = $line.Substring($tailIndex).Trim()
+            if ($tail) {
+                $state = ($tail -split '\s+')[0]
+            }
+        }
+
+        $key = Normalize-NetworkIpv6Key $address
+        if (-not $key) { continue }
+
+        $results.Add([pscustomobject]@{
+            InterfaceIndex = $currentIndex
+            InterfaceName  = $currentName
+            Address        = $address
+            AddressKey     = $key
+            LinkLayer      = $mac
+            MacNormalized  = Normalize-NetworkMacAddress $mac
+            State          = $state
+        }) | Out-Null
+    }
+
+    return $results.ToArray()
+}
+
 function ConvertTo-NetworkAddressString {
     param($RemoteAddress)
 
@@ -979,6 +1288,168 @@ function Invoke-NetworkHeuristics {
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection'
+    }
+
+    $ipv6Artifact = Get-AnalyzerArtifact -Context $Context -Name 'network-ipv6'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-ipv6 artifact' -Data ([ordered]@{
+        Found = [bool]$ipv6Artifact
+    })
+    if ($ipv6Artifact) {
+        $ipv6Payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $ipv6Artifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating IPv6 payload' -Data ([ordered]@{
+            HasPayload = [bool]$ipv6Payload
+        })
+
+        $ipv6Sections = @()
+        if ($ipv6Payload -and $ipv6Payload.PSObject.Properties['IpconfigIpv6']) {
+            $ipv6Sections = ConvertTo-NetworkIpv6SectionEntries $ipv6Payload.IpconfigIpv6
+        }
+
+        $unexpectedIpv6 = New-Object System.Collections.Generic.List[object]
+        if ($ipv6Sections) {
+            foreach ($section in $ipv6Sections) {
+                if (-not $section -or -not $section.PSObject) { continue }
+
+                $lines = $section.Lines
+                $addresses = Get-NetworkIpv6AddressesFromLines $lines
+                if ($addresses.Count -eq 0) { continue }
+
+                $hasIpv6Gateway = $false
+                $hasIpv6Dns = $false
+                $gatewayLookahead = 0
+                $dnsLookahead = 0
+
+                foreach ($line in $lines) {
+                    if (-not $line) { continue }
+
+                    if ($line -match '(?i)default gateway') { $gatewayLookahead = 3 }
+                    if ($line -match '(?i)dns servers') { $dnsLookahead = 5 }
+
+                    if ($gatewayLookahead -gt 0) {
+                        $matches = [regex]::Matches($line, '([0-9A-Fa-f:]{2,})(?:%[0-9A-Za-z_.-]+)?')
+                        foreach ($match in $matches) {
+                            $candidate = $match.Value
+                            if (-not $candidate) { continue }
+                            if ($candidate -match '^(?i)fe80:') { $hasIpv6Gateway = $true; break }
+                            if (Test-NetworkValidIpv6Address $candidate) { $hasIpv6Gateway = $true; break }
+                        }
+                        if ($hasIpv6Gateway) { $gatewayLookahead = 0 } else { $gatewayLookahead-- }
+                    }
+
+                    if ($dnsLookahead -gt 0) {
+                        $matches = [regex]::Matches($line, '([0-9A-Fa-f:]{2,})(?:%[0-9A-Za-z_.-]+)?')
+                        foreach ($match in $matches) {
+                            $candidate = $match.Value
+                            if (-not $candidate) { continue }
+                            if (Test-NetworkValidIpv6Address $candidate -or $candidate -match '^(?i)fe80:') { $hasIpv6Dns = $true; break }
+                        }
+                        if ($hasIpv6Dns) { $dnsLookahead = 0 } else { $dnsLookahead-- }
+                    }
+                }
+
+                if (-not $hasIpv6Dns) {
+                    $alias = if ($section.PSObject.Properties['Alias']) { [string]$section.Alias } else { $null }
+                    $label = if ($section.PSObject.Properties['Label']) { [string]$section.Label } else { $alias }
+                    if (-not $label -and $lines -and $lines.Count -gt 0) { $label = $lines[0].Trim() }
+                    $unexpectedIpv6.Add([pscustomobject]@{
+                        Interface = if ($label) { $label } else { 'Interface' }
+                        Addresses = $addresses
+                        HasGateway = $hasIpv6Gateway
+                        HasDns = $hasIpv6Dns
+                    }) | Out-Null
+                }
+            }
+        }
+
+        if ($unexpectedIpv6.Count -gt 0) {
+            $evidenceLines = New-Object System.Collections.Generic.List[string]
+            foreach ($entry in $unexpectedIpv6) {
+                $details = "{0}: {1}" -f $entry.Interface, ($entry.Addresses -join ', ')
+                if (-not $entry.HasGateway) { $details += ' (no IPv6 default gateway detected)' }
+                $details += ' (no IPv6 DNS servers detected)'
+                $evidenceLines.Add($details) | Out-Null
+            }
+            $evidenceLines.Add('Recommendation: Enable RA Guard on access switches to block rogue IPv6 router advertisements.') | Out-Null
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Global IPv6 addresses detected on an IPv4-only network, so rogue router advertisements can bypass IPv4 security controls.' -Evidence ($evidenceLines -join "`n") -Subcategory 'IPv6'
+        }
+
+        $routerEntries = @()
+        if ($ipv6Payload -and $ipv6Payload.PSObject.Properties['NetshRouters']) {
+            $routerEntries = ConvertTo-NetworkIpv6RouterEntries $ipv6Payload.NetshRouters
+        }
+
+        $neighborEntries = @()
+        if ($ipv6Payload -and $ipv6Payload.PSObject.Properties['NetshNeighbors']) {
+            $neighborEntries = ConvertTo-NetworkIpv6NeighborEntries $ipv6Payload.NetshNeighbors
+        }
+
+        if ($routerEntries -and $routerEntries.Count -gt 0 -and $neighborEntries -and $neighborEntries.Count -gt 0) {
+            $neighborMap = @{}
+            foreach ($neighbor in $neighborEntries) {
+                if (-not $neighbor.AddressKey) { continue }
+                $ifaceKey = "{0}|{1}" -f $neighbor.InterfaceIndex, $neighbor.InterfaceName
+                if (-not $neighborMap.ContainsKey($ifaceKey)) {
+                    $neighborMap[$ifaceKey] = @{}
+                }
+                $addressMap = $neighborMap[$ifaceKey]
+                if (-not $addressMap.ContainsKey($neighbor.AddressKey)) {
+                    $addressMap[$neighbor.AddressKey] = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                }
+                if ($neighbor.MacNormalized) {
+                    $null = $addressMap[$neighbor.AddressKey].Add($neighbor.MacNormalized)
+                }
+            }
+
+            $routerAnomalies = New-Object System.Collections.Generic.List[object]
+            $routerGroups = $routerEntries | Group-Object { "{0}|{1}" -f $_.InterfaceIndex, $_.InterfaceName }
+            foreach ($group in $routerGroups) {
+                if (-not $group -or -not $group.Group) { continue }
+                $interfaceIndex = $group.Group[0].InterfaceIndex
+                $interfaceName = $group.Group[0].InterfaceName
+                $ifaceKey = $group.Name
+
+                if (-not $neighborMap.ContainsKey($ifaceKey)) { continue }
+
+                $macAggregate = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                $addressFindings = New-Object System.Collections.Generic.List[object]
+
+                $addressGroups = $group.Group | Group-Object AddressKey
+                foreach ($addressGroup in $addressGroups) {
+                    if (-not $addressGroup.Name) { continue }
+                    $macSet = $neighborMap[$ifaceKey][$addressGroup.Name]
+                    if (-not $macSet -or $macSet.Count -eq 0) { continue }
+
+                    foreach ($mac in $macSet) { $null = $macAggregate.Add($mac) }
+
+                    $addressFindings.Add([pscustomobject]@{
+                        Address = $addressGroup.Group[0].Address
+                        Macs    = ($macSet | ForEach-Object { $_ })
+                    }) | Out-Null
+                }
+
+                if ($macAggregate.Count -gt 1) {
+                    $routerAnomalies.Add([pscustomobject]@{
+                        InterfaceIndex = $interfaceIndex
+                        InterfaceName  = $interfaceName
+                        Findings       = $addressFindings
+                    }) | Out-Null
+                }
+            }
+
+            if ($routerAnomalies.Count -gt 0) {
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+                foreach ($anomaly in $routerAnomalies) {
+                    $label = if ($anomaly.InterfaceName) { $anomaly.InterfaceName } elseif ($anomaly.InterfaceIndex -ne $null) { "Interface {0}" -f $anomaly.InterfaceIndex } else { 'Interface' }
+                    $evidenceLines.Add(("{0}:" -f $label)) | Out-Null
+                    foreach ($finding in $anomaly.Findings) {
+                        if (-not $finding.Macs -or $finding.Macs.Count -eq 0) { continue }
+                        $evidenceLines.Add(("  Router {0} MACs: {1}" -f $finding.Address, ($finding.Macs -join ', '))) | Out-Null
+                    }
+                }
+                $evidenceLines.Add('Recommendation: Enable RA Guard on access switches to block rogue IPv6 router advertisements.') | Out-Null
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MAC addresses observed, so rogue router advertisements can override trusted gateways.' -Evidence ($evidenceLines -join "`n") -Subcategory 'IPv6'
+            }
+        }
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
