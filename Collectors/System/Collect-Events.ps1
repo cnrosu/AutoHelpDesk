@@ -193,6 +193,11 @@ function Get-TimeServiceEvents {
     return Get-EventRecords -LogName 'Microsoft-Windows-Time-Service/Operational' -EventIds @(29, 36, 47, 50) -StartTime $startTime -MaxEvents 400
 }
 
+function Get-DcomAccessDeniedEvents {
+    $startTime = (Get-Date).AddDays(-14)
+    return Get-EventRecords -LogName 'System' -EventIds @(10016) -StartTime $startTime -MaxEvents 1200
+}
+
 function Get-W32tmStatus {
     $result = [ordered]@{
         CommandPath = $null
@@ -243,6 +248,7 @@ function Invoke-Main {
             W32tmStatus             = Get-W32tmStatus
             AccountLockouts         = Get-AccountLockoutEvents
         }
+        DcomAccessDenied = Get-DcomAccessDeniedEvents
     }
 
     $result = New-CollectorMetadata -Payload $payload

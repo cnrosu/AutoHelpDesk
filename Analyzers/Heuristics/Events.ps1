@@ -160,6 +160,170 @@ function Normalize-EventsUserName {
     return $value.ToUpperInvariant()
 }
 
+function Get-EventsGuidTail {
+    param([string]$Guid)
+
+    if ([string]::IsNullOrWhiteSpace($Guid)) { return $null }
+
+    $normalized = $Guid.Trim()
+    if ($normalized.StartsWith('{') -and $normalized.EndsWith('}')) {
+        $normalized = $normalized.Substring(1, $normalized.Length - 2)
+    }
+
+    $normalized = $normalized.ToUpperInvariant()
+
+    if ($normalized.Length -le 8) {
+        return $normalized
+    }
+
+    return $normalized.Substring($normalized.Length - 8)
+}
+
+function Invoke-EventsDcomChecks {
+    param(
+        [Parameter(Mandatory)]
+        $Result,
+
+        $DcomData
+    )
+
+    if (-not $DcomData) { return }
+
+    $error = $null
+    if ($DcomData.PSObject.Properties['Error']) {
+        $error = $DcomData.Error
+    }
+
+    if ($error) {
+        Write-HeuristicDebug -Source 'Events/DCOM' -Message 'DCOM data error' -Data ([ordered]@{ Error = $error })
+        return
+    }
+
+    $eventsRaw = @()
+    if ($DcomData.PSObject.Properties['Events']) {
+        $eventsRaw = @($DcomData.Events)
+    }
+
+    if (-not $eventsRaw) { return }
+
+    $records = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($event in $eventsRaw) {
+        if (-not $event) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+        }
+
+        if (-not $timeUtc) { continue }
+
+        $message = $null
+        if ($event.PSObject.Properties['Message']) {
+            $message = [string]$event.Message
+        }
+
+        if ([string]::IsNullOrWhiteSpace($message)) { continue }
+
+        $clsid = $null
+        $appId = $null
+
+        $clsidMatch = [regex]::Match($message, '(?i)CLSID[^\{]*\{(?<guid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\}')
+        if ($clsidMatch.Success -and $clsidMatch.Groups['guid'].Success) {
+            $clsid = $clsidMatch.Groups['guid'].Value.ToUpperInvariant()
+        }
+
+        $appIdMatch = [regex]::Match($message, '(?i)APPID[^\{]*\{(?<guid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\}')
+        if ($appIdMatch.Success -and $appIdMatch.Groups['guid'].Success) {
+            $appId = $appIdMatch.Groups['guid'].Value.ToUpperInvariant()
+        }
+
+        if (-not $clsid -or -not $appId) { continue }
+
+        $records.Add([pscustomobject]@{
+            TimeUtc = $timeUtc
+            Clsid   = $clsid
+            AppId   = $appId
+        }) | Out-Null
+    }
+
+    if ($records.Count -eq 0) { return }
+
+    $groups = $records | Group-Object -Property { '{0}|{1}' -f $_.Clsid, $_.AppId }
+
+    foreach ($group in $groups) {
+        if (-not $group -or -not $group.Group) { continue }
+
+        $events = @($group.Group | Where-Object { $_.TimeUtc })
+        if ($events.Count -lt 20) { continue }
+
+        $ordered = @($events | Sort-Object TimeUtc)
+        if ($ordered.Count -lt 20) { continue }
+
+        $maxCount = 0
+        $windowLastUtc = $null
+
+        for ($i = 0; $i -lt $ordered.Count; $i++) {
+            $startTime = $ordered[$i].TimeUtc
+            if (-not $startTime) { continue }
+
+            $windowEnd = $startTime.AddHours(24)
+            $count = 0
+            $lastInWindow = $null
+
+            for ($j = $i; $j -lt $ordered.Count; $j++) {
+                $currentTime = $ordered[$j].TimeUtc
+                if (-not $currentTime) { continue }
+                if ($currentTime -le $windowEnd) {
+                    $count++
+                    $lastInWindow = $currentTime
+                } else {
+                    break
+                }
+            }
+
+            if ($count -gt $maxCount) {
+                $maxCount = $count
+                $windowLastUtc = $lastInWindow
+            }
+        }
+
+        if ($maxCount -lt 20) { continue }
+
+        $sample = $ordered[$ordered.Count - 1]
+        $clsidValue = $sample.Clsid
+        $appIdValue = $sample.AppId
+
+        $clsidTail = Get-EventsGuidTail -Guid $clsidValue
+        $appIdTail = Get-EventsGuidTail -Guid $appIdValue
+
+        $lastUtcString = $null
+        if ($windowLastUtc) {
+            $lastUtcString = $windowLastUtc.ToString('o')
+        } elseif ($sample.TimeUtc) {
+            $lastUtcString = $sample.TimeUtc.ToString('o')
+        }
+
+        $evidence = [ordered]@{
+            clsidTail = $clsidTail
+            appIdTail = $appIdTail
+            count24h  = $maxCount
+            lastUtc   = $lastUtcString
+        }
+
+        $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+
+        Write-HeuristicDebug -Source 'Events/DCOM' -Message 'Repeated DCOM 10016 events detected' -Data ([ordered]@{
+            Clsid    = $clsidValue
+            AppId    = $appIdValue
+            Count24h = $maxCount
+            LastUtc  = $lastUtcString
+        })
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title 'Repeated DCOM 10016 events (noisy)' -Evidence $evidenceJson -Subcategory 'DCOM'
+    }
+}
+
 function Normalize-EventsHostName {
     param([string]$HostName)
 
@@ -763,6 +927,10 @@ function Invoke-EventsHeuristics {
                     $logSubcategory = ("{0} Event Log" -f $logName)
                     Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
+            }
+
+            if ($payload.PSObject.Properties['DcomAccessDenied']) {
+                Invoke-EventsDcomChecks -Result $result -DcomData $payload.DcomAccessDenied
             }
 
             if ($payload.PSObject.Properties['Authentication']) {
