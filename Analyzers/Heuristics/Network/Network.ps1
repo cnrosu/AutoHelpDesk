@@ -607,7 +607,7 @@ function Get-NetworkSwitchPortExpectations {
     return [pscustomobject]@{
         Records = $records.ToArray()
         Map     = $aliasLookup
-        Sources = $sourcesUsed.ToArray()
+        Sources = if ($sourcesUsed.Count -gt 0) { [System.Linq.Enumerable]::ToArray($sourcesUsed) } else { @() }
         Count   = $records.Count
     }
 }
@@ -2055,7 +2055,7 @@ function Invoke-NetworkHeuristics {
 
                 $entryRecord = [pscustomobject]@{
                     Gateway      = $gateway
-                    Interfaces   = $detail.Interfaces.ToArray()
+                    Interfaces   = if ($detail.Interfaces.Count -gt 0) { [System.Linq.Enumerable]::ToArray($detail.Interfaces) } else { @() }
                     NormalizedMac = $match.NormalizedMac
                     Type         = $match.Type
                 }
@@ -2187,7 +2187,7 @@ function Invoke-NetworkHeuristics {
                 }
 
                 if ($remoteIps.Count -gt 1) {
-                    $localMacAlerts += "{0} impersonates IPs {1}" -f $mac, ($remoteIps.ToArray() -join ', ')
+                    $localMacAlerts += "{0} impersonates IPs {1}" -f $mac, (([System.Linq.Enumerable]::ToArray($remoteIps)) -join ', ')
                 }
             }
 
@@ -2296,7 +2296,7 @@ function Invoke-NetworkHeuristics {
                     $aliasLabel = if ($entry.PSObject.Properties['Alias']) { [string]$entry.Alias } else { $null }
                     $globalIpv6Records.Add([pscustomobject]@{
                         Alias     = $aliasLabel
-                        Addresses = $addressSet.ToArray()
+                        Addresses = if ($addressSet.Count -gt 0) { [System.Linq.Enumerable]::ToArray($addressSet) } else { @() }
                     }) | Out-Null
                 }
             }
