@@ -279,6 +279,50 @@ function Get-EventsCurrentDeviceName {
     return $null
 }
 
+function Test-EventsIsWorkgroupDevice {
+    param($Context)
+
+    if (-not $Context) { return $false }
+
+    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    if (-not $systemArtifact) { return $false }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
+    if (-not $payload) { return $false }
+
+    $systemInfo = $null
+    if ($payload.PSObject.Properties['SystemInfoText']) {
+        $systemInfo = $payload.SystemInfoText
+    }
+
+    if ($systemInfo -is [pscustomobject] -and $systemInfo.PSObject.Properties['Error']) {
+        return $false
+    }
+
+    if ($systemInfo) {
+        if ($systemInfo -isnot [string]) {
+            if ($systemInfo -is [System.Collections.IEnumerable] -and -not ($systemInfo -is [string])) {
+                $systemInfo = ($systemInfo -join "`n")
+            } else {
+                $systemInfo = [string]$systemInfo
+            }
+        }
+
+        if ($systemInfo) {
+            foreach ($line in [regex]::Split($systemInfo, '\r?\n')) {
+                if ($line -match '^\s*Domain\s*:\s*(.+)$') {
+                    $domainValue = $matches[1].Trim()
+                    if ($domainValue) {
+                        return [string]::Equals($domainValue, 'WORKGROUP', [System.StringComparison]::OrdinalIgnoreCase)
+                    }
+                }
+            }
+        }
+    }
+
+    return $false
+}
+
 function Invoke-EventsAuthenticationChecks {
     param(
         [Parameter(Mandatory)]
@@ -287,7 +331,9 @@ function Invoke-EventsAuthenticationChecks {
         [Parameter(Mandatory)]
         $Authentication,
 
-        [string]$DeviceName
+        [string]$DeviceName,
+
+        $Context
     )
 
     Write-HeuristicDebug -Source 'Events/Auth' -Message 'Starting authentication heuristics evaluation'
@@ -307,6 +353,15 @@ function Invoke-EventsAuthenticationChecks {
     $w32tmStatus = $null
     if ($Authentication.PSObject.Properties['W32tmStatus']) {
         $w32tmStatus = $Authentication.W32tmStatus
+    }
+
+    $isWorkgroupDevice = $false
+    if ($Context) {
+        try {
+            $isWorkgroupDevice = Test-EventsIsWorkgroupDevice -Context $Context
+        } catch {
+            $isWorkgroupDevice = $false
+        }
     }
 
     $kerberosEventsRaw = @()
@@ -498,6 +553,97 @@ function Invoke-EventsAuthenticationChecks {
     $accountLockoutData = $null
     if ($Authentication.PSObject.Properties['AccountLockouts']) {
         $accountLockoutData = $Authentication.AccountLockouts
+    }
+
+    if ($accountLockoutData) {
+        $networkContainer = $null
+        if ($accountLockoutData.PSObject.Properties['NetworkLogons']) {
+            $networkContainer = $accountLockoutData.NetworkLogons
+        }
+
+        $networkEventsRaw = @()
+        if ($networkContainer -and -not $networkContainer.Error -and $networkContainer.PSObject.Properties['Events']) {
+            $networkEventsRaw = @($networkContainer.Events)
+        }
+
+        if (($networkEventsRaw.Count -gt 0) -and -not $isWorkgroupDevice) {
+            $nowUtc = (Get-Date).ToUniversalTime()
+            $windowStartUtc = $nowUtc.AddHours(-24)
+
+            $ntlmCount24h = 0
+            $kerberosCount24h = 0
+            $lastUtc = $null
+            $sampleHosts = New-Object System.Collections.Generic.List[string]
+
+            foreach ($event in $networkEventsRaw) {
+                if (-not $event) { continue }
+
+                $eventTimeUtc = $null
+                if ($event.PSObject.Properties['TimeCreated']) {
+                    $eventTimeUtc = ConvertTo-EventsDateTimeUtc -Value $event.TimeCreated
+                }
+
+                if (-not $eventTimeUtc -or $eventTimeUtc -lt $windowStartUtc) { continue }
+
+                $eventData = $null
+                if ($event.PSObject.Properties['EventData']) {
+                    $eventData = $event.EventData
+                }
+
+                $packageNormalized = $null
+                $packageValue = Get-EventsEventDataValue -EventData $eventData -Name 'AuthenticationPackageName'
+                if ($packageValue) {
+                    $packageNormalized = ([string]$packageValue).Trim()
+                }
+
+                if ($packageNormalized -and [string]::Equals($packageNormalized, 'NTLM', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $ntlmCount24h++
+                    if (-not $lastUtc -or $eventTimeUtc -gt $lastUtc) { $lastUtc = $eventTimeUtc }
+
+                    if ($sampleHosts.Count -lt 5) {
+                        $hostValue = $null
+                        foreach ($field in @('WorkstationName','IpAddress','SourceAddress')) {
+                            $candidate = Get-EventsEventDataValue -EventData $eventData -Name $field
+                            if ($candidate) { $hostValue = [string]$candidate; break }
+                        }
+
+                        if ($hostValue) {
+                            $maskedHost = ConvertTo-EventsMaskedHost -Value $hostValue
+                            if ($maskedHost -and -not $sampleHosts.Contains($maskedHost)) {
+                                $sampleHosts.Add($maskedHost) | Out-Null
+                            }
+                        }
+                    }
+                } elseif ($packageNormalized -and [string]::Equals($packageNormalized, 'Kerberos', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $kerberosCount24h++
+                }
+            }
+
+            $summaryData = [ordered]@{
+                ntlmCount24h     = $ntlmCount24h
+                kerberosCount24h = $kerberosCount24h
+                eventsConsidered = $networkEventsRaw.Count
+                workgroupDevice  = $isWorkgroupDevice
+            }
+
+            Write-HeuristicDebug -Source 'Events/Auth' -Message 'NTLM fallback evaluation summary' -Data $summaryData
+
+            if ($ntlmCount24h -ge 10 -and $kerberosCount24h -ge 1) {
+                $evidence = [ordered]@{
+                    ntlmCount24h = $ntlmCount24h
+                    sampleHosts  = $sampleHosts.ToArray()
+                    lastUtc      = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
+                }
+
+                $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+
+                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'NTLM network logons detected (Kerberos not used)' -Evidence $evidenceJson -Subcategory 'Authentication'
+            }
+        } elseif (($networkEventsRaw.Count -gt 0) -and $isWorkgroupDevice) {
+            Write-HeuristicDebug -Source 'Events/Auth' -Message 'Skipping NTLM fallback heuristic for WORKGROUP device' -Data ([ordered]@{
+                eventsAvailable = $networkEventsRaw.Count
+            })
+        }
     }
 
     if (-not $accountLockoutData) { return }
@@ -766,7 +912,7 @@ function Invoke-EventsHeuristics {
             }
 
             if ($payload.PSObject.Properties['Authentication']) {
-                Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName
+                Invoke-EventsAuthenticationChecks -Result $result -Authentication $payload.Authentication -DeviceName $deviceName -Context $Context
             }
         }
     } else {
