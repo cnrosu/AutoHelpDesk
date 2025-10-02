@@ -573,6 +573,303 @@ function Invoke-DhcpAnalyzers {
     }
 }
 
+
+function Get-WlanLines {
+    param($Value)
+
+    $lines = @()
+    foreach ($item in (ConvertTo-NetworkArray $Value)) {
+        if ($null -ne $item) {
+            $lines += [string]$item
+        }
+    }
+
+    return $lines
+}
+
+function ConvertTo-WlanInterfaces {
+    param($Raw)
+
+    $interfaces = [System.Collections.Generic.List[object]]::new()
+    $lines = Get-WlanLines $Raw
+    $current = $null
+
+    foreach ($line in $lines) {
+        if (-not $line) { continue }
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        if ($trimmed -match '^Name\s*:\s*(.+)$') {
+            $current = [ordered]@{ Name = $Matches[1].Trim() }
+            $interfaces.Add([pscustomobject]$current) | Out-Null
+            continue
+        }
+
+        if (-not $current) { continue }
+        if ($trimmed -match '^([^:]+)\s*:\s*(.*)$') {
+            $key = $Matches[1].Trim()
+            $value = $Matches[2].Trim()
+
+            switch -Regex ($key) {
+                '^Description$' { $current['Description'] = $value; continue }
+                '^GUID$'        { $current['Guid'] = $value; continue }
+                '^Physical address$' { $current['Mac'] = $value; continue }
+                '^State$'       { $current['State'] = $value; continue }
+                '^SSID$'        { $current['Ssid'] = $value; continue }
+                '^BSSID$'       { $current['Bssid'] = $value; continue }
+                '^Authentication$' { $current['Authentication'] = $value; continue }
+                '^Cipher$'      { $current['Cipher'] = $value; continue }
+                '^Connection mode$' { $current['ConnectionMode'] = $value; continue }
+                '^Radio type$'  { $current['RadioType'] = $value; continue }
+                '^Profile$'     { $current['Profile'] = $value; continue }
+            }
+        }
+    }
+
+    return $interfaces.ToArray()
+}
+
+function ConvertTo-WlanNetworks {
+    param($Raw)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    $lines = Get-WlanLines $Raw
+    $current = $null
+
+    foreach ($line in $lines) {
+        if (-not $line) { continue }
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        if ($trimmed -match '^SSID\s+\d+\s*:\s*(.*)$') {
+            $ssid = $Matches[1].Trim()
+            $current = [ordered]@{
+                Ssid            = $ssid
+                Authentications = New-Object System.Collections.Generic.List[string]
+                Encryptions     = New-Object System.Collections.Generic.List[string]
+            }
+            $entries.Add([pscustomobject]$current) | Out-Null
+            continue
+        }
+
+        if (-not $current) { continue }
+
+        if ($trimmed -match '^Authentication\s*:\s*(.+)$') {
+            $value = $Matches[1].Trim()
+            if ($value -and -not $current.Authentications.Contains($value)) {
+                $current.Authentications.Add($value) | Out-Null
+            }
+            continue
+        }
+
+        if ($trimmed -match '^Encryption\s*:\s*(.+)$') {
+            $value = $Matches[1].Trim()
+            if ($value -and -not $current.Encryptions.Contains($value)) {
+                $current.Encryptions.Add($value) | Out-Null
+            }
+            continue
+        }
+    }
+
+    return $entries.ToArray()
+}
+
+function ConvertTo-WlanProfileInfo {
+    param($Detail)
+
+    if (-not $Detail) { return $null }
+
+    $info = [ordered]@{
+        Name                    = $Detail.Name
+        Authentication          = $null
+        AuthenticationFallback  = $null
+        Encryption              = $null
+        EncryptionFallback      = $null
+        UseOneX                 = $null
+        PassphraseMetrics       = $null
+        PassphraseMetricsError  = $null
+        EapConfigPresent        = $false
+        XmlError                = $null
+    }
+
+    $xmlText = $null
+    if ($Detail.PSObject.Properties['Xml'] -and $Detail.Xml) {
+        $xmlText = [string]$Detail.Xml
+    } elseif ($Detail.PSObject.Properties['XmlError'] -and $Detail.XmlError) {
+        $info.XmlError = [string]$Detail.XmlError
+    }
+
+    if ($xmlText) {
+        try {
+            $xml = [xml]$xmlText
+            $profileNode = $xml.WLANProfile
+            if ($profileNode -and $profileNode.MSM -and $profileNode.MSM.security) {
+                $security = $profileNode.MSM.security
+                if ($security.authEncryption) {
+                    $auth = $security.authEncryption
+                    if ($auth.authentication) { $info.Authentication = [string]$auth.authentication }
+                    if ($auth.encryption) { $info.Encryption = [string]$auth.encryption }
+                    if ($auth.useOneX -ne $null) {
+                        try {
+                            $info.UseOneX = [System.Convert]::ToBoolean($auth.useOneX)
+                        } catch {
+                            $text = [string]$auth.useOneX
+                            if ($text) {
+                                $info.UseOneX = ($text.Trim().ToLowerInvariant() -eq 'true')
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            $eapNode = $xml.SelectSingleNode("//*[local-name()='EAPConfig']")
+            if ($eapNode) {
+                $info.EapConfigPresent = $true
+            }
+        } catch {
+            $info.XmlError = $_.Exception.Message
+        }
+    }
+
+    $profileLines = Get-WlanLines ($Detail.PSObject.Properties['ShowProfile'] ? $Detail.ShowProfile : $null)
+    foreach ($line in $profileLines) {
+        if (-not $line) { continue }
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        if (-not $info.AuthenticationFallback -and $trimmed -match '^Authentication\s*:\s*(.+)$') {
+            $info.AuthenticationFallback = $Matches[1].Trim()
+            continue
+        }
+
+        if (-not $info.EncryptionFallback -and $trimmed -match '^Cipher\s*:\s*(.+)$') {
+            $info.EncryptionFallback = $Matches[1].Trim()
+            continue
+        }
+
+        if ($info.UseOneX -eq $null -and $trimmed -match '^Security key\s*:\s*(.+)$') {
+            $keyType = $Matches[1].Trim()
+            if ($keyType -match '802\.1X|EAP') { $info.UseOneX = $true }
+        }
+    }
+
+    if ($info.UseOneX -eq $null -and $info.EapConfigPresent) {
+        $info.UseOneX = $true
+    }
+
+    if ($Detail.PSObject.Properties['PassphraseMetrics'] -and $Detail.PassphraseMetrics) {
+        $info.PassphraseMetrics = $Detail.PassphraseMetrics
+    }
+    if ($Detail.PSObject.Properties['PassphraseMetricsError'] -and $Detail.PassphraseMetricsError) {
+        $info.PassphraseMetricsError = [string]$Detail.PassphraseMetricsError
+    }
+
+    return [pscustomobject]$info
+}
+
+function ConvertTo-WlanProfileInfos {
+    param($Profiles)
+
+    $results = [System.Collections.Generic.List[object]]::new()
+    if (-not $Profiles) { return $results.ToArray() }
+
+    $details = $null
+    if ($Profiles.PSObject -and $Profiles.PSObject.Properties['Details']) {
+        $details = $Profiles.Details
+    } elseif ($Profiles -is [System.Collections.IEnumerable]) {
+        $details = $Profiles
+    }
+
+    foreach ($detail in (ConvertTo-NetworkArray $details)) {
+        $info = ConvertTo-WlanProfileInfo $detail
+        if ($info) { $results.Add($info) | Out-Null }
+    }
+
+    return $results.ToArray()
+}
+
+function Normalize-WlanAuthToken {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+    $token = $Text.Trim()
+    if (-not $token) { return $null }
+
+    try {
+        $token = $token.ToUpperInvariant()
+    } catch {
+        $token = ([string]$token).ToUpperInvariant()
+    }
+
+    return ($token -replace '[^A-Z0-9]', '')
+}
+
+function Get-WlanSecurityCategoryFromToken {
+    param(
+        [string]$Token,
+        [Nullable[bool]]$UseOneX
+    )
+
+    if (-not $Token) { return $null }
+
+    if ($Token -match 'WPA3' -and $Token -match 'SAE' -and $Token -match 'TRANS') { return 'WPA3PersonalTransition' }
+    if ($Token -match 'WPA3' -and $Token -match 'SAE') { return 'WPA3Personal' }
+    if ($Token -match 'WPA3' -and ($Token -match 'ENT' -or $Token -match 'ENTERPRISE')) {
+        if ($Token -match '192') { return 'WPA3Enterprise192' }
+        if ($Token -match 'TRANS') { return 'WPA3EnterpriseTransition' }
+        return 'WPA3Enterprise'
+    }
+    if ($Token -match 'WPA2' -and ($Token -match 'PSK' -or $Token -match 'PERSONAL')) { return 'WPA2Personal' }
+    if ($Token -match 'WPA2' -and ($Token -match 'ENT' -or $Token -match 'ENTERPRISE')) { return 'WPA2Enterprise' }
+    if ($Token -eq 'WPA2') {
+        if ($UseOneX -ne $null) {
+            if ($UseOneX) { return 'WPA2Enterprise' }
+            return 'WPA2Personal'
+        }
+        return 'WPA2'
+    }
+    if ($Token -match 'WPA' -and ($Token -match 'PSK' -or $Token -match 'PERSONAL')) { return 'WPAPersonal' }
+    if ($Token -match 'WPA' -and ($Token -match 'ENT' -or $Token -match 'ENTERPRISE')) { return 'WPAEnterprise' }
+    if ($Token -match 'WEP') { return 'WEP' }
+    if ($Token -match 'OPEN' -or $Token -match 'NONE') { return 'Open' }
+    if ($Token -match 'SAE') { return 'WPA3Personal' }
+
+    return $null
+}
+
+function Get-WlanSecurityCategory {
+    param(
+        [string[]]$AuthTexts,
+        [Nullable[bool]]$UseOneX
+    )
+
+    foreach ($auth in $AuthTexts) {
+        $token = Normalize-WlanAuthToken $auth
+        $category = Get-WlanSecurityCategoryFromToken -Token $token -UseOneX $UseOneX
+        if ($category) { return $category }
+    }
+
+    if ($UseOneX -ne $null) {
+        if ($UseOneX) { return 'WPA2Enterprise' }
+        return 'WPA2Personal'
+    }
+
+    return $null
+}
+
+function Test-WlanCipherIncludesTkip {
+    param([string[]]$CipherTexts)
+
+    foreach ($cipher in $CipherTexts) {
+        if (-not $cipher) { continue }
+        $token = Normalize-WlanAuthToken $cipher
+        if ($token -match 'TKIP') { return $true }
+    }
+
+    return $false
+}
+
 function Invoke-NetworkHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -943,6 +1240,297 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration'
             }
         }
+    }
+
+    $wlanArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wlan'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved wlan artifact' -Data ([ordered]@{
+        Found = [bool]$wlanArtifact
+    })
+    if ($wlanArtifact) {
+        $wlanPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wlanArtifact)
+        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating wlan payload' -Data ([ordered]@{
+            HasPayload = [bool]$wlanPayload
+        })
+        if ($wlanPayload -and $wlanPayload.Error) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.' -Evidence $wlanPayload.Error -Subcategory 'Security'
+        } else {
+            $interfaces = @()
+            $profiles = @()
+            $visibleNetworks = @()
+
+            if ($wlanPayload.PSObject -and $wlanPayload.PSObject.Properties['Interfaces']) {
+                $interfaces = ConvertTo-WlanInterfaces $wlanPayload.Interfaces
+            }
+            if ($wlanPayload.PSObject -and $wlanPayload.PSObject.Properties['Profiles']) {
+                $profiles = ConvertTo-WlanProfileInfos $wlanPayload.Profiles
+            }
+            if ($wlanPayload.PSObject -and $wlanPayload.PSObject.Properties['Networks']) {
+                $visibleNetworks = ConvertTo-WlanNetworks $wlanPayload.Networks
+            }
+
+            if ($interfaces.Count -eq 0) {
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
+            } else {
+                $connectedInterfaces = $interfaces | Where-Object { $_.State -and $_.State -match '(?i)connected' }
+                if ($connectedInterfaces.Count -eq 0) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wi-Fi adapter not connected, so wireless encryption state is unknown.' -Subcategory 'Security'
+                } else {
+                    $primaryInterface = $connectedInterfaces | Select-Object -First 1
+
+                    $profileName = if ($primaryInterface.Profile) { [string]$primaryInterface.Profile } elseif ($primaryInterface.Ssid) { [string]$primaryInterface.Ssid } else { $null }
+                    $profileInfo = $null
+                    if ($profileName) {
+                        $profileInfo = $profiles | Where-Object { $_.Name -eq $profileName } | Select-Object -First 1
+                    }
+                    if (-not $profileInfo -and $profiles.Count -eq 1) { $profileInfo = $profiles[0] }
+
+                    $authCandidates = New-Object System.Collections.Generic.List[string]
+                    if ($primaryInterface.Authentication) { $authCandidates.Add([string]$primaryInterface.Authentication) | Out-Null }
+                    if ($profileInfo -and $profileInfo.Authentication) { $authCandidates.Add([string]$profileInfo.Authentication) | Out-Null }
+                    if ($profileInfo -and $profileInfo.AuthenticationFallback) { $authCandidates.Add([string]$profileInfo.AuthenticationFallback) | Out-Null }
+                    $useOneX = if ($profileInfo) { $profileInfo.UseOneX } else { $null }
+                    $securityCategory = Get-WlanSecurityCategory -AuthTexts $authCandidates.ToArray() -UseOneX $useOneX
+
+                    $cipherCandidates = New-Object System.Collections.Generic.List[string]
+                    if ($primaryInterface.Cipher) {
+                        $splits = [regex]::Split([string]$primaryInterface.Cipher, '[,;/]+')
+                        if (-not $splits -or $splits.Count -eq 0) { $splits = @([string]$primaryInterface.Cipher) }
+                        foreach ($item in $splits) {
+                            $trim = $item.Trim()
+                            if ($trim) { $cipherCandidates.Add($trim) | Out-Null }
+                        }
+                    }
+                    if ($profileInfo) {
+                        foreach ($candidate in @($profileInfo.Encryption, $profileInfo.EncryptionFallback)) {
+                            if ($candidate) { $cipherCandidates.Add([string]$candidate) | Out-Null }
+                        }
+                    }
+                    $tkipAllowed = Test-WlanCipherIncludesTkip -CipherTexts $cipherCandidates.ToArray()
+
+                    $ssid = if ($primaryInterface.Ssid) { [string]$primaryInterface.Ssid } else { $profileName }
+                    $authenticationText = $null
+                    foreach ($candidate in $authCandidates) {
+                        if ($candidate) { $authenticationText = $candidate; break }
+                    }
+                    if (-not $authenticationText -and $securityCategory) { $authenticationText = $securityCategory }
+
+                    $cipherText = if ($primaryInterface.Cipher) { [string]$primaryInterface.Cipher } elseif ($profileInfo -and $profileInfo.Encryption) { $profileInfo.Encryption } else { $null }
+
+                    $profileEvidenceText = $null
+                    if ($profileInfo -and ($profileInfo.Authentication -or $profileInfo.Encryption)) {
+                        $profileParts = @()
+                        if ($profileInfo.Authentication) { $profileParts += ('Auth={0}' -f $profileInfo.Authentication) }
+                        if ($profileInfo.Encryption) { $profileParts += ('Encryption={0}' -f $profileInfo.Encryption) }
+                        if ($profileParts.Count -gt 0) { $profileEvidenceText = 'netsh wlan export/show profile → ' + ($profileParts -join '; ') }
+                    }
+
+                    $interfaceEvidenceParts = New-Object System.Collections.Generic.List[string]
+                    if ($ssid) { $interfaceEvidenceParts.Add(('SSID "{0}"' -f $ssid)) | Out-Null }
+                    if ($authenticationText) { $interfaceEvidenceParts.Add(('Authentication={0}' -f $authenticationText)) | Out-Null }
+                    if ($cipherText) { $interfaceEvidenceParts.Add(('Cipher={0}' -f $cipherText)) | Out-Null }
+                    if ($primaryInterface.Profile -and $primaryInterface.Profile -ne $ssid) { $interfaceEvidenceParts.Add(('Profile={0}' -f $primaryInterface.Profile)) | Out-Null }
+                    $interfaceEvidence = 'netsh wlan show interfaces → ' + ($interfaceEvidenceParts.ToArray() -join '; ')
+
+                    $apMatches = @()
+                    if ($ssid -and $visibleNetworks.Count -gt 0) {
+                        $apMatches = $visibleNetworks | Where-Object { $_.Ssid -eq $ssid }
+                    }
+                    $apAuthValues = @()
+                    $apAuthTokens = New-Object System.Collections.Generic.List[string]
+                    foreach ($entry in $apMatches) {
+                        foreach ($authValue in (ConvertTo-NetworkArray $entry.Authentications)) {
+                            if (-not $authValue) { continue }
+                            $apAuthValues += $authValue
+                            $token = Normalize-WlanAuthToken $authValue
+                            if ($token) { $apAuthTokens.Add($token) | Out-Null }
+                        }
+                    }
+                    if ($apAuthValues.Count -gt 0) {
+                        $apAuthValues = $apAuthValues | Sort-Object -Unique
+                    }
+
+                    $apSupportsWpa3 = ($apAuthTokens | Where-Object { $_ -match 'WPA3' }).Count -gt 0
+                    $apSupportsWpa2 = ($apAuthTokens | Where-Object { $_ -match 'WPA2' }).Count -gt 0
+
+                    $passphraseMetrics = if ($profileInfo) { $profileInfo.PassphraseMetrics } else { $null }
+                    $passphraseMetricsError = if ($profileInfo) { $profileInfo.PassphraseMetricsError } else { $null }
+
+                    $subcategory = 'Security'
+
+                    $apEvidence = $null
+                    if ($apAuthValues.Count -gt 0) {
+                        $apEvidence = ('netsh wlan show networks mode=bssid → Authentication={0}' -f ($apAuthValues -join ', '))
+                    }
+
+                    $handledBasic = $false
+                    if ($securityCategory -eq 'Open') {
+                        $handledBasic = $true
+                        $evidence = [ordered]@{
+                            Interface = $interfaceEvidence
+                        }
+                        if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'Open (unencrypted) Wi-Fi network' -Evidence $evidence -Subcategory $subcategory
+                    } elseif ($securityCategory -eq 'WEP') {
+                        $handledBasic = $true
+                        $evidence = [ordered]@{
+                            Interface = $interfaceEvidence
+                        }
+                        if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
+                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'WEP network detected' -Evidence $evidence -Subcategory $subcategory
+                    }
+
+                    if (-not $handledBasic) {
+                        if ($tkipAllowed) {
+                            $tkipEvidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($profileEvidenceText) { $tkipEvidence['Profile'] = $profileEvidenceText }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title 'WPA2 using TKIP (legacy cipher enabled)' -Evidence $tkipEvidence -Subcategory $subcategory
+                        }
+
+                        $isWpa3Personal = ($securityCategory -eq 'WPA3Personal' -or $securityCategory -eq 'WPA3PersonalTransition')
+                        $isWpa3Enterprise = ($securityCategory -eq 'WPA3Enterprise' -or $securityCategory -eq 'WPA3EnterpriseTransition' -or $securityCategory -eq 'WPA3Enterprise192')
+
+                        if ($isWpa3Personal) {
+                            $evidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
+                            if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WPA3-Personal active (SAE)' -Evidence $evidence -Subcategory $subcategory
+                        }
+
+                        if ($isWpa3Enterprise) {
+                            $evidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
+                            if ($profileInfo -and $profileInfo.EapConfigPresent) { $evidence['EAP'] = 'Profile includes EAPConfig (certificate/802.1X)' }
+                            if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WPA3-Enterprise active' -Evidence $evidence -Subcategory $subcategory
+                        }
+
+                        if ($securityCategory -eq 'WPA2Enterprise') {
+                            $evidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
+                            if ($profileInfo -and $profileInfo.EapConfigPresent) { $evidence['EAP'] = 'Profile shows 802.1X/EAP configuration' }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'WPA2-Enterprise (802.1X/EAP)' -Evidence $evidence -Subcategory $subcategory
+                        }
+
+                        if ($securityCategory -eq 'WPA2Personal') {
+                            $profileLabel = if ($profileName) { $profileName } elseif ($ssid) { $ssid } else { 'Wi-Fi profile' }
+                            if ($passphraseMetrics) {
+                                $scoreValue = $null
+                                $scoreCategory = 'Unknown'
+                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Score']) {
+                                    try {
+                                        $scoreValue = [int]$passphraseMetrics.Score
+                                    } catch {
+                                        $scoreValue = $null
+                                    }
+                                }
+                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Category'] -and $passphraseMetrics.Category) {
+                                    $scoreCategory = [string]$passphraseMetrics.Category
+                                }
+
+                                $severity = 'medium'
+                                if ($scoreValue -ne $null) {
+                                    switch ($scoreValue) {
+                                        { $_ -is [int] -and $_ -le 1 } { $severity = 'high'; break }
+                                        2 { $severity = 'medium'; break }
+                                        3 { $severity = 'low'; break }
+                                        4 { $severity = 'low'; break }
+                                        default { $severity = 'medium' }
+                                    }
+                                }
+
+                                $parts = New-Object System.Collections.Generic.List[string]
+                                if ($scoreValue -ne $null) { $parts.Add(('Score {0} ({1})' -f $scoreValue, $scoreCategory)) | Out-Null }
+                                elseif ($scoreCategory) { $parts.Add(('Score category {0}' -f $scoreCategory)) | Out-Null }
+                                if ($passphraseMetrics.PSObject.Properties['Length'] -and $passphraseMetrics.Length -ne $null) {
+                                    $parts.Add(('Length {0}' -f $passphraseMetrics.Length)) | Out-Null
+                                }
+                                if ($passphraseMetrics.PSObject.Properties['EstimatedBits'] -and $passphraseMetrics.EstimatedBits -ne $null) {
+                                    $parts.Add(('Estimated bits {0}' -f $passphraseMetrics.EstimatedBits)) | Out-Null
+                                }
+                                if ($passphraseMetrics.PSObject.Properties['EstimatedGuesses'] -and $passphraseMetrics.EstimatedGuesses) {
+                                    $parts.Add(('Est. guesses {0}' -f $passphraseMetrics.EstimatedGuesses)) | Out-Null
+                                }
+                                if ($passphraseMetrics.PSObject.Properties['CrackTimeOnline'] -and $passphraseMetrics.CrackTimeOnline) {
+                                    $parts.Add(('Online crack time {0}' -f $passphraseMetrics.CrackTimeOnline)) | Out-Null
+                                }
+                                if ($passphraseMetrics.PSObject.Properties['CrackTimeOffline'] -and $passphraseMetrics.CrackTimeOffline) {
+                                    $parts.Add(('Offline crack time {0}' -f $passphraseMetrics.CrackTimeOffline)) | Out-Null
+                                }
+                                $signalsArray = @()
+                                if ($passphraseMetrics.PSObject.Properties['Signals']) {
+                                    $signalsArray = ConvertTo-NetworkArray $passphraseMetrics.Signals
+                                }
+                                if ($signalsArray.Count -gt 0) {
+                                    $parts.Add(('Signals: {0}' -f ($signalsArray -join ', '))) | Out-Null
+                                }
+
+                                $evidence = [ordered]@{
+                                    Interface          = $interfaceEvidence
+                                    PassphraseMetrics  = ('Derived from netsh wlan profile "{0}" → {1}' -f $profileLabel, ($parts.ToArray() -join '; '))
+                                }
+                                $warningsArray = @()
+                                if ($passphraseMetrics.PSObject.Properties['Warnings']) {
+                                    $warningsArray = ConvertTo-NetworkArray $passphraseMetrics.Warnings
+                                }
+                                if ($warningsArray.Count -gt 0) {
+                                    $evidence['Warnings'] = $warningsArray -join '; '
+                                }
+                                $suggestionsArray = @()
+                                if ($passphraseMetrics.PSObject.Properties['Suggestions']) {
+                                    $suggestionsArray = ConvertTo-NetworkArray $passphraseMetrics.Suggestions
+                                }
+                                if ($suggestionsArray.Count -gt 0) {
+                                    $evidence['Suggestions'] = $suggestionsArray -join '; '
+                                }
+
+                                $titleScore = if ($scoreValue -ne $null) { $scoreValue } else { 'n/a' }
+                                $titleCategory = if ($scoreCategory) { $scoreCategory } else { 'Unknown' }
+                                $title = 'WPA2-Personal passphrase score {0} ({1})' -f $titleScore, $titleCategory
+
+                                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory
+                            } elseif ($passphraseMetricsError) {
+                                $evidence = [ordered]@{
+                                    Interface = $interfaceEvidence
+                                    Error     = $passphraseMetricsError
+                                }
+                                if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
+                                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WPA2-Personal passphrase strength unknown (scoring failed)' -Evidence $evidence -Subcategory $subcategory
+                            }
+                        }
+
+                        $transitionDetected = $false
+                        if ($securityCategory -eq 'WPA3PersonalTransition' -or $securityCategory -eq 'WPA3EnterpriseTransition') { $transitionDetected = $true }
+                        if (-not $transitionDetected -and $apSupportsWpa3 -and $apSupportsWpa2) { $transitionDetected = $true }
+
+                        if ($transitionDetected) {
+                            $transitionEvidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($apEvidence) { $transitionEvidence['AccessPoint'] = $apEvidence }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WPA2/WPA3 transition (mixed) mode' -Evidence $transitionEvidence -Subcategory $subcategory
+                        }
+
+                        if (($securityCategory -eq 'WPA2Personal' -or $securityCategory -eq 'WPA2Enterprise') -and $apSupportsWpa3) {
+                            $fallbackEvidence = [ordered]@{
+                                Interface = $interfaceEvidence
+                            }
+                            if ($apEvidence) { $fallbackEvidence['AccessPoint'] = $apEvidence }
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
     }
 
     $dhcpFolderPath = if ($dhcpFolder) { $dhcpFolder } else { $null }
