@@ -61,6 +61,10 @@ All collector scripts use `CollectorCommon.ps1` helpers to enforce a consistent 
 
 HTML is produced by `HtmlComposer.ps1`, which receives category results from each heuristic module. The analyzer also returns flattened issue, normal, and check collections for programmatic consumption.
 
+### Issue card authoring conventions
+
+When adding or updating heuristics that emit issue cards, always include a single plain-English sentence in the card that explains the practical ramifications for the technician or end user. This one-line explanation should make the impact obvious without requiring deep protocol knowledge.
+
 ## Heuristic catalogue
 
 The following sections list the analysis functions and issue card heuristics grouped by their respective categories. Each heuristic summarizes the conditions that raise issues and the severity levels applied.
