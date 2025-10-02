@@ -16,6 +16,7 @@ This README documents how the system fits together and enumerates the available 
   ```powershell
   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
   ```
+- Devices must be enrolled with Microsoft Intune or another MDM that enables health attestation if you want the measured boot collector to retrieve TPM attestation logs; without MDM integration those events are not written for remote collection.
 
 ## Quick start
 
@@ -95,6 +96,7 @@ The following sections list the analysis functions and issue card heuristics gro
 ## Security Heuristics
 - **Security (Microsoft Defender)** – Surfaces high severity when real-time protection is off, escalates signature age (medium/high/critical tiers), and reports high issues for missing engine/platform updates or informational gaps when Defender data is absent.
 - **Security/BitLocker** – Covers missing cmdlets (low), query failures (low), OS volumes without protection (critical), incomplete encryption (high), unclear state (low), no protected volumes (high), unparsed output (low), empty files (low), and missing recovery passwords (high).
+- **Security/Measured Boot** – Records healthy findings when PCR bindings, Secure Boot confirmation, and TPM attestation events are present, and raises informational issues when those signals are missing (flagging MDM requirements for attestation data gaps).
 - **Security/TPM** – Issues medium severity when a TPM exists but is not ready and high severity when no TPM is detected on hardware that should have one.
 - **Security/HVCI** – Marks medium issues when virtualization-based memory integrity is available but off or when Device Guard data is missing.
 - **Security/Credential Guard** – Raises a high-severity item if Credential Guard or RunAsPPL is not enforced.
