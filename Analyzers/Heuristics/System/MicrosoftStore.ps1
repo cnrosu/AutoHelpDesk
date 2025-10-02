@@ -183,30 +183,30 @@ function Invoke-SystemMicrosoftStoreChecks {
     }
 
     $evidenceLines = New-Object System.Collections.Generic.List[string]
-    $evidenceLines.Add("storePackagePresent={0}" -f (& $formatBool $storePackagePresent)) | Out-Null
-    $evidenceLines.Add("installedLocationOk={0}" -f (& $formatBool $installedLocationOk)) | Out-Null
+    $evidenceLines.Add("storePackagePresent=$((& $formatBool $storePackagePresent))") | Out-Null
+    $evidenceLines.Add("installedLocationOk=$((& $formatBool $installedLocationOk))") | Out-Null
     $manifestStatus = if ($null -eq $appxManifestFound) { 'Unknown' } elseif ($appxManifestFound -eq $true) { 'True' } else { 'False' }
-    $evidenceLines.Add("appxManifestFound={0}" -f $manifestStatus) | Out-Null
+    $evidenceLines.Add("appxManifestFound=$manifestStatus") | Out-Null
 
     foreach ($name in $criticalServices + $pathServices) {
         $entry = if ($serviceMap.ContainsKey($name)) { $serviceMap[$name] } else { $null }
         if ($entry) {
             $startType = if ($entry.PSObject.Properties['startType']) { [string]$entry.startType } else { 'Unknown' }
             $status = if ($entry.PSObject.Properties['status']) { [string]$entry.status } else { 'Unknown' }
-            $evidenceLines.Add("{0}: StartType={1}; Status={2}" -f $name, $startType, $status) | Out-Null
+            $evidenceLines.Add("$name: StartType=$startType; Status=$status") | Out-Null
         } else {
-            $evidenceLines.Add("{0}: StartType=Unknown; Status=Unknown" -f $name) | Out-Null
+            $evidenceLines.Add("$name: StartType=Unknown; Status=Unknown") | Out-Null
         }
     }
 
-    $evidenceLines.Add("proxy={0}" -f $proxySummary) | Out-Null
+    $evidenceLines.Add("proxy=$proxySummary") | Out-Null
 
     if ($reachability.Count -gt 0) {
         foreach ($entry in $reachability) {
             if (-not $entry -or -not $entry.PSObject.Properties['host']) { continue }
             $dnsOk = if ($entry.PSObject.Properties['dnsOk']) { $entry.dnsOk } else { $null }
             $tcpOk = if ($entry.PSObject.Properties['tcp443Ok']) { $entry.tcp443Ok } else { $null }
-            $evidenceLines.Add("{0}: DNS={1}; TCP443={2}" -f $entry.host, (& $formatBool $dnsOk), (& $formatBool $tcpOk)) | Out-Null
+            $evidenceLines.Add("$($entry.host): DNS=$((& $formatBool $dnsOk)); TCP443=$((& $formatBool $tcpOk))") | Out-Null
         }
     }
 
@@ -217,7 +217,7 @@ function Invoke-SystemMicrosoftStoreChecks {
         $entry = if ($serviceMap.ContainsKey($name)) { $serviceMap[$name] } else { $null }
         $startType = if ($entry -and $entry.PSObject.Properties['startType']) { [string]$entry.startType } else { 'Unknown' }
         $status = if ($entry -and $entry.PSObject.Properties['status']) { [string]$entry.status } else { 'Unknown' }
-        Add-CategoryCheck -CategoryResult $Result -Name ("Service {0}" -f $name) -Status ("{0} / {1}" -f $startType, $status)
+        Add-CategoryCheck -CategoryResult $Result -Name "Service $name" -Status "$startType / $status"
     }
 
     if ($reachability.Count -gt 0) {
@@ -225,7 +225,7 @@ function Invoke-SystemMicrosoftStoreChecks {
             if (-not $entry -or -not $entry.PSObject.Properties['host']) { continue }
             $dnsOk = if ($entry.PSObject.Properties['dnsOk']) { $entry.dnsOk } else { $null }
             $tcpOk = if ($entry.PSObject.Properties['tcp443Ok']) { $entry.tcp443Ok } else { $null }
-            Add-CategoryCheck -CategoryResult $Result -Name ("Reachability {0}" -f $entry.host) -Status ("DNS={0}; TCP443={1}" -f (& $formatBool $dnsOk), (& $formatBool $tcpOk))
+            Add-CategoryCheck -CategoryResult $Result -Name "Reachability $($entry.host)" -Status "DNS=$((& $formatBool $dnsOk)); TCP443=$((& $formatBool $tcpOk))"
         }
     }
 
@@ -238,7 +238,9 @@ function Invoke-SystemMicrosoftStoreChecks {
         $reasonText = $mediumReasons -join "`n"
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Microsoft Store functional checks failing' -Evidence (($reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
     } else {
-        $successSummary = "storePackagePresent=true; services OK (AppXSVC/ClipSVC/InstallService Running or Manual); proxy={0}; endpoints reachable ({1}/3 TCP 443 OK)" -f $proxySummary, $successfulTcp
+        $totalReachability = if ($knownEndpoints -gt 0) { $knownEndpoints } elseif ($reachability -and ($reachability.Count -gt 0)) { $reachability.Count } else { 0 }
+        $tcpSummary = if ($totalReachability -gt 0) { "$successfulTcp/$totalReachability" } else { "$successfulTcp/?" }
+        $successSummary = "storePackagePresent=true; services OK (AppXSVC/ClipSVC/InstallService Running or Manual); proxy=$proxySummary; endpoints reachable ($tcpSummary TCP 443 OK)"
         Add-CategoryNormal -CategoryResult $Result -Title 'Microsoft Store functional checks passed' -Evidence (($successSummary, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
     }
 }
