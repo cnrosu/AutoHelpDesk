@@ -66,6 +66,89 @@ function Test-NetworkValidIpv6Address {
     return $true
 }
 
+function Normalize-NetworkMacAddress {
+    param([string]$MacAddress)
+
+    if (-not $MacAddress) { return $null }
+
+    $trimmed = $MacAddress.Trim()
+    if (-not $trimmed) { return $null }
+
+    $hex = ($trimmed -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+    if ($hex.Length -lt 12) { return $null }
+    $hex = $hex.Substring($hex.Length - 12)
+
+    $parts = @()
+    for ($i = 0; $i -lt 12; $i += 2) { $parts += $hex.Substring($i, 2) }
+
+    return ($parts -join ':')
+}
+
+function Get-NetworkMacOui {
+    param([string]$MacAddress)
+
+    $normalized = Normalize-NetworkMacAddress $MacAddress
+    if (-not $normalized) { return $null }
+
+    return ($normalized.Substring(0, 8))
+}
+
+function Get-NetworkCanonicalIpv4 {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $match = [regex]::Match($Text, '\b(\d+\.\d+\.\d+\.\d+)\b')
+    if ($match.Success) { return $match.Groups[1].Value }
+
+    return $null
+}
+
+function ConvertTo-NetworkArpEntries {
+    param($Value)
+
+    $entries = New-Object System.Collections.Generic.List[pscustomobject]
+    $lines = ConvertTo-NetworkArray $Value
+
+    $currentInterface = $null
+    foreach ($rawLine in $lines) {
+        if (-not $rawLine) { continue }
+
+        $line = if ($rawLine -is [string]) { $rawLine } else { [string]$rawLine }
+        if (-not $line) { continue }
+
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        $interfaceMatch = [regex]::Match($line, '^Interface:\s+([^\s]+)')
+        if ($interfaceMatch.Success) {
+            $currentInterface = $interfaceMatch.Groups[1].Value
+            continue
+        }
+
+        if ($trimmed -match '^(Internet\s+Address|Address\s+Resolved)') { continue }
+
+        $entryMatch = [regex]::Match($trimmed, '^(\d+\.\d+\.\d+\.\d+)\s+([0-9A-Fa-f\-]+)\s+([A-Za-z]+)$')
+        if (-not $entryMatch.Success) { continue }
+
+        $ip = $entryMatch.Groups[1].Value
+        $macRaw = $entryMatch.Groups[2].Value
+        $type = $entryMatch.Groups[3].Value
+
+        $normalizedMac = Normalize-NetworkMacAddress $macRaw
+
+        $entries.Add([pscustomobject]@{
+            Interface       = $currentInterface
+            InternetAddress = $ip
+            PhysicalAddress = $macRaw
+            NormalizedMac   = $normalizedMac
+            Type            = $type
+        }) | Out-Null
+    }
+
+    return $entries.ToArray()
+}
+
 function ConvertTo-NetworkArray {
     param($Value)
 
@@ -191,6 +274,7 @@ function Get-NetworkDnsInterfaceInventory {
     $statusMap = @{}
     $descriptionMap = @{}
     $aliasMap = @{}
+    $macMap = @{}
 
     if ($AdapterPayload -and $AdapterPayload.Adapters -and -not $AdapterPayload.Adapters.Error) {
         $adapterEntries = ConvertTo-NetworkArray $AdapterPayload.Adapters
@@ -206,6 +290,10 @@ function Get-NetworkDnsInterfaceInventory {
 
             if ($adapter.PSObject.Properties['InterfaceDescription']) {
                 $descriptionMap[$key] = [string]$adapter.InterfaceDescription
+            }
+
+            if ($adapter.PSObject.Properties['MacAddress'] -and $adapter.MacAddress) {
+                $macMap[$key] = Normalize-NetworkMacAddress $adapter.MacAddress
             }
         }
     }
@@ -226,6 +314,7 @@ function Get-NetworkDnsInterfaceInventory {
                     IPv4        = @()
                     IPv6        = @()
                     Gateways    = @()
+                    MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
                 }
             }
 
@@ -252,6 +341,10 @@ function Get-NetworkDnsInterfaceInventory {
                     if (-not ($info.Gateways -contains $value)) { $info.Gateways += $value }
                 }
             }
+
+            if (-not $info.MacAddress -and $macMap.ContainsKey($key)) {
+                $info.MacAddress = $macMap[$key]
+            }
         }
     }
 
@@ -265,6 +358,7 @@ function Get-NetworkDnsInterfaceInventory {
                 IPv4        = @()
                 IPv6        = @()
                 Gateways    = @()
+                MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
             }
         }
 
@@ -962,6 +1056,233 @@ function Invoke-NetworkHeuristics {
         Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network payload' -Data ([ordered]@{
             HasPayload = [bool]$payload
         })
+        $arpEntries = @()
+        if ($payload -and $payload.Arp) {
+            $arpEntries = ConvertTo-NetworkArpEntries -Value $payload.Arp
+        }
+        Write-HeuristicDebug -Source 'Network' -Message 'Parsed ARP entries' -Data ([ordered]@{
+            Count = if ($arpEntries) { $arpEntries.Count } else { 0 }
+        })
+
+        $gatewayInventory = $null
+        if ($adapterInventory -and $adapterInventory.Map) {
+            $gatewayInventory = $adapterInventory.Map
+        }
+
+        if ($arpEntries.Count -gt 0 -and $gatewayInventory) {
+            $gatewayMap = @{}
+            $localMacs = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+            $localIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+            foreach ($adapterInfo in $gatewayInventory.Values) {
+                if (-not $adapterInfo) { continue }
+                if ($adapterInfo.MacAddress) { $localMacs.Add($adapterInfo.MacAddress) | Out-Null }
+
+                foreach ($ipText in $adapterInfo.IPv4) {
+                    $canon = Get-NetworkCanonicalIpv4 $ipText
+                    if ($canon) { $localIps.Add($canon) | Out-Null }
+                }
+
+                foreach ($gwText in $adapterInfo.Gateways) {
+                    $gw = Get-NetworkCanonicalIpv4 $gwText
+                    if (-not $gw) { continue }
+
+                    if (-not $gatewayMap.ContainsKey($gw)) {
+                        $gatewayMap[$gw] = [pscustomobject]@{
+                            Gateway        = $gw
+                            Interfaces     = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                            ArpMatches     = New-Object System.Collections.Generic.List[pscustomobject]
+                        }
+                    }
+
+                    $gatewayMap[$gw].Interfaces.Add($adapterInfo.Alias) | Out-Null
+                }
+            }
+
+            foreach ($entry in $arpEntries) {
+                if (-not $entry -or -not $entry.InternetAddress) { continue }
+                $gw = Get-NetworkCanonicalIpv4 $entry.InternetAddress
+                if (-not $gw) { continue }
+                if (-not $gatewayMap.ContainsKey($gw)) { continue }
+
+                $gatewayMap[$gw].ArpMatches.Add($entry) | Out-Null
+            }
+
+            $observedGatewayEntries = New-Object System.Collections.Generic.List[pscustomobject]
+            $macToGateways = @{}
+
+            foreach ($gateway in $gatewayMap.Keys) {
+                $detail = $gatewayMap[$gateway]
+                if (-not $detail) { continue }
+
+                $match = $detail.ArpMatches | Select-Object -First 1
+                if (-not $match) { continue }
+
+                $entryRecord = [pscustomobject]@{
+                    Gateway      = $gateway
+                    Interfaces   = $detail.Interfaces.ToArray()
+                    NormalizedMac = $match.NormalizedMac
+                    Type         = $match.Type
+                }
+
+                $observedGatewayEntries.Add($entryRecord) | Out-Null
+
+                if ($match.NormalizedMac) {
+                    if (-not $macToGateways.ContainsKey($match.NormalizedMac)) {
+                        $macToGateways[$match.NormalizedMac] = New-Object System.Collections.Generic.List[string]
+                    }
+
+                    $macToGateways[$match.NormalizedMac].Add($gateway) | Out-Null
+                }
+            }
+
+            $baselineSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+            $baselineArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-gateway-baseline'
+            if ($baselineArtifact) {
+                $baselinePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $baselineArtifact)
+                if ($baselinePayload) {
+                    $baselineValues = if ($baselinePayload.PSObject.Properties['GatewayMacs']) { ConvertTo-NetworkArray $baselinePayload.GatewayMacs } else { ConvertTo-NetworkArray $baselinePayload }
+                    foreach ($baselineValue in $baselineValues) {
+                        $normalizedBaseline = Normalize-NetworkMacAddress $baselineValue
+                        if ($normalizedBaseline) { $baselineSet.Add($normalizedBaseline) | Out-Null }
+                    }
+                }
+            }
+
+            if ($Context -and $Context.PSObject.Properties['NetworkAnalyzerState'] -and $Context.NetworkAnalyzerState -and $Context.NetworkAnalyzerState.PSObject.Properties['GatewayMacs']) {
+                foreach ($historicalMac in (ConvertTo-NetworkArray $Context.NetworkAnalyzerState.GatewayMacs)) {
+                    $normalizedHistorical = Normalize-NetworkMacAddress $historicalMac
+                    if ($normalizedHistorical) { $baselineSet.Add($normalizedHistorical) | Out-Null }
+                }
+            }
+
+            $observedMacs = New-Object System.Collections.Generic.List[string]
+            foreach ($entry in $observedGatewayEntries) {
+                if ($entry.NormalizedMac) { $observedMacs.Add($entry.NormalizedMac) | Out-Null }
+            }
+
+            $unexpected = @()
+            if ($baselineSet.Count -gt 0) {
+                foreach ($mac in $observedMacs) {
+                    if (-not $baselineSet.Contains($mac)) { $unexpected += $mac }
+                }
+            }
+
+            if ($unexpected.Count -gt 0) {
+                $gatewayText = ($observedGatewayEntries | Where-Object { $_.NormalizedMac -and ($unexpected -contains $_.NormalizedMac) } | ForEach-Object { "{0}→{1}" -f $_.Gateway, $_.NormalizedMac } | Sort-Object)
+                $evidence = if ($gatewayText) { $gatewayText -join '; ' } else { $unexpected -join ', ' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache'
+            }
+
+            $duplicateGatewayMacs = @()
+            foreach ($mac in $macToGateways.Keys) {
+                $gateways = $macToGateways[$mac]
+                if ($gateways.Count -gt 1) {
+                    $duplicateGatewayMacs += [pscustomobject]@{
+                        Mac      = $mac
+                        Gateways = ($gateways | Sort-Object -Unique)
+                    }
+                }
+            }
+
+            if ($duplicateGatewayMacs.Count -gt 0) {
+                $evidence = ($duplicateGatewayMacs | ForEach-Object { "{0} used by {1}" -f $_.Mac, ($_.Gateways -join ', ') }) -join '; '
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache'
+            }
+
+            $suspiciousOuiMap = @{
+                '00:00:00' = 'all-zero'
+                'FF:FF:FF' = 'broadcast'
+                '08:00:27' = 'VirtualBox'
+                '00:05:69' = 'VMware'
+                '00:0C:29' = 'VMware'
+                '00:1C:14' = 'VMware'
+                '00:50:56' = 'VMware'
+                '00:15:5D' = 'Hyper-V'
+                '00:16:3E' = 'Xen'
+                '00:1C:42' = 'Parallels'
+            }
+
+            $suspiciousEntries = @()
+            foreach ($entry in $observedGatewayEntries) {
+                if (-not $entry.NormalizedMac) { continue }
+                $oui = Get-NetworkMacOui $entry.NormalizedMac
+                if (-not $oui) { continue }
+                if ($suspiciousOuiMap.ContainsKey($oui)) {
+                    $descriptor = $suspiciousOuiMap[$oui]
+                    $suspiciousEntries += "{0}→{1} ({2})" -f $entry.Gateway, $entry.NormalizedMac, $descriptor
+                }
+            }
+
+            if ($suspiciousEntries.Count -gt 0) {
+                $evidence = $suspiciousEntries -join '; '
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache'
+            }
+
+            $poisonCandidates = @()
+            foreach ($entry in $arpEntries) {
+                if (-not $entry) { continue }
+                $mac = $entry.NormalizedMac
+                $typeText = if ($entry.Type) { [string]$entry.Type } else { '' }
+
+                if (($mac -and ($mac -eq 'FF:FF:FF:FF:FF:FF' -or $mac -eq '00:00:00:00:00:00')) -or ($typeText -and $typeText.ToLowerInvariant() -match 'invalid|incomplete')) {
+                    $macDisplay = if ($mac) { $mac } else { 'unknown' }
+                    $typeDisplay = if ($typeText) { $typeText } else { 'unknown type' }
+                    $poisonCandidates += "{0}→{1} ({2})" -f $entry.InternetAddress, $macDisplay, $typeDisplay
+                }
+            }
+
+            if ($poisonCandidates.Count -gt 0) {
+                $evidence = $poisonCandidates -join '; '
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'ARP cache includes broadcast or invalid MAC replies, so endpoint connectivity may flap from poisoning attempts.' -Evidence $evidence -Subcategory 'ARP Cache'
+            }
+
+            $localMacAlerts = @()
+            foreach ($mac in $localMacs) {
+                $matches = $arpEntries | Where-Object { $_.NormalizedMac -and $_.NormalizedMac.Equals($mac, [System.StringComparison]::OrdinalIgnoreCase) }
+                if (-not $matches) { continue }
+
+                $remoteIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($match in $matches) {
+                    $ip = Get-NetworkCanonicalIpv4 $match.InternetAddress
+                    if (-not $ip) { continue }
+                    if ($localIps.Contains($ip)) { continue }
+                    $remoteIps.Add($ip) | Out-Null
+                }
+
+                if ($remoteIps.Count -gt 1) {
+                    $localMacAlerts += "{0} impersonates IPs {1}" -f $mac, ($remoteIps.ToArray() -join ', ')
+                }
+            }
+
+            if ($localMacAlerts.Count -gt 0) {
+                $evidence = $localMacAlerts -join '; '
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache'
+            }
+
+            if ($Context) {
+                if (-not $Context.PSObject.Properties['NetworkAnalyzerState'] -or -not $Context.NetworkAnalyzerState) {
+                    $Context | Add-Member -NotePropertyName 'NetworkAnalyzerState' -NotePropertyValue ([pscustomobject]@{ GatewayMacs = New-Object System.Collections.Generic.List[string] }) -Force
+                } elseif (-not $Context.NetworkAnalyzerState.PSObject.Properties['GatewayMacs']) {
+                    $Context.NetworkAnalyzerState | Add-Member -NotePropertyName 'GatewayMacs' -NotePropertyValue (New-Object System.Collections.Generic.List[string]) -Force
+                }
+
+                $existingSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($existingMac in $Context.NetworkAnalyzerState.GatewayMacs) {
+                    $normalizedExisting = Normalize-NetworkMacAddress $existingMac
+                    if ($normalizedExisting) { $existingSet.Add($normalizedExisting) | Out-Null }
+                }
+
+                foreach ($mac in $observedMacs) {
+                    if (-not $mac) { continue }
+                    if ($existingSet.Add($mac)) {
+                        $Context.NetworkAnalyzerState.GatewayMacs.Add($mac) | Out-Null
+                    }
+                }
+            }
+        }
+
         if ($payload -and $payload.IpConfig) {
             $ipText = if ($payload.IpConfig -is [string[]]) { $payload.IpConfig -join "`n" } else { [string]$payload.IpConfig }
             if ($ipText -match 'IPv4 Address') {
