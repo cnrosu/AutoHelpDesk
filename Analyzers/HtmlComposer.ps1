@@ -626,14 +626,18 @@ function Build-SummaryCardHtml {
         }
     }
 
+    $summarySectionId = 'section-overview'
     $sb = New-Object System.Text.StringBuilder
-    $null = $sb.AppendLine('<h1>Device Health Report</h1>')
-    $null = $sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
-    $null = $sb.AppendLine("<div class='report-card report-card--overview'>")
-    $null = $sb.AppendLine("  <div class='score-section'>")
-    $null = $sb.AppendLine("    <div class='score-section__primary'>")
-    & $appendIndented $sb $overallRingHtml '      '
-    $null = $sb.AppendLine("      <div class='report-badge-group'>")
+    $null = $sb.AppendLine("<section class='report-summary' id='$summarySectionId'>")
+    $null = $sb.AppendLine("  <div class='report-summary__heading'>")
+    $null = $sb.AppendLine('    <h1>Device Health Report</h1>')
+    $null = $sb.AppendLine("    <h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
+    $null = $sb.AppendLine('  </div>')
+    $null = $sb.AppendLine("  <div class='report-card report-card--overview'>")
+    $null = $sb.AppendLine("    <div class='score-section'>")
+    $null = $sb.AppendLine("      <div class='score-section__primary'>")
+    & $appendIndented $sb $overallRingHtml '        '
+    $null = $sb.AppendLine("        <div class='report-badge-group'>")
     foreach ($badge in @(
             @{ Key = 'critical'; Label = 'CRITICAL'; Class = 'critical' },
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
@@ -644,40 +648,114 @@ function Build-SummaryCardHtml {
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
         $labelHtml = Encode-Html $badge.Label
-        $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
+        $null = $sb.AppendLine("          <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
+    $null = $sb.AppendLine('        </div>')
     $null = $sb.AppendLine('      </div>')
     $null = $sb.AppendLine('    </div>')
+    $null = $sb.AppendLine("    <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine('      <colgroup>')
+    $null = $sb.AppendLine("        <col class='report-table__col--overview-primary'>")
+    $null = $sb.AppendLine("        <col class='report-table__col--overview-secondary'>")
+    $null = $sb.AppendLine('      </colgroup>')
+    $null = $sb.AppendLine('      <tbody>')
+    $null = $sb.AppendLine('        <tr>')
+    $null = $sb.AppendLine("          <td>")
+    $null = $sb.AppendLine("            <h3 class='report-overview__group-title'>Device</h3>")
+    $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("              <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
+    $null = $sb.AppendLine('            </table>')
+    $null = $sb.AppendLine('          </td>')
+    $null = $sb.AppendLine('          <td>')
+    $null = $sb.AppendLine("            <h3 class='report-overview__group-title'>Network</h3>")
+    $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("              <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
+    $null = $sb.AppendLine('            </table>')
+    $null = $sb.AppendLine('          </td>')
+    $null = $sb.AppendLine('        </tr>')
+    $null = $sb.AppendLine('      </tbody>')
+    $null = $sb.AppendLine('    </table>')
     $null = $sb.AppendLine('  </div>')
-    $null = $sb.AppendLine("  <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine('    <colgroup>')
-    $null = $sb.AppendLine("      <col class='report-table__col--overview-primary'>")
-    $null = $sb.AppendLine("      <col class='report-table__col--overview-secondary'>")
-    $null = $sb.AppendLine('    </colgroup>')
-    $null = $sb.AppendLine('    <tbody>')
-    $null = $sb.AppendLine('      <tr>')
-    $null = $sb.AppendLine("        <td>")
-    $null = $sb.AppendLine("          <h3 class='report-overview__group-title'>Device</h3>")
-    $null = $sb.AppendLine("          <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("            <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
-    $null = $sb.AppendLine('          </table>')
-    $null = $sb.AppendLine('        </td>')
-    $null = $sb.AppendLine('        <td>')
-    $null = $sb.AppendLine("          <h3 class='report-overview__group-title'>Network</h3>")
-    $null = $sb.AppendLine("          <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("            <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
-    $null = $sb.AppendLine('          </table>')
-    $null = $sb.AppendLine('        </td>')
-    $null = $sb.AppendLine('      </tr>')
-    $null = $sb.AppendLine('    </tbody>')
-    $null = $sb.AppendLine('  </table>')
-    $null = $sb.AppendLine('</div>')
+    $null = $sb.AppendLine('</section>')
 
     return $sb.ToString()
+}
+
+function Build-ReportNavigation {
+    param(
+        [System.Collections.IEnumerable]$Sections
+    )
+
+    if (-not $Sections) { return '' }
+
+    $items = New-Object System.Collections.Generic.List[string]
+    foreach ($section in $Sections) {
+        if (-not $section) { continue }
+
+        $id = $null
+        $label = $null
+        $count = $null
+        $description = $null
+
+        if ($section -is [System.Collections.IDictionary]) {
+            if ($section.Contains('Id')) { $id = [string]$section['Id'] }
+            if ($section.Contains('Label')) { $label = [string]$section['Label'] }
+            if ($section.Contains('Count')) { $count = $section['Count'] }
+            if ($section.Contains('Description')) { $description = [string]$section['Description'] }
+        } else {
+            if ($section.PSObject.Properties['Id']) { $id = [string]$section.Id }
+            if ($section.PSObject.Properties['Label']) { $label = [string]$section.Label }
+            if ($section.PSObject.Properties['Count']) { $count = $section.Count }
+            if ($section.PSObject.Properties['Description']) { $description = [string]$section.Description }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+
+        $safeId = [regex]::Replace($id.ToLowerInvariant(), '[^a-z0-9\-_]+', '-')
+        $safeId = [regex]::Replace($safeId, '^-+|-+$', '')
+        if (-not $safeId) { $safeId = [regex]::Replace($id, '\\s+', '-') }
+        if (-not $safeId) { continue }
+
+        $labelText = if ($label) { $label } else { $id }
+        $labelHtml = Encode-Html $labelText
+        $hrefHtml = Encode-Html ("#$safeId")
+
+        $countFragment = ''
+        if ($null -ne $count -and $count -ne '') {
+            $countValue = Encode-Html ([string]$count)
+            $countFragment = "<span class='report-nav__count'>$countValue</span>"
+        }
+
+        $descriptionFragment = ''
+        if (-not [string]::IsNullOrWhiteSpace($description)) {
+            $descriptionFragment = "<span class='report-nav__description'>$(Encode-Html $description)</span>"
+        }
+
+        $linkBuilder = [System.Text.StringBuilder]::new()
+        $null = $linkBuilder.Append("<li class='report-nav__item'>")
+        $null = $linkBuilder.Append("<a class='report-nav__link' href='$hrefHtml'>")
+        $null = $linkBuilder.Append("<span class='report-nav__label'>$labelHtml</span>")
+        if ($countFragment) { $null = $linkBuilder.Append($countFragment) }
+        if ($descriptionFragment) { $null = $linkBuilder.Append($descriptionFragment) }
+        $null = $linkBuilder.Append('</a></li>')
+
+        $items.Add($linkBuilder.ToString()) | Out-Null
+    }
+
+    if ($items.Count -eq 0) { return '' }
+
+    $builder = [System.Text.StringBuilder]::new()
+    $null = $builder.Append("<nav class='report-nav' aria-label='Report sections'><ul class='report-nav__list'>")
+    foreach ($item in $items) {
+        $null = $builder.Append($item)
+    }
+    $null = $builder.Append('</ul></nav>')
+
+    return $builder.ToString()
 }
 
 function Build-GoodSection {
@@ -1141,10 +1219,15 @@ function New-AnalyzerHtml {
         Write-HtmlDebug -Stage 'Composer' -Message 'No summary provided; synthesized default summary.'
     }
 
-    $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
     $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues -Normals $normals
-    $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
-    $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    $goodSectionId = 'section-good'
+    $issuesSectionId = 'section-issues'
+    $failedSectionId = 'section-failed'
+    $rawSectionId = 'section-raw'
+
+    $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page"><main class="report-main">'
+    $goodHtml = New-ReportSection -Id $goodSectionId -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
+    $issuesHtml = New-ReportSection -Id $issuesSectionId -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
     $failedReports = Get-FailedCollectorReports -Context $Context
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     Write-HtmlDebug -Stage 'Composer' -Message 'Failed collector section prepared.' -Data @{ Count = $failedReports.Count }
@@ -1168,13 +1251,22 @@ function New-AnalyzerHtml {
         $null = $failedContentBuilder.Append("</table></div>")
         $failedContent = $failedContentBuilder.ToString()
     }
-    $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
-    $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    $failedHtml = New-ReportSection -Id $failedSectionId -Title $failedTitle -ContentHtml $failedContent -Open
+    $rawHtml = New-ReportSection -Id $rawSectionId -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    $rawCount = if ($Context -and $Context.Artifacts) { ($Context.Artifacts.Keys | Measure-Object).Count } else { 0 }
+    $navSections = @(
+        @{ Id = 'section-overview'; Label = 'Overview'; Description = 'Score & device summary' },
+        @{ Id = $goodSectionId; Label = 'What Looks Good'; Count = $normals.Count },
+        @{ Id = $issuesSectionId; Label = 'Detected Issues'; Count = $issues.Count },
+        @{ Id = $failedSectionId; Label = 'Failed Reports'; Count = $failedReports.Count },
+        @{ Id = $rawSectionId; Label = 'Raw excerpts'; Count = $rawCount }
+    )
+    $navHtml = Build-ReportNavigation -Sections $navSections
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
-    $tail = '</body></html>'
+    $tail = '</main></body></html>'
 
     $htmlBuilder = [System.Text.StringBuilder]::new()
-    foreach ($segment in @($head, $summaryHtml, $goodHtml, $issuesHtml, $failedHtml, $rawHtml, $debugHtml, $tail)) {
+    foreach ($segment in @($head, $summaryHtml, $navHtml, $goodHtml, $issuesHtml, $failedHtml, $rawHtml, $debugHtml, $tail)) {
         if ($segment) { $null = $htmlBuilder.Append($segment) }
     }
 
