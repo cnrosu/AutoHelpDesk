@@ -658,14 +658,32 @@ function New-ReportSection {
   param(
     [string]$Title,
     [string]$ContentHtml,
-    [switch]$Open
+    [switch]$Open,
+    [string]$Id
   )
 
   $openAttr = if ($Open.IsPresent) { ' open' } else { '' }
   $titleValue = if ($null -ne $Title) { $Title } else { '' }
   $titleHtml = Encode-Html $titleValue
   $bodyHtml = if ($null -ne $ContentHtml) { $ContentHtml } else { '' }
-  return "<details class='report-section'$openAttr><summary>$titleHtml</summary><div class='report-section__content'>$bodyHtml</div></details>"
+
+  $idAttr = ''
+  if ($PSBoundParameters.ContainsKey('Id') -and -not [string]::IsNullOrWhiteSpace($Id)) {
+    $trimmedId = $Id.Trim()
+    if ($trimmedId) {
+      $safeId = [regex]::Replace($trimmedId.ToLowerInvariant(), '[^a-z0-9\-_]+', '-')
+      $safeId = [regex]::Replace($safeId, '^-+|-+$', '')
+      if (-not $safeId) {
+        $safeId = [regex]::Replace($trimmedId, '\\s+', '-')
+      }
+
+      if ($safeId) {
+        $idAttr = " id='$safeId'"
+      }
+    }
+  }
+
+  return "<details$idAttr class='report-section'$openAttr><summary>$titleHtml</summary><div class='report-section__content'>$bodyHtml</div></details>"
 }
 
 function New-IssueCardHtml {
