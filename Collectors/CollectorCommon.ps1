@@ -48,6 +48,14 @@ function New-CollectorMetadata {
     }
 }
 
+if (-not (Test-Path -Path 'variable:script:IpconfigAllCache')) {
+    $script:IpconfigAllCache = $null
+}
+
+if (-not (Test-Path -Path 'variable:script:IpconfigAllCacheInitialized')) {
+    $script:IpconfigAllCacheInitialized = $false
+}
+
 function Invoke-CollectorNativeCommand {
     param(
         [Parameter(Mandatory)]
@@ -83,4 +91,48 @@ function Invoke-CollectorNativeCommand {
 
         return [PSCustomObject]$metadata
     }
+}
+
+function Invoke-IpconfigAll {
+    if ($script:IpconfigAllCacheInitialized) {
+        return $script:IpconfigAllCache
+    }
+
+    $script:IpconfigAllCacheInitialized = $true
+
+    $output = Invoke-CollectorNativeCommand -FilePath 'ipconfig.exe' -ArgumentList '/all' -SourceLabel 'ipconfig.exe'
+
+    if ($null -eq $output) {
+        $script:IpconfigAllCache = [pscustomobject]@{
+            Raw   = ''
+            Lines = @()
+        }
+        return $script:IpconfigAllCache
+    }
+
+    if ($output -is [psobject] -and $output.PSObject.Properties.Name -contains 'Error') {
+        $script:IpconfigAllCache = $output
+        return $script:IpconfigAllCache
+    }
+
+    $lines = @()
+    if ($output -is [string]) {
+        $lines = $output -split "`r?`n"
+    } elseif ($output -is [System.Collections.IEnumerable] -and -not ($output -is [string])) {
+        foreach ($item in $output) {
+            $lines += if ($null -eq $item) { '' } else { [string]$item }
+        }
+    } else {
+        $lines = @([string]$output)
+    }
+
+    $lines = [string[]]$lines
+    $raw = [string]::Join([Environment]::NewLine, $lines)
+
+    $script:IpconfigAllCache = [pscustomobject]@{
+        Raw   = $raw
+        Lines = $lines
+    }
+
+    return $script:IpconfigAllCache
 }

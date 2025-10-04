@@ -19,18 +19,24 @@ function Get-Ipv6Routers {
 }
 
 function Get-IpConfigIpv6Sections {
-    $output = Invoke-CollectorNativeCommand -FilePath 'ipconfig.exe' -ArgumentList '/all' -SourceLabel 'ipconfig.exe'
-    if (-not $output) { return $output }
+    $ipconfig = Invoke-IpconfigAll
+    if (-not $ipconfig) { return $ipconfig }
+
+    if ($ipconfig -is [psobject] -and $ipconfig.PSObject.Properties.Name -contains 'Error') {
+        return $ipconfig
+    }
 
     $lines = @()
-    if ($output -is [string]) {
-        $lines = $output -split "`r?`n"
-    } elseif ($output -is [System.Collections.IEnumerable] -and -not ($output -is [string])) {
-        foreach ($item in $output) {
-            $lines += [string]$item
+    if ($ipconfig -is [psobject] -and $ipconfig.PSObject.Properties.Name -contains 'Lines') {
+        $lines = @($ipconfig.Lines)
+    } elseif ($ipconfig -is [string]) {
+        $lines = $ipconfig -split "`r?`n"
+    } elseif ($ipconfig -is [System.Collections.IEnumerable] -and -not ($ipconfig -is [string])) {
+        foreach ($item in $ipconfig) {
+            $lines += if ($null -eq $item) { '' } else { [string]$item }
         }
     } else {
-        $lines = @([string]$output)
+        $lines = @([string]$ipconfig)
     }
 
     $ipv6Pattern = '(?i)([0-9A-F]{0,4}:){2,}[0-9A-F]{0,4}'

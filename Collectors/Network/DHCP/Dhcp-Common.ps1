@@ -57,12 +57,37 @@ function Get-DhcpAdapterConfigurations {
 }
 
 function Get-DhcpIpconfigAll {
-    try {
-        $raw = & ipconfig.exe /all 2>$null | Out-String
-        return $raw.TrimEnd()
-    } catch {
-        return "ipconfig.exe /all failed: $($_.Exception.Message)"
+    $result = Invoke-IpconfigAll
+
+    if ($null -eq $result) { return '' }
+
+    if ($result -is [psobject]) {
+        if ($result.PSObject.Properties.Name -contains 'Error') {
+            $message = $result.Error
+            if (-not $message) { $message = 'Unknown error' }
+            return "ipconfig.exe /all failed: $message"
+        }
+
+        if ($result.PSObject.Properties.Name -contains 'Raw') {
+            return ([string]$result.Raw).TrimEnd("`r", "`n")
+        }
+
+        if ($result.PSObject.Properties.Name -contains 'Lines') {
+            $joined = [string]::Join([Environment]::NewLine, @($result.Lines))
+            return $joined.TrimEnd("`r", "`n")
+        }
     }
+
+    if ($result -is [string]) {
+        return $result.TrimEnd("`r", "`n")
+    }
+
+    if ($result -is [System.Collections.IEnumerable]) {
+        $joined = [string]::Join([Environment]::NewLine, $result)
+        return $joined.TrimEnd("`r", "`n")
+    }
+
+    return ([string]$result).TrimEnd("`r", "`n")
 }
 
 function Get-DhcpClientEvents {
