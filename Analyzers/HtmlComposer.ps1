@@ -627,13 +627,16 @@ function Build-SummaryCardHtml {
     }
 
     $sb = New-Object System.Text.StringBuilder
-    $null = $sb.AppendLine('<h1>Device Health Report</h1>')
-    $null = $sb.AppendLine("<h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
-    $null = $sb.AppendLine("<div class='report-card report-card--overview'>")
-    $null = $sb.AppendLine("  <div class='score-section'>")
-    $null = $sb.AppendLine("    <div class='score-section__primary'>")
-    & $appendIndented $sb $overallRingHtml '      '
-    $null = $sb.AppendLine("      <div class='report-badge-group'>")
+    $null = $sb.AppendLine("<div class='report-summary'>")
+    $null = $sb.AppendLine("  <div class='report-summary__heading'>")
+    $null = $sb.AppendLine('    <h1>Device Health Report</h1>')
+    $null = $sb.AppendLine("    <h2 class='report-subtitle'>Generated $generatedAtHtml</h2>")
+    $null = $sb.AppendLine('  </div>')
+    $null = $sb.AppendLine("  <div class='report-card report-card--overview'>")
+    $null = $sb.AppendLine("    <div class='score-section'>")
+    $null = $sb.AppendLine("      <div class='score-section__primary'>")
+    & $appendIndented $sb $overallRingHtml '        '
+    $null = $sb.AppendLine("        <div class='report-badge-group'>")
     foreach ($badge in @(
             @{ Key = 'critical'; Label = 'CRITICAL'; Class = 'critical' },
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
@@ -644,40 +647,194 @@ function Build-SummaryCardHtml {
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
         $labelHtml = Encode-Html $badge.Label
-        $null = $sb.AppendLine("        <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
+        $null = $sb.AppendLine("          <span class='report-badge report-badge--$($badge.Class)'><span class='report-badge__label'>$labelHtml</span><span class='report-badge__value'>$count</span></span>")
     }
+    $null = $sb.AppendLine('        </div>')
     $null = $sb.AppendLine('      </div>')
     $null = $sb.AppendLine('    </div>')
+    $null = $sb.AppendLine("    <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine('      <colgroup>')
+    $null = $sb.AppendLine("        <col class='report-table__col--overview-primary'>")
+    $null = $sb.AppendLine("        <col class='report-table__col--overview-secondary'>")
+    $null = $sb.AppendLine('      </colgroup>')
+    $null = $sb.AppendLine('      <tbody>')
+    $null = $sb.AppendLine('        <tr>')
+    $null = $sb.AppendLine("          <td>")
+    $null = $sb.AppendLine("            <h3 class='report-overview__group-title'>Device</h3>")
+    $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("              <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
+    $null = $sb.AppendLine('            </table>')
+    $null = $sb.AppendLine('          </td>')
+    $null = $sb.AppendLine('          <td>')
+    $null = $sb.AppendLine("            <h3 class='report-overview__group-title'>Network</h3>")
+    $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("              <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
+    $null = $sb.AppendLine('            </table>')
+    $null = $sb.AppendLine('          </td>')
+    $null = $sb.AppendLine('        </tr>')
+    $null = $sb.AppendLine('      </tbody>')
+    $null = $sb.AppendLine('    </table>')
     $null = $sb.AppendLine('  </div>')
-    $null = $sb.AppendLine("  <table class='report-table report-table--overview' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine('    <colgroup>')
-    $null = $sb.AppendLine("      <col class='report-table__col--overview-primary'>")
-    $null = $sb.AppendLine("      <col class='report-table__col--overview-secondary'>")
-    $null = $sb.AppendLine('    </colgroup>')
-    $null = $sb.AppendLine('    <tbody>')
-    $null = $sb.AppendLine('      <tr>')
-    $null = $sb.AppendLine("        <td>")
-    $null = $sb.AppendLine("          <h3 class='report-overview__group-title'>Device</h3>")
-    $null = $sb.AppendLine("          <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("            <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
-    $null = $sb.AppendLine('          </table>')
-    $null = $sb.AppendLine('        </td>')
-    $null = $sb.AppendLine('        <td>')
-    $null = $sb.AppendLine("          <h3 class='report-overview__group-title'>Network</h3>")
-    $null = $sb.AppendLine("          <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
-    $null = $sb.AppendLine("            <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
-    $null = $sb.AppendLine("            <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
-    $null = $sb.AppendLine('          </table>')
-    $null = $sb.AppendLine('        </td>')
-    $null = $sb.AppendLine('      </tr>')
-    $null = $sb.AppendLine('    </tbody>')
-    $null = $sb.AppendLine('  </table>')
     $null = $sb.AppendLine('</div>')
 
     return $sb.ToString()
+}
+
+function Build-ReportNavigation {
+    param(
+        [System.Collections.IEnumerable]$Sections
+    )
+
+    if (-not $Sections) { return '' }
+
+    $processed = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($section in $Sections) {
+        if (-not $section) { continue }
+
+        $id = $null
+        $label = $null
+        $count = $null
+        $description = $null
+        $contentHtml = $null
+        $panelHeading = $null
+        $panelDescription = $null
+        $hasExplicitPanelHeading = $false
+        $hasExplicitPanelDescription = $false
+
+        if ($section -is [System.Collections.IDictionary]) {
+            if ($section.Contains('Id')) { $id = [string]$section['Id'] }
+            if ($section.Contains('Label')) { $label = [string]$section['Label'] }
+            if ($section.Contains('Count')) { $count = $section['Count'] }
+            if ($section.Contains('Description')) { $description = [string]$section['Description'] }
+            if ($section.Contains('ContentHtml')) { $contentHtml = [string]$section['ContentHtml'] }
+            if ($section.Contains('PanelHeading')) { $hasExplicitPanelHeading = $true; $panelHeading = [string]$section['PanelHeading'] }
+            if ($section.Contains('PanelDescription')) { $hasExplicitPanelDescription = $true; $panelDescription = [string]$section['PanelDescription'] }
+        } else {
+            if ($section.PSObject.Properties['Id']) { $id = [string]$section.Id }
+            if ($section.PSObject.Properties['Label']) { $label = [string]$section.Label }
+            if ($section.PSObject.Properties['Count']) { $count = $section.Count }
+            if ($section.PSObject.Properties['Description']) { $description = [string]$section.Description }
+            if ($section.PSObject.Properties['ContentHtml']) { $contentHtml = [string]$section.ContentHtml }
+            if ($section.PSObject.Properties['PanelHeading']) { $hasExplicitPanelHeading = $true; $panelHeading = [string]$section.PanelHeading }
+            if ($section.PSObject.Properties['PanelDescription']) { $hasExplicitPanelDescription = $true; $panelDescription = [string]$section.PanelDescription }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+
+        $safeId = [regex]::Replace($id.ToLowerInvariant(), '[^a-z0-9\-_]+', '-')
+        $safeId = [regex]::Replace($safeId, '^-+|-+$', '')
+        if (-not $safeId) { $safeId = [regex]::Replace($id, '\s+', '-') }
+        if (-not $safeId) { continue }
+
+        $labelText = if ($label) { $label } else { $id }
+        $labelHtml = Encode-Html $labelText
+        $countText = $null
+        if ($null -ne $count -and $count -ne '') { $countText = [string]$count }
+        $contentValue = if ($null -ne $contentHtml) { $contentHtml } else { '' }
+        $panelHeadingValue = if ($null -ne $panelHeading) { $panelHeading } else { $null }
+        $panelDescriptionValue = if ($null -ne $panelDescription) { $panelDescription } else { $null }
+
+        $processed.Add([pscustomobject]@{
+                Id               = $safeId
+                Label            = $labelText
+                LabelHtml        = $labelHtml
+                Count            = $countText
+                Description      = $description
+                ContentHtml      = $contentValue
+                PanelHeading     = $panelHeadingValue
+                PanelDescription = $panelDescriptionValue
+                HasExplicitPanelHeading = $hasExplicitPanelHeading
+                HasExplicitPanelDescription = $hasExplicitPanelDescription
+            })
+    }
+
+    if ($processed.Count -eq 0) { return '' }
+
+    $tabsetId = 'report-tabs-' + ([Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $builder = [System.Text.StringBuilder]::new()
+    $null = $builder.Append("<div class='report-tabs-container' data-report-tabs='$tabsetId'>")
+    $null = $builder.Append("<nav class='report-nav' role='tablist' aria-label='Report sections'><ul class='report-nav__list'>")
+
+    $panelMarkup = New-Object System.Collections.Generic.List[string]
+
+    for ($index = 0; $index -lt $processed.Count; $index++) {
+        $entry = $processed[$index]
+        $isActive = ($index -eq 0)
+        $tabId = '{0}-tab-{1}' -f $tabsetId, ($index + 1)
+        $ariaSelected = if ($isActive) { 'true' } else { 'false' }
+        $buttonClasses = 'report-nav__link report-nav__link--tab'
+        if ($isActive) { $buttonClasses += ' is-active' }
+
+        $countFragment = ''
+        if ($entry.Count) {
+            $countValue = Encode-Html $entry.Count
+            $countFragment = "<span class='report-nav__count'>$countValue</span>"
+        }
+
+        $descriptionFragment = ''
+        if (-not [string]::IsNullOrWhiteSpace($entry.Description)) {
+            $descriptionFragment = "<span class='report-nav__description'>$(Encode-Html $entry.Description)</span>"
+        }
+
+        $null = $builder.Append("<li class='report-nav__item'>")
+        $null = $builder.Append("<button type='button' class='$buttonClasses' role='tab' id='$tabId' aria-controls='$($entry.Id)' aria-selected='$ariaSelected'>")
+        $null = $builder.Append("<span class='report-nav__label'>$($entry.LabelHtml)</span>")
+        if ($countFragment) { $null = $builder.Append($countFragment) }
+        if ($descriptionFragment) { $null = $builder.Append($descriptionFragment) }
+        $null = $builder.Append('</button></li>')
+
+        $panelClasses = 'report-tabpanel'
+        if ($isActive) { $panelClasses += ' is-active' }
+        $hiddenAttr = if ($isActive) { '' } else { " hidden='hidden'" }
+        $tabIndexValue = if ($isActive) { '0' } else { '-1' }
+
+        $panelHeadingText = $entry.PanelHeading
+        if ((-not $entry.HasExplicitPanelHeading) -and [string]::IsNullOrWhiteSpace($panelHeadingText)) {
+            if (-not [string]::IsNullOrWhiteSpace($entry.Label)) {
+                if ($entry.Count) {
+                    $panelHeadingText = '{0} ({1})' -f $entry.Label, $entry.Count
+                } else {
+                    $panelHeadingText = $entry.Label
+                }
+            } else {
+                $panelHeadingText = $entry.Id
+            }
+        }
+
+        $panelHeadingFragment = ''
+        if (-not [string]::IsNullOrWhiteSpace($panelHeadingText)) {
+            $panelHeadingHtml = Encode-Html $panelHeadingText
+            $panelHeadingFragment = "<header class='report-tabpanel__header'><h2 class='report-tabpanel__title'>$panelHeadingHtml</h2></header>"
+        }
+
+        $panelDescriptionFragment = ''
+        $panelDescriptionText = if (-not [string]::IsNullOrWhiteSpace($entry.PanelDescription)) { $entry.PanelDescription } elseif ((-not $entry.HasExplicitPanelDescription) -and (-not [string]::IsNullOrWhiteSpace($entry.Description))) { $entry.Description } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($panelDescriptionText)) {
+            $panelDescriptionFragment = "<p class='report-tabpanel__description'>$(Encode-Html $panelDescriptionText)</p>"
+        }
+
+        $panelBodyBuilder = [System.Text.StringBuilder]::new()
+        $null = $panelBodyBuilder.Append("<section class='$panelClasses' id='$($entry.Id)' role='tabpanel' aria-labelledby='$tabId'$hiddenAttr tabindex='$tabIndexValue'>")
+        if ($panelHeadingFragment -or $panelDescriptionFragment) {
+            $null = $panelBodyBuilder.Append("<div class='report-tabpanel__intro'>$panelHeadingFragment$panelDescriptionFragment</div>")
+        }
+        $null = $panelBodyBuilder.Append("<div class='report-tabpanel__body'>$($entry.ContentHtml)</div></section>")
+
+        $panelMarkup.Add($panelBodyBuilder.ToString()) | Out-Null
+    }
+
+    $null = $builder.Append('</ul></nav>')
+    $null = $builder.Append("<div class='report-tabpanels'>")
+    foreach ($panel in $panelMarkup) {
+        $null = $builder.Append($panel)
+    }
+    $null = $builder.Append('</div></div>')
+
+    return $builder.ToString()
 }
 
 function Build-GoodSection {
@@ -1141,10 +1298,15 @@ function New-AnalyzerHtml {
         Write-HtmlDebug -Stage 'Composer' -Message 'No summary provided; synthesized default summary.'
     }
 
-    $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page">'
-    $summaryHtml = Build-SummaryCardHtml -Summary $Summary -Issues $issues -Normals $normals
-    $goodHtml = New-ReportSection -Title "What Looks Good ($($normals.Count))" -ContentHtml (Build-GoodSection -Normals $normals) -Open
-    $issuesHtml = New-ReportSection -Title "Detected Issues ($($issues.Count))" -ContentHtml (Build-IssueSection -Issues $issues) -Open
+    $summaryContent = Build-SummaryCardHtml -Summary $Summary -Issues $issues -Normals $normals
+    $goodSectionId = 'section-good'
+    $issuesSectionId = 'section-issues'
+    $failedSectionId = 'section-failed'
+    $rawSectionId = 'section-raw'
+
+    $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page"><main class="report-main">'
+    $goodContent = Build-GoodSection -Normals $normals
+    $issuesContent = Build-IssueSection -Issues $issues
     $failedReports = Get-FailedCollectorReports -Context $Context
     $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
     Write-HtmlDebug -Stage 'Composer' -Message 'Failed collector section prepared.' -Data @{ Count = $failedReports.Count }
@@ -1168,13 +1330,210 @@ function New-AnalyzerHtml {
         $null = $failedContentBuilder.Append("</table></div>")
         $failedContent = $failedContentBuilder.ToString()
     }
-    $failedHtml = New-ReportSection -Title $failedTitle -ContentHtml $failedContent -Open
-    $rawHtml = New-ReportSection -Title 'Raw (key excerpts)' -ContentHtml (Build-RawSection -Context $Context)
+    $rawContent = Build-RawSection -Context $Context
+    $rawCount = if ($Context -and $Context.Artifacts) { ($Context.Artifacts.Keys | Measure-Object).Count } else { 0 }
+    $goodCount = $normals.Count
+    $issueCount = $issues.Count
+    $failedCount = $failedReports.Count
+    $navSections = @(
+        @{ Id = 'section-overview'; Label = 'Overview'; Description = 'Score & device summary'; ContentHtml = $summaryContent; PanelHeading = ''; PanelDescription = '' },
+        @{ Id = $goodSectionId; Label = 'What Looks Good'; Count = $goodCount; ContentHtml = $goodContent; PanelHeading = "What Looks Good ($goodCount)" },
+        @{ Id = $issuesSectionId; Label = 'Detected Issues'; Count = $issueCount; ContentHtml = $issuesContent; PanelHeading = "Detected Issues ($issueCount)" },
+        @{ Id = $failedSectionId; Label = 'Failed Reports'; Count = $failedCount; ContentHtml = $failedContent; PanelHeading = $failedTitle },
+        @{ Id = $rawSectionId; Label = 'Raw excerpts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Raw excerpts ($rawCount)" }
+    )
+    $navHtml = Build-ReportNavigation -Sections $navSections
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
-    $tail = '</body></html>'
+    $tabsScript = @'
+<script>
+(function () {
+  'use strict';
+
+  function toArray(value) {
+    return Array.prototype.slice.call(value || []);
+  }
+
+  function focusTab(tab) {
+    if (!tab || typeof tab.focus !== 'function') {
+      return;
+    }
+
+    try {
+      tab.focus({ preventScroll: true });
+    } catch (err) {
+      try {
+        tab.focus();
+      } catch (focusErr) {
+        // Ignore focus errors in older browsers.
+      }
+    }
+  }
+
+  function setActiveTab(tabset, tabs, tab, updateHash) {
+    tabs.forEach(function (candidate) {
+      var isSelected = candidate === tab;
+      candidate.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      candidate.classList.toggle('is-active', isSelected);
+
+      var targetId = candidate.getAttribute('aria-controls');
+      if (!targetId) {
+        return;
+      }
+
+      var panel = document.getElementById(targetId);
+      if (!panel) {
+        return;
+      }
+
+      if (isSelected) {
+        panel.classList.add('is-active');
+        panel.removeAttribute('hidden');
+        panel.setAttribute('tabindex', '0');
+      } else {
+        panel.classList.remove('is-active');
+        panel.setAttribute('hidden', 'hidden');
+        panel.setAttribute('tabindex', '-1');
+      }
+    });
+
+    if (tab && updateHash !== false) {
+      var activeId = tab.getAttribute('aria-controls');
+      if (activeId) {
+        try {
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', '#' + activeId);
+          } else {
+            window.location.hash = activeId;
+          }
+        } catch (err) {
+          window.location.hash = activeId;
+        }
+      }
+    }
+  }
+
+  function handleKey(event, tabs, currentTab, tabset) {
+    var key = event.key || event.keyCode;
+    var currentIndex = -1;
+    if (tabs && typeof tabs.indexOf === 'function') {
+      currentIndex = tabs.indexOf(currentTab);
+    }
+
+    if (currentIndex < 0) {
+      for (var idx = 0; idx < tabs.length; idx += 1) {
+        if (tabs[idx] === currentTab) {
+          currentIndex = idx;
+          break;
+        }
+      }
+    }
+
+    if (currentIndex < 0) {
+      currentIndex = 0;
+    }
+
+    var targetIndex = null;
+    if (key === 'ArrowRight' || key === 'ArrowDown' || key === 39 || key === 40) {
+      targetIndex = (currentIndex + 1) % tabs.length;
+    } else if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 37 || key === 38) {
+      targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (key === 'Home' || key === 36) {
+      targetIndex = 0;
+    } else if (key === 'End' || key === 35) {
+      targetIndex = tabs.length - 1;
+    }
+
+    if (targetIndex !== null) {
+      event.preventDefault();
+      var nextTab = tabs[targetIndex];
+      if (nextTab) {
+        setActiveTab(tabset, tabs, nextTab, true);
+        focusTab(nextTab);
+      }
+    }
+  }
+
+  function initReportTabs(tabset) {
+    var tabs = toArray(tabset.querySelectorAll('[role="tab"]'));
+    if (!tabs.length) {
+      return;
+    }
+
+    tabs.forEach(function (tab, index) {
+      if (!tab.id) {
+        tab.id = tabset.getAttribute('data-report-tabs') + '-tab-' + (index + 1);
+      }
+    });
+
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function (event) {
+        event.preventDefault();
+        if (tab.getAttribute('aria-selected') === 'true') {
+          return;
+        }
+        setActiveTab(tabset, tabs, tab, true);
+      });
+
+      tab.addEventListener('keydown', function (event) {
+        handleKey(event, tabs, tab, tabset);
+      });
+    });
+
+    var initialTab = null;
+    var hash = window.location.hash ? window.location.hash.substring(1) : '';
+    if (hash) {
+      for (var i = 0; i < tabs.length; i += 1) {
+        if (tabs[i].getAttribute('aria-controls') === hash) {
+          initialTab = tabs[i];
+          break;
+        }
+      }
+    }
+
+    if (!initialTab) {
+      for (var j = 0; j < tabs.length; j += 1) {
+        if (tabs[j].getAttribute('aria-selected') === 'true') {
+          initialTab = tabs[j];
+          break;
+        }
+      }
+    }
+
+    if (!initialTab) {
+      initialTab = tabs[0];
+    }
+
+    setActiveTab(tabset, tabs, initialTab, false);
+
+    window.addEventListener('hashchange', function () {
+      var updatedHash = window.location.hash ? window.location.hash.substring(1) : '';
+      if (!updatedHash) {
+        return;
+      }
+
+      for (var i = 0; i < tabs.length; i += 1) {
+        if (tabs[i].getAttribute('aria-controls') === updatedHash) {
+          setActiveTab(tabset, tabs, tabs[i], false);
+          focusTab(tabs[i]);
+          break;
+        }
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var tabsets = toArray(document.querySelectorAll('[data-report-tabs]'));
+    tabsets.forEach(function (tabset) {
+      initReportTabs(tabset);
+    });
+  });
+})();
+</script>
+'@
+    $tail = "</main>$tabsScript</body></html>"
 
     $htmlBuilder = [System.Text.StringBuilder]::new()
-    foreach ($segment in @($head, $summaryHtml, $goodHtml, $issuesHtml, $failedHtml, $rawHtml, $debugHtml, $tail)) {
+    foreach ($segment in @($head, $navHtml, $debugHtml, $tail)) {
         if ($segment) { $null = $htmlBuilder.Append($segment) }
     }
 
