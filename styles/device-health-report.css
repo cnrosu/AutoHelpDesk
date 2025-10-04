@@ -100,10 +100,13 @@
   color: var(--color-heading);
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
 }
 
-.report-nav__link:hover {
+.report-nav__link:hover:not([aria-selected='true']) {
   background-color: var(--color-surface);
   border-color: var(--color-border-subtle);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
@@ -113,6 +116,15 @@
 .report-nav__link:focus-visible {
   outline: 2px solid var(--color-heading);
   outline-offset: 2px;
+}
+
+.report-nav__link.is-active,
+.report-nav__link[aria-selected='true'] {
+  background-color: var(--color-heading);
+  border-color: var(--color-heading);
+  color: #ffffff;
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.16);
+  transform: translateY(-1px);
 }
 
 .report-nav__label {
@@ -131,10 +143,71 @@
   font-size: 0.8rem;
 }
 
+.report-nav__link[aria-selected='true'] .report-nav__count {
+  background-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
 .report-nav__description {
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--color-text-note);
+}
+
+.report-nav__link[aria-selected='true'] .report-nav__description {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.report-tabs-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.report-tabpanels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.report-tabpanel {
+  display: none;
+}
+
+.report-tabpanel.is-active {
+  display: block;
+}
+
+.report-tabpanel[hidden] {
+  display: none !important;
+}
+
+.report-tabpanel__intro {
+  margin-bottom: var(--space-sm);
+}
+
+.report-tabpanel__header {
+  margin: 0 0 var(--space-xxs);
+}
+
+.report-tabpanel__title {
+  margin: 0;
+  font-size: 1.35rem;
+  color: var(--color-heading);
+}
+
+.report-tabpanel__description {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-text-note);
+}
+
+.report-tabpanel__body {
+  display: block;
+}
+
+.report-tabpanel__body > .report-summary {
+  margin-bottom: 0;
 }
 
 .report-card {
@@ -779,7 +852,9 @@ details.report-card[open] > summary {
   .report-card,
   .report-nav__link,
   .report-nav__link:hover,
-  .report-nav__link:focus-visible {
+  .report-nav__link:focus-visible,
+  .report-nav__link.is-active,
+  .report-nav__link[aria-selected='true'] {
     transition: none;
     transform: none;
   }
