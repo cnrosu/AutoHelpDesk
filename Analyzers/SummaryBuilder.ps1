@@ -745,10 +745,10 @@ function Get-AnalyzerSummary {
             $connection.ConnectionKind = Get-NetworkConnectionKind -Alias $connection.Alias -Description $connection.Description -WirelessAliases $wifiInterfaceNames
         }
 
-        $sortedConnections = $summary.NetworkConnections | Sort-Object -Property \
-            @{ Expression = { if ($_.HasGateway) { 1 } else { 0 } }; Descending = $true }, \
-            @{ Expression = { if ($_.StatusRank) { $_.StatusRank } else { 0 } }; Descending = $true }, \
-            @{ Expression = { switch ($_.ConnectionKind) { 'Wired' { 2 } 'Wireless' { 2 } 'Bluetooth' { 1 } default { 0 } } }; Descending = $true }, \
+        $sortedConnections = $summary.NetworkConnections | Sort-Object -Property `
+            @{ Expression = { if ($_.HasGateway) { 1 } else { 0 } }; Descending = $true }, `
+            @{ Expression = { if ($_.StatusRank) { $_.StatusRank } else { 0 } }; Descending = $true }, `
+            @{ Expression = { switch ($_.ConnectionKind) { 'Wired' { 2 } 'Wireless' { 2 } 'Bluetooth' { 1 } default { 0 } } }; Descending = $true }, `
             @{ Expression = { if ($_.IPv4 -and ($_.IPv4 -is [array])) { $_.IPv4.Length } elseif ($_.IPv4) { 1 } else { 0 } }; Descending = $true }
 
         $sortedConnections = @($sortedConnections)
