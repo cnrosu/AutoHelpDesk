@@ -43,24 +43,26 @@ function Invoke-HardwareHeuristics {
         Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Problem device inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
     }
 
-    $driverText = ConvertTo-HardwareDriverText -Value $payload.DriverQuery
-    Write-HeuristicDebug -Source 'Hardware' -Message 'Driver query text resolved' -Data ([ordered]@{
-        HasText = [bool]$driverText
-        Length  = if ($driverText) { $driverText.Length } else { 0 }
-    })
+    $inventory = Get-NormalizedDriverInventory -Payload $payload -VerboseLogging
+    $entries = if ($inventory -and $inventory.Rows) { $inventory.Rows } else { @() }
 
-    if (-not $driverText) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Driver inventory empty, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
-        return $result
-    }
-
-    $entries = Parse-DriverQueryEntries -Text $driverText
-    Write-HeuristicDebug -Source 'Hardware' -Message 'Parsed driver inventory entries' -Data ([ordered]@{
-        EntryCount = $entries.Count
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver inventory' -Data ([ordered]@{
+        RowCount = $entries.Count
+        Source   = if ($inventory) { $inventory.Source } else { $null }
     })
 
     if ($entries.Count -eq 0) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Driver inventory could not be parsed, so Device Manager issues may be hidden." -Subcategory 'Collection'
+        Write-HeuristicDebug -Source 'Hardware' -Message 'Driver inventory parsing diagnostics' -Data ([ordered]@{
+            AvailableProperties = if ($inventory -and $inventory.AvailableProperties -and $inventory.AvailableProperties.Count -gt 0) { $inventory.AvailableProperties -join ', ' } else { $null }
+            TextPreview         = if ($inventory -and $inventory.TextPreview) { $inventory.TextPreview } else { $null }
+        })
+        $hasRawDriverData = $inventory -and ($inventory.HasDriverQueryData -or $inventory.HasTextPayload)
+        $title = if ($hasRawDriverData) {
+            "Driver inventory could not be parsed, so Device Manager issues may be hidden."
+        } else {
+            "Driver inventory empty, so Device Manager issues can't be evaluated."
+        }
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Subcategory 'Collection'
         return $result
     }
 
