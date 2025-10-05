@@ -707,6 +707,7 @@ function Build-SummaryCardHtml {
         }
     }
 
+    $summarySectionId = 'section-overview'
     $sb = New-Object System.Text.StringBuilder
     $null = $sb.AppendLine("<div class='report-summary'>")
     $null = $sb.AppendLine("  <div class='report-summary__heading'>")
