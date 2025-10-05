@@ -516,7 +516,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
         $evidence['DisabledProfiles'] = $disabledProfiles.ToArray()
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title 'Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.' -Evidence $evidence -Subcategory $subcategory -CheckId $disabledCheckId
     } else {
-        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'PASS: All firewall profiles enabled (Domain, Private, Public).' -Evidence $evidence -Subcategory $subcategory -CheckId $enabledCheckId
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'All firewall profiles enabled (Domain, Private, Public).' -Evidence $evidence -Subcategory $subcategory -CheckId $enabledCheckId
     }
 }
 
