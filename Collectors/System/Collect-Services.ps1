@@ -11,18 +11,24 @@ param(
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
 function Get-ServiceMatrix {
-    try {
-        return Get-CimInstance -ClassName Win32_Service -ErrorAction Stop | Select-Object Name, DisplayName, StartMode, State, Status, StartName, ServiceType
-    } catch {
-        try {
-            return Get-Service | Select-Object Name, DisplayName, Status, StartType
-        } catch {
-            return [PSCustomObject]@{
-                Source = 'ServiceQuery'
-                Error  = $_.Exception.Message
-            }
+    $inventory = Get-CollectorServiceInventory
+
+    if ($inventory.Errors -and $inventory.Errors.Count -gt 0) {
+        Write-Verbose ("Service inventory warnings: {0}" -f ($inventory.Errors -join '; '))
+    }
+
+    if ($inventory.Items -and $inventory.Items.Count -gt 0) {
+        return $inventory.Items | Select-Object Name, DisplayName, StartMode, State, Status, StartName, ServiceType
+    }
+
+    if ($inventory.Errors -and $inventory.Errors.Count -gt 0) {
+        return [PSCustomObject]@{
+            Source = if ($inventory.Source) { $inventory.Source } else { 'ServiceInventory' }
+            Error  = ($inventory.Errors -join '; ')
         }
     }
+
+    return @()
 }
 
 function Invoke-Main {

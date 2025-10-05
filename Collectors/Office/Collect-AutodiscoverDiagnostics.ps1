@@ -26,12 +26,12 @@ function Get-CandidateDomains {
         if ($normalized) { $domains.Add($normalized) | Out-Null }
     }
 
-    try {
-        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+    $cs = Get-CollectorComputerSystem
+    if (-not (Test-CollectorResultHasError -Value $cs)) {
         if ($cs -and $cs.PartOfDomain -eq $true -and $cs.Domain) {
             $domains.Add([string]$cs.Domain) | Out-Null
         }
-    } catch { }
+    }
 
     try {
         $regPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Identity'

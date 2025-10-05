@@ -11,14 +11,15 @@ param(
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
 function Get-ComputerSystemSecurity {
-    try {
-        return Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer, Model, Domain, PartOfDomain, NumberOfProcessors, TotalPhysicalMemory
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'Win32_ComputerSystem'
-            Error  = $_.Exception.Message
-        }
+    $system = Get-CollectorComputerSystem
+
+    if (Test-CollectorResultHasError -Value $system) {
+        return $system
     }
+
+    if (-not $system) { return $null }
+
+    return $system | Select-Object Manufacturer, Model, Domain, PartOfDomain, NumberOfProcessors, TotalPhysicalMemory
 }
 
 function Get-BiosInformation {

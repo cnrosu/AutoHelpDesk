@@ -163,8 +163,13 @@ function Get-DomainStatus {
         Error        = $null
     }
 
-    try {
-        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+    $cs = Get-CollectorComputerSystem
+    if (Test-CollectorResultHasError -Value $cs) {
+        $result.Error = $cs.Error
+        return $result
+    }
+
+    if ($cs) {
         $result.DomainJoined = $cs.PartOfDomain
         $result.Domain = $cs.Domain
         if ($cs.PSObject.Properties['DomainRole']) {
@@ -173,8 +178,6 @@ function Get-DomainStatus {
         if (-not $cs.PartOfDomain -and $cs.PSObject.Properties['Workgroup']) {
             $result.Workgroup = $cs.Workgroup
         }
-    } catch {
-        $result.Error = $_.Exception.Message
     }
 
     return $result

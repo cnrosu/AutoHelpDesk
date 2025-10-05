@@ -27,25 +27,27 @@ function Get-SpoolerState {
         Error            = $null
     }
 
-    try {
-        $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='Spooler'" -ErrorAction Stop
-    } catch {
+    $serviceResult = Get-CollectorServiceByName -Name 'Spooler'
+    $service = $serviceResult.Service
+
+    if (-not $service) {
+        if ($serviceResult.Errors -and $serviceResult.Errors.Count -gt 0) {
+            $info.Error = ($serviceResult.Errors -join '; ')
+            return $info
+        }
+
         try {
-            $service = Get-WmiObject -Class Win32_Service -Filter "Name='Spooler'" -ErrorAction Stop
+            $service = Get-Service -Name Spooler -ErrorAction Stop
         } catch {
-            try {
-                $service = Get-Service -Name Spooler -ErrorAction Stop
-            } catch {
-                $info.Error = $_.Exception.Message
-                return $info
-            }
+            $info.Error = $_.Exception.Message
+            return $info
         }
     }
 
     if (-not $service) { return $info }
 
     $info.DisplayName  = [string]$service.DisplayName
-    $info.Status       = if ($service.PSObject.Properties['State']) { [string]$service.State } elseif ($service.PSObject.Properties['Status']) { [string]$service.Status } else { [string]$service.Status } 
+    $info.Status       = if ($service.PSObject.Properties['State']) { [string]$service.State } elseif ($service.PSObject.Properties['Status']) { [string]$service.Status } else { $null }
     $info.StartMode    = if ($service.PSObject.Properties['StartMode']) { [string]$service.StartMode } elseif ($service.PSObject.Properties['StartType']) { [string]$service.StartType } else { $null }
     $info.StartType    = if ($service.PSObject.Properties['StartType']) { [string]$service.StartType } elseif ($service.PSObject.Properties['StartMode']) { [string]$service.StartMode } else { $null }
     if ($service.PSObject.Properties['StartName']) { $info.StartAccount = [string]$service.StartName }
