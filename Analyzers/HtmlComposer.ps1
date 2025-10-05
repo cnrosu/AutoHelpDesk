@@ -571,10 +571,91 @@ function Build-SummaryCardHtml {
     $osArray = $osParts.ToArray()
     $osText = if ($osArray.Length -gt 0) { ($osArray -join ' | ') } else { 'Unknown' }
 
+    $collectValues = {
+        param($Values)
 
-    $ipv4Text = if ($Summary.IPv4Addresses -and $Summary.IPv4Addresses.Count -gt 0) { ($Summary.IPv4Addresses -join ', ') } else { 'Unknown' }
-    $gatewayText = if ($Summary.Gateways -and $Summary.Gateways.Count -gt 0) { ($Summary.Gateways -join ', ') } else { 'Unknown' }
-    $dnsText = if ($Summary.DnsServers -and $Summary.DnsServers.Count -gt 0) { ($Summary.DnsServers -join ', ') } else { 'Unknown' }
+        if ($null -eq $Values) { return @() }
+
+        if ($Values -is [string]) {
+            $single = $Values.Trim()
+            if ($single) { return @($single) }
+            return @()
+        }
+
+        if ($Values -is [System.Collections.IEnumerable] -and -not ($Values -is [string])) {
+            $list = New-Object System.Collections.Generic.List[string]
+            foreach ($item in $Values) {
+                if ($null -eq $item) { continue }
+                $text = ([string]$item).Trim()
+                if ($text) { $list.Add($text) | Out-Null }
+            }
+            if ($list.Count -gt 0) { return $list.ToArray() }
+            return @()
+        }
+
+        $fallback = ([string]$Values).Trim()
+        if ($fallback) { return @($fallback) }
+        return @()
+    }
+
+    $primaryConnection = if ($Summary.PrimaryConnection) { $Summary.PrimaryConnection } elseif ($Summary.NetworkConnections -and $Summary.NetworkConnections.Count -gt 0) { $Summary.NetworkConnections[0] } else { $null }
+    $connectionText = 'Unknown'
+    $linkSpeedText = 'Unknown'
+    if ($primaryConnection) {
+        $connectionParts = New-Object System.Collections.Generic.List[string]
+        if ($primaryConnection.ConnectionKind) { $connectionParts.Add([string]$primaryConnection.ConnectionKind) | Out-Null }
+        if ($primaryConnection.Alias) { $connectionParts.Add([string]$primaryConnection.Alias) | Out-Null }
+
+        $descriptionDiffers = $false
+        if ($primaryConnection.Description) {
+            if ($primaryConnection.Alias) {
+                try {
+                    $descriptionDiffers = -not $primaryConnection.Description.Equals($primaryConnection.Alias, [System.StringComparison]::OrdinalIgnoreCase)
+                } catch {
+                    $descriptionDiffers = ($primaryConnection.Description -ne $primaryConnection.Alias)
+                }
+            } else {
+                $descriptionDiffers = $true
+            }
+
+            if ($descriptionDiffers) { $connectionParts.Add([string]$primaryConnection.Description) | Out-Null }
+        }
+
+        if ($primaryConnection.Status) { $connectionParts.Add(('Status: {0}' -f [string]$primaryConnection.Status)) | Out-Null }
+
+        if ($connectionParts.Count -gt 0) { $connectionText = $connectionParts -join ' · ' }
+
+        if ($primaryConnection.LinkSpeed) { $linkSpeedText = [string]$primaryConnection.LinkSpeed }
+        if (-not $linkSpeedText) { $linkSpeedText = 'Unknown' }
+    }
+
+    $primaryIpv4 = if ($primaryConnection) { & $collectValues $primaryConnection.IPv4 } else { @() }
+    $summaryIpv4 = & $collectValues $Summary.IPv4Addresses
+    $ipv4Values = if ($primaryIpv4.Count -gt 0) { $primaryIpv4 } else { $summaryIpv4 }
+    $ipv4Text = if ($ipv4Values.Count -gt 0) { ($ipv4Values -join ', ') } else { 'Unknown' }
+
+    $primaryGateways = if ($primaryConnection) { & $collectValues $primaryConnection.Gateways } else { @() }
+    $summaryGateways = & $collectValues $Summary.Gateways
+    $gatewayValues = if ($primaryGateways.Count -gt 0) { $primaryGateways } else { $summaryGateways }
+    $gatewayText = if ($gatewayValues.Count -gt 0) { ($gatewayValues -join ', ') } else { 'Unknown' }
+
+    $primaryDns = if ($primaryConnection) { & $collectValues $primaryConnection.DnsServers } else { @() }
+    $summaryDns = & $collectValues $Summary.DnsServers
+    $dnsValues = if ($primaryDns.Count -gt 0) { $primaryDns } else { $summaryDns }
+    $dnsText = if ($dnsValues.Count -gt 0) { ($dnsValues -join ', ') } else { 'Unknown' }
+
+    $wifiSummary = if ($Summary.WirelessConnection) { $Summary.WirelessConnection } else { $null }
+    $wifiText = $null
+    if ($wifiSummary) {
+        $wifiParts = New-Object System.Collections.Generic.List[string]
+        if ($wifiSummary.Interface) { $wifiParts.Add([string]$wifiSummary.Interface) | Out-Null }
+        if ($wifiSummary.State) { $wifiParts.Add([string]$wifiSummary.State) | Out-Null }
+        if ($wifiSummary.Ssid) { $wifiParts.Add(('SSID "{0}"' -f $wifiSummary.Ssid)) | Out-Null }
+        if ($wifiSummary.Authentication) { $wifiParts.Add(('Auth {0}' -f $wifiSummary.Authentication)) | Out-Null }
+        if ($wifiSummary.Cipher) { $wifiParts.Add(('Cipher {0}' -f $wifiSummary.Cipher)) | Out-Null }
+        if ($wifiSummary.RadioType) { $wifiParts.Add(('Radio {0}' -f $wifiSummary.RadioType)) | Out-Null }
+        if ($wifiParts.Count -gt 0) { $wifiText = $wifiParts -join ' · ' }
+    }
 
     $overallPercent = [Math]::Round(100.0 * $overallRatio, 1)
     $overallCircumference = 2.0 * [Math]::PI * 54.0
@@ -671,9 +752,15 @@ function Build-SummaryCardHtml {
     $null = $sb.AppendLine('          <td>')
     $null = $sb.AppendLine("            <h3 class='report-overview__group-title'>Network</h3>")
     $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
+    $null = $sb.AppendLine("              <tr><td>Connection</td><td>$(Encode-Html $connectionText)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>Link Speed</td><td>$(Encode-Html $linkSpeedText)</td></tr>")
     $null = $sb.AppendLine("              <tr><td>IPv4</td><td>$(Encode-Html $ipv4Text)</td></tr>")
     $null = $sb.AppendLine("              <tr><td>Gateway</td><td>$(Encode-Html $gatewayText)</td></tr>")
     $null = $sb.AppendLine("              <tr><td>DNS</td><td>$(Encode-Html $dnsText)</td></tr>")
+    if ($wifiText) {
+        $wifiHtml = Encode-Html $wifiText
+        $null = $sb.AppendLine("              <tr><td>Wi-Fi</td><td>$wifiHtml</td></tr>")
+    }
     $null = $sb.AppendLine('            </table>')
     $null = $sb.AppendLine('          </td>')
     $null = $sb.AppendLine('        </tr>')
