@@ -9,8 +9,11 @@ function ConvertTo-HardwareDriverText {
         if ($Value.PSObject.Properties['Error'] -and $Value.Error) {
             return $null
         }
-        if ($Value.PSObject.Properties['Value'] -and $Value.Value) {
-            return [string]$Value.Value
+        if ($Value.PSObject.Properties['Value']) {
+            $inner = $Value.Value
+            if ($null -eq $inner) { return $null }
+            if ([object]::ReferenceEquals($inner, $Value)) { return $null }
+            return ConvertTo-HardwareDriverText -Value $inner
         }
     }
 
