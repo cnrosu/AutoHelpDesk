@@ -23,6 +23,184 @@ function ConvertTo-Array {
     return @($Value)
 }
 
+function Add-FirewallFilterLookupEntry {
+    param(
+        [hashtable]$Lookup,
+        [string]$InstanceId,
+        $Filters
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstanceId)) { return }
+    if (-not $Lookup.ContainsKey($InstanceId)) {
+        $Lookup[$InstanceId] = [System.Collections.Generic.List[object]]::new()
+    }
+
+    $list = $Lookup[$InstanceId]
+    foreach ($filter in (ConvertTo-Array $Filters)) {
+        if ($null -eq $filter) { continue }
+        $list.Add($filter) | Out-Null
+    }
+}
+
+function Get-FirewallRuleInstanceId {
+    param($Rule)
+
+    if (-not $Rule) { return $null }
+
+    foreach ($propertyName in @('InstanceID', 'InstanceId')) {
+        if ($Rule.PSObject.Properties[$propertyName]) {
+            $value = [string]$Rule.$propertyName
+            if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+        }
+    }
+
+    return $null
+}
+
+function Get-FirewallRulePolicyStore {
+    param($Rule)
+
+    if (-not $Rule) { return $null }
+
+    foreach ($propertyName in @('PolicyStoreSource', 'PolicyStore')) {
+        if ($Rule.PSObject.Properties[$propertyName]) {
+            $value = [string]$Rule.$propertyName
+            if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+        }
+    }
+
+    return $null
+}
+
+function New-FirewallFilterLookup {
+    param(
+        [object[]]$Rules,
+        [string]$CommandName
+    )
+
+    $lookup = @{}
+    $failedStores = @{}
+    $commandAvailable = $false
+    $supportsPolicyStore = $false
+
+    $command = $null
+    try {
+        $command = Get-Command -Name $CommandName -ErrorAction Stop
+        $commandAvailable = $null -ne $command
+    } catch {
+        $command = $null
+    }
+
+    if (-not $command) {
+        return [pscustomobject]@{
+            Lookup              = $lookup
+            FailedStores        = $failedStores
+            CommandAvailable    = $commandAvailable
+            SupportsPolicyStore = $supportsPolicyStore
+        }
+    }
+
+    if ($command.Parameters.ContainsKey('PolicyStore')) {
+        $supportsPolicyStore = $true
+    }
+
+    if (-not $supportsPolicyStore) {
+        return [pscustomobject]@{
+            Lookup              = $lookup
+            FailedStores        = $failedStores
+            CommandAvailable    = $commandAvailable
+            SupportsPolicyStore = $supportsPolicyStore
+        }
+    }
+
+    $stores = @{}
+    foreach ($rule in (ConvertTo-Array $Rules)) {
+        if (-not $rule) { continue }
+        $store = Get-FirewallRulePolicyStore -Rule $rule
+        if ([string]::IsNullOrWhiteSpace($store)) { continue }
+        $stores[$store] = $true
+    }
+
+    foreach ($store in $stores.Keys) {
+        try {
+            $filters = & $CommandName -PolicyStore $store -ErrorAction Stop
+        } catch {
+            $failedStores[$store] = $true
+            continue
+        }
+
+        foreach ($filter in (ConvertTo-Array $filters)) {
+            if (-not $filter) { continue }
+            if (-not $filter.PSObject.Properties['InstanceID']) { continue }
+            $instanceId = [string]$filter.InstanceID
+            if ([string]::IsNullOrWhiteSpace($instanceId)) { continue }
+            Add-FirewallFilterLookupEntry -Lookup $lookup -InstanceId $instanceId -Filters $filter
+        }
+    }
+
+    return [pscustomobject]@{
+        Lookup              = $lookup
+        FailedStores        = $failedStores
+        CommandAvailable    = $commandAvailable
+        SupportsPolicyStore = $supportsPolicyStore
+    }
+}
+
+function Invoke-FirewallFilterQuery {
+    param(
+        $Rule,
+        [string]$CommandName,
+        [bool]$CommandAvailable
+    )
+
+    if (-not $CommandAvailable) { return $null }
+    if (-not $Rule) { return $null }
+
+    try {
+        return & $CommandName -AssociatedNetFirewallRule $Rule -ErrorAction Stop
+    } catch {
+        return $null
+    }
+}
+
+function Get-FirewallFiltersForRule {
+    param(
+        $Rule,
+        [pscustomobject]$Resolver,
+        [string]$CommandName
+    )
+
+    if (-not $Rule) { return $null }
+    if (-not $Resolver) { return $null }
+
+    $instanceId = Get-FirewallRuleInstanceId -Rule $Rule
+    if ($instanceId -and $Resolver.Lookup.ContainsKey($instanceId)) {
+        $filters = $Resolver.Lookup[$instanceId]
+        return ConvertTo-Array $filters
+    }
+
+    if (-not $Resolver.CommandAvailable) { return $null }
+
+    if (-not $Resolver.SupportsPolicyStore) {
+        $fallback = Invoke-FirewallFilterQuery -Rule $Rule -CommandName $CommandName -CommandAvailable $Resolver.CommandAvailable
+        if ($fallback -and $instanceId) {
+            Add-FirewallFilterLookupEntry -Lookup $Resolver.Lookup -InstanceId $instanceId -Filters $fallback
+        }
+        return $fallback
+    }
+
+    $store = Get-FirewallRulePolicyStore -Rule $Rule
+    if ([string]::IsNullOrWhiteSpace($store) -or $Resolver.FailedStores.ContainsKey($store)) {
+        $fallback = Invoke-FirewallFilterQuery -Rule $Rule -CommandName $CommandName -CommandAvailable $Resolver.CommandAvailable
+        if ($fallback -and $instanceId) {
+            Add-FirewallFilterLookupEntry -Lookup $Resolver.Lookup -InstanceId $instanceId -Filters $fallback
+        }
+        return $fallback
+    }
+
+    return $null
+}
+
 function ConvertTo-StringArray {
     param($Value)
 
@@ -93,25 +271,16 @@ function Get-FirewallRules {
         }
     }
 
+    $portFilterResolver = New-FirewallFilterLookup -Rules $rules -CommandName 'Get-NetFirewallPortFilter'
+    $addressFilterResolver = New-FirewallFilterLookup -Rules $rules -CommandName 'Get-NetFirewallAddressFilter'
+
     $result = [System.Collections.Generic.List[pscustomobject]]::new()
 
     foreach ($rule in $rules) {
         if (-not $rule) { continue }
 
-        $portFilter = $null
-        $addressFilter = $null
-
-        try {
-            $portFilter = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        } catch {
-            $portFilter = $null
-        }
-
-        try {
-            $addressFilter = Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        } catch {
-            $addressFilter = $null
-        }
+        $portFilter = Get-FirewallFiltersForRule -Rule $rule -Resolver $portFilterResolver -CommandName 'Get-NetFirewallPortFilter'
+        $addressFilter = Get-FirewallFiltersForRule -Rule $rule -Resolver $addressFilterResolver -CommandName 'Get-NetFirewallAddressFilter'
 
         $protocol = Merge-FirewallFilterValues -Filter $portFilter -PropertyName 'Protocol'
         $localPort = Merge-FirewallFilterValues -Filter $portFilter -PropertyName 'LocalPort'
