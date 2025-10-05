@@ -60,7 +60,7 @@ function Invoke-EventsHeuristics {
                     }
                 } elseif ($entries.Error) {
                     $logSubcategory = ("{0} Event Log" -f $logName)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
 
@@ -86,7 +86,7 @@ function Invoke-EventsHeuristics {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Event log artifact missing, so noisy or unhealthy logs may be hidden.' -Subcategory 'Collection'
     }
 
     Invoke-EventsVpnAuthenticationChecks -Result $result -Context $Context

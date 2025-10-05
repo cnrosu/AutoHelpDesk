@@ -149,7 +149,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Office Click-to-Run** – Flags high/medium issues when ClickToRunSvc is misconfigured and records normals when it is running as expected.
 
 ### Events
-- **Collection** – Emits informational issues when sampled event logs could not be gathered.
+- **Collection** – Emits warning-level issues when sampled event logs cannot be read or artifacts are missing so technicians know gaps may hide noisy logs.
 - **Networking / DNS** – Flags repeated DNS resolution timeouts in the event logs.
 - **Netlogon/LSA (Domain Join)** – Raises issues for secure channel or domain reachability errors observed in the Netlogon logs.
 - **Authentication** – Highlights repeated Kerberos pre-authentication failures and account lockouts while recording normals when skew and failure counts stay within tolerance.
