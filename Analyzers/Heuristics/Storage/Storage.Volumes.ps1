@@ -133,15 +133,30 @@ function Invoke-StorageVolumeEvaluation {
             }
 
             $volumeLabel = if (-not [string]::IsNullOrWhiteSpace($rawLabel)) { $rawLabel.Trim() } else { $null }
+            $volumeFriendlyName = $null
+            if ($volume.PSObject.Properties['FriendlyName']) {
+                $friendly = [string]$volume.FriendlyName
+                if (-not [string]::IsNullOrWhiteSpace($friendly)) {
+                    $volumeFriendlyName = $friendly.Trim()
+                }
+            }
+
+            $volumeName = if ($volumeFriendlyName) {
+                $volumeFriendlyName
+            } elseif ($volumeLabel) {
+                $volumeLabel
+            } else {
+                $null
+            }
 
             $volumeDisplay = if ($driveLetterDisplay) {
-                if ($volumeLabel -and ($volumeLabel -ine $driveLetterDisplay)) {
-                    "{0} (`"{1}`")" -f $driveLetterDisplay, $volumeLabel
+                if ($volumeName -and ($volumeName -ine $driveLetterDisplay)) {
+                    "{0} (`"{1}`")" -f $driveLetterDisplay, $volumeName
                 } else {
                     $driveLetterDisplay
                 }
-            } elseif ($volumeLabel) {
-                $volumeLabel
+            } elseif ($volumeName) {
+                $volumeName
             } else {
                 $label
             }
