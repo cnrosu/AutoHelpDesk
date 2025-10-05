@@ -20,7 +20,7 @@ function Import-DhcpAnalyzerDependencies {
         while ($current) {
             $candidate = Join-Path -Path $current -ChildPath 'Modules/Common.psm1'
             if (Test-Path -Path $candidate) {
-                Import-Module -Name $candidate -Force
+                Import-Module -Name $candidate -Force -Verbose:$false
                 $commonModuleLoaded = Get-Module | Where-Object { $_.Path -eq (Resolve-Path -Path $candidate) }
                 break
             }

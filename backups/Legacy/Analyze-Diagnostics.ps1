@@ -21,7 +21,7 @@ param(
 $ErrorActionPreference = 'SilentlyContinue'
 
 $commonModulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Modules/Common.psm1'
-Import-Module $commonModulePath -Force
+Import-Module $commonModulePath -Force -Verbose:$false
 
 $Root = $InputFolder
 

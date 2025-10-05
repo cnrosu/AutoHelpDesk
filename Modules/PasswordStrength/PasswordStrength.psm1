@@ -309,4 +309,4 @@ function Test-PasswordStrength {
     return [pscustomobject]$result
 }
 
-Export-ModuleMember -Function Test-PasswordStrength
+Export-ModuleMember -Function Test-PasswordStrength -Verbose:$false

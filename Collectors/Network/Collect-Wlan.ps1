@@ -18,7 +18,7 @@ $collectorRoot = Split-Path -Path $PSScriptRoot -Parent
 $repositoryRoot = Split-Path -Path $collectorRoot -Parent
 $passwordStrengthModule = Join-Path -Path $repositoryRoot -ChildPath 'Modules\\PasswordStrength\\PasswordStrength.psm1'
 if (Test-Path -LiteralPath $passwordStrengthModule) {
-    Import-Module -Name $passwordStrengthModule -ErrorAction Stop
+    Import-Module -Name $passwordStrengthModule -ErrorAction Stop -Verbose:$false
 }
 
 function Test-IsWindows {
