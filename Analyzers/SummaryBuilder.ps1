@@ -72,7 +72,7 @@ function Convert-ToUniqueStringArray {
 
 function Get-AllStrings {
     param(
-        [Parameter(ValueFromPipeline)]
+        [Parameter(Mandatory)]
         $Value
     )
 
