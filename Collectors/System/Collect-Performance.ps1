@@ -22,19 +22,19 @@ function Get-TopCpuProcesses {
 }
 
 function Get-MemorySummary {
-    try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-        return [PSCustomObject]@{
-            TotalVisibleMemory = $os.TotalVisibleMemorySize
-            FreePhysicalMemory  = $os.FreePhysicalMemory
-            TotalVirtualMemory  = $os.TotalVirtualMemorySize
-            FreeVirtualMemory   = $os.FreeVirtualMemory
-        }
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'Win32_OperatingSystem'
-            Error  = $_.Exception.Message
-        }
+    $os = Get-CollectorOperatingSystem
+
+    if (Test-CollectorResultHasError -Value $os) {
+        return $os
+    }
+
+    if (-not $os) { return $null }
+
+    return [PSCustomObject]@{
+        TotalVisibleMemory = $os.TotalVisibleMemorySize
+        FreePhysicalMemory  = $os.FreePhysicalMemory
+        TotalVirtualMemory  = $os.TotalVirtualMemorySize
+        FreeVirtualMemory   = $os.FreeVirtualMemory
     }
 }
 

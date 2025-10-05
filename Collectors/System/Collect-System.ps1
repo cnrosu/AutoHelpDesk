@@ -23,25 +23,27 @@ function Get-SystemInfoText {
 }
 
 function Get-OperatingSystemInventory {
-    try {
-        return Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop | Select-Object Caption, Version, BuildNumber, OSArchitecture, InstallDate, LastBootUpTime, RegisteredUser, SerialNumber
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'Win32_OperatingSystem'
-            Error  = $_.Exception.Message
-        }
+    $os = Get-CollectorOperatingSystem
+
+    if (Test-CollectorResultHasError -Value $os) {
+        return $os
     }
+
+    if (-not $os) { return $null }
+
+    return $os | Select-Object Caption, Version, BuildNumber, OSArchitecture, InstallDate, LastBootUpTime, RegisteredUser, SerialNumber
 }
 
 function Get-ComputerSystemInventory {
-    try {
-        return Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop | Select-Object Manufacturer, Model, Domain, PartOfDomain, DomainRole, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'Win32_ComputerSystem'
-            Error  = $_.Exception.Message
-        }
+    $system = Get-CollectorComputerSystem
+
+    if (Test-CollectorResultHasError -Value $system) {
+        return $system
     }
+
+    if (-not $system) { return $null }
+
+    return $system | Select-Object Manufacturer, Model, Domain, PartOfDomain, DomainRole, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
 }
 
 function Invoke-Main {

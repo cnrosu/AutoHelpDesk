@@ -67,34 +67,12 @@ function Normalize-ServiceStartType {
 }
 
 function Get-ServiceInventory {
-    $errors = @()
-    $items = $null
-
-    try {
-        $items = Get-CimInstance -ClassName Win32_Service -ErrorAction Stop
-    } catch {
-        $errors += $_.Exception.Message
-    }
-
-    if (-not $items) {
-        try {
-            $items = Get-WmiObject -Class Win32_Service -ErrorAction Stop
-        } catch {
-            $errors += $_.Exception.Message
-        }
-    }
-
-    if (-not $items) {
-        try {
-            $items = Get-Service -ErrorAction Stop
-        } catch {
-            $errors += $_.Exception.Message
-        }
-    }
+    $inventory = Get-CollectorServiceInventory
 
     return [pscustomobject]@{
-        Items  = if ($items) { @($items) } else { @() }
-        Errors = $errors
+        Items  = if ($inventory.Items) { @($inventory.Items) } else { @() }
+        Errors = if ($inventory.Errors) { @($inventory.Errors) } else { @() }
+        Source = $inventory.Source
     }
 }
 

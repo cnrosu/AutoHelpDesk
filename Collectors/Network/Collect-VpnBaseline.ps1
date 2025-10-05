@@ -26,14 +26,13 @@ function Get-VpnHostInfo {
     }
 
     $osBuild = $null
-    try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    $os = Get-CollectorOperatingSystem
+    if (-not (Test-CollectorResultHasError -Value $os)) {
         if ($os -and $os.PSObject.Properties['BuildNumber']) {
             $osBuild = [string]$os.BuildNumber
         } elseif ($os -and $os.PSObject.Properties['Version']) {
             $osBuild = [string]$os.Version
         }
-    } catch {
     }
 
     if (-not $osBuild) {
@@ -62,24 +61,30 @@ function Get-VpnServiceState {
         [string]$Name
     )
 
-    try {
-        $service = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $Name) -ErrorAction Stop
+    $result = Get-CollectorServiceByName -Name $Name
+    $service = $result.Service
+
+    if ($service) {
         return [ordered]@{
-            StartType = if ($service -and $service.PSObject.Properties['StartMode']) { [string]$service.StartMode } else { $null }
-            Status    = if ($service -and $service.PSObject.Properties['State']) { [string]$service.State } else { $null }
-            Path      = if ($service -and $service.PSObject.Properties['PathName']) { [string]$service.PathName } else { $null }
+            StartType = if ($service.PSObject.Properties['StartMode']) { [string]$service.StartMode } elseif ($service.PSObject.Properties['StartType']) { [string]$service.StartType } else { $null }
+            Status    = if ($service.PSObject.Properties['State']) { [string]$service.State } elseif ($service.PSObject.Properties['Status']) { [string]$service.Status } else { $null }
+            Path      = if ($service.PSObject.Properties['PathName']) { [string]$service.PathName } else { $null }
+        }
+    }
+
+    if ($result.Errors -and $result.Errors.Count -gt 0) {
+        return [ordered]@{ Error = ($result.Errors -join '; ') }
+    }
+
+    try {
+        $fallback = Get-Service -Name $Name -ErrorAction Stop
+        return [ordered]@{
+            StartType = if ($fallback.PSObject.Properties['StartType']) { [string]$fallback.StartType } else { $null }
+            Status    = if ($fallback.PSObject.Properties['Status']) { [string]$fallback.Status } else { $null }
+            Path      = $null
         }
     } catch {
-        try {
-            $fallback = Get-Service -Name $Name -ErrorAction Stop
-            return [ordered]@{
-                StartType = $null
-                Status    = [string]$fallback.Status
-                Path      = $null
-            }
-        } catch {
-            return [ordered]@{ Error = $_.Exception.Message }
-        }
+        return [ordered]@{ Error = $_.Exception.Message }
     }
 }
 

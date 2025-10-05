@@ -76,19 +76,27 @@ function Get-ServiceSnapshot {
     foreach ($name in $Names) {
         $status = $null
         $startType = $null
-        try {
-            $service = Get-Service -Name $name -ErrorAction Stop
-            $status = [string]$service.Status
-        } catch {
-            $status = $null
+
+        $serviceResult = Get-CollectorServiceByName -Name $name
+        $service = $serviceResult.Service
+
+        if ($service) {
+            if ($service.PSObject.Properties['Status']) { $status = [string]$service.Status }
+            elseif ($service.PSObject.Properties['State']) { $status = [string]$service.State }
+
+            if ($service.PSObject.Properties['StartMode']) { $startType = [string]$service.StartMode }
+            elseif ($service.PSObject.Properties['StartType']) { $startType = [string]$service.StartType }
         }
 
-        try {
-            $cim = Get-CimInstance -ClassName Win32_Service -Filter "Name='$name'" -ErrorAction Stop
-            if ($cim -and $cim.PSObject.Properties['StartMode']) {
-                $startType = [string]$cim.StartMode
+        if (-not $status) {
+            try {
+                $fallback = Get-Service -Name $name -ErrorAction Stop
+                $status = [string]$fallback.Status
+                if (-not $startType -and $fallback.PSObject.Properties['StartType']) {
+                    $startType = [string]$fallback.StartType
+                }
+            } catch {
             }
-        } catch {
         }
 
         $snapshot.Add([pscustomobject]@{
