@@ -118,11 +118,17 @@ function Invoke-StorageVolumeEvaluation {
             $label = if ($hasDriveLetter) { $volume.DriveLetter } elseif ($rawLabel) { $rawLabel } else { 'Unknown' }
 
             $shouldSkip = $false
-            if (-not $hasDriveLetter) {
+            $skipReason = $null
+            if ($rawLabel -match '^(?i)system reserved$') {
+                $shouldSkip = $true
+                $skipReason = 'System Reserved volume'
+            } elseif (-not $hasDriveLetter) {
                 if ($rawLabel -match '(?i)recovery|reserved|diagnostic|tools|restore') {
                     $shouldSkip = $true
+                    $skipReason = 'Hidden maintenance volume'
                 } elseif ($sizeGb -lt 1) {
                     $shouldSkip = $true
+                    $skipReason = 'Volume smaller than 1 GB'
                 }
             }
 
@@ -131,6 +137,7 @@ function Invoke-StorageVolumeEvaluation {
                     Label = if ($rawLabel) { $rawLabel } else { $label }
                     SizeGb = $sizeGb
                     HasDriveLetter = $hasDriveLetter
+                    Reason = if ($skipReason) { $skipReason } else { 'Not specified' }
                 })
                 continue
             }
