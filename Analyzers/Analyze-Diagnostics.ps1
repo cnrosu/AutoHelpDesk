@@ -20,7 +20,7 @@ Write-Verbose ("Starting analysis for input folder '{0}'." -f $InputFolder)
 
 $commonModulePath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Modules/Common.psm1'
 if (Test-Path -Path $commonModulePath) {
-    Import-Module $commonModulePath -Force
+    Import-Module $commonModulePath -Force -Verbose:$false
     Write-Verbose ("Imported common module from '{0}'." -f $commonModulePath)
 }
 
