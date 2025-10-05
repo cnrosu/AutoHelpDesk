@@ -115,6 +115,158 @@ function Get-AllStrings {
     return ($results | Select-Object -Unique)
 }
 
+function ConvertTo-WlanInterfaceSummaries {
+    param($Raw)
+
+    if ($null -eq $Raw) { return @() }
+
+    $lines = @()
+
+    if ($Raw -is [string]) {
+        $lines = [regex]::Split($Raw, '\r?\n')
+    } elseif ($Raw -is [System.Collections.IEnumerable] -and -not ($Raw -is [string])) {
+        foreach ($item in $Raw) {
+            if ($null -eq $item) { continue }
+            $text = [string]$item
+            if (-not [string]::IsNullOrEmpty($text)) {
+                $lines += [regex]::Split($text, '\r?\n')
+            }
+        }
+    } else {
+        $lines = @([string]$Raw)
+    }
+
+    $interfaces = [System.Collections.Generic.List[pscustomobject]]::new()
+    $current = $null
+
+    foreach ($line in $lines) {
+        if (-not $line) { continue }
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        if ($trimmed -match '^Name\s*:\s*(.+)$') {
+            $current = [ordered]@{
+                Name           = $Matches[1].Trim()
+                State          = $null
+                Ssid           = $null
+                Bssid          = $null
+                Authentication = $null
+                Cipher         = $null
+                RadioType      = $null
+                ConnectionMode = $null
+                Profile        = $null
+            }
+            $interfaces.Add([pscustomobject]$current) | Out-Null
+            continue
+        }
+
+        if (-not $current) { continue }
+
+        if ($trimmed -match '^State\s*:\s*(.+)$') {
+            $current['State'] = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^SSID(\s+\d+)?\s*:\s*(.*)$') {
+            $current['Ssid'] = $Matches[2].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^BSSID(\s+\d+)?\s*:\s*(.*)$') {
+            if (-not $current['Bssid']) {
+                $current['Bssid'] = $Matches[2].Trim()
+            }
+            continue
+        }
+
+        if ($trimmed -match '^Authentication\s*:\s*(.+)$') {
+            $current['Authentication'] = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^Cipher\s*:\s*(.+)$') {
+            $current['Cipher'] = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^Radio type\s*:\s*(.+)$') {
+            $current['RadioType'] = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^Connection mode\s*:\s*(.+)$') {
+            $current['ConnectionMode'] = $Matches[1].Trim()
+            continue
+        }
+
+        if ($trimmed -match '^Profile\s*:\s*(.+)$') {
+            $current['Profile'] = $Matches[1].Trim()
+            continue
+        }
+    }
+
+    if ($interfaces.Count -eq 0) { return @() }
+    return $interfaces.ToArray()
+}
+
+function Get-NetworkStatusRank {
+    param([string]$Status)
+
+    if (-not $Status) { return 0 }
+
+    $normalized = $Status.Trim()
+    if (-not $normalized) { return 0 }
+
+    try {
+        $normalized = $normalized.ToLowerInvariant()
+    } catch {
+        $normalized = $normalized.ToLower()
+    }
+
+    if ($normalized -match '^(connected|up)') { return 3 }
+    if ($normalized -match '^(disconnected|down|disabled)') { return 0 }
+    return 1
+}
+
+function Get-NetworkConnectionKind {
+    param(
+        [string]$Alias,
+        [string]$Description,
+        [string[]]$WirelessAliases
+    )
+
+    if (-not $WirelessAliases) { $WirelessAliases = @() }
+
+    foreach ($candidate in $WirelessAliases) {
+        if (-not $candidate) { continue }
+        if ($Alias -and $Alias.Equals($candidate, [System.StringComparison]::OrdinalIgnoreCase)) { return 'Wireless' }
+        if ($Description -and $Description.Equals($candidate, [System.StringComparison]::OrdinalIgnoreCase)) { return 'Wireless' }
+    }
+
+    $combined = (($Alias, $Description) | Where-Object { $_ }) -join ' '
+    if (-not $combined) { return 'Unknown' }
+
+    try {
+        $normalized = $combined.ToLowerInvariant()
+    } catch {
+        $normalized = $combined.ToLower()
+    }
+
+    if ($normalized -match 'wi[-\s]?fi' -or $normalized -match 'wireless' -or $normalized -match '\bwlan\b' -or $normalized -match '802\.11') {
+        return 'Wireless'
+    }
+
+    if ($normalized -match 'bluetooth') { return 'Bluetooth' }
+
+    if ($normalized -match '\b(vpn|virtual|loopback|hyper-v|vmware|tunnel|tap)\b') { return 'Virtual' }
+
+    if ($normalized -match '\bethernet\b' -or $normalized -match '\bgigabit\b' -or $normalized -match '\bnic\b' -or $normalized -match 'network adapter' -or $normalized -match '\slan\b') {
+        return 'Wired'
+    }
+
+    return 'Unknown'
+}
+
 function Parse-IpConfigNetworkValues {
     param([string]$IpConfigText)
 
@@ -265,12 +417,15 @@ function Get-AnalyzerSummary {
         IsAzureAdJoined = $false
         OperatingSystem = $null
         OSVersion       = $null
-        OSBuild         = $null
-        IsWindowsServer = $null
-        IPv4Addresses   = @()
-        Gateways        = @()
-        DnsServers      = @()
-        GeneratedAt     = Get-Date
+        OSBuild           = $null
+        IsWindowsServer   = $null
+        IPv4Addresses     = @()
+        Gateways          = @()
+        DnsServers        = @()
+        NetworkConnections = @()
+        PrimaryConnection  = $null
+        WirelessConnection = $null
+        GeneratedAt       = Get-Date
     }
 
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
@@ -338,42 +493,179 @@ function Get-AnalyzerSummary {
         }
     }
 
+    $ipv4Aggregate = New-Object System.Collections.Generic.List[string]
+    $gatewayAggregate = New-Object System.Collections.Generic.List[string]
+    $dnsAggregate = New-Object System.Collections.Generic.List[string]
+    $networkConnections = New-Object System.Collections.Generic.List[pscustomobject]
+    $connectionMap = @{}
+
     $networkArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-adapters'
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
-        if ($payload -and $payload.IPConfig) {
-            $ipv4 = New-Object System.Collections.Generic.List[string]
-            $gateways = New-Object System.Collections.Generic.List[string]
-            $dns = New-Object System.Collections.Generic.List[string]
+        if ($payload) {
+            $getConnectionEntry = {
+                param([string]$Alias, [string]$Description)
 
-            $configEntries = $payload.IPConfig
-            if ($configEntries -isnot [System.Collections.IEnumerable] -or $configEntries -is [string]) {
-                $configEntries = @($configEntries)
+                $lookup = $Alias
+                if (-not $lookup) { $lookup = $Description }
+                if (-not $lookup) { return $null }
+
+                try {
+                    $key = $lookup.ToLowerInvariant()
+                } catch {
+                    $key = $lookup.ToLower()
+                }
+
+                if (-not $connectionMap.ContainsKey($key)) {
+                    $connectionMap[$key] = [ordered]@{
+                        Alias            = $Alias
+                        Description      = $Description
+                        Status           = $null
+                        LinkSpeedText    = $null
+                        IPv4             = New-Object System.Collections.Generic.List[string]
+                        IPv6             = New-Object System.Collections.Generic.List[string]
+                        Gateways         = New-Object System.Collections.Generic.List[string]
+                        Dns              = New-Object System.Collections.Generic.List[string]
+                        MacAddress       = $null
+                        DriverInformation = $null
+                    }
+                } else {
+                    $entry = $connectionMap[$key]
+                    if (-not $entry.Alias -and $Alias) { $entry.Alias = $Alias }
+                    if (-not $entry.Description -and $Description) { $entry.Description = $Description }
+                }
+
+                return $connectionMap[$key]
             }
 
-            foreach ($entry in $configEntries) {
-                if ($entry.PSObject.Properties['IPv4Address']) {
-                    foreach ($value in Get-AllStrings -Value $entry.IPv4Address) {
-                        if ($value -and $value -notmatch '^169\.254\.') { $ipv4.Add($value) | Out-Null }
-                    }
+            if ($payload.IPConfig) {
+                $configEntries = $payload.IPConfig
+                $configError = $false
+                if ($configEntries -is [pscustomobject] -and $configEntries.PSObject.Properties['Error'] -and $configEntries.Error) {
+                    $configError = $true
                 }
-                if ($entry.PSObject.Properties['IPv4DefaultGateway']) {
-                    foreach ($value in Get-AllStrings -Value $entry.IPv4DefaultGateway) {
-                        if ($value) { $gateways.Add($value) | Out-Null }
+
+                if (-not $configError) {
+                    if ($configEntries -isnot [System.Collections.IEnumerable] -or $configEntries -is [string]) {
+                        $configEntries = @($configEntries)
                     }
-                }
-                if ($entry.PSObject.Properties['DNSServer']) {
-                    foreach ($value in Get-AllStrings -Value $entry.DNSServer) {
-                        if ($value) { $dns.Add($value) | Out-Null }
+
+                    foreach ($entry in $configEntries) {
+                        if (-not $entry) { continue }
+
+                        $alias = if ($entry.PSObject.Properties['InterfaceAlias']) { [string]$entry.InterfaceAlias } else { $null }
+                        $description = if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $alias }
+                        $connectionEntry = & $getConnectionEntry $alias $description
+
+                        if ($entry.PSObject.Properties['IPv4Address']) {
+                            foreach ($value in Get-AllStrings -Value $entry.IPv4Address) {
+                                if (-not $value) { continue }
+                                $trimmed = $value.Trim()
+                                if (-not $trimmed) { continue }
+                                if ($trimmed -match '^169\.254\.') { continue }
+                                $ipv4Aggregate.Add($trimmed) | Out-Null
+                                if ($connectionEntry) { $connectionEntry.IPv4.Add($trimmed) | Out-Null }
+                            }
+                        }
+
+                        if ($entry.PSObject.Properties['IPv6Address']) {
+                            foreach ($value in Get-AllStrings -Value $entry.IPv6Address) {
+                                if (-not $value) { continue }
+                                $trimmed = $value.Trim()
+                                if (-not $trimmed) { continue }
+                                if ($connectionEntry) { $connectionEntry.IPv6.Add($trimmed) | Out-Null }
+                            }
+                        }
+
+                        if ($entry.PSObject.Properties['IPv4DefaultGateway']) {
+                            foreach ($value in Get-AllStrings -Value $entry.IPv4DefaultGateway) {
+                                if (-not $value) { continue }
+                                $trimmed = $value.Trim()
+                                if (-not $trimmed) { continue }
+                                $gatewayAggregate.Add($trimmed) | Out-Null
+                                if ($connectionEntry) { $connectionEntry.Gateways.Add($trimmed) | Out-Null }
+                            }
+                        }
+
+                        if ($entry.PSObject.Properties['DNSServer']) {
+                            foreach ($value in Get-AllStrings -Value $entry.DNSServer) {
+                                if (-not $value) { continue }
+                                $trimmed = $value.Trim()
+                                if (-not $trimmed) { continue }
+                                $dnsAggregate.Add($trimmed) | Out-Null
+                                if ($connectionEntry) { $connectionEntry.Dns.Add($trimmed) | Out-Null }
+                            }
+                        }
                     }
                 }
             }
 
-            if ($ipv4.Count -gt 0) { $summary.IPv4Addresses = Convert-ToUniqueStringArray -Values $ipv4 }
-            if ($gateways.Count -gt 0) { $summary.Gateways = Convert-ToUniqueStringArray -Values ($gateways | Where-Object { $_ -and $_ -ne '0.0.0.0' }) }
-            if ($dns.Count -gt 0) { $summary.DnsServers = Convert-ToUniqueStringArray -Values $dns }
+            if ($payload.Adapters) {
+                $adapterEntries = $payload.Adapters
+                $adapterError = $false
+                if ($adapterEntries -is [pscustomobject] -and $adapterEntries.PSObject.Properties['Error'] -and $adapterEntries.Error) {
+                    $adapterError = $true
+                }
+
+                if (-not $adapterError) {
+                    if ($adapterEntries -isnot [System.Collections.IEnumerable] -or $adapterEntries -is [string]) {
+                        $adapterEntries = @($adapterEntries)
+                    }
+
+                    foreach ($adapter in $adapterEntries) {
+                        if (-not $adapter) { continue }
+
+                        $alias = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
+                        $description = if ($adapter.PSObject.Properties['InterfaceDescription']) { [string]$adapter.InterfaceDescription } else { $alias }
+                        $connectionEntry = & $getConnectionEntry $alias $description
+                        if (-not $connectionEntry) { continue }
+
+                        if ($adapter.PSObject.Properties['Status'] -and $adapter.Status) { $connectionEntry.Status = [string]$adapter.Status }
+                        if ($adapter.PSObject.Properties['LinkSpeed'] -and $adapter.LinkSpeed) { $connectionEntry.LinkSpeedText = [string]$adapter.LinkSpeed }
+                        if ($adapter.PSObject.Properties['MacAddress'] -and $adapter.MacAddress -and -not $connectionEntry.MacAddress) { $connectionEntry.MacAddress = [string]$adapter.MacAddress }
+                        if ($adapter.PSObject.Properties['DriverInformation'] -and $adapter.DriverInformation -and -not $connectionEntry.DriverInformation) { $connectionEntry.DriverInformation = [string]$adapter.DriverInformation }
+                    }
+                }
+            }
         }
     }
+
+    if ($connectionMap.Count -gt 0) {
+        foreach ($key in $connectionMap.Keys) {
+            $entry = $connectionMap[$key]
+            $ipv4Values = Convert-ToUniqueStringArray -Values $entry.IPv4
+            $ipv6Values = Convert-ToUniqueStringArray -Values $entry.IPv6
+            $gatewayValues = Convert-ToUniqueStringArray -Values ($entry.Gateways | Where-Object { $_ -and $_ -ne '0.0.0.0' })
+            $dnsValues = Convert-ToUniqueStringArray -Values $entry.Dns
+            $statusRank = Get-NetworkStatusRank -Status $entry.Status
+
+            $connection = [pscustomobject]@{
+                Alias             = $entry.Alias
+                Description       = $entry.Description
+                Status            = $entry.Status
+                StatusRank        = $statusRank
+                LinkSpeed         = if ($entry.LinkSpeedText) { $entry.LinkSpeedText } else { $null }
+                IPv4              = $ipv4Values
+                IPv6              = $ipv6Values
+                Gateways          = $gatewayValues
+                DnsServers        = $dnsValues
+                HasGateway        = ($gatewayValues.Count -gt 0)
+                MacAddress        = $entry.MacAddress
+                DriverInformation = $entry.DriverInformation
+                ConnectionKind    = $null
+            }
+
+            $networkConnections.Add($connection) | Out-Null
+        }
+    }
+
+    if ($networkConnections.Count -gt 0) {
+        $summary.NetworkConnections = $networkConnections.ToArray()
+    }
+
+    if ($ipv4Aggregate.Count -gt 0) { $summary.IPv4Addresses = Convert-ToUniqueStringArray -Values $ipv4Aggregate }
+    if ($gatewayAggregate.Count -gt 0) { $summary.Gateways = Convert-ToUniqueStringArray -Values ($gatewayAggregate | Where-Object { $_ -and $_ -ne '0.0.0.0' }) }
+    if ($dnsAggregate.Count -gt 0) { $summary.DnsServers = Convert-ToUniqueStringArray -Values $dnsAggregate }
 
     $hasIpv4 = ($summary.IPv4Addresses -and @($summary.IPv4Addresses).Count -gt 0)
     $hasGateway = ($summary.Gateways -and @($summary.Gateways).Count -gt 0)
@@ -405,6 +697,63 @@ function Get-AnalyzerSummary {
                     }
                 }
             }
+        }
+    }
+
+    $wifiInterfaceNames = @()
+    $wifiArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wlan'
+    if ($wifiArtifact) {
+        $wifiPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wifiArtifact)
+        if ($wifiPayload -and $wifiPayload.PSObject -and $wifiPayload.PSObject.Properties['Interfaces']) {
+            $wifiInterfaces = ConvertTo-WlanInterfaceSummaries -Raw $wifiPayload.Interfaces
+            if ($wifiInterfaces -and $wifiInterfaces.Count -gt 0) {
+                $wifiInterfaceNames = @($wifiInterfaces | Where-Object { $_ -and $_.Name } | ForEach-Object { $_.Name })
+
+                $connectedInterface = $null
+                foreach ($interface in $wifiInterfaces) {
+                    if (-not $interface) { continue }
+                    $stateText = if ($interface.State) { [string]$interface.State } else { '' }
+                    $normalizedState = ''
+                    if ($stateText) {
+                        try { $normalizedState = $stateText.ToLowerInvariant() } catch { $normalizedState = $stateText.ToLower() }
+                    }
+                    if ($normalizedState -like 'connected*') { $connectedInterface = $interface; break }
+                }
+
+                $selectedInterface = if ($connectedInterface) { $connectedInterface } else { $wifiInterfaces[0] }
+                if ($selectedInterface) {
+                    $summary.WirelessConnection = [pscustomobject]@{
+                        Interface      = $selectedInterface.Name
+                        State          = $selectedInterface.State
+                        Ssid           = $selectedInterface.Ssid
+                        Bssid          = $selectedInterface.Bssid
+                        Authentication = $selectedInterface.Authentication
+                        Cipher         = $selectedInterface.Cipher
+                        RadioType      = $selectedInterface.RadioType
+                        ConnectionMode = $selectedInterface.ConnectionMode
+                        Profile        = $selectedInterface.Profile
+                    }
+                }
+            }
+        }
+    }
+
+    if (-not $wifiInterfaceNames) { $wifiInterfaceNames = @() }
+
+    if ($summary.NetworkConnections -and $summary.NetworkConnections.Count -gt 0) {
+        foreach ($connection in $summary.NetworkConnections) {
+            $connection.ConnectionKind = Get-NetworkConnectionKind -Alias $connection.Alias -Description $connection.Description -WirelessAliases $wifiInterfaceNames
+        }
+
+        $sortedConnections = $summary.NetworkConnections | Sort-Object -Property `
+            @{ Expression = { if ($_.HasGateway) { 1 } else { 0 } }; Descending = $true }, `
+            @{ Expression = { if ($_.StatusRank) { $_.StatusRank } else { 0 } }; Descending = $true }, `
+            @{ Expression = { switch ($_.ConnectionKind) { 'Wired' { 2 } 'Wireless' { 2 } 'Bluetooth' { 1 } default { 0 } } }; Descending = $true }, `
+            @{ Expression = { if ($_.IPv4 -and ($_.IPv4 -is [array])) { $_.IPv4.Length } elseif ($_.IPv4) { 1 } else { 0 } }; Descending = $true }
+
+        $sortedConnections = @($sortedConnections)
+        if ($sortedConnections.Count -gt 0) {
+            $summary.PrimaryConnection = $sortedConnections[0]
         }
     }
 
