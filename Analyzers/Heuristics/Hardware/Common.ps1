@@ -9,8 +9,11 @@ function ConvertTo-HardwareDriverText {
         if ($Value.PSObject.Properties['Error'] -and $Value.Error) {
             return $null
         }
-        if ($Value.PSObject.Properties['Value'] -and $Value.Value) {
-            return [string]$Value.Value
+        if ($Value.PSObject.Properties['Value']) {
+            $inner = $Value.Value
+            if ($null -eq $inner) { return $null }
+            if ([object]::ReferenceEquals($inner, $Value)) { return $null }
+            return ConvertTo-HardwareDriverText -Value $inner
         }
     }
 
@@ -26,6 +29,147 @@ function ConvertTo-HardwareDriverText {
     }
 
     return [string]$Value
+}
+
+function Get-NormalizedDriverInventory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Payload,
+
+        [switch]$VerboseLogging
+    )
+
+    $rows = @()
+    $source = $null
+    $driverQueryPropertyPresent = $false
+    $driverQueryPropertyHasItems = $false
+    $textPayloadUsed = $false
+    $textPayloadPresent = $false
+
+    if ($Payload -and $Payload.PSObject.Properties['DriverQuery']) {
+        $driverQueryPropertyPresent = $true
+        $candidate = $Payload.DriverQuery
+        if ($candidate -is [System.Collections.IEnumerable] -and -not ($candidate -is [string])) {
+            $rows = @($candidate)
+            if ($rows.Count -gt 0) {
+                $source = 'Payload.DriverQuery (objects)'
+                $driverQueryPropertyHasItems = $true
+            }
+        } elseif ($candidate) {
+            $driverQueryPropertyHasItems = $true
+        }
+    }
+
+    if (-not $rows -or $rows.Count -eq 0) {
+        $candidateProps = @('DriverQueryText','DriverQueryCsv','DriverQueryVerboseCsv','Text')
+        foreach ($prop in $candidateProps) {
+            if (-not ($Payload.PSObject.Properties[$prop])) { continue }
+
+            $text = [string]$Payload.$prop
+            if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+            $textPayloadPresent = $true
+
+            if ($text -match '\\r\\n') {
+                $text = [System.Text.RegularExpressions.Regex]::Unescape($text)
+            }
+
+            try {
+                $rows = @($text | ConvertFrom-Csv)
+                if ($rows.Count -gt 0) {
+                    $source = "Payload.$prop (csv text)"
+                    $textPayloadUsed = $true
+                    break
+                }
+            } catch {
+                if ($VerboseLogging) {
+                    Write-Warning ("[Hardware/Drivers] ConvertFrom-Csv failed from {0}: {1}" -f $prop, $_.Exception.Message)
+                }
+            }
+        }
+    }
+
+    if (-not $rows -or $rows.Count -eq 0) {
+        $available = @()
+        foreach ($member in ($Payload | Get-Member -MemberType NoteProperty)) {
+            if ($member -and $member.Name) {
+                $available += $member.Name
+            }
+        }
+
+        $textPreview = $null
+        foreach ($prop in @('DriverQueryText','DriverQueryCsv','DriverQueryVerboseCsv','Text')) {
+            if ($Payload.PSObject.Properties[$prop]) {
+                $candidateText = [string]$Payload.$prop
+                if (-not [string]::IsNullOrEmpty($candidateText)) {
+                    $textPreview = $candidateText.Substring(0, [Math]::Min(100, $candidateText.Length))
+                    break
+                }
+            }
+        }
+
+        $warning = "[Hardware/Drivers] Parsed 0 entries. Available payload props: {0}; Source={1}; TextPreview='{2}'" -f (
+            ($available -join ', '),
+            (if ($source) { $source } else { 'None' }),
+            (if ($textPreview) { $textPreview } else { '' })
+        )
+
+        if ($VerboseLogging) {
+            Write-Warning $warning
+        }
+
+        return [pscustomobject]@{
+            Rows                    = @()
+            Source                  = $source
+            AvailableProperties     = $available
+            TextPreview             = $textPreview
+            HasDriverQueryProperty  = $driverQueryPropertyPresent
+            HasDriverQueryData      = $driverQueryPropertyHasItems
+            UsedTextPayload         = $textPayloadUsed
+            HasTextPayload          = $textPayloadPresent
+        }
+    }
+
+    $normalized = New-Object System.Collections.Generic.List[pscustomobject]
+
+    foreach ($row in $rows) {
+        if (-not $row) { continue }
+
+        $ordered = [ordered]@{}
+        foreach ($prop in $row.PSObject.Properties) {
+            $ordered[$prop.Name] = $prop.Value
+
+            $trimmed = $prop.Name -replace '\s',''
+            if ($trimmed -and $trimmed -ne $prop.Name -and -not $ordered.Contains($trimmed)) {
+                $ordered[$trimmed] = $prop.Value
+            }
+        }
+
+        $obj = [pscustomobject]$ordered
+
+        foreach ($name in @('ModuleName','DisplayName','StartMode','State','Path','DriverType','LinkDate','Version','Provider')) {
+            $existing = $obj.PSObject.Properties[$name]
+            if ($existing) {
+                $obj | Add-Member -NotePropertyName $name -NotePropertyValue $existing.Value -Force
+            } else {
+                $obj | Add-Member -NotePropertyName $name -NotePropertyValue $null -Force
+            }
+        }
+
+        $normalized.Add($obj) | Out-Null
+    }
+
+    return [pscustomobject]@{
+        Rows                    = $normalized.ToArray()
+        Source                  = $source
+        AvailableProperties     = @()
+        TextPreview             = $null
+        HasDriverQueryProperty  = $driverQueryPropertyPresent
+        HasDriverQueryData      = $driverQueryPropertyHasItems -or ($normalized.Count -gt 0)
+        UsedTextPayload         = $textPayloadUsed
+        HasTextPayload          = $textPayloadPresent
+    }
 }
 
 function Add-UniqueDriverNameVariant {
@@ -147,6 +291,12 @@ function Get-DriverPropertyValue {
 
     foreach ($name in $Names) {
         $prop = $Entry.PSObject.Properties[$name]
+        if (-not $prop -and $name -match '\s') {
+            $alternate = $name -replace '\s',''
+            if ($alternate -and $alternate -ne $name) {
+                $prop = $Entry.PSObject.Properties[$alternate]
+            }
+        }
         if (-not $prop) { continue }
         $raw = $prop.Value
         if ($null -eq $raw) { continue }
