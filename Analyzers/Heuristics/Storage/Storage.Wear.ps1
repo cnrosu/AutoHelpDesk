@@ -17,6 +17,8 @@ function Invoke-StorageWearEvaluation {
             }
         } else {
             $wearEntries = ConvertTo-StorageArray $wearNode
+            $hasWearResult = $false
+            $missingWearLabels = @()
             foreach ($entry in $wearEntries) {
                 if (-not $entry) { continue }
 
@@ -26,7 +28,12 @@ function Invoke-StorageWearEvaluation {
                     continue
                 }
 
-                if (-not $entry.PSObject.Properties['Wear']) { continue }
+                $label = Get-StorageWearLabel -Entry $entry
+
+                if (-not $entry.PSObject.Properties['Wear']) {
+                    $missingWearLabels += $label
+                    continue
+                }
 
                 $rawWear = $entry.Wear
                 $wearValue = $null
@@ -39,14 +46,17 @@ function Invoke-StorageWearEvaluation {
                     }
                 }
 
-                if ($null -eq $wearValue) { continue }
+                if ($null -eq $wearValue) {
+                    $missingWearLabels += $label
+                    continue
+                }
 
                 if ($wearValue -lt 0) { $wearValue = 0 }
-                $label = Get-StorageWearLabel -Entry $entry
                 $details = Format-StorageWearDetails -Entry $entry -Wear $wearValue
                 $status = "{0}%" -f ([math]::Round($wearValue, 1))
 
                 Add-CategoryCheck -CategoryResult $CategoryResult -Name ("SMART wear - {0}" -f $label) -Status $status -Details $details
+                $hasWearResult = $true
 
                 if ($wearValue -ge 95) {
                     Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("{0} nearing end of rated lifespan ({1}% wear)" -f $label, [math]::Round($wearValue, 1)) -Evidence $details -Subcategory 'SMART Wear'
@@ -54,6 +64,15 @@ function Invoke-StorageWearEvaluation {
                     Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("{0} wear approaching limits ({1}% used)" -f $label, [math]::Round($wearValue, 1)) -Evidence $details -Subcategory 'SMART Wear'
                 } else {
                     Add-CategoryNormal -CategoryResult $CategoryResult -Title ("{0} wear at {1}% used" -f $label, [math]::Round($wearValue, 1)) -Subcategory 'SMART Wear'
+                }
+            }
+
+            if (-not $hasWearResult -and $missingWearLabels.Count -gt 0) {
+                $evidence = [string]::Join(", ", $missingWearLabels)
+                if ([string]::IsNullOrWhiteSpace($evidence)) {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
+                } else {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Evidence ("No wear percentage reported for: {0}" -f $evidence) -Subcategory 'SMART Wear'
                 }
             }
         }
