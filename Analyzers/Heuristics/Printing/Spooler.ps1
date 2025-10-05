@@ -20,9 +20,7 @@ function Invoke-PrintingSpoolerChecks {
     Add-CategoryCheck -CategoryResult $Result -Name 'Spooler status' -Status $status -Details ("StartMode: {0}" -f $startMode)
 
     if ($statusNorm -eq 'running') {
-        if ($IsWorkstation) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Print Spooler running — disable if this workstation does not need printing (PrintNightmare).' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode) -Subcategory 'Spooler Service'
-        } else {
+        if (-not $IsWorkstation) {
             Add-CategoryNormal -CategoryResult $Result -Title 'Print Spooler running' -Evidence ("Status: {0}; StartMode: {1}" -f $status, $startMode) -Subcategory 'Spooler Service'
         }
         return
