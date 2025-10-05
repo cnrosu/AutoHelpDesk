@@ -5,15 +5,12 @@ function ConvertTo-HardwareDriverText {
 
     if ($null -eq $Value) { return $null }
 
-    if ($Value -is [pscustomobject] -or $Value -is [System.Collections.IDictionary]) {
-        $asObject = [pscustomobject]$Value
-
-        if ($asObject.PSObject.Properties['Error'] -and $asObject.Error) {
+    if ($Value -is [pscustomobject]) {
+        if ($Value.PSObject.Properties['Error'] -and $Value.Error) {
             return $null
         }
-
-        if ($asObject.PSObject.Properties['Value']) {
-            return ConvertTo-HardwareDriverText -Value $asObject.Value
+        if ($Value.PSObject.Properties['Value'] -and $Value.Value) {
+            return [string]$Value.Value
         }
     }
 
@@ -21,12 +18,10 @@ function ConvertTo-HardwareDriverText {
         $builder = [System.Text.StringBuilder]::new()
         foreach ($item in $Value) {
             if ($null -eq $item) { continue }
-            $text = ConvertTo-HardwareDriverText -Value $item
-            if ([string]::IsNullOrWhiteSpace($text)) { continue }
+            $text = [string]$item
             if ($builder.Length -gt 0) { $null = $builder.AppendLine() }
             $null = $builder.Append($text)
         }
-        if ($builder.Length -eq 0) { return $null }
         return $builder.ToString()
     }
 
