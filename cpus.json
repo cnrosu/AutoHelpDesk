@@ -1,0 +1,6127 @@
+[
+  {
+    "manufacturer": "AMD",
+    "brand": "AMD",
+    "model": "3015e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "AMD",
+    "model": "3020e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "3000G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "300GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "320GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "7120e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "7120U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "7220e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "7220U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold 3150C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold 3150G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold 3150GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold 3150U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Silver 3050C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Silver 3050e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Silver 3050GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Silver 3050U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold PRO 3125GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold PRO 3150G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold PRO 3150GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "Gold PRO 4150GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "PRO 300GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "PRO 300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Athlon™",
+    "model": "PRO 3045B"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7252"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7262"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7272"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7282"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7302"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7313"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7343"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7352"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7402"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7413"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7443"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7452"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7453"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7502"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7513"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7532"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7542"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7543"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7552"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7642"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7643"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7662"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7663"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7702"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7713"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7742"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7763"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7232P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "72F3"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7302P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7313P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "73F3"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7402P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7443P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "74F3"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7502P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7543P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "75F3"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7702P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7713P"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7F32"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7F52"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7F72"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "EPYC™",
+    "model": "7H12"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen Embedded R2000 Series",
+    "model": "R2312"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen Embedded R2000 Series",
+    "model": "R2314"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen Embedded R2000 Series",
+    "model": "R2514"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen Embedded R2000 Series",
+    "model": "R2544"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™",
+    "model": "Z1"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™",
+    "model": "Z1 Extreme"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3100"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "4100"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "2300X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3200G with Radeon™ Vega 8 Graphics"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3200GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3200U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3250C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3250U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "3350U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "4300G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "4300GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "4300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5125C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5300G (OEM Only)"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5300GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5300GE (OEM Only)"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5400U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5425C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5425U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "7320e"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "7320U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "7330U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "7335U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "7440U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3",
+    "model": "5380U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "3200G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "3200GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "3300U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "4350G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "4350GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "4450U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "5350G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "5350GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "5450U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "5475U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "7330U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "4355G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 3 PRO",
+    "model": "4355GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "2600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4500"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5500"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "2500X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "2600E"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "2600X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3350G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3350GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3400G with Radeon™ RX Vega 11 Graphics"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3400GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3450U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3500 Processor"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3500C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3500U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3500X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3550H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3580U Microsoft Surface® Edition"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3600X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "3600XT"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4500U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4600G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4600GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4600H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4600HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "4600U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5300G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5300GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5425U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5500U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5560U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5600X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5625C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "5625U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "6600H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "6600HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "6600U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7520U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7530U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7535HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7535U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7540U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7600X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7640HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7640S"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7640U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7645HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5",
+    "model": "7640H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "2600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3600"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5645"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3350G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3350GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3400G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3400GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "3500U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "4650G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "4650GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "4650U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5475U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5650G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5650GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5650HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5650HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5650U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5675U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5750G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "5750GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "6650H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "6650HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "6650U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "7530U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "7540U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "7640U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "4655G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 5 PRO",
+    "model": "4655GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "2700"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7700"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "2700E Processor"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "2700X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3700C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3700U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3700X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3750H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3780U Microsoft Surface® Edition"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3800X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "3800XT"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4700G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4700GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4700U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4800H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4800HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "4800U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5700G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5700GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5700U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5700X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5800X3D"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5825C"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "5825U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "6800H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "6800HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "6800U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "6810U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7700X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7730U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7735HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7735U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7736U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7745HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7800X3D"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7840H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7840HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7840S"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7",
+    "model": "7840U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "2700"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "3700"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "5845"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "2700X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "3700U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "4750G"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "4750GE"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "4750U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "5850HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "5850HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "5850U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "5875U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "6850H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "6850HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "6850U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "6860Z"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "7730U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 7 PRO",
+    "model": "7840U"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5900"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7900"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "3900 Processor"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "3900X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "3900XT"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "3950X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "4900H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "4900HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5900HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5900HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5900X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5950X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5980HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "5980HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "6900HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "6900HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "6980HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "6980HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7845HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7900X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7900X3D"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7940H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7940HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7945HX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7950X"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9",
+    "model": "7950X3D"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9 PRO",
+    "model": "3900"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9 PRO",
+    "model": "5945"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9 PRO",
+    "model": "6950H"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ 9 PRO",
+    "model": "6950HS"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Embedded",
+    "model": "V2516"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Embedded",
+    "model": "V2546"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Embedded",
+    "model": "V2718"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Embedded",
+    "model": "V2748"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "3945WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "3955WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "3975WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "3995WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "5945WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "5955WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "5965WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "5975WX"
+  },
+  {
+    "manufacturer": "AMD",
+    "brand": "Ryzen™ Threadripper™ PRO",
+    "model": "5995WX"
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 850",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 7c",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 7c Gen 2",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 7c+ Gen 3",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 8c",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 8cx",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 8cx Gen 2",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Snapdragon 8cx Gen 3",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Qualcomm®",
+    "model": "QCM6490",
+    "iot_applicability": "IoT Enterprise Only"
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Qualcomm®",
+    "model": "QCS6490",
+    "iot_applicability": "IoT Enterprise Only"
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Qualcomm®",
+    "model": "QCM5430",
+    "iot_applicability": "IoT Enterprise Only"
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Qualcomm®",
+    "model": "QCS5430",
+    "iot_applicability": "IoT Enterprise Only"
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Microsoft SQ1",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Microsoft SQ2",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Qualcomm®",
+    "brand": "Snapdragon™",
+    "model": "Microsoft SQ3",
+    "iot_applicability": null
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6200FE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6211E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6212RE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6413E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6414RE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6425E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6425RE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Atom®",
+    "model": "x6427FE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "6305"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "7300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "7305"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "3867U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "4205U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "4305U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "4305UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "5205U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "5305U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "6305E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "6600HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "7305E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "7305L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4920"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4930"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4930E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4930T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4932E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G4950"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5900E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5900TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5905"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5905T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5920"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G5925"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G6900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G6900E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G6900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "G6900TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J4005"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J4025"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J4105"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J4115"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J4125"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J6412"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "J6413"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4000"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4020"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4120"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N4505"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N5100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N5105"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N6210"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Celeron®",
+    "model": "N6211"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "3-100U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "3-100U with IPU"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "5-120U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "7-150U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1000G1"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1000G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1005G1"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10100Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10105"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10105F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10105T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10110U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10110Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10300T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10305"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10305T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10320"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-10325"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-11100HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1110G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1115G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1115G4E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1115GRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1120G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1125G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12100E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12100F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12100TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1210U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1215U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1215UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1215UL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1220P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1220PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12300HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12300HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-12300T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1305U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13100E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13100F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13100TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1315U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1315UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-1320PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-13300HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-14100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-14100F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-14100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8100B"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8100H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8109U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8130U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8140U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8145U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8145UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8300T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-8350K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9100TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9300T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9320"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9350K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-9350KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-N300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i3-N305"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10200H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10210U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10210Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10300H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1030G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1030G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10310U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10310Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1035G1"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1035G4"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1035G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1038NG7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10400H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10500E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10500H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10500TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10505"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-10600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11260H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11300H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1130G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11320H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1135G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11400H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1140G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1145G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1145G7E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1145GRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11500H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11500HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1155G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-11600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1230U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1235U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1235UL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1240P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1240U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12450H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12450HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1245U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1245UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1245UL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12500TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1250P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1250PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-12600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1334U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1335U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1335UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13400E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1340P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1340PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13420H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13450HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1345U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1345UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13490F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13500TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13505H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1350P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-1350PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-13600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-14600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8200Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8210Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8250U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8257U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8259U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8260U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8265U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8269U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8279U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8300H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8305G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8310Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8350U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8365U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8365UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8400B"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8400H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8500B"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-8600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9300H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9300HF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9400F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9400H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9500E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9500F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9500TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9600K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9600KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i5-9600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10510U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10510Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1060G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10610U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1065G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1068G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1068NG7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10700TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10710U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10750H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10810U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10850H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10870H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-10875H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11370H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11375H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11390H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11600H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1160G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1165G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11800H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1180G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11850H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-11850HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1185G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1185G7E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1185GRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1195G7"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1250U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1255U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1255UL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1260P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1260U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12650H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12650HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1265U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1265UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1265UL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12700TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1270P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1270PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12800H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12800HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12800HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12800HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1280P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-12850HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1355U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1360P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13620H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13650HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1365U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1365UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13700TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13705H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1370P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-1370PE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13790F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13800H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13800HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-13850HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-14700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-14700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-14700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-14700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-14700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-7800X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-7820HQ"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-7820X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8086K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8500Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8550U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8557U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8559U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8565U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8569U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8650U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8665U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8665UE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8700B"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8705G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8706G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8709G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8750H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8809G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-8850H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9700TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9750H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9750HF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9800X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9850H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9850HE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i7-9850HL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10850K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10885H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10900X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10920X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10940X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10980HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-10980XE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11950H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-11980HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900KS"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12900TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-12950HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900KS"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13900TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13905H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13950HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-13980HX"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-14900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-14900F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-14900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-14900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-14900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-7900X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-7920X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-7940X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-7960X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-7980XE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-8950HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9820X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9880H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900K"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900KF"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900KS"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9900X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9920X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9940X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9960X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9980HK"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "i9-9980XE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "m3-8100Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 5-125H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 5-125U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 5-134U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 5-135H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 5-135U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 7-155H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 7-155U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 7-164U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 7-165H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 7-165U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Core™",
+    "model": "Ultra 9-185H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 4417U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 4425Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 5405U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 6405U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 6500Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 6805"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 7505"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 8500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold 8505"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5420"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5420T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5600E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5600T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G5620"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6400E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6400TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6405"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6405T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6500"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6500T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6505"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6505T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6600"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G6605"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G7400"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G7400E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G7400T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Gold G7400TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "J6426"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "N6415"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver J5005"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver J5040"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver N5000"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver N5030"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver N6000"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Pentium®",
+    "model": "Silver N6005"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "N100"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "N200"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "N50"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "N95"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "N97"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "U300"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Processor",
+    "model": "U300E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Bronze 3104"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Bronze 3106"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Bronze 3204"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Bronze 3206R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1702"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1712TR"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1713NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1713NTE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1714"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1715TER"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1718T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1722NE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1726"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1732TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1733NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1735TR"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1736"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1736NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1739"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1746TER"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1747NTE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1748TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-1749NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2712T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2733NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2738"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2752NTE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2752TER"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2753NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2766NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2775TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2776NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2779"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2786NTE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2795NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2796NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2796TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2798NT"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "D-2799"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2104G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2124"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2124G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2126G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2134"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2136"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2144G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2146G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2174G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2176G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2176M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2186G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2186M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2224"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2224G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2226G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2226GE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2234"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2236"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2244G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2246G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2254ME"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2254ML"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2274G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2276G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2276M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2276ME"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2276ML"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2278G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2278GE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2278GEL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2286G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2286M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "E-2288G"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5115"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5118"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5119T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5120"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5120T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5122"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5215"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5215L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5215M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5217"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5218"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5218B"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5218N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5218R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5218T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5220"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5220R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5220S"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5220T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5222"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5315Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5317"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5318N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5318S"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5318Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5320"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5320T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5415+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5416S"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5418Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 5420+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6126"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6126F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6126T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6128"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6130"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6130F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6130T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6132"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6134"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6136"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6138"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6138F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6138P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6138T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6140"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6142"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6142F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6144"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6146"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6148"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6148F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6150"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6152"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6154"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6208U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6209U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6210U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6212U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6222V"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6226"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6226R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6230"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6230N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6230R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6230T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6234"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6238"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6238L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6238M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6238R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6238T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6240"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6240L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6240M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6240R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6240Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6242"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6242R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6244"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6246"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6246R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6248"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6248R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6250"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6250L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6252"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6252N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6254"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6256"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6258R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6262V"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6312U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6314U"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6326"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6330"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6330N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6334"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6336Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6338"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6338N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6338T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6342"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6346"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6348"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6354"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6416H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6418H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6430"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6438Y+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Gold 6442Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8153"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8156"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8158"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8160"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8160F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8160T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8164"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8168"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8170"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8171M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8176"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8176F"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8180"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8253"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8256"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8260"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8260L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8260M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8260Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8268"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8270"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8272CL"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8276"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8276L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8276M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8280"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8280L"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8280M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8351N"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8352M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8352S"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8352V"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8352Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8358"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8358P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8360Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8362"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8368"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8368Q"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8380"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8452Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8460Y+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8468"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8470"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8480+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 8490H"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 9221"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 9222"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 9242"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Platinum 9282"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4108"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4109T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4110"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4112"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4114"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4114T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4116"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4116T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4208"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4209T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4210"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4210R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4210T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4214"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4214R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4214Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4215"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4215R"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4216"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4309Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4310"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4310T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4314"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4316"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4410T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4410Y"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "Silver 4416+"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-10855M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-10885M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11055M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11155MLE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11155MRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11555MLE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11555MRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11855M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11865MLE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11865MRE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-11955M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1250"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1250E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1250P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1250TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1270"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1270E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1270P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1270TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1290"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1290E"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1290P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1290T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1290TE"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1350"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1350P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1370"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1370P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1390"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1390P"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-1390T"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2102"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2104"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2123"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2125"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2133"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2135"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2145"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2155"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2175"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2195"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2223"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2225"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2235"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2245"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2255"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2265"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2275"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-2295"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3175X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3223"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3225"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3235"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W3-2423"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W3-2425"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W3-2435"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3245"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3245M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3265"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3265M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3275"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3275M"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3323"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3335"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3345"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3365"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W-3375"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-2445"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-2455X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-2465X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-3423"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-3425"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-3433"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W5-3435X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W7-2475X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W7-2495X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W7-3445"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W7-3455"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W7-3465X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W9-3475X"
+  },
+  {
+    "manufacturer": "Intel®",
+    "brand": "Xeon®",
+    "model": "W9-3495X"
+  }
+]
