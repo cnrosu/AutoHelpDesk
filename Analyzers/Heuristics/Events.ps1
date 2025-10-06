@@ -12,6 +12,43 @@ $eventsModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'Events'
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Authentication.ps1')
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Vpn.ps1')
 
+function ConvertTo-LogView {
+    param(
+        $Node
+    )
+
+    $out = [pscustomobject]@{
+        Events = @()
+        Error  = $null
+    }
+
+    if ($null -eq $Node) {
+        return $out
+    }
+
+    if ($Node -is [hashtable] -or $Node -is [psobject]) {
+        if ($Node.PSObject.Properties['Events']) {
+            $out.Events = @($Node.Events)
+        } else {
+            $out.Events = @($Node)
+        }
+
+        if ($Node.PSObject.Properties['Error']) {
+            $out.Error = $Node.Error
+        }
+
+        return $out
+    }
+
+    if ($Node -is [System.Collections.IEnumerable] -and -not ($Node -is [string])) {
+        $out.Events = @($Node)
+        return $out
+    }
+
+    $out.Events = @($Node)
+    return $out
+}
+
 function Invoke-EventsHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -39,13 +76,37 @@ function Invoke-EventsHeuristics {
             foreach ($logName in @('System','Application','GroupPolicy')) {
                 Write-HeuristicDebug -Source 'Events' -Message ('Inspecting {0} log entries' -f $logName)
                 if (-not $payload.PSObject.Properties[$logName]) { continue }
-                $entries = $payload.$logName
-                if ($entries -and -not $entries.Error) {
-                    $logSubcategory = ("{0} Event Log" -f $logName)
+
+                $logView = ConvertTo-LogView $payload.$logName
+                $entries = @($logView.Events | Where-Object { $_ -ne $null })
+                $logError = $logView.Error
+
+                $logSubcategory = ("{0} Event Log" -f $logName)
+
+                $errorEvidence = $null
+                if ($null -ne $logError) {
+                    if ($logError -is [System.Collections.IEnumerable] -and -not ($logError -is [string])) {
+                        $filteredErrors = @($logError | Where-Object { $_ })
+                        if ($filteredErrors.Count -gt 0) {
+                            $errorEvidence = $filteredErrors
+                        }
+                    } else {
+                        $errorEvidence = $logError
+                    }
+                }
+
+                if ($errorEvidence) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $errorEvidence -Subcategory $logSubcategory
+                    continue
+                }
+
+                if ($entries) {
                     $errorCount = ($entries | Where-Object { $_.LevelDisplayName -eq 'Error' }).Count
                     $warnCount = ($entries | Where-Object { $_.LevelDisplayName -eq 'Warning' }).Count
+
                     Add-CategoryCheck -CategoryResult $result -Name ("{0} log errors" -f $logName) -Status ([string]$errorCount)
                     Add-CategoryCheck -CategoryResult $result -Name ("{0} log warnings" -f $logName) -Status ([string]$warnCount)
+
                     if ($logName -eq 'GroupPolicy') {
                         if ($errorCount -gt 0) {
                             Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory
@@ -58,9 +119,6 @@ function Invoke-EventsHeuristics {
                             Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log, indicating noisy or unhealthy logs." -f $logName) -Subcategory $logSubcategory
                         }
                     }
-                } elseif ($entries.Error) {
-                    $logSubcategory = ("{0} Event Log" -f $logName)
-                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $entries.Error -Subcategory $logSubcategory
                 }
             }
 

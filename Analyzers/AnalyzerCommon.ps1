@@ -224,6 +224,17 @@ function Add-CategoryIssue {
 
     $source = Get-HeuristicSourceMetadata
 
+    if ($PSBoundParameters.ContainsKey('Evidence')) {
+        if ($Evidence -is [System.Collections.IEnumerable] -and -not ($Evidence -is [string])) {
+            $sanitizedEvidence = @($Evidence | Where-Object { $_ })
+            if ($sanitizedEvidence.Count -gt 0) {
+                $Evidence = $sanitizedEvidence
+            } else {
+                $Evidence = $null
+            }
+        }
+    }
+
     $entry = [ordered]@{
         Severity    = $Severity
         Title       = $Title
