@@ -654,6 +654,15 @@ function Encode-Html([string]$s){
   }
 }
 
+function Encode-HtmlAttribute([string]$s){
+  if ($null -eq $s) { return "" }
+  try {
+    return [System.Web.HttpUtility]::HtmlAttributeEncode($s)
+  } catch {
+    try { return [System.Net.WebUtility]::HtmlEncode([string]$s) } catch { return [string]$s }
+  }
+}
+
 function New-ReportSection {
   param(
     [string]$Title,
@@ -710,6 +719,18 @@ function New-IssueCardHtml {
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
     [void]$bodyBuilder.Append("<pre class='report-pre'>$evidenceHtml</pre>")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($Entry.Remediation)) {
+    $remediationHtml = Encode-Html $Entry.Remediation
+    $remediationHtml = $remediationHtml -replace "(\r\n|\n|\r)", '<br>'
+    [void]$bodyBuilder.Append("<div class='report-card__remediation'><h4 class='report-card__remediation-title'>Remediation</h4><p class='report-card__remediation-text'>$remediationHtml</p></div>")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($Entry.RemediationScript)) {
+    $scriptHtml = Encode-Html $Entry.RemediationScript
+    $scriptAttr = Encode-HtmlAttribute $Entry.RemediationScript
+    [void]$bodyBuilder.Append("<div class='report-card__remediation-script'><div class='code-block'><button type='button' class='code-block__copy' data-copy-code='$scriptAttr'>Copy PowerShell</button><pre class='report-pre report-pre--code'><code>$scriptHtml</code></pre></div></div>")
   }
 
   $badgeFragment = "<span class='report-badge report-badge--$cardClass'>$badgeHtml</span>"

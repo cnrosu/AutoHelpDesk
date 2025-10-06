@@ -2700,9 +2700,7 @@ function Invoke-NetworkHeuristics {
                 if ($descriptionText) { $evidence['Description'] = $descriptionText }
                 if ($linkText) { $evidence['LinkSpeed'] = $linkText }
                 if ($policyText) { $evidence['Policy'] = $policyText }
-                $evidence['remediation'] = 'Re-enable auto-negotiation on the NIC and replace the cable or switch port until it links at gigabit full duplex.'
-
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput." -f $alias) -Evidence $evidence -Subcategory 'Adapters'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ("Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput." -f $alias) -Evidence $evidence -Subcategory 'Adapters' -Remediation 'Re-enable auto-negotiation on the NIC and replace the cable or switch port until it links at gigabit full duplex.'
                 continue
             }
 
@@ -2715,9 +2713,7 @@ function Invoke-NetworkHeuristics {
                 if ($descriptionText) { $evidence['Description'] = $descriptionText }
                 if ($policyText) { $evidence['Policy'] = $policyText } elseif ($policyBits) { $evidence['Policy'] = ('{0:N0} bps' -f $policyBits) }
                 if ($linkText) { $evidence['LinkSpeed'] = $linkText } elseif ($linkBits) { $evidence['LinkSpeed'] = ('{0:N0} bps' -f $linkBits) }
-                $evidence['remediation'] = 'Set the NIC and switch port to matching speed/duplex or leave both on auto-negotiation so the link meets policy.'
-
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match." -f $alias, $policyLabel, $linkLabel) -Evidence $evidence -Subcategory 'Adapters'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match." -f $alias, $policyLabel, $linkLabel) -Evidence $evidence -Subcategory 'Adapters' -Remediation 'Set the NIC and switch port to matching speed/duplex or leave both on auto-negotiation so the link meets policy.'
             }
         }
     }

@@ -208,6 +208,171 @@ function Format-AnalyzerEvidence {
     }
 }
 
+function Resolve-RemediationKeyType {
+    param([string]$Name)
+
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
+
+    $trimmed = $Name.Trim()
+    if (-not $trimmed) { return $null }
+
+    if ($trimmed -match '^(?i)(remediation(script|code)|powershell(script|code))$') { return 'script' }
+    if ($trimmed -match '^(?i)remediation(steps?|notes?|text|description)?$') { return 'text' }
+
+    return $null
+}
+
+function ConvertTo-RemediationString {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [string]) { return $Value.Trim() }
+    if ($Value -is [ValueType]) { return $Value.ToString() }
+
+    $formatted = Format-AnalyzerEvidence -Value $Value
+    if ([string]::IsNullOrWhiteSpace($formatted)) { return $null }
+    return $formatted.Trim()
+}
+
+function Normalize-EvidenceValue {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [string]) {
+        return if ([string]::IsNullOrWhiteSpace($Value)) { $null } else { $Value }
+    }
+
+    if ($Value -is [ValueType]) { return $Value }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $normalized = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $normalizedValue = Normalize-EvidenceValue -Value $Value[$key]
+            if ($null -ne $normalizedValue) { $normalized[$key] = $normalizedValue }
+        }
+        if ($normalized.Count -eq 0) { return $null }
+        return $normalized
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $list = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) {
+            $normalizedValue = Normalize-EvidenceValue -Value $item
+            if ($null -ne $normalizedValue) { $list.Add($normalizedValue) | Out-Null }
+        }
+        if ($list.Count -eq 0) { return $null }
+        return $list
+    }
+
+    if ($Value -is [psobject]) {
+        $normalized = [ordered]@{}
+        foreach ($prop in $Value.PSObject.Properties) {
+            $normalizedValue = Normalize-EvidenceValue -Value $prop.Value
+            if ($null -ne $normalizedValue) { $normalized[$prop.Name] = $normalizedValue }
+        }
+        if ($normalized.Count -eq 0) { return $null }
+        return $normalized
+    }
+
+    return $Value
+}
+
+function Split-EvidenceRemediation {
+    param(
+        $Value,
+        [System.Collections.Generic.List[string]]$Texts,
+        [System.Collections.Generic.List[string]]$Scripts
+    )
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [psobject] -and -not ($Value -is [string]) -and -not ($Value -is [ValueType])) {
+        $dict = [ordered]@{}
+        foreach ($prop in $Value.PSObject.Properties) {
+            $key = [string]$prop.Name
+            $type = Resolve-RemediationKeyType -Name $key
+            if ($type) {
+                $text = ConvertTo-RemediationString -Value $prop.Value
+                if ($text) {
+                    if ($type -eq 'script') {
+                        $Scripts.Add($text) | Out-Null
+                    } else {
+                        $Texts.Add($text) | Out-Null
+                    }
+                }
+                continue
+            }
+
+            $child = Split-EvidenceRemediation -Value $prop.Value -Texts $Texts -Scripts $Scripts
+            $child = Normalize-EvidenceValue -Value $child
+            if ($null -ne $child) { $dict[$key] = $child }
+        }
+
+        if ($dict.Count -eq 0) { return $null }
+        return $dict
+    }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $dict = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $type = Resolve-RemediationKeyType -Name ([string]$key)
+            if ($type) {
+                $text = ConvertTo-RemediationString -Value $Value[$key]
+                if ($text) {
+                    if ($type -eq 'script') {
+                        $Scripts.Add($text) | Out-Null
+                    } else {
+                        $Texts.Add($text) | Out-Null
+                    }
+                }
+                continue
+            }
+
+            $child = Split-EvidenceRemediation -Value $Value[$key] -Texts $Texts -Scripts $Scripts
+            $child = Normalize-EvidenceValue -Value $child
+            if ($null -ne $child) { $dict[$key] = $child }
+        }
+
+        if ($dict.Count -eq 0) { return $null }
+        return $dict
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $list = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) {
+            $child = Split-EvidenceRemediation -Value $item -Texts $Texts -Scripts $Scripts
+            $child = Normalize-EvidenceValue -Value $child
+            if ($null -ne $child) { $list.Add($child) | Out-Null }
+        }
+        if ($list.Count -eq 0) { return $null }
+        return $list
+    }
+
+    if ($Value -is [string]) {
+        $trimmed = $Value.Trim()
+        if (-not $trimmed) { return $null }
+
+        $remediationMatch = [regex]::Match($trimmed, '^(?i)Remediation(?:\s*Steps?)?\s*:?\s*(.+)$')
+        if ($remediationMatch.Success) {
+            $text = $remediationMatch.Groups[1].Value.Trim()
+            if ($text) { $Texts.Add($text) | Out-Null }
+            return $null
+        }
+
+        $scriptMatch = [regex]::Match($trimmed, '^(?i)(?:PowerShell\s*(?:5|v5)?\s*)?(?:Remediation|Script)\s*:?\s*(.+)$')
+        if ($scriptMatch.Success) {
+            $scriptText = $scriptMatch.Groups[1].Value.Trim()
+            if ($scriptText) { $Scripts.Add($scriptText) | Out-Null }
+            return $null
+        }
+
+        return $Value
+    }
+
+    return $Value
+}
+
 function Convert-ToIssueCard {
     param(
         $Category,
@@ -230,8 +395,36 @@ function Convert-ToIssueCard {
     Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data $convertData
 
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
-    $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
-    $hasNewLines = $detail -match "\r|\n"
+
+    $remediationTexts = New-Object System.Collections.Generic.List[string]
+    $remediationScripts = New-Object System.Collections.Generic.List[string]
+    $cleanEvidence = Split-EvidenceRemediation -Value $Issue.Evidence -Texts $remediationTexts -Scripts $remediationScripts
+    $cleanEvidence = Normalize-EvidenceValue -Value $cleanEvidence
+
+    if ($Issue.PSObject.Properties['Remediation'] -and -not [string]::IsNullOrWhiteSpace($Issue.Remediation)) {
+        $remediationTexts.Add([string]$Issue.Remediation) | Out-Null
+    }
+
+    if ($Issue.PSObject.Properties['RemediationScript'] -and -not [string]::IsNullOrWhiteSpace($Issue.RemediationScript)) {
+        $remediationScripts.Add([string]$Issue.RemediationScript) | Out-Null
+    }
+
+    $detail = Format-AnalyzerEvidence -Value $cleanEvidence
+    $hasDetail = -not [string]::IsNullOrWhiteSpace($detail)
+    $hasNewLines = $hasDetail -and ($detail -match "\r|\n")
+
+    $remediationParts = ($remediationTexts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $remediationText = $null
+    if ($remediationParts -and $remediationParts.Count -gt 0) {
+        $separator = [Environment]::NewLine + [Environment]::NewLine
+        $remediationText = [string]::Join($separator, $remediationParts)
+    }
+
+    $remediationScript = $null
+    $remediationScriptCandidates = ($remediationScripts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($remediationScriptCandidates -and $remediationScriptCandidates.Count -gt 0) {
+        $remediationScript = [string]$remediationScriptCandidates[0]
+    }
 
     $card = [pscustomobject]@{
         Severity    = $severity
@@ -239,12 +432,14 @@ function Convert-ToIssueCard {
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
-        Explanation = if ($hasNewLines) { $null } else { $detail }
-        Evidence    = if ($hasNewLines) { $detail } else { $null }
+        Explanation = if ($hasDetail -and -not $hasNewLines) { $detail } else { $null }
+        Evidence    = if ($hasDetail -and $hasNewLines) { $detail } else { $null }
         Source     = $issueSource
+        Remediation = $remediationText
+        RemediationScript = $remediationScript
     }
 
-    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence; HasRemediation = [bool]$card.Remediation; HasRemediationScript = [bool]$card.RemediationScript }
     foreach ($key in $issueSourceData.Keys) {
         $generatedData[$key] = $issueSourceData[$key]
     }
@@ -1413,6 +1608,122 @@ function New-AnalyzerHtml {
     }
   }
 
+  function copyTextToClipboard(text) {
+    if (!text) {
+      return Promise.reject(new Error('No text to copy.'));
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(text);
+    }
+
+    return new Promise(function (resolve, reject) {
+      var textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      textarea.style.width = '1px';
+      textarea.style.height = '1px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      try {
+        var successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (successful) {
+          resolve();
+        } else {
+          reject(new Error('Copy command was unsuccessful.'));
+        }
+      } catch (err) {
+        document.body.removeChild(textarea);
+        reject(err);
+      }
+    });
+  }
+
+  function resetCopyButton(button) {
+    if (!button) {
+      return;
+    }
+
+    var original = button.getAttribute('data-original-label');
+    if (original) {
+      button.textContent = original;
+    }
+    button.classList.remove('is-success');
+    button.classList.remove('is-error');
+    var timeoutId = button.getAttribute('data-copy-timeout');
+    if (timeoutId) {
+      window.clearTimeout(Number(timeoutId));
+      button.removeAttribute('data-copy-timeout');
+    }
+  }
+
+  function showCopyFeedback(button, state) {
+    if (!button) {
+      return;
+    }
+
+    if (!button.getAttribute('data-original-label')) {
+      button.setAttribute('data-original-label', button.textContent || 'Copy');
+    }
+
+    resetCopyButton(button);
+
+    var label = null;
+    if (state === 'success') {
+      label = button.getAttribute('data-success-label') || 'Copied!';
+      button.classList.add('is-success');
+    } else if (state === 'error') {
+      label = button.getAttribute('data-error-label') || 'Copy failed';
+      button.classList.add('is-error');
+    } else {
+      return;
+    }
+
+    button.textContent = label;
+
+    var timeout = window.setTimeout(function () {
+      resetCopyButton(button);
+    }, 2000);
+    button.setAttribute('data-copy-timeout', String(timeout));
+  }
+
+  function bindCopyButtons(root) {
+    var scope = root || document;
+    var buttons = toArray(scope.querySelectorAll('[data-copy-code]'));
+    if (!buttons.length) {
+      return;
+    }
+
+    buttons.forEach(function (button) {
+      if (!button.getAttribute('data-original-label')) {
+        button.setAttribute('data-original-label', button.textContent || 'Copy');
+      }
+
+      button.addEventListener('click', function () {
+        var code = button.getAttribute('data-copy-code');
+        if (!code) {
+          showCopyFeedback(button, 'error');
+          return;
+        }
+
+        copyTextToClipboard(code)
+          .then(function () {
+            showCopyFeedback(button, 'success');
+          })
+          .catch(function () {
+            showCopyFeedback(button, 'error');
+          });
+      });
+    });
+  }
+
   function handleKey(event, tabs, currentTab, tabset) {
     var key = event.key || event.keyCode;
     var currentIndex = -1;
@@ -1527,6 +1838,7 @@ function New-AnalyzerHtml {
     tabsets.forEach(function (tabset) {
       initReportTabs(tabset);
     });
+    bindCopyButtons(document);
   });
 })();
 </script>

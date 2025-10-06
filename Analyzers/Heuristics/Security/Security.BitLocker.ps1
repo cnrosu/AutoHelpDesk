@@ -124,10 +124,9 @@ function Invoke-SecurityBitLockerChecks {
                     $null = $mountSummary.Add($mountLabel)
                     $null = $evidenceLines.Add(('{0} -> Protectors: {1}' -f $mountLabel, $protectorSummary))
                 }
-                $null = $evidenceLines.Add('Remediation: Configure TPM+PIN BitLocker protectors where mandated by policy to enforce strong pre-boot authentication.')
                 $volumeList = ($mountSummary | Sort-Object -Unique) -join ', '
                 if (-not $volumeList) { $volumeList = 'Unknown volume' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("System volume(s) {0} only use password-based BitLocker protectors, so attackers who obtain those secrets can unlock the device." -f $volumeList) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'BitLocker'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("System volume(s) {0} only use password-based BitLocker protectors, so attackers who obtain those secrets can unlock the device." -f $volumeList) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'BitLocker' -Remediation 'Configure TPM+PIN BitLocker protectors where mandated by policy to enforce strong pre-boot authentication.'
             }
 
             if ($osTpmPinVolumes.Count -gt 0) {

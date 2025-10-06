@@ -184,15 +184,28 @@ function Add-VpnIssue {
         $Services,
         [string]$Subcategory,
         [string]$Remediation,
+        [string]$RemediationScript,
         [hashtable]$ExtraEvidence
     )
 
     $evidence = New-VpnEvidence -Connection $Connection -Network $Network -Certificates $Certificates -Services $Services -Additional $ExtraEvidence
-    if ($Remediation) {
-        $evidence['remediation'] = $Remediation
+    $params = @{
+        CategoryResult = $CategoryResult
+        Severity       = $Severity
+        Title          = $Title
+        Evidence       = $evidence
+        Subcategory    = $Subcategory
     }
 
-    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $Severity -Title $Title -Evidence $evidence -Subcategory $Subcategory
+    if (-not [string]::IsNullOrWhiteSpace($Remediation)) {
+        $params['Remediation'] = $Remediation
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($RemediationScript)) {
+        $params['RemediationScript'] = $RemediationScript
+    }
+
+    Add-CategoryIssue @params
 }
 
 function Add-VpnHealthyFinding {
@@ -420,15 +433,23 @@ function Invoke-NetworkVpnAnalysis {
         foreach ($name in @('RasMan','IKEEXT')) {
             $entry = if ($services.PSObject.Properties[$name]) { $services.$name } else { $null }
             if (-not $entry) {
-                Add-CategoryIssue -CategoryResult $category -Severity 'high' -Title ("{0} service missing; VPN stack broken." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Reinstall or repair the Windows VPN components.' -ExtraEvidence @{}
+                Add-VpnIssue -CategoryResult $category -Severity 'high' -Title ("{0} service missing; VPN stack broken." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Reinstall or repair the Windows VPN components.' -ExtraEvidence @{}
                 continue
             }
             $status = if ($entry.PSObject.Properties['Status']) { [string]$entry.Status } else { $null }
             $start = if ($entry.PSObject.Properties['StartType']) { [string]$entry.StartType } else { $null }
             if ($status -and $status -ne 'Running') {
-                Add-VpnIssue -CategoryResult $category -Severity 'high' -Title ("{0} service not running; VPN connections will fail." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Start the service and configure Automatic start mode.' -ExtraEvidence @{}
+                $remediationScript = @"
+Set-Service -Name "$name" -StartupType Automatic
+Start-Service -Name "$name"
+"@.Trim()
+                Add-VpnIssue -CategoryResult $category -Severity 'high' -Title ("{0} service not running; VPN connections will fail." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Start the service and configure Automatic start mode.' -RemediationScript $remediationScript -ExtraEvidence @{}
             } elseif ($start -and $start -match 'Disabled') {
-                Add-VpnIssue -CategoryResult $category -Severity 'high' -Title ("{0} service disabled; VPN stack unavailable." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Set the service to Manual or Automatic and restart the device.' -ExtraEvidence @{}
+                $remediationScript = @"
+Set-Service -Name "$name" -StartupType Manual
+Start-Service -Name "$name"
+"@.Trim()
+                Add-VpnIssue -CategoryResult $category -Severity 'high' -Title ("{0} service disabled; VPN stack unavailable." -f $name) -Connection $null -Network $network -Certificates $certificates -Services $services -Subcategory 'Services' -Remediation 'Set the service to Manual or Automatic and restart the device.' -RemediationScript $remediationScript -ExtraEvidence @{}
             }
         }
     }
