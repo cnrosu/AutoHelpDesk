@@ -592,8 +592,9 @@ function Get-FailedCollectorReports {
             $status = if ($result.PSObject.Properties['Success']) { [bool]$result.Success } else { $null }
             if ($status -eq $false) {
                 $detail = if ($result.PSObject.Properties['Error'] -and $result.Error) { [string]$result.Error } else { 'Collector reported failure.' }
+                $collectorKeyLabel = if ($displayName) { $displayName } else { 'Collector' }
                 $failures.Add([pscustomobject]@{
-                        Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
+                        Key     = $collectorKeyLabel
                         Status  = 'Execution failed'
                         Details = $detail
                         Path    = $scriptPath
@@ -604,8 +605,9 @@ function Get-FailedCollectorReports {
 
             if ($status -eq $true) {
                 if ($null -eq $output -or ([string]::IsNullOrWhiteSpace([string]$output))) {
+                    $collectorKeyLabel = if ($displayName) { $displayName } else { 'Collector' }
                     $failures.Add([pscustomobject]@{
-                            Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
+                            Key     = $collectorKeyLabel
                             Status  = 'No output'
                             Details = 'Collector did not return a path or payload reference.'
                             Path    = $scriptPath
@@ -633,8 +635,9 @@ function Get-FailedCollectorReports {
 
                 if (-not $resolvedAny -and $missing.Count -gt 0) {
                     $detailText = "Expected file not found: {0}" -f ($missing -join ', ')
+                    $collectorKeyLabel = if ($displayName) { $displayName } else { 'Collector' }
                     $failures.Add([pscustomobject]@{
-                            Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
+                            Key     = $collectorKeyLabel
                             Status  = 'Output missing'
                             Details = $detailText
                             Path    = $scriptPath
@@ -662,8 +665,9 @@ function Get-FailedCollectorReports {
                 $data = if ($entry.PSObject.Properties['Data']) { $entry.Data } else { $null }
 
                 if ($data -and $data.PSObject.Properties['Error'] -and $data.Error) {
+                    $artifactKeyLabel = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
                     $failures.Add([pscustomobject]@{
-                            Key     = $( if ($path) { [System.IO.Path]::GetFileName($path) } else { $key } )
+                            Key     = $artifactKeyLabel
                             Status  = 'Parse error'
                             Details = [string]$data.Error
                             Path    = $path
@@ -687,8 +691,9 @@ function Get-FailedCollectorReports {
                     }
 
                     if ($isEmpty) {
+                        $artifactKeyLabel = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
                         $failures.Add([pscustomobject]@{
-                                Key     = $( if ($path) { [System.IO.Path]::GetFileName($path) } else { $key } )
+                                Key     = $artifactKeyLabel
                                 Status  = 'Empty output'
                                 Details = 'Captured file contained no payload.'
                                 Path    = $path
