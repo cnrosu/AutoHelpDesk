@@ -20,7 +20,7 @@ function Invoke-OutlookConnectivityHeuristic {
     if ($connectivityArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $connectivityArtifact)
         Write-HeuristicDebug -Source 'Office' -Message 'Evaluating Outlook connectivity payload' -Data ([ordered]@{
-            OstCount = if ($payload -and $payload.OstFiles) { $payload.OstFiles.Count } else { 0 }
+            OstCount = $( if ($payload -and $payload.OstFiles) { $payload.OstFiles.Count } else { 0 } )
         })
 
         if ($payload -and $payload.OstFiles) {

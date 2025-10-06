@@ -18,7 +18,7 @@ function Invoke-PrintingHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Printing' -Message 'Starting printing heuristics' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $result = New-CategoryResult -Name 'Printing'

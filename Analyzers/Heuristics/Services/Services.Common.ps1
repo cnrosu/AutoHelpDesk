@@ -114,9 +114,9 @@ function Get-ServiceStateInfo {
         Exists              = $true
         Name                = $Name
         DisplayName         = $displayName
-        Status              = if ($status) { $status } else { 'Unknown' }
+        Status              = $( if ($status) { $status } else { 'Unknown' } )
         StatusNormalized    = Normalize-ServiceStateValue -Value $status
-        StartMode           = if ($startMode) { $startMode } else { 'Unknown' }
+        StartMode           = $( if ($startMode) { $startMode } else { 'Unknown' } )
         StartModeNormalized = Normalize-ServiceStartValue -Value $startMode
     }
 }
@@ -194,7 +194,7 @@ function ConvertTo-ServiceCollection {
 
         $entry = [ordered]@{
             Name                 = $name
-            DisplayName          = if ($displayName) { $displayName } else { $name }
+            DisplayName          = $( if ($displayName) { $displayName } else { $name } )
             Status               = $statusSource
             State                = $stateValue
             StartMode            = $startSource

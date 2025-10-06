@@ -19,7 +19,7 @@ function Invoke-SecurityAutorunChecks {
         if ($autorunPayload -and $autorunPayload.ExplorerPolicies) {
             $autorunEntries = ConvertTo-List $autorunPayload.ExplorerPolicies
             Write-HeuristicDebug -Source 'Security' -Message 'Analyzing autorun policy entries' -Data ([ordered]@{
-                EntryCount = if ($autorunEntries) { $autorunEntries.Count } else { 0 }
+                EntryCount = $( if ($autorunEntries) { $autorunEntries.Count } else { 0 } )
             })
 
             $preferredPaths = @(

@@ -86,7 +86,7 @@ function Invoke-ServicesHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Services' -Message 'Invoke-ServicesHeuristics: START' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $result = New-CategoryResult -Name 'Services'
@@ -258,7 +258,7 @@ function Invoke-ServicesHeuristics {
     Write-HeuristicDebug -Source 'Services' -Message 'Resolved services artifact' -Data ([ordered]@{
         Found      = [bool]$selectedArtifact
         Candidates = (($artifactCandidates | ForEach-Object { $_.Key }) -join ', ')
-        Selected   = if ($selectedCandidate) { $selectedCandidate.Key } else { '(none)' }
+        Selected   = $( if ($selectedCandidate) { $selectedCandidate.Key } else { '(none)' } )
     })
 
     if (-not $selectedArtifact) {

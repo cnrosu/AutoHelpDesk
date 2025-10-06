@@ -56,7 +56,7 @@ function Invoke-EventsHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Events' -Message 'Starting event log heuristics' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $deviceName = Get-EventsCurrentDeviceName -Context $Context

@@ -180,8 +180,8 @@ function Get-PrinterDictionaries {
                     JobSize       = $job.JobSize
                     PagesPrinted  = $job.PagesPrinted
                     TotalPages    = $job.TotalPages
-                    SubmittedBy   = if ($job.PSObject.Properties['UserName']) { [string]$job.UserName } else { $null }
-                    SubmittedTime = if ($submitted) { $submitted.ToString('o') } else { $null }
+                    SubmittedBy   = $( if ($job.PSObject.Properties['UserName']) { [string]$job.UserName } else { $null } )
+                    SubmittedTime = $( if ($submitted) { $submitted.ToString('o') } else { $null } )
                     AgeMinutes    = $ageMinutes
                 })
             }
@@ -211,12 +211,12 @@ function Get-PrinterDictionaries {
 
         $printerDict = [ordered]@{
             Name           = $printerName
-            ShareName      = if ($printer.PSObject.Properties['ShareName']) { [string]$printer.ShareName } else { $null }
+            ShareName      = $( if ($printer.PSObject.Properties['ShareName']) { [string]$printer.ShareName } else { $null } )
             ComputerName   = $computerName
-            Comment        = if ($printer.PSObject.Properties['Comment']) { [string]$printer.Comment } else { $null }
-            Location       = if ($printer.PSObject.Properties['Location']) { [string]$printer.Location } else { $null }
-            QueueStatus    = if ($printer.PSObject.Properties['QueueStatus']) { [string]$printer.QueueStatus } else { $null }
-            PrinterStatus  = if ($printer.PSObject.Properties['PrinterStatus']) { [string]$printer.PrinterStatus } else { $null }
+            Comment        = $( if ($printer.PSObject.Properties['Comment']) { [string]$printer.Comment } else { $null } )
+            Location       = $( if ($printer.PSObject.Properties['Location']) { [string]$printer.Location } else { $null } )
+            QueueStatus    = $( if ($printer.PSObject.Properties['QueueStatus']) { [string]$printer.QueueStatus } else { $null } )
+            PrinterStatus  = $( if ($printer.PSObject.Properties['PrinterStatus']) { [string]$printer.PrinterStatus } else { $null } )
             WorkOffline    = $workOffline
             Default        = $defaultPrinter
             PortName       = $portName
@@ -351,7 +351,7 @@ function Convert-Event {
         Id          = $Event.Id
         Level       = $Event.LevelDisplayName
         Provider    = $Event.ProviderName
-        TimeCreated = if ($Event.TimeCreated) { $Event.TimeCreated.ToString('o') } else { $null }
+        TimeCreated = $( if ($Event.TimeCreated) { $Event.TimeCreated.ToString('o') } else { $null } )
         Message     = ($Event.Message -replace '\s+', ' ').Trim()
     }
 }
@@ -410,7 +410,7 @@ function Collect-PrintEvents {
             WarningCount = ($operationalEvents | Where-Object { $_.LevelDisplayName -eq 'Warning' }).Count
             Events       = $operationalConverted
         }
-        Errors = if ($errors -is [System.Collections.Generic.List[string]]) { $errors.ToArray() } else { $errors }
+        Errors = $( if ($errors -is [System.Collections.Generic.List[string]]) { $errors.ToArray() } else { $errors } )
     }
 }
 
@@ -423,8 +423,8 @@ function Invoke-PortTest {
 
     $testResult = [ordered]@{
         Name           = $Definition.Name
-        Port           = if ($Definition.ContainsKey('Port')) { $Definition.Port } else { $null }
-        Type           = if ($Definition.ContainsKey('Type')) { $Definition.Type } else { 'Tcp' }
+        Port           = $( if ($Definition.ContainsKey('Port')) { $Definition.Port } else { $null } )
+        Type           = $( if ($Definition.ContainsKey('Type')) { $Definition.Type } else { 'Tcp' } )
         Success        = $null
         RemoteAddress  = $null
         PingSucceeded  = $null

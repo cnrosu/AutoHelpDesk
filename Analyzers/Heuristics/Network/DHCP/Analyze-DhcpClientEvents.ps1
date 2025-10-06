@@ -58,9 +58,9 @@ foreach ($group in $grouped) {
     $evidence = [ordered]@{
         EventId       = [int]$group.Name
         Count         = $group.Count
-        LatestTime    = if ($latest.TimeCreated) { (ConvertFrom-Iso8601 $latest.TimeCreated).ToString('o') } else { $latest.TimeCreated }
-        FirstSeenTime = if ($first.TimeCreated) { (ConvertFrom-Iso8601 $first.TimeCreated).ToString('o') } else { $first.TimeCreated }
-        SampleMessage = if ($latest.Message) { Get-TopLines -Text $latest.Message -Count 20 } else { $null }
+        LatestTime    = $( if ($latest.TimeCreated) { (ConvertFrom-Iso8601 $latest.TimeCreated).ToString('o') } else { $latest.TimeCreated } )
+        FirstSeenTime = $( if ($first.TimeCreated) { (ConvertFrom-Iso8601 $first.TimeCreated).ToString('o') } else { $first.TimeCreated } )
+        SampleMessage = $( if ($latest.Message) { Get-TopLines -Text $latest.Message -Count 20 } else { $null } )
     }
 
     $description = if ($descriptionMap.ContainsKey($idText)) { $descriptionMap[$idText] } else { "DHCP client issue ($idText)" }

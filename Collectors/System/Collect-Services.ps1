@@ -23,7 +23,7 @@ function Get-ServiceMatrix {
 
     if ($inventory.Errors -and $inventory.Errors.Count -gt 0) {
         return [PSCustomObject]@{
-            Source = if ($inventory.Source) { $inventory.Source } else { 'ServiceInventory' }
+            Source = $( if ($inventory.Source) { $inventory.Source } else { 'ServiceInventory' } )
             Error  = ($inventory.Errors -join '; ')
         }
     }

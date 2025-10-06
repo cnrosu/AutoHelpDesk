@@ -77,9 +77,9 @@ function Get-Lan8021xDot3Events {
 
         $results += [ordered]@{
             timeCreatedUtc = $timeCreatedUtc
-            level          = if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null }
-            eventId        = if ($event.PSObject.Properties['Id']) { [int]$event.Id } else { $null }
-            provider       = if ($event.PSObject.Properties['ProviderName']) { [string]$event.ProviderName } else { $null }
+            level          = $( if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null } )
+            eventId        = $( if ($event.PSObject.Properties['Id']) { [int]$event.Id } else { $null } )
+            provider       = $( if ($event.PSObject.Properties['ProviderName']) { [string]$event.ProviderName } else { $null } )
             message        = $message
         }
     }
@@ -116,19 +116,19 @@ function Get-Lan8021xMachineCertificates {
             foreach ($eku in $cert.EnhancedKeyUsageList) {
                 if (-not $eku) { continue }
                 $ekuDetails += [ordered]@{
-                    friendlyName = if ($eku.PSObject.Properties['FriendlyName']) { [string]$eku.FriendlyName } else { $null }
-                    oid          = if ($eku.PSObject.Properties['Value']) { [string]$eku.Value } else { $null }
+                    friendlyName = $( if ($eku.PSObject.Properties['FriendlyName']) { [string]$eku.FriendlyName } else { $null } )
+                    oid          = $( if ($eku.PSObject.Properties['Value']) { [string]$eku.Value } else { $null } )
                 }
             }
         }
 
         $results += [ordered]@{
-            subject         = if ($cert.PSObject.Properties['Subject']) { [string]$cert.Subject } else { $null }
-            issuer          = if ($cert.PSObject.Properties['Issuer']) { [string]$cert.Issuer } else { $null }
-            thumbprint      = if ($cert.PSObject.Properties['Thumbprint']) { [string]$cert.Thumbprint } else { $null }
+            subject         = $( if ($cert.PSObject.Properties['Subject']) { [string]$cert.Subject } else { $null } )
+            issuer          = $( if ($cert.PSObject.Properties['Issuer']) { [string]$cert.Issuer } else { $null } )
+            thumbprint      = $( if ($cert.PSObject.Properties['Thumbprint']) { [string]$cert.Thumbprint } else { $null } )
             notBeforeUtc    = $notBeforeUtc
             notAfterUtc     = $notAfterUtc
-            hasPrivateKey   = if ($cert.PSObject.Properties['HasPrivateKey']) { [bool]$cert.HasPrivateKey } else { $null }
+            hasPrivateKey   = $( if ($cert.PSObject.Properties['HasPrivateKey']) { [bool]$cert.HasPrivateKey } else { $null } )
             enhancedKeyUsage = $ekuDetails
         }
     }
@@ -154,7 +154,7 @@ function Invoke-Main {
         $machineCerts  = Get-Lan8021xMachineCertificates
 
         $payload['netsh'] = [ordered]@{
-            interfaces = if ($interfacesRaw) {
+            interfaces = $( if ($interfacesRaw) {
                 if ($interfacesRaw -is [pscustomobject] -and $interfacesRaw.PSObject.Properties['Error'] -and $interfacesRaw.Error) {
                     $interfacesRaw
                 } else {
@@ -162,8 +162,8 @@ function Invoke-Main {
                 }
             } else {
                 $null
-            }
-            profiles = if ($profilesRaw) {
+            } )
+            profiles = $( if ($profilesRaw) {
                 if ($profilesRaw -is [pscustomobject] -and $profilesRaw.PSObject.Properties['Error'] -and $profilesRaw.Error) {
                     $profilesRaw
                 } else {
@@ -171,7 +171,7 @@ function Invoke-Main {
                 }
             } else {
                 $null
-            }
+            } )
         }
 
         $payload['events'] = [ordered]@{

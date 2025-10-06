@@ -118,8 +118,8 @@ function New-VpnEvidence {
             }
             $certSummary = [ordered]@{
                 thumbprintLast8 = $suffix
-                notAfterUtc     = if ($cert.PSObject.Properties['notAfterUtc']) { $cert.notAfterUtc } else { $null }
-                isExpired       = if ($cert.PSObject.Properties['isExpired']) { $cert.isExpired } else { $null }
+                notAfterUtc     = $( if ($cert.PSObject.Properties['notAfterUtc']) { $cert.notAfterUtc } else { $null } )
+                isExpired       = $( if ($cert.PSObject.Properties['isExpired']) { $cert.isExpired } else { $null } )
             }
         } else {
             $certSummary = [ordered]@{ status = 'not-found' }
@@ -130,16 +130,16 @@ function New-VpnEvidence {
     if ($Connection -and $Connection.PSObject.Properties['lastStatus'] -and $Connection.lastStatus) {
         $status = $Connection.lastStatus
         $lastStatusSummary = [ordered]@{
-            connected         = if ($status.PSObject.Properties['connected']) { $status.connected } else { $null }
-            connectedSinceUtc = if ($status.PSObject.Properties['connectedSinceUtc']) { $status.connectedSinceUtc } else { $null }
-            bytesIn           = if ($status.PSObject.Properties['bytesIn']) { $status.bytesIn } else { $null }
-            bytesOut          = if ($status.PSObject.Properties['bytesOut']) { $status.bytesOut } else { $null }
-            lastError         = if ($status.PSObject.Properties['lastError']) { $status.lastError } else { $null }
+            connected         = $( if ($status.PSObject.Properties['connected']) { $status.connected } else { $null } )
+            connectedSinceUtc = $( if ($status.PSObject.Properties['connectedSinceUtc']) { $status.connectedSinceUtc } else { $null } )
+            bytesIn           = $( if ($status.PSObject.Properties['bytesIn']) { $status.bytesIn } else { $null } )
+            bytesOut          = $( if ($status.PSObject.Properties['bytesOut']) { $status.bytesOut } else { $null } )
+            lastError         = $( if ($status.PSObject.Properties['lastError']) { $status.lastError } else { $null } )
         }
     }
 
     $evidence = [ordered]@{
-        vpnName             = if ($Connection) { $Connection.name } else { $null }
+        vpnName             = $( if ($Connection) { $Connection.name } else { $null } )
         vpnType             = $vpnType
         serverAddress       = $serverAddress
         splitTunneling      = $splitTunneling

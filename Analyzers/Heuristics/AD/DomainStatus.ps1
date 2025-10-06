@@ -19,7 +19,7 @@ function Resolve-AdDomainStatus {
                     DomainJoined = $systemPayload.ComputerSystem.PartOfDomain
                     Domain       = $systemPayload.ComputerSystem.Domain
                     Forest       = $null
-                    DomainRole   = if ($systemPayload.ComputerSystem.PSObject.Properties['DomainRole']) { $systemPayload.ComputerSystem.DomainRole } else { $null }
+                    DomainRole   = $( if ($systemPayload.ComputerSystem.PSObject.Properties['DomainRole']) { $systemPayload.ComputerSystem.DomainRole } else { $null } )
                 }
             }
         }

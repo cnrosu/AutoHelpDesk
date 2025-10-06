@@ -150,7 +150,7 @@ function Invoke-EventsVpnAuthenticationChecks {
         $entry = [ordered]@{
             provider   = $match.Provider
             eventId    = $match.EventId
-            lastUtc    = if ($match.TimeUtc) { $match.TimeUtc.ToString('o') } else { $null }
+            lastUtc    = $( if ($match.TimeUtc) { $match.TimeUtc.ToString('o') } else { $null } )
             msgSnippet = $match.MsgSnippet
         }
         if ($match.VpnName) { $entry['vpnName'] = $match.VpnName }

@@ -20,7 +20,7 @@ function Invoke-OutlookCacheHeuristic {
     if ($cacheArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $cacheArtifact)
         Write-HeuristicDebug -Source 'Office' -Message 'Evaluating Outlook caches payload' -Data ([ordered]@{
-            CacheCount = if ($payload -and $payload.Caches) { $payload.Caches.Count } else { 0 }
+            CacheCount = $( if ($payload -and $payload.Caches) { $payload.Caches.Count } else { 0 } )
         })
 
         if ($payload -and $payload.Caches -and -not $payload.Caches.Error) {

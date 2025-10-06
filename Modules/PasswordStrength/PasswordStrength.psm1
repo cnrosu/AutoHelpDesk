@@ -93,8 +93,8 @@ function Test-PasswordStrength {
             Category           = 'Very Weak'
             EstimatedBits      = 0
             EstimatedGuesses   = '1.00E+02'
-            CrackTimeOnline_s  = if ($OnlineGuessesPerSecond -le 0) { [double]::PositiveInfinity } else { 1e2 / $OnlineGuessesPerSecond }
-            CrackTimeOffline_s = if ($OfflineGuessesPerSecond -le 0) { [double]::PositiveInfinity } else { 1e2 / $OfflineGuessesPerSecond }
+            CrackTimeOnline_s  = $( if ($OnlineGuessesPerSecond -le 0) { [double]::PositiveInfinity } else { 1e2 / $OnlineGuessesPerSecond } )
+            CrackTimeOffline_s = $( if ($OfflineGuessesPerSecond -le 0) { [double]::PositiveInfinity } else { 1e2 / $OfflineGuessesPerSecond } )
             AlphabetSizeUsed   = 0
             Length             = $passwordText.Length
             Warnings           = $warnings.ToArray()

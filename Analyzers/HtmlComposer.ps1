@@ -380,7 +380,7 @@ function Convert-ToIssueCard {
     )
 
     if (-not $Issue) {
-        Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Issue conversion skipped because entry was null.' -Data @{ Category = $( if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } ) }
         return $null
     }
 
@@ -428,12 +428,12 @@ function Convert-ToIssueCard {
 
     $card = [pscustomobject]@{
         Severity    = $severity
-        CssClass    = if ($severity) { $severity } else { 'info' }
-        BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
+        CssClass    = $( if ($severity) { $severity } else { 'info' } )
+        BadgeText   = $( if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' } )
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
-        Explanation = if ($hasDetail -and -not $hasNewLines) { $detail } else { $null }
-        Evidence    = if ($hasDetail -and $hasNewLines) { $detail } else { $null }
+        Explanation = $( if ($hasDetail -and -not $hasNewLines) { $detail } else { $null } )
+        Evidence    = $( if ($hasDetail -and $hasNewLines) { $detail } else { $null } )
         Source     = $issueSource
         Remediation = $remediationText
         RemediationScript = $remediationScript
@@ -454,7 +454,7 @@ function Convert-ToGoodCard {
     )
 
     if (-not $Normal) {
-        Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding conversion skipped because entry was null.' -Data @{ Category = if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } }
+        Write-HtmlDebug -Stage 'Composer.GoodCard' -Message 'Positive finding conversion skipped because entry was null.' -Data @{ Category = $( if ($Category -and $Category.PSObject.Properties['Name']) { [string]$Category.Name } else { '(unknown)' } ) }
         return $null
     }
 
@@ -589,7 +589,7 @@ function Get-FailedCollectorReports {
             if ($status -eq $false) {
                 $detail = if ($result.PSObject.Properties['Error'] -and $result.Error) { [string]$result.Error } else { 'Collector reported failure.' }
                 $failures.Add([pscustomobject]@{
-                        Key     = if ($displayName) { $displayName } else { 'Collector' }
+                        Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
                         Status  = 'Execution failed'
                         Details = $detail
                         Path    = $scriptPath
@@ -601,7 +601,7 @@ function Get-FailedCollectorReports {
             if ($status -eq $true) {
                 if ($null -eq $output -or ([string]::IsNullOrWhiteSpace([string]$output))) {
                     $failures.Add([pscustomobject]@{
-                            Key     = if ($displayName) { $displayName } else { 'Collector' }
+                            Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
                             Status  = 'No output'
                             Details = 'Collector did not return a path or payload reference.'
                             Path    = $scriptPath
@@ -630,7 +630,7 @@ function Get-FailedCollectorReports {
                 if (-not $resolvedAny -and $missing.Count -gt 0) {
                     $detailText = "Expected file not found: {0}" -f ($missing -join ', ')
                     $failures.Add([pscustomobject]@{
-                            Key     = if ($displayName) { $displayName } else { 'Collector' }
+                            Key     = $( if ($displayName) { $displayName } else { 'Collector' } )
                             Status  = 'Output missing'
                             Details = $detailText
                             Path    = $scriptPath
@@ -659,7 +659,7 @@ function Get-FailedCollectorReports {
 
                 if ($data -and $data.PSObject.Properties['Error'] -and $data.Error) {
                     $failures.Add([pscustomobject]@{
-                            Key     = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
+                            Key     = $( if ($path) { [System.IO.Path]::GetFileName($path) } else { $key } )
                             Status  = 'Parse error'
                             Details = [string]$data.Error
                             Path    = $path
@@ -684,7 +684,7 @@ function Get-FailedCollectorReports {
 
                     if ($isEmpty) {
                         $failures.Add([pscustomobject]@{
-                                Key     = if ($path) { [System.IO.Path]::GetFileName($path) } else { $key }
+                                Key     = $( if ($path) { [System.IO.Path]::GetFileName($path) } else { $key } )
                                 Status  = 'Empty output'
                                 Details = 'Captured file contained no payload.'
                                 Path    = $path

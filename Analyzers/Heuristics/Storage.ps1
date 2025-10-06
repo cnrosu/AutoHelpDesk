@@ -18,7 +18,7 @@ function Invoke-StorageHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Storage' -Message 'Starting storage heuristics' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $result = New-CategoryResult -Name 'Storage'

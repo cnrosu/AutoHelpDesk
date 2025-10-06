@@ -119,7 +119,7 @@ function Invoke-EventsNetlogonTrustChecks {
     $evidence = [ordered]@{
         eventIdSet = @($eventIdSet)
         count      = $recentMatches.Count
-        lastUtc    = if ($lastEvent -and $lastEvent.TimeUtc) { $lastEvent.TimeUtc.ToString('o') } else { $null }
+        lastUtc    = $( if ($lastEvent -and $lastEvent.TimeUtc) { $lastEvent.TimeUtc.ToString('o') } else { $null } )
     }
 
     $severity = 'medium'

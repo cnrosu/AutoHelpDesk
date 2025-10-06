@@ -204,18 +204,18 @@ function Parse-LldpctlKeyValue {
         $neighbor = [ordered]@{
             Source                     = 'lldpctl'
             InterfaceAlias             = $entry.InterfaceAlias
-            LocalPortId                = if ($entry.Contains('LocalPortId')) { $entry['LocalPortId'] } else { $null }
-            LocalChassisId             = if ($entry.Contains('LocalChassisId')) { $entry['LocalChassisId'] } else { $null }
-            NeighborChassisId          = if ($entry.Contains('NeighborChassisId')) { $entry['NeighborChassisId'] } else { $null }
-            NeighborSystemName         = if ($entry.Contains('NeighborSystemName')) { $entry['NeighborSystemName'] } else { $null }
-            NeighborSystemDescription  = if ($entry.Contains('NeighborSystemDescription')) { $entry['NeighborSystemDescription'] } else { $null }
-            NeighborPortId             = if ($entry.Contains('NeighborPortId')) { $entry['NeighborPortId'] } else { $null }
-            NeighborPortIdSubtype      = if ($entry.Contains('NeighborPortIdSubtype')) { $entry['NeighborPortIdSubtype'] } else { $null }
-            NeighborPortDescription    = if ($entry.Contains('NeighborPortDescription')) { $entry['NeighborPortDescription'] } else { $null }
-            NeighborTtl                = if ($entry.Contains('NeighborTtl')) { $entry['NeighborTtl'] } else { $null }
+            LocalPortId                = $( if ($entry.Contains('LocalPortId')) { $entry['LocalPortId'] } else { $null } )
+            LocalChassisId             = $( if ($entry.Contains('LocalChassisId')) { $entry['LocalChassisId'] } else { $null } )
+            NeighborChassisId          = $( if ($entry.Contains('NeighborChassisId')) { $entry['NeighborChassisId'] } else { $null } )
+            NeighborSystemName         = $( if ($entry.Contains('NeighborSystemName')) { $entry['NeighborSystemName'] } else { $null } )
+            NeighborSystemDescription  = $( if ($entry.Contains('NeighborSystemDescription')) { $entry['NeighborSystemDescription'] } else { $null } )
+            NeighborPortId             = $( if ($entry.Contains('NeighborPortId')) { $entry['NeighborPortId'] } else { $null } )
+            NeighborPortIdSubtype      = $( if ($entry.Contains('NeighborPortIdSubtype')) { $entry['NeighborPortIdSubtype'] } else { $null } )
+            NeighborPortDescription    = $( if ($entry.Contains('NeighborPortDescription')) { $entry['NeighborPortDescription'] } else { $null } )
+            NeighborTtl                = $( if ($entry.Contains('NeighborTtl')) { $entry['NeighborTtl'] } else { $null } )
             NeighborCapabilities       = $caps
             NeighborManagementAddresses = ($entry.NeighborManagementAddresses | Select-Object -Unique)
-            Vlans                      = if ($entry.Vlans.Keys.Count -gt 0) { $entry.Vlans } else { $null }
+            Vlans                      = $( if ($entry.Vlans.Keys.Count -gt 0) { $entry.Vlans } else { $null } )
             Raw                        = $entry.Raw
         }
 

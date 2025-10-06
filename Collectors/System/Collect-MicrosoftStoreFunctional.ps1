@@ -61,8 +61,8 @@ function Get-StorePackageState {
 
     return [ordered]@{
         storePackagePresent = $present
-        installedLocationOk = if ($present) { [bool]$locationOk } else { $false }
-        appxManifestFound   = if ($present) { $manifestFound } else { $false }
+        installedLocationOk = $( if ($present) { [bool]$locationOk } else { $false } )
+        appxManifestFound   = $( if ($present) { $manifestFound } else { $false } )
     }
 }
 

@@ -112,8 +112,8 @@ function Get-EventRecords {
 
     $result = [ordered]@{
         LogName   = $LogName
-        EventIds  = if ($EventIds) { @($EventIds) } else { @() }
-        StartTime = if ($StartTime) { $StartTime.ToString('o') } else { $null }
+        EventIds  = $( if ($EventIds) { @($EventIds) } else { @() } )
+        StartTime = $( if ($StartTime) { $StartTime.ToString('o') } else { $null } )
         Events    = @()
         Error     = $null
     }

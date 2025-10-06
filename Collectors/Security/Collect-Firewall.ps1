@@ -308,22 +308,22 @@ function Get-FirewallRules {
         }
 
         $record = [ordered]@{
-            Name         = if ($rule.PSObject.Properties['Name']) { [string]$rule.Name } else { $null }
-            DisplayName  = if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { $null }
-            Direction    = if ($rule.PSObject.Properties['Direction']) { [string]$rule.Direction } else { $null }
-            Action       = if ($rule.PSObject.Properties['Action']) { [string]$rule.Action } else { $null }
-            Enabled      = if ($rule.PSObject.Properties['Enabled']) { $rule.Enabled } else { $null }
-            Profile      = if ($rule.PSObject.Properties['Profile']) { [string]$rule.Profile } else { $null }
-            PolicyStore  = if ($rule.PSObject.Properties['PolicyStoreSourceType']) { [string]$rule.PolicyStoreSourceType } else { $null }
-            Program      = if ($rule.PSObject.Properties['Program']) { [string]$rule.Program } else { $null }
-            Service      = if ($rule.PSObject.Properties['Service']) { [string]$rule.Service } else { $null }
-            Group        = if ($rule.PSObject.Properties['DisplayGroup']) { [string]$rule.DisplayGroup } else { $null }
-            Description  = if ($rule.PSObject.Properties['Description']) { [string]$rule.Description } else { $null }
+            Name         = $( if ($rule.PSObject.Properties['Name']) { [string]$rule.Name } else { $null } )
+            DisplayName  = $( if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { $null } )
+            Direction    = $( if ($rule.PSObject.Properties['Direction']) { [string]$rule.Direction } else { $null } )
+            Action       = $( if ($rule.PSObject.Properties['Action']) { [string]$rule.Action } else { $null } )
+            Enabled      = $( if ($rule.PSObject.Properties['Enabled']) { $rule.Enabled } else { $null } )
+            Profile      = $( if ($rule.PSObject.Properties['Profile']) { [string]$rule.Profile } else { $null } )
+            PolicyStore  = $( if ($rule.PSObject.Properties['PolicyStoreSourceType']) { [string]$rule.PolicyStoreSourceType } else { $null } )
+            Program      = $( if ($rule.PSObject.Properties['Program']) { [string]$rule.Program } else { $null } )
+            Service      = $( if ($rule.PSObject.Properties['Service']) { [string]$rule.Service } else { $null } )
+            Group        = $( if ($rule.PSObject.Properties['DisplayGroup']) { [string]$rule.DisplayGroup } else { $null } )
+            Description  = $( if ($rule.PSObject.Properties['Description']) { [string]$rule.Description } else { $null } )
             Protocol     = $protocol
             LocalPort    = $localPort
             RemotePort   = $remotePort
-            LocalAddress = if ($localAddressValues.Count -gt 0) { $localAddressValues.ToArray() } else { $null }
-            RemoteAddress = if ($remoteAddressValues.Count -gt 0) { $remoteAddressValues.ToArray() } else { $null }
+            LocalAddress = $( if ($localAddressValues.Count -gt 0) { $localAddressValues.ToArray() } else { $null } )
+            RemoteAddress = $( if ($remoteAddressValues.Count -gt 0) { $remoteAddressValues.ToArray() } else { $null } )
         }
 
         $result.Add([pscustomobject]$record) | Out-Null

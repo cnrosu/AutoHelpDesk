@@ -66,9 +66,9 @@ function Get-VpnServiceState {
 
     if ($service) {
         return [ordered]@{
-            StartType = if ($service.PSObject.Properties['StartMode']) { [string]$service.StartMode } elseif ($service.PSObject.Properties['StartType']) { [string]$service.StartType } else { $null }
-            Status    = if ($service.PSObject.Properties['State']) { [string]$service.State } elseif ($service.PSObject.Properties['Status']) { [string]$service.Status } else { $null }
-            Path      = if ($service.PSObject.Properties['PathName']) { [string]$service.PathName } else { $null }
+            StartType = $( if ($service.PSObject.Properties['StartMode']) { [string]$service.StartMode } elseif ($service.PSObject.Properties['StartType']) { [string]$service.StartType } else { $null } )
+            Status    = $( if ($service.PSObject.Properties['State']) { [string]$service.State } elseif ($service.PSObject.Properties['Status']) { [string]$service.Status } else { $null } )
+            Path      = $( if ($service.PSObject.Properties['PathName']) { [string]$service.PathName } else { $null } )
         }
     }
 
@@ -79,8 +79,8 @@ function Get-VpnServiceState {
     try {
         $fallback = Get-Service -Name $Name -ErrorAction Stop
         return [ordered]@{
-            StartType = if ($fallback.PSObject.Properties['StartType']) { [string]$fallback.StartType } else { $null }
-            Status    = if ($fallback.PSObject.Properties['Status']) { [string]$fallback.Status } else { $null }
+            StartType = $( if ($fallback.PSObject.Properties['StartType']) { [string]$fallback.StartType } else { $null } )
+            Status    = $( if ($fallback.PSObject.Properties['Status']) { [string]$fallback.Status } else { $null } )
             Path      = $null
         }
     } catch {
@@ -333,10 +333,10 @@ function Get-VpnConnectionRecords {
 
             $record = [ordered]@{
                 name    = [string]$connection.Name
-                guid    = if ($connection.PSObject.Properties['Guid']) { [string]$connection.Guid } else { $null }
-                type    = if ($connection.PSObject.Properties['TunnelType']) { [string]$connection.TunnelType } else { 'Unknown' }
-                serverAddress = if ($connection.PSObject.Properties['ServerAddress']) { [string]$connection.ServerAddress } else { $null }
-                splitTunneling = if ($connection.PSObject.Properties['SplitTunneling']) { [bool]$connection.SplitTunneling } else { $null }
+                guid    = $( if ($connection.PSObject.Properties['Guid']) { [string]$connection.Guid } else { $null } )
+                type    = $( if ($connection.PSObject.Properties['TunnelType']) { [string]$connection.TunnelType } else { 'Unknown' } )
+                serverAddress = $( if ($connection.PSObject.Properties['ServerAddress']) { [string]$connection.ServerAddress } else { $null } )
+                splitTunneling = $( if ($connection.PSObject.Properties['SplitTunneling']) { [bool]$connection.SplitTunneling } else { $null } )
                 auth    = Get-VpnAuthMetadata -Connection $connection
                 dnsSuffixes = Get-VpnDnsSuffixes -Connection $connection
                 routes  = Get-VpnRoutes -Connection $connection
@@ -716,9 +716,9 @@ function Get-VpnEvents {
             $eventData = ConvertTo-VpnEventData -Event $event
 
             $events += [ordered]@{
-                timeCreatedUtc = if ($timeUtc) { $timeUtc.ToString('o') } else { $null }
+                timeCreatedUtc = $( if ($timeUtc) { $timeUtc.ToString('o') } else { $null } )
                 provider       = $provider
-                level          = if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null }
+                level          = $( if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null } )
                 eventId        = $eventId
                 recordId       = $recordId
                 message        = Sanitize-VpnEventMessage -Message $message
