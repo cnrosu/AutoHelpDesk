@@ -14,6 +14,7 @@ $systemModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'System'
 . (Join-Path -Path $systemModuleRoot -ChildPath 'Performance.ps1')
 . (Join-Path -Path $systemModuleRoot -ChildPath 'Startup.ps1')
 . (Join-Path -Path $systemModuleRoot -ChildPath 'MicrosoftStore.ps1')
+. (Join-Path -Path $systemModuleRoot -ChildPath 'Windows11Upgrade.ps1')
 
 function Invoke-SystemHeuristics {
     param(
@@ -34,6 +35,7 @@ function Invoke-SystemHeuristics {
     Invoke-SystemPerformanceChecks -Context $Context -Result $result
     Invoke-SystemStartupChecks -Context $Context -Result $result
     Invoke-SystemMicrosoftStoreChecks -Context $Context -Result $result
+    Invoke-SystemWindows11UpgradeChecks -Context $Context -Result $result
 
     return $result
 }
