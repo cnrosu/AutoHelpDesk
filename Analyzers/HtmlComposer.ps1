@@ -426,14 +426,18 @@ function Convert-ToIssueCard {
         $remediationScript = [string]$remediationScriptCandidates[0]
     }
 
+    $cardCssClass = if ($severity) { $severity } else { 'info' }
+    $cardExplanation = if ($hasDetail -and -not $hasNewLines) { $detail } else { $null }
+    $cardEvidence = if ($hasDetail -and $hasNewLines) { $detail } else { $null }
+
     $card = [pscustomobject]@{
         Severity    = $severity
-        CssClass    = $( if ($severity) { $severity } else { 'info' } )
+        CssClass    = $cardCssClass
         BadgeText   = $( if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' } )
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
-        Explanation = $( if ($hasDetail -and -not $hasNewLines) { $detail } else { $null } )
-        Evidence    = $( if ($hasDetail -and $hasNewLines) { $detail } else { $null } )
+        Explanation = $cardExplanation
+        Evidence    = $cardEvidence
         Source     = $issueSource
         Remediation = $remediationText
         RemediationScript = $remediationScript
