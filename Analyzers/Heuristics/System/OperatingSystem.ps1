@@ -39,7 +39,7 @@ function Invoke-SystemOperatingSystemChecks {
                 if ($unsupportedMatch.Success) {
                     $versionLabel = $unsupportedMatch.Groups[1].Value
                     $evidence = "Detected operating system: {0}. Microsoft support for Windows {1} has ended; upgrade to Windows 11." -f $description, $versionLabel
-                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title ("Windows {0} is unsupported, so the device no longer receives vital security updates." -f $versionLabel) -Evidence $evidence -Subcategory 'Operating System'
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence -Subcategory 'Operating System'
                 } else {
                     Add-CategoryCheck -CategoryResult $Result -Name 'Operating system' -Status $description
                 }
