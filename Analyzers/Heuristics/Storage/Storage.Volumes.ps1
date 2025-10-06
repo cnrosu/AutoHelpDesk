@@ -25,17 +25,26 @@ function Get-VolumeThreshold {
     )
 
     $defaults = @{
-        WarnPercent        = 0.20
-        WarnAbsolute       = 50
-        CritPercent        = 0.10
-        CritAbsolute       = 25
-        CriticalPercent    = 0.04
-        CriticalAbsolute   = 10
+        LowFloorGB      = 75
+        MediumFloorGB   = 50
+        HighFloorGB     = 25
+        CriticalFloorGB = 10
     }
 
     if ($Config -and $Config.Defaults) {
         foreach ($prop in $Config.Defaults.PSObject.Properties) {
-            if ($defaults.ContainsKey($prop.Name)) { $defaults[$prop.Name] = [double]$prop.Value }
+            $name = $prop.Name
+            if ($defaults.ContainsKey($name)) {
+                $defaults[$name] = [double]$prop.Value
+                continue
+            }
+
+            switch ($name) {
+                'WarnAbsolute'        { $defaults.LowFloorGB = [double]$prop.Value }
+                'MediumAbsolute'      { $defaults.MediumFloorGB = [double]$prop.Value }
+                'CritAbsolute'        { $defaults.HighFloorGB = [double]$prop.Value }
+                'CriticalAbsolute'    { $defaults.CriticalFloorGB = [double]$prop.Value }
+            }
         }
     }
 
@@ -46,13 +55,7 @@ function Get-VolumeThreshold {
     if ($driveLetter -eq 'C') {
         $profile.Description = 'System volume thresholds'
     } elseif ($label -match '(?i)data|archive|backup') {
-        $profile.WarnPercent       = [double]([math]::Max($profile.WarnPercent * 0.75, 0.12))
-        $profile.WarnAbsolute      = [double]([math]::Max($profile.WarnAbsolute * 0.6, 30))
-        $profile.CritPercent       = [double]([math]::Max($profile.CritPercent * 0.8, 0.08))
-        $profile.CritAbsolute      = [double]([math]::Max($profile.CritAbsolute * 0.7, 18))
-        $profile.CriticalPercent   = [double]([math]::Max($profile.CriticalPercent * 0.7, 0.03))
-        $profile.CriticalAbsolute  = [double]([math]::Max($profile.CriticalAbsolute * 0.6, 10))
-        $profile.Description       = 'Data/archive volume thresholds'
+        $profile.Description = 'Data/archive volume thresholds'
     } else {
         $profile.Description = 'Standard workstation thresholds'
     }
@@ -66,8 +69,17 @@ function Get-VolumeThreshold {
 
         if ($match) {
             foreach ($prop in $match.PSObject.Properties) {
-                if ($profile.ContainsKey($prop.Name)) {
-                    $profile[$prop.Name] = [double]$prop.Value
+                $name = $prop.Name
+                if ($profile.ContainsKey($name)) {
+                    $profile[$name] = [double]$prop.Value
+                    continue
+                }
+
+                switch ($name) {
+                    'WarnAbsolute'        { $profile.LowFloorGB = [double]$prop.Value }
+                    'MediumAbsolute'      { $profile.MediumFloorGB = [double]$prop.Value }
+                    'CritAbsolute'        { $profile.HighFloorGB = [double]$prop.Value }
+                    'CriticalAbsolute'    { $profile.CriticalFloorGB = [double]$prop.Value }
                 }
             }
             if ($match.PSObject.Properties['Description']) {
@@ -76,17 +88,11 @@ function Get-VolumeThreshold {
         }
     }
 
-    $warnFloor     = [math]::Max($SizeGB * $profile.WarnPercent, $profile.WarnAbsolute)
-    $critFloor     = [math]::Max($SizeGB * $profile.CritPercent, $profile.CritAbsolute)
-    $criticalFloor = [math]::Max($SizeGB * $profile.CriticalPercent, $profile.CriticalAbsolute)
-
     return [pscustomobject]@{
-        WarnFloorGB      = [math]::Round($warnFloor,2)
-        CritFloorGB      = [math]::Round($critFloor,2)
-        CriticalFloorGB  = [math]::Round($criticalFloor,2)
-        WarnPercent      = $profile.WarnPercent
-        CritPercent      = $profile.CritPercent
-        CriticalPercent  = $profile.CriticalPercent
+        LowFloorGB       = [math]::Round($profile.LowFloorGB,2)
+        MediumFloorGB    = [math]::Round($profile.MediumFloorGB,2)
+        HighFloorGB      = [math]::Round($profile.HighFloorGB,2)
+        CriticalFloorGB  = [math]::Round($profile.CriticalFloorGB,2)
         Description      = $profile.Description
     }
 }
@@ -118,8 +124,6 @@ function Invoke-StorageVolumeEvaluation {
             if ($size -le 0) { continue }
             $sizeGb = [math]::Round($size / 1GB,2)
             $freeGb = [math]::Round($free / 1GB,2)
-            $freePct = if ($size -gt 0) { ($free / $size) * 100 } else { 0 }
-
             $hasDriveLetter = $volume.PSObject.Properties['DriveLetter'] -and -not [string]::IsNullOrWhiteSpace([string]$volume.DriveLetter)
             $rawLabel = if ($volume.FileSystemLabel) { [string]$volume.FileSystemLabel } else { '' }
             $label = if ($hasDriveLetter) { $volume.DriveLetter } elseif ($rawLabel) { $rawLabel } else { 'Unknown' }
@@ -188,23 +192,23 @@ function Invoke-StorageVolumeEvaluation {
 
             $threshold = Get-VolumeThreshold -Volume $volume -SizeGB $sizeGb -Config $ThresholdConfig
 
-            $details = "Free {0} GB of {1} GB ({2}% free); profile {3}" -f $freeGb, $sizeGb, ([math]::Round($freePct,1)), $threshold.Description
-            Add-CategoryCheck -CategoryResult $CategoryResult -Name ("Volume {0}" -f $volumeDisplay) -Status ([string][math]::Round($freePct,1)) -Details $details
+            $details = "Free {0} GB of {1} GB; profile {2}" -f $freeGb, $sizeGb, $threshold.Description
+            Add-CategoryCheck -CategoryResult $CategoryResult -Name ("Volume {0}" -f $volumeDisplay) -Status ([string][math]::Round($freeGb,2)) -Details $details
 
-            $critPercent = $threshold.CritPercent * 100
-            $warnPercent = $threshold.WarnPercent * 100
-            $criticalPercent = $threshold.CriticalPercent * 100
-            if ($freeGb -le $threshold.CriticalFloorGB -or $freePct -le $criticalPercent) {
-                $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CriticalFloorGB, [math]::Round($criticalPercent,1)
+            if ($freeGb -le $threshold.CriticalFloorGB) {
+                $evidence = "Free {0} GB; critical floor {1} GB" -f $freeGb, $threshold.CriticalFloorGB
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
-            } elseif ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
-                $evidence = "Free {0} GB ({1}%); high-risk floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
+            } elseif ($freeGb -le $threshold.HighFloorGB) {
+                $evidence = "Free {0} GB; high-risk floor {1} GB" -f $freeGb, $threshold.HighFloorGB
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
-            } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
-                $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
+            } elseif ($freeGb -le $threshold.MediumFloorGB) {
+                $evidence = "Free {0} GB; medium floor {1} GB" -f $freeGb, $threshold.MediumFloorGB
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space'
+            } elseif ($freeGb -le $threshold.LowFloorGB) {
+                $evidence = "Free {0} GB; low floor {1} GB" -f $freeGb, $threshold.LowFloorGB
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title ("Volume {0} trending low on space ({1} GB remaining), so plan cleanup before performance or storage issues." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
             } else {
-                Add-CategoryNormal -CategoryResult $CategoryResult -Title ("Volume {0} has {1}% free" -f $volumeDisplay, [math]::Round($freePct,1)) -Subcategory 'Free Space'
+                Add-CategoryNormal -CategoryResult $CategoryResult -Title ("Volume {0} has {1} GB free" -f $volumeDisplay, $freeGb) -Subcategory 'Free Space'
             }
         }
     } elseif ($Payload -and $Payload.PSObject.Properties['Volumes']) {
