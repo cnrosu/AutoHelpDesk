@@ -141,7 +141,7 @@ function Invoke-StorageVolumeEvaluation {
                 }
             }
 
-            $volumeName = if ($volumeFriendlyName) {
+            $preferredVolumeName = if ($volumeFriendlyName) {
                 $volumeFriendlyName
             } elseif ($volumeLabel) {
                 $volumeLabel
@@ -150,13 +150,13 @@ function Invoke-StorageVolumeEvaluation {
             }
 
             $volumeDisplay = if ($driveLetterDisplay) {
-                if ($volumeName -and ($volumeName -ine $driveLetterDisplay)) {
-                    "{0} (`"{1}`")" -f $driveLetterDisplay, $volumeName
+                if ($preferredVolumeName) {
+                    "{0} (`"{1}`")" -f $driveLetterDisplay, $preferredVolumeName
                 } else {
                     $driveLetterDisplay
                 }
-            } elseif ($volumeName) {
-                $volumeName
+            } elseif ($preferredVolumeName) {
+                $preferredVolumeName
             } else {
                 $label
             }
