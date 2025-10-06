@@ -217,6 +217,10 @@ function Add-CategoryIssue {
 
         [object]$Evidence = $null,
 
+        [string]$Remediation = $null,
+
+        [string]$RemediationScript = $null,
+
         [string]$Subcategory = $null,
 
         [string]$CheckId = $null
@@ -240,6 +244,14 @@ function Add-CategoryIssue {
         Title       = $Title
         Evidence    = $Evidence
         Subcategory = $Subcategory
+    }
+
+    if ($PSBoundParameters.ContainsKey('Remediation') -and -not [string]::IsNullOrWhiteSpace($Remediation)) {
+        $entry['Remediation'] = $Remediation
+    }
+
+    if ($PSBoundParameters.ContainsKey('RemediationScript') -and -not [string]::IsNullOrWhiteSpace($RemediationScript)) {
+        $entry['RemediationScript'] = $RemediationScript
     }
 
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
