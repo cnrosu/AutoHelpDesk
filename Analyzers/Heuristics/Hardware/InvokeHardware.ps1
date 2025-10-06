@@ -72,6 +72,9 @@ function Invoke-HardwareHeuristics {
         Keys      = if ($failureEventMap) { $failureEventMap.Count } else { 0 }
     })
 
+    $bluetoothDrivers = New-Object System.Collections.Generic.List[pscustomobject]
+    $bluetoothProblemDevices = New-Object System.Collections.Generic.List[pscustomobject]
+
     $issueCount = 0
     foreach ($entry in $entries) {
         if (-not $entry) { continue }
@@ -100,6 +103,30 @@ function Invoke-HardwareHeuristics {
         $startModeNormalized = Normalize-DriverStartMode -Value $startModeRaw
         $driverTypeRaw = Get-DriverPropertyValue -Entry $entry -Names @('Driver Type','Type','Service Type')
         $driverTypeNormalized = Normalize-DriverType -Value $driverTypeRaw
+
+        $classRaw = Get-DriverPropertyValue -Entry $entry -Names @('Class Name','ClassName','Class')
+        $descriptionRaw = Get-DriverPropertyValue -Entry $entry -Names @('Device Description','Description')
+        $isBluetooth = $false
+        foreach ($candidate in @($classRaw, $label, $descriptionRaw)) {
+            if (-not $candidate) { continue }
+            if ($candidate -match '(?i)bluetooth') {
+                $isBluetooth = $true
+                break
+            }
+        }
+        if ($isBluetooth) {
+            $bluetoothDrivers.Add([pscustomobject]@{
+                Entry               = $entry
+                Label               = $label
+                StatusRaw           = $statusRaw
+                StatusNormalized    = $statusNormalized
+                StateRaw            = $stateRaw
+                StateNormalized     = $stateNormalized
+                StartModeRaw        = $startModeRaw
+                StartModeNormalized = $startModeNormalized
+            }) | Out-Null
+        }
+
         $shouldFlagStartIssue = $false
         $failureEvents = @()
 
@@ -178,7 +205,28 @@ function Invoke-HardwareHeuristics {
             $problemRaw = Get-DriverPropertyValue -Entry $entry -Names @('Problem','Problem Code','ProblemStatus')
             $normalized = Normalize-PnpProblem -Values @($statusRaw, $problemRaw)
 
+            $className = Get-DriverPropertyValue -Entry $entry -Names @('Class Name','ClassName','Class')
+            $description = Get-DriverPropertyValue -Entry $entry -Names @('Device Description','Friendly Name','Name')
+            $isBluetoothDevice = $false
+            foreach ($candidate in @($className, $label, $description)) {
+                if (-not $candidate) { continue }
+                if ($candidate -match '(?i)bluetooth') {
+                    $isBluetoothDevice = $true
+                    break
+                }
+            }
+            if ($isBluetoothDevice) {
+                $bluetoothProblemDevices.Add([pscustomobject]@{
+                    Entry      = $entry
+                    Label      = $label
+                    Problem    = $normalized
+                    StatusRaw  = $statusRaw
+                    ProblemRaw = $problemRaw
+                }) | Out-Null
+            }
+
             if ($normalized -eq 'missing-driver') {
+                if ($isBluetoothDevice) { continue }
                 $title = "Device {0} is missing drivers (Code 28), so functionality may be limited." -f $label
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence (Get-PnpDeviceEvidence -Entry $entry) -Subcategory 'Device Manager'
                 $issueCount++
@@ -186,10 +234,57 @@ function Invoke-HardwareHeuristics {
             }
 
             if ($normalized -eq 'problem') {
+                if ($isBluetoothDevice) { continue }
                 $title = "Device Manager reports a problem for {0}." -f $label
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence (Get-PnpDeviceEvidence -Entry $entry) -Subcategory 'Device Manager'
                 $issueCount++
             }
+        }
+    }
+
+    Write-HeuristicDebug -Source 'Hardware' -Message 'Bluetooth device detection summary' -Data ([ordered]@{
+        DriverEntries  = $bluetoothDrivers.Count
+        ProblemEntries = $bluetoothProblemDevices.Count
+    })
+
+    $bluetoothDetected = ($bluetoothDrivers.Count -gt 0) -or ($bluetoothProblemDevices.Count -gt 0)
+    if (-not $bluetoothDetected) {
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Subcategory 'Bluetooth'
+        $issueCount++
+    } else {
+        $bluetoothIssueEvidence = New-Object System.Collections.Generic.List[string]
+        $bluetoothIssueFound = $false
+
+        foreach ($record in $bluetoothDrivers) {
+            $shouldFlagBluetooth = $false
+
+            if ($record.StatusNormalized -in @('error','degraded')) {
+                $shouldFlagBluetooth = $true
+            } elseif ($record.StartModeNormalized -in @('boot','system','auto') -and $record.StateNormalized -notin @('running','pending')) {
+                $shouldFlagBluetooth = $true
+            }
+
+            if ($shouldFlagBluetooth) {
+                $bluetoothIssueFound = $true
+                $driverEvidence = Get-DriverEvidence -Entry $record.Entry
+                if ($driverEvidence) { $bluetoothIssueEvidence.Add($driverEvidence) | Out-Null }
+            }
+        }
+
+        foreach ($device in $bluetoothProblemDevices) {
+            if ($device.Problem -in @('missing-driver','problem')) {
+                $bluetoothIssueFound = $true
+                $pnpEvidence = Get-PnpDeviceEvidence -Entry $device.Entry
+                if ($pnpEvidence) { $bluetoothIssueEvidence.Add($pnpEvidence) | Out-Null }
+            }
+        }
+
+        if ($bluetoothIssueFound) {
+            $evidence = if ($bluetoothIssueEvidence.Count -gt 0) { $bluetoothIssueEvidence.ToArray() } else { $null }
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Bluetooth adapter detected but not working, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            $issueCount++
+        } else {
+            Add-CategoryNormal -CategoryResult $result -Title 'Bluetooth adapter detected and appears to be working normally.' -Subcategory 'Bluetooth'
         }
     }
 
