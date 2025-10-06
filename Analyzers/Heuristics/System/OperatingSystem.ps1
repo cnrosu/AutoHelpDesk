@@ -26,11 +26,7 @@ function Invoke-SystemOperatingSystemChecks {
         $caption = $os.Caption
         $build = $os.BuildNumber
         if ($caption) {
-            if ($build) {
-                $description = "{0} (build {1})" -f $caption, $build
-            } else {
-                $description = [string]$caption
-            }
+            $description = if ($build) { "{0} (build {1})" -f $caption, $build } else { [string]$caption }
             $captionLower = $caption.ToLowerInvariant()
             if ($captionLower -match 'windows\s+11') {
                 Add-CategoryNormal -CategoryResult $Result -Title ("Operating system supported: {0}" -f $description) -Subcategory 'Operating System'
