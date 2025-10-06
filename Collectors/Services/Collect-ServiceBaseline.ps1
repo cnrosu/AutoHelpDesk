@@ -70,8 +70,8 @@ function Get-ServiceInventory {
     $inventory = Get-CollectorServiceInventory
 
     return [pscustomobject]@{
-        Items  = if ($inventory.Items) { @($inventory.Items) } else { @() }
-        Errors = if ($inventory.Errors) { @($inventory.Errors) } else { @() }
+        Items  = $( if ($inventory.Items) { @($inventory.Items) } else { @() } )
+        Errors = $( if ($inventory.Errors) { @($inventory.Errors) } else { @() } )
         Source = $inventory.Source
     }
 }
@@ -140,7 +140,7 @@ function Get-ServiceRecord {
         StartType             = $startDisplay
         NormalizedStartType   = Normalize-ServiceStartType $startDisplay
         Raw                   = $rawLine
-        StartModeRaw          = if ($startMode) { $startMode.Trim() } else { '' }
+        StartModeRaw          = $( if ($startMode) { $startMode.Trim() } else { '' } )
         DelayedAutoStart      = $delayed
     }
 }
@@ -188,11 +188,11 @@ function Get-CriticalServiceSnapshot {
             Name                = $name
             Display             = $display
             Note                = $note
-            Status              = if ($record) { $record.Status } else { 'Not Found' }
-            NormalizedStatus    = if ($record) { $record.NormalizedStatus } else { 'missing' }
-            StartType           = if ($record) { $record.StartType } else { 'Unknown' }
-            NormalizedStartType = if ($record) { $record.NormalizedStartType } else { 'unknown' }
-            Raw                 = if ($record) { $record.Raw } else { $null }
+            Status              = $( if ($record) { $record.Status } else { 'Not Found' } )
+            NormalizedStatus    = $( if ($record) { $record.NormalizedStatus } else { 'missing' } )
+            StartType           = $( if ($record) { $record.StartType } else { 'Unknown' } )
+            NormalizedStartType = $( if ($record) { $record.NormalizedStartType } else { 'unknown' } )
+            Raw                 = $( if ($record) { $record.Raw } else { $null } )
         })
     }
     return $snapshot.ToArray()
@@ -212,9 +212,9 @@ function Get-LegacyServiceSnapshot {
 
         $null = $snapshot.Add([pscustomobject]@{
             Name             = $name
-            Status           = if ($record) { $record.Status } else { 'Not Found' }
-            NormalizedStatus = if ($record) { $record.NormalizedStatus } else { 'missing' }
-            Raw              = if ($record) { $record.Raw } else { $null }
+            Status           = $( if ($record) { $record.Status } else { 'Not Found' } )
+            NormalizedStatus = $( if ($record) { $record.NormalizedStatus } else { 'missing' } )
+            Raw              = $( if ($record) { $record.Raw } else { $null } )
         })
     }
     return $snapshot.ToArray()

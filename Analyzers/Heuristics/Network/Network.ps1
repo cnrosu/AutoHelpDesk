@@ -476,7 +476,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
 
         $summary = [ordered]@{
             Name    = $name
-            Enabled = if ($profile.PSObject.Properties['Enabled']) { $profile.Enabled } else { $null }
+            Enabled = $( if ($profile.PSObject.Properties['Enabled']) { $profile.Enabled } else { $null } )
         }
 
         if ($profile.PSObject.Properties['DefaultInboundAction']) {
@@ -656,9 +656,9 @@ function Get-NetworkSwitchPortExpectations {
         $record = [pscustomobject]@{
             Alias            = $aliasText
             AliasKeys        = $aliasList.ToArray()
-            ExpectedSwitch   = if ($SwitchValue) { [string]$SwitchValue } else { $null }
-            ExpectedPort     = if ($PortValue) { [string]$PortValue } else { $null }
-            ExpectedLabel    = if ($displayLabel) { [string]$displayLabel } else { $null }
+            ExpectedSwitch   = $( if ($SwitchValue) { [string]$SwitchValue } else { $null } )
+            ExpectedPort     = $( if ($PortValue) { [string]$PortValue } else { $null } )
+            ExpectedLabel    = $( if ($displayLabel) { [string]$displayLabel } else { $null } )
             Source           = $SourceLabel
             Raw              = $RawValue
             NormalizedSwitch = Normalize-NetworkInventoryText $SwitchValue
@@ -775,7 +775,7 @@ function Get-NetworkSwitchPortExpectations {
     return [pscustomobject]@{
         Records = $records.ToArray()
         Map     = $aliasLookup
-        Sources = if ($sourcesUsed.Count -gt 0) { [System.Linq.Enumerable]::ToArray($sourcesUsed) } else { @() }
+        Sources = $( if ($sourcesUsed.Count -gt 0) { [System.Linq.Enumerable]::ToArray($sourcesUsed) } else { @() } )
         Count   = $records.Count
     }
 }
@@ -1126,7 +1126,7 @@ function ConvertTo-NetworkLinkSpeedMetrics {
     $label = if ($Text) { $Text.Trim() } else { $null }
 
     return [pscustomobject]@{
-        Text          = if ($label) { $label } else { $null }
+        Text          = $( if ($label) { $label } else { $null } )
         BitsPerSecond = $bits
     }
 }
@@ -1257,16 +1257,16 @@ function Get-NetworkDnsInterfaceInventory {
 
             $key = $alias.ToLowerInvariant()
             if (-not $map.ContainsKey($key)) {
-                $map[$key] = [ordered]@{
-                    Alias       = $alias
-                    Description = if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $null }
-                    Status      = $null
-                    IPv4        = @()
-                    IPv6        = @()
-                    Gateways    = @()
-                    IPv6Gateways = @()
-                    MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
-                }
+            $map[$key] = [ordered]@{
+                Alias       = $alias
+                Description = $( if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $null } )
+                Status      = $null
+                IPv4        = @()
+                IPv6        = @()
+                Gateways    = @()
+                IPv6Gateways = @()
+                MacAddress  = $( if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null } )
+            }
             }
 
             $info = $map[$key]
@@ -1310,13 +1310,13 @@ function Get-NetworkDnsInterfaceInventory {
             $alias = if ($aliasMap.ContainsKey($key)) { $aliasMap[$key] } else { $key }
             $map[$key] = [ordered]@{
                 Alias       = $alias
-                Description = if ($descriptionMap.ContainsKey($key)) { $descriptionMap[$key] } else { $null }
+                Description = $( if ($descriptionMap.ContainsKey($key)) { $descriptionMap[$key] } else { $null } )
                 Status      = $null
                 IPv4        = @()
                 IPv6        = @()
                 Gateways    = @()
                 IPv6Gateways = @()
-                MacAddress  = if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null }
+                MacAddress  = $( if ($macMap.ContainsKey($key)) { $macMap[$key] } else { $null } )
             }
         }
 
@@ -1383,16 +1383,16 @@ function Get-NetworkAdapterLinkInventory {
             $linkSpeedValue = if ($adapter.PSObject.Properties['LinkSpeed']) { [string]$adapter.LinkSpeed } else { $null }
 
             if (-not $map.ContainsKey($key)) {
-                $map[$key] = [ordered]@{
-                    Alias            = $alias
-                    Description      = if ($adapter.PSObject.Properties['InterfaceDescription']) { [string]$adapter.InterfaceDescription } else { $null }
-                    Status           = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
-                    LinkSpeedText    = $linkSpeedValue
-                    LinkSpeed        = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedValue
-                    DriverInformation = if ($adapter.PSObject.Properties['DriverInformation']) { [string]$adapter.DriverInformation } else { $null }
-                    Properties       = New-Object System.Collections.Generic.List[object]
-                    Key              = $key
-                }
+            $map[$key] = [ordered]@{
+                Alias            = $alias
+                Description      = $( if ($adapter.PSObject.Properties['InterfaceDescription']) { [string]$adapter.InterfaceDescription } else { $null } )
+                Status           = $( if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null } )
+                LinkSpeedText    = $linkSpeedValue
+                LinkSpeed        = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedValue
+                DriverInformation = $( if ($adapter.PSObject.Properties['DriverInformation']) { [string]$adapter.DriverInformation } else { $null } )
+                Properties       = New-Object System.Collections.Generic.List[object]
+                Key              = $key
+            }
             } else {
                 $info = $map[$key]
                 if (-not $info.Description -and $adapter.PSObject.Properties['InterfaceDescription']) { $info.Description = [string]$adapter.InterfaceDescription }
@@ -2074,7 +2074,7 @@ function Invoke-NetworkHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Network' -Message 'Starting network heuristics' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
         InputFolder   = $InputFolder
     })
 
@@ -2115,7 +2115,7 @@ function Invoke-NetworkHeuristics {
     Write-HeuristicDebug -Source 'Network' -Message 'Computed DHCP folder path' -Data ([ordered]@{
         CollectionRoot = $resolvedRoot
         DhcpFolder     = $dhcpFolder
-        Exists         = if ($dhcpFolder) { Test-Path -LiteralPath $dhcpFolder } else { $false }
+        Exists         = $( if ($dhcpFolder) { Test-Path -LiteralPath $dhcpFolder } else { $false } )
     })
 
     $result = New-CategoryResult -Name 'Network'
@@ -2166,7 +2166,7 @@ function Invoke-NetworkHeuristics {
             $arpEntries = ConvertTo-NetworkArpEntries -Value $payload.Arp
         }
         Write-HeuristicDebug -Source 'Network' -Message 'Parsed ARP entries' -Data ([ordered]@{
-            Count = if ($arpEntries) { $arpEntries.Count } else { 0 }
+            Count = $( if ($arpEntries) { $arpEntries.Count } else { 0 } )
         })
 
         $gatewayInventory = $null
@@ -2225,7 +2225,7 @@ function Invoke-NetworkHeuristics {
 
                 $entryRecord = [pscustomobject]@{
                     Gateway      = $gateway
-                    Interfaces   = if ($detail.Interfaces.Count -gt 0) { [System.Linq.Enumerable]::ToArray($detail.Interfaces) } else { @() }
+                    Interfaces   = $( if ($detail.Interfaces.Count -gt 0) { [System.Linq.Enumerable]::ToArray($detail.Interfaces) } else { @() } )
                     NormalizedMac = $match.NormalizedMac
                     Type         = $match.Type
                 }
@@ -2444,8 +2444,8 @@ function Invoke-NetworkHeuristics {
         }
 
         Write-HeuristicDebug -Source 'Network' -Message 'Parsed IPv6 routing data' -Data ([ordered]@{
-            NeighborCount = if ($ipv6Neighbors) { $ipv6Neighbors.Count } else { 0 }
-            RouterCount   = if ($ipv6Routers) { $ipv6Routers.Count } else { 0 }
+            NeighborCount = $( if ($ipv6Neighbors) { $ipv6Neighbors.Count } else { 0 } )
+            RouterCount   = $( if ($ipv6Routers) { $ipv6Routers.Count } else { 0 } )
             NeighborError = $neighborPayloadError
             RouterError   = $routerPayloadError
         })
@@ -2466,7 +2466,7 @@ function Invoke-NetworkHeuristics {
                     $aliasLabel = if ($entry.PSObject.Properties['Alias']) { [string]$entry.Alias } else { $null }
                     $globalIpv6Records.Add([pscustomobject]@{
                         Alias     = $aliasLabel
-                        Addresses = if ($addressSet.Count -gt 0) { [System.Linq.Enumerable]::ToArray($addressSet) } else { @() }
+                        Addresses = $( if ($addressSet.Count -gt 0) { [System.Linq.Enumerable]::ToArray($addressSet) } else { @() } )
                     }) | Out-Null
                 }
             }
@@ -2520,8 +2520,8 @@ function Invoke-NetworkHeuristics {
             }
 
             $routerMacRecords.Add([pscustomobject]@{
-                InterfaceName = if ($router.InterfaceName) { [string]$router.InterfaceName } else { $null }
-                Address       = if ($router.Address) { [string]$router.Address } else { $null }
+                InterfaceName = $( if ($router.InterfaceName) { [string]$router.InterfaceName } else { $null } )
+                Address       = $( if ($router.Address) { [string]$router.Address } else { $null } )
                 Macs          = ($macs | Sort-Object -Unique)
             }) | Out-Null
         }
@@ -2739,7 +2739,7 @@ function Invoke-NetworkHeuristics {
         $expectationCount = if ($switchPortExpectations -and $switchPortExpectations.Records) { $switchPortExpectations.Records.Count } else { 0 }
         Write-HeuristicDebug -Source 'Network' -Message 'Resolved switch port expectations' -Data ([ordered]@{
             Count   = $expectationCount
-            Sources = if ($switchPortExpectations -and $switchPortExpectations.Sources) { ($switchPortExpectations.Sources -join ', ') } else { '(none)' }
+            Sources = $( if ($switchPortExpectations -and $switchPortExpectations.Sources) { ($switchPortExpectations.Sources -join ', ') } else { '(none)' } )
         })
 
         if ($neighborCount -eq 0) {

@@ -22,7 +22,7 @@ function Invoke-ADHeuristics {
     )
 
     Write-HeuristicDebug -Source 'AD' -Message 'Starting Active Directory heuristics evaluation' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $result = New-CategoryResult -Name 'Active Directory Health'

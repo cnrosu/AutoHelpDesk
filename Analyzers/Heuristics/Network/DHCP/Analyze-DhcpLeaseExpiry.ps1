@@ -46,7 +46,7 @@ foreach ($adapter in (Ensure-Array $payload.AdapterConfigurations)) {
     }
     $evidence = [ordered]@{
         Adapter        = Get-AdapterIdentity $adapter
-        LeaseObtained  = if ($obtained) { $obtained.ToString('o') } else { $adapter.DHCPLeaseObtained }
+        LeaseObtained  = $( if ($obtained) { $obtained.ToString('o') } else { $adapter.DHCPLeaseObtained } )
         LeaseExpires   = $expires.ToString('o')
         CheckedAt      = $now.ToString('o')
     }

@@ -182,10 +182,10 @@ function Invoke-StorageVolumeEvaluation {
 
             if ($shouldSkip) {
                 Write-HeuristicDebug -Source 'Storage' -Message 'Skipping hidden volume for free space evaluation' -Data ([ordered]@{
-                    Label = if ($rawLabel) { $rawLabel } else { $label }
+                    Label = $( if ($rawLabel) { $rawLabel } else { $label } )
                     SizeGb = $sizeGb
                     HasDriveLetter = $hasDriveLetter
-                    Reason = if ($skipReason) { $skipReason } else { 'Not specified' }
+                    Reason = $( if ($skipReason) { $skipReason } else { 'Not specified' } )
                 })
                 continue
             }

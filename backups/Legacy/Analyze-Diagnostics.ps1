@@ -697,7 +697,7 @@ function Parse-IpconfigAdapters {
     $results.Add([pscustomobject]@{
       Name               = $adapter.Name
       Description        = $description
-      DescriptionKey     = if ($description) { $description.ToLowerInvariant() } else { '' }
+      DescriptionKey     = $( if ($description) { $description.ToLowerInvariant() } else { '' } )
       MacText            = $mac
       MacNormalized      = Normalize-MacAddress $mac
       DhcpEnabled        = $dhcpEnabled
@@ -773,7 +773,7 @@ function Parse-NetworkAdapterConfigs {
 
     $results.Add([pscustomobject]@{
       Description        = $description
-      DescriptionKey     = if ($description) { $description.ToLowerInvariant() } else { '' }
+      DescriptionKey     = $( if ($description) { $description.ToLowerInvariant() } else { '' } )
       MacText            = $mac
       MacNormalized      = Normalize-MacAddress $mac
       Index              = $index
@@ -913,9 +913,9 @@ function Combine-DhcpAdapterData {
       HasApipa             = $hasApipa
       MediaState           = $ipAdapter.MediaState
       IpconfigRaw          = $ipAdapter.RawBlock
-      NicRaw               = if ($matchedNic) { $matchedNic.RawBlock } else { '' }
-      NicIpEnabled         = if ($matchedNic) { $matchedNic.IPEnabled } else { $null }
-      Source               = if ($matchedNic) { 'ipconfig + Win32_NetworkAdapterConfiguration' } else { 'ipconfig' }
+      NicRaw               = $( if ($matchedNic) { $matchedNic.RawBlock } else { '' } )
+      NicIpEnabled         = $( if ($matchedNic) { $matchedNic.IPEnabled } else { $null } )
+      Source               = $( if ($matchedNic) { 'ipconfig + Win32_NetworkAdapterConfiguration' } else { 'ipconfig' } )
     })
   }
 
@@ -940,7 +940,7 @@ function Combine-DhcpAdapterData {
     }
 
     $results.Add([pscustomobject]@{
-      DisplayName          = if ($nic.Description) { $nic.Description } else { "Adapter Index $($nic.Index)" }
+      DisplayName          = $( if ($nic.Description) { $nic.Description } else { "Adapter Index $($nic.Index)" } )
       Description          = $nic.Description
       MacText              = $nic.MacText
       MacNormalized        = $nic.MacNormalized
@@ -2564,7 +2564,7 @@ if ($raw['outlook_autodiscover']){
         $autoResults += [pscustomobject]@{
           Domain   = $domainValue
           Status   = $status
-          Target   = if ($target) { $target } else { $null }
+          Target   = $( if ($target) { $target } else { $null } )
           Evidence = $text
         }
       }
@@ -2878,7 +2878,7 @@ if ($raw['office_security']) {
     $macroSecurityStatus.Add([pscustomobject]@{
       App               = $appInfo.Name
       BlockEnforced     = $blockFullyEnforced
-      BlockEvidence     = if ($blockFullyEnforced -and $macroEvidenceContext) { $macroEvidenceText } else { '' }
+      BlockEvidence     = $( if ($blockFullyEnforced -and $macroEvidenceContext) { $macroEvidenceText } else { '' } )
       AnyBlockContexts  = ($blockCompliant.Count -gt 0)
       WarningsStrict    = $warningsStrict
       ProtectedViewGood = $protectedViewGood

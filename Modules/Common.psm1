@@ -524,14 +524,14 @@ function Convert-DiskBlock {
   }
 
   return [pscustomobject]@{
-    Number            = if ($props.ContainsKey('Number')) { $props['Number'] } else { '' }
-    FriendlyName      = if ($props.ContainsKey('FriendlyName')) { $props['FriendlyName'] } else { '' }
+    Number            = $( if ($props.ContainsKey('Number')) { $props['Number'] } else { '' } )
+    FriendlyName      = $( if ($props.ContainsKey('FriendlyName')) { $props['FriendlyName'] } else { '' } )
     OperationalStatus = $operStatuses
     HealthStatus      = $healthStatuses
-    IsBoot            = if ($props.ContainsKey('IsBoot')) { ConvertTo-NullableBool $props['IsBoot'] } else { $null }
-    IsSystem          = if ($props.ContainsKey('IsSystem')) { ConvertTo-NullableBool $props['IsSystem'] } else { $null }
-    IsOffline         = if ($props.ContainsKey('IsOffline')) { ConvertTo-NullableBool $props['IsOffline'] } else { $null }
-    IsReadOnly        = if ($props.ContainsKey('IsReadOnly')) { ConvertTo-NullableBool $props['IsReadOnly'] } else { $null }
+    IsBoot            = $( if ($props.ContainsKey('IsBoot')) { ConvertTo-NullableBool $props['IsBoot'] } else { $null } )
+    IsSystem          = $( if ($props.ContainsKey('IsSystem')) { ConvertTo-NullableBool $props['IsSystem'] } else { $null } )
+    IsOffline         = $( if ($props.ContainsKey('IsOffline')) { ConvertTo-NullableBool $props['IsOffline'] } else { $null } )
+    IsReadOnly        = $( if ($props.ContainsKey('IsReadOnly')) { ConvertTo-NullableBool $props['IsReadOnly'] } else { $null } )
     Raw               = $BlockText
   }
 }

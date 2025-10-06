@@ -33,9 +33,9 @@ if ($exhaustionEvents) {
     $oldest = $sorted | Select-Object -Last 1
     $eventEvidence = [ordered]@{
         Count         = $exhaustionEvents.Count
-        LatestTime    = if ($latest.TimeCreated) { (ConvertFrom-Iso8601 $latest.TimeCreated).ToString('o') } else { $latest.TimeCreated }
-        FirstSeenTime = if ($oldest.TimeCreated) { (ConvertFrom-Iso8601 $oldest.TimeCreated).ToString('o') } else { $oldest.TimeCreated }
-        SampleMessage = if ($latest.Message) { Get-TopLines -Text $latest.Message -Count 20 } else { $null }
+        LatestTime    = $( if ($latest.TimeCreated) { (ConvertFrom-Iso8601 $latest.TimeCreated).ToString('o') } else { $latest.TimeCreated } )
+        FirstSeenTime = $( if ($oldest.TimeCreated) { (ConvertFrom-Iso8601 $oldest.TimeCreated).ToString('o') } else { $oldest.TimeCreated } )
+        SampleMessage = $( if ($latest.Message) { Get-TopLines -Text $latest.Message -Count 20 } else { $null } )
     }
 }
 

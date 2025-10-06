@@ -91,7 +91,7 @@ function Get-DhcpClientEvents {
             ProviderName = $event.ProviderName
             Level        = $event.LevelDisplayName
             RecordId     = $event.RecordId
-            TimeCreated  = if ($event.TimeCreated) { $event.TimeCreated.ToString('o') } else { $null }
+            TimeCreated  = $( if ($event.TimeCreated) { $event.TimeCreated.ToString('o') } else { $null } )
             Message      = $event.Message
         })
     }

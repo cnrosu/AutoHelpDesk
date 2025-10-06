@@ -5,7 +5,7 @@ function Invoke-HardwareHeuristics {
     )
 
     Write-HeuristicDebug -Source 'Hardware' -Message 'Starting hardware heuristics' -Data ([ordered]@{
-        ArtifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+        ArtifactCount = $( if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 } )
     })
 
     $result = New-CategoryResult -Name 'Hardware'
@@ -48,13 +48,13 @@ function Invoke-HardwareHeuristics {
 
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver inventory' -Data ([ordered]@{
         RowCount = $entries.Count
-        Source   = if ($inventory) { $inventory.Source } else { $null }
+        Source   = $( if ($inventory) { $inventory.Source } else { $null } )
     })
 
     if ($entries.Count -eq 0) {
         Write-HeuristicDebug -Source 'Hardware' -Message 'Driver inventory parsing diagnostics' -Data ([ordered]@{
-            AvailableProperties = if ($inventory -and $inventory.AvailableProperties -and $inventory.AvailableProperties.Count -gt 0) { $inventory.AvailableProperties -join ', ' } else { $null }
-            TextPreview         = if ($inventory -and $inventory.TextPreview) { $inventory.TextPreview } else { $null }
+            AvailableProperties = $( if ($inventory -and $inventory.AvailableProperties -and $inventory.AvailableProperties.Count -gt 0) { $inventory.AvailableProperties -join ', ' } else { $null } )
+            TextPreview         = $( if ($inventory -and $inventory.TextPreview) { $inventory.TextPreview } else { $null } )
         })
         $hasRawDriverData = $inventory -and ($inventory.HasDriverQueryData -or $inventory.HasTextPayload)
         $title = if ($hasRawDriverData) {
@@ -69,7 +69,7 @@ function Invoke-HardwareHeuristics {
     $failureEventMap = Get-DriverFailureEventMap -Context $Context
     Write-HeuristicDebug -Source 'Hardware' -Message 'Loaded driver failure event map' -Data ([ordered]@{
         HasEvents = ($failureEventMap -and ($failureEventMap.Count -gt 0))
-        Keys      = if ($failureEventMap) { $failureEventMap.Count } else { 0 }
+        Keys      = $( if ($failureEventMap) { $failureEventMap.Count } else { 0 } )
     })
 
     $bluetoothDrivers = New-Object System.Collections.Generic.List[pscustomobject]
@@ -188,7 +188,7 @@ function Invoke-HardwareHeuristics {
     $pnpText = ConvertTo-HardwareDriverText -Value $payload.PnpProblems
     Write-HeuristicDebug -Source 'Hardware' -Message 'Problem device text resolved' -Data ([ordered]@{
         HasText = [bool]$pnpText
-        Length  = if ($pnpText) { $pnpText.Length } else { 0 }
+        Length  = $( if ($pnpText) { $pnpText.Length } else { 0 } )
     })
 
     if ($pnpText) {

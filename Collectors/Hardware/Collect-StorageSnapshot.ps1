@@ -123,8 +123,8 @@ function Get-StorageWearSnapshot {
         $row = [ordered]@{
             DeviceId     = $disk.DeviceId
             FriendlyName = $disk.FriendlyName
-            SerialNumber = if ($disk.PSObject.Properties['SerialNumber']) { $disk.SerialNumber } else { $null }
-            MediaType    = if ($disk.PSObject.Properties['MediaType']) { $disk.MediaType } else { $null }
+            SerialNumber = $( if ($disk.PSObject.Properties['SerialNumber']) { $disk.SerialNumber } else { $null } )
+            MediaType    = $( if ($disk.PSObject.Properties['MediaType']) { $disk.MediaType } else { $null } )
             Wear         = $null
             Temperature  = $null
             Error        = $null
