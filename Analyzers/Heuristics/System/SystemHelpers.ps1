@@ -67,3 +67,51 @@ function Test-IsMicrosoftStartupEntry {
 
     return $false
 }
+
+function Get-SystemInfoTextFromPayload {
+    param($Payload)
+
+    if (-not $Payload) { return $null }
+    if (-not $Payload.SystemInfoText) { return $null }
+    if ($Payload.SystemInfoText -and $Payload.SystemInfoText.PSObject.Properties['Error'] -and $Payload.SystemInfoText.Error) {
+        return $null
+    }
+
+    $text = $Payload.SystemInfoText
+    if ($text -is [System.Collections.IEnumerable] -and -not ($text -is [string])) {
+        $lines = foreach ($item in $text) { if ($item) { [string]$item } }
+        return ($lines -join "`n")
+    }
+
+    return [string]$text
+}
+
+function Get-SystemInfoLines {
+    param($Payload)
+
+    $text = Get-SystemInfoTextFromPayload -Payload $Payload
+    if (-not $text) { return @() }
+
+    return $text -split "\r?\n"
+}
+
+function Get-SystemInfoValue {
+    param(
+        [string[]]$Lines,
+        [string]$Label
+    )
+
+    if (-not $Lines -or -not $Label) { return $null }
+
+    $pattern = '^(?i)\s*{0}\s*:\s*(?<value>.+)$' -f [regex]::Escape($Label)
+    foreach ($line in $Lines) {
+        if (-not $line) { continue }
+        $match = [regex]::Match($line, $pattern)
+        if ($match.Success) {
+            $value = $match.Groups['value'].Value.Trim()
+            if ($value) { return $value }
+        }
+    }
+
+    return $null
+}

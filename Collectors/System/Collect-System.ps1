@@ -31,7 +31,7 @@ function Get-OperatingSystemInventory {
 
     if (-not $os) { return $null }
 
-    return $os | Select-Object Caption, Version, BuildNumber, OSArchitecture, InstallDate, LastBootUpTime, RegisteredUser, SerialNumber
+    return $os | Select-Object Caption, Version, BuildNumber, OSArchitecture, SystemDrive, InstallDate, LastBootUpTime, RegisteredUser, SerialNumber
 }
 
 function Get-ComputerSystemInventory {
@@ -46,11 +46,24 @@ function Get-ComputerSystemInventory {
     return $system | Select-Object Manufacturer, Model, Domain, PartOfDomain, DomainRole, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
 }
 
+function Get-ProcessorInventory {
+    try {
+        return Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop |
+            Select-Object Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed, SocketDesignation
+    } catch {
+        return [PSCustomObject]@{
+            Source = 'Win32_Processor'
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         SystemInfoText = Get-SystemInfoText
         OperatingSystem = Get-OperatingSystemInventory
         ComputerSystem  = Get-ComputerSystemInventory
+        Processors      = Get-ProcessorInventory
     }
 
     $result = New-CollectorMetadata -Payload $payload
