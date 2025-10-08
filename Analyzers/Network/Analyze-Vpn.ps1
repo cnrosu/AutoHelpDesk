@@ -184,15 +184,23 @@ function Add-VpnIssue {
         $Services,
         [string]$Subcategory,
         [string]$Remediation,
+        [string]$RemediationScript,
         [hashtable]$ExtraEvidence
     )
 
     $evidence = New-VpnEvidence -Connection $Connection -Network $Network -Certificates $Certificates -Services $Services -Additional $ExtraEvidence
-    if ($Remediation) {
-        $evidence['remediation'] = $Remediation
+    $issueArguments = @{
+        CategoryResult = $CategoryResult
+        Severity       = $Severity
+        Title          = $Title
+        Evidence       = $evidence
+        Subcategory    = $Subcategory
     }
 
-    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $Severity -Title $Title -Evidence $evidence -Subcategory $Subcategory
+    if ($Remediation) { $issueArguments['Remediation'] = $Remediation }
+    if ($RemediationScript) { $issueArguments['RemediationScript'] = $RemediationScript }
+
+    Add-CategoryIssue @issueArguments
 }
 
 function Add-VpnHealthyFinding {

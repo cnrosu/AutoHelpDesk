@@ -219,7 +219,11 @@ function Add-CategoryIssue {
 
         [string]$Subcategory = $null,
 
-        [string]$CheckId = $null
+        [string]$CheckId = $null,
+
+        [string]$Remediation = $null,
+
+        [string]$RemediationScript = $null
     )
 
     $source = Get-HeuristicSourceMetadata
@@ -244,6 +248,14 @@ function Add-CategoryIssue {
 
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
         $entry['CheckId'] = $CheckId
+    }
+
+    if ($PSBoundParameters.ContainsKey('Remediation') -and -not [string]::IsNullOrWhiteSpace($Remediation)) {
+        $entry['Remediation'] = $Remediation.Trim()
+    }
+
+    if ($PSBoundParameters.ContainsKey('RemediationScript') -and -not [string]::IsNullOrWhiteSpace($RemediationScript)) {
+        $entry['RemediationScript'] = $RemediationScript
     }
 
     if ($source) { $entry['Source'] = $source }
