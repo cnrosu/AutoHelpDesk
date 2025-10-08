@@ -19,12 +19,71 @@ function ConvertTo-HardwareDriverText {
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
         $builder = [System.Text.StringBuilder]::new()
+        $firstEntry = $true
+
         foreach ($item in $Value) {
             if ($null -eq $item) { continue }
+
+            if ($item -is [pscustomobject] -or $item -is [hashtable]) {
+                $properties = @()
+
+                if ($item -is [hashtable]) {
+                    foreach ($key in $item.Keys) {
+                        $properties += [pscustomobject]@{ Name = [string]$key; Value = $item[$key] }
+                    }
+                } else {
+                    foreach ($prop in $item.PSObject.Properties) {
+                        if ($null -eq $prop) { continue }
+                        $properties += [pscustomobject]@{ Name = $prop.Name; Value = $prop.Value }
+                    }
+                }
+
+                $propertyLines = New-Object System.Collections.Generic.List[string]
+                foreach ($prop in $properties) {
+                    if (-not $prop) { continue }
+
+                    $rawValue = $prop.Value
+                    if ($null -eq $rawValue) { continue }
+
+                    if ($rawValue -is [System.Collections.IEnumerable] -and -not ($rawValue -is [string])) {
+                        $parts = New-Object System.Collections.Generic.List[string]
+                        foreach ($part in $rawValue) {
+                            if ($null -eq $part) { continue }
+                            $textPart = [string]$part
+                            if (-not [string]::IsNullOrWhiteSpace($textPart)) {
+                                $parts.Add($textPart.Trim()) | Out-Null
+                            }
+                        }
+                        if ($parts.Count -eq 0) { continue }
+                        $valueText = $parts.ToArray() -join '; '
+                    } else {
+                        $valueText = [string]$rawValue
+                        if ([string]::IsNullOrWhiteSpace($valueText)) { continue }
+                        $valueText = $valueText.Trim()
+                    }
+
+                    if ([string]::IsNullOrEmpty($prop.Name)) { continue }
+                    $propertyLines.Add(("{0}: {1}" -f $prop.Name, $valueText)) | Out-Null
+                }
+
+                if ($propertyLines.Count -eq 0) { continue }
+                if (-not $firstEntry) { $null = $builder.AppendLine() }
+                $firstEntry = $false
+
+                foreach ($line in $propertyLines) {
+                    $null = $builder.AppendLine($line)
+                }
+
+                continue
+            }
+
             $text = [string]$item
-            if ($builder.Length -gt 0) { $null = $builder.AppendLine() }
-            $null = $builder.Append($text)
+            if ([string]::IsNullOrWhiteSpace($text)) { continue }
+            if (-not $firstEntry) { $null = $builder.AppendLine() }
+            $firstEntry = $false
+            $null = $builder.Append($text.TrimEnd())
         }
+
         return $builder.ToString()
     }
 
