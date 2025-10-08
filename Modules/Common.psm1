@@ -712,6 +712,32 @@ function New-IssueCardHtml {
     [void]$bodyBuilder.Append("<pre class='report-pre'>$evidenceHtml</pre>")
   }
 
+  $hasRemediation = -not [string]::IsNullOrWhiteSpace($Entry.Remediation)
+  $hasRemediationScript = -not [string]::IsNullOrWhiteSpace($Entry.RemediationScript)
+  if ($hasRemediation -or $hasRemediationScript) {
+    $remediationBuilder = [System.Text.StringBuilder]::new()
+    [void]$remediationBuilder.Append("<div class='report-remediation'>")
+    [void]$remediationBuilder.Append("<h4 class='report-remediation__title'>Remediation</h4>")
+
+    if ($hasRemediation) {
+      $remediationHtml = Encode-Html $Entry.Remediation
+      $remediationHtml = [regex]::Replace($remediationHtml, '\\r?\\n', '<br>')
+      [void]$remediationBuilder.Append("<p class='report-remediation__text'>$remediationHtml</p>")
+    }
+
+    if ($hasRemediationScript) {
+      $codeId = 'remediation-' + ([guid]::NewGuid().ToString('N'))
+      $codeHtml = Encode-Html $Entry.RemediationScript
+      $buttonLabel = Encode-Html 'Copy PowerShell'
+      $successLabel = Encode-Html 'Copied!'
+      $failureLabel = Encode-Html 'Copy failed'
+      [void]$remediationBuilder.Append("<div class='report-remediation__code'><button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button><pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre></div>")
+    }
+
+    [void]$remediationBuilder.Append('</div>')
+    [void]$bodyBuilder.Append($remediationBuilder.ToString())
+  }
+
   $badgeFragment = "<span class='report-badge report-badge--$cardClass'>$badgeHtml</span>"
   $summaryFragment = "<span class='report-card__summary-text'>$summaryText</span>"
 

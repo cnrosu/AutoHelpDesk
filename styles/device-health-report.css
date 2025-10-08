@@ -307,6 +307,80 @@ details.report-card[open] > summary {
   margin-top: 0;
 }
 
+.report-remediation {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.report-remediation__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+.report-remediation__text {
+  margin: 0;
+  color: var(--color-text-primary);
+  line-height: 1.55;
+}
+
+.report-remediation__code {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.report-remediation__code .report-pre {
+  margin: 0;
+}
+
+.report-copy-button {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  padding: var(--space-xxs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface);
+  color: var(--color-heading);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.report-copy-button:hover {
+  background-color: var(--color-heading);
+  color: #ffffff;
+  border-color: var(--color-heading);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.report-copy-button:focus-visible {
+  outline: 2px solid var(--color-heading);
+  outline-offset: 2px;
+}
+
+.report-copy-button.is-success {
+  background-color: var(--color-state-good-border);
+  border-color: var(--color-state-good-border);
+  color: #ffffff;
+}
+
+.report-copy-button.is-error {
+  background-color: var(--color-state-bad-border);
+  border-color: var(--color-state-bad-border);
+  color: #ffffff;
+}
+
 .report-section {
   margin: var(--space-lg) 0;
   border: 1px solid var(--color-border-subtle);

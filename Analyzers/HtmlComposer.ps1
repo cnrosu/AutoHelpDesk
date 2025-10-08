@@ -208,6 +208,77 @@ function Format-AnalyzerEvidence {
     }
 }
 
+function Get-IssueCardContent {
+    param($Issue)
+
+    $evidence = $null
+    $remediation = $null
+    $remediationScript = $null
+
+    if ($Issue -and $Issue.PSObject.Properties['Evidence']) {
+        $evidence = $Issue.Evidence
+    }
+
+    if ($Issue -and $Issue.PSObject.Properties['Remediation']) {
+        $candidate = [string]$Issue.Remediation
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $remediation = $candidate.Trim()
+        }
+    }
+
+    if ($Issue -and $Issue.PSObject.Properties['RemediationScript']) {
+        $candidateScript = [string]$Issue.RemediationScript
+        if (-not [string]::IsNullOrWhiteSpace($candidateScript)) {
+            $remediationScript = $candidateScript
+        }
+    }
+
+    if ($evidence -is [System.Collections.IDictionary]) {
+        $normalized = [System.Collections.Specialized.OrderedDictionary]::new()
+        foreach ($key in $evidence.Keys) {
+            $value = $evidence[$key]
+            if (-not $remediation -and $key -match '^(?i)remediation(text)?$') {
+                $remediation = [string]$value
+                continue
+            }
+            if (-not $remediationScript -and $key -match '^(?i)(remediationscript|remediationcode|powershell(script)?|script)$') {
+                $remediationScript = [string]$value
+                continue
+            }
+
+            $normalized[$key] = $value
+        }
+
+        $evidence = $normalized
+    } elseif ($evidence -and -not ($evidence -is [string]) -and -not ($evidence -is [ValueType]) -and $evidence.PSObject -and
+        $evidence.PSObject.Properties.Count -gt 0) {
+        $normalized = [System.Collections.Specialized.OrderedDictionary]::new()
+        foreach ($property in $evidence.PSObject.Properties) {
+            if (-not $property) { continue }
+            $name = $property.Name
+            $value = $property.Value
+            if (-not $remediation -and $name -match '^(?i)remediation(text)?$') {
+                $remediation = [string]$value
+                continue
+            }
+            if (-not $remediationScript -and $name -match '^(?i)(remediationscript|remediationcode|powershell(script)?|script)$') {
+                $remediationScript = [string]$value
+                continue
+            }
+
+            $normalized[$name] = $value
+        }
+
+        $evidence = $normalized
+    }
+
+    [pscustomobject]@{
+        Evidence          = $evidence
+        Remediation       = $remediation
+        RemediationScript = $remediationScript
+    }
+}
+
 function Convert-ToIssueCard {
     param(
         $Category,
@@ -229,8 +300,9 @@ function Convert-ToIssueCard {
     }
     Write-HtmlDebug -Stage 'Composer.IssueCard' -Message 'Converting issue entry to card.' -Data $convertData
 
+    $content = Get-IssueCardContent -Issue $Issue
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
-    $detail = Format-AnalyzerEvidence -Value $Issue.Evidence
+    $detail = Format-AnalyzerEvidence -Value $content.Evidence
     $hasNewLines = $detail -match "\r|\n"
 
     $card = [pscustomobject]@{
@@ -241,10 +313,12 @@ function Convert-ToIssueCard {
         Message     = $Issue.Title
         Explanation = if ($hasNewLines) { $null } else { $detail }
         Evidence    = if ($hasNewLines) { $detail } else { $null }
+        Remediation = $content.Remediation
+        RemediationScript = $content.RemediationScript
         Source     = $issueSource
     }
 
-    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence }
+    $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence; HasRemediation = [bool]$card.Remediation; HasRemediationScript = [bool]$card.RemediationScript }
     foreach ($key in $issueSourceData.Keys) {
         $generatedData[$key] = $issueSourceData[$key]
     }
@@ -1522,11 +1596,158 @@ function New-AnalyzerHtml {
     });
   }
 
+  function copyToClipboard(text) {
+    if (!text) {
+      return Promise.reject(new Error('No text to copy'));
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(text);
+    }
+
+    return new Promise(function (resolve, reject) {
+      var textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+
+      try {
+        if (typeof textarea.focus === 'function') {
+          try {
+            textarea.focus({ preventScroll: true });
+          } catch (focusErr) {
+            textarea.focus();
+          }
+        }
+      } catch (err) {
+        // Ignore focus errors.
+      }
+
+      textarea.select();
+
+      try {
+        var successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (successful) {
+          resolve();
+        } else {
+          reject(new Error('Copy command failed'));
+        }
+      } catch (err) {
+        document.body.removeChild(textarea);
+        reject(err);
+      }
+    });
+  }
+
+  function setCopyButtonState(button, state) {
+    if (!button) {
+      return;
+    }
+
+    var original = button.getAttribute('data-copy-label');
+    if (!original) {
+      original = button.textContent || button.innerText || '';
+      button.setAttribute('data-copy-label', original);
+    }
+
+    var successText = button.getAttribute('data-copy-success') || 'Copied!';
+    var failureText = button.getAttribute('data-copy-failure') || 'Copy failed';
+
+    var targetText = original;
+    button.classList.remove('is-success');
+    button.classList.remove('is-error');
+
+    if (state === 'success') {
+      targetText = successText;
+      button.classList.add('is-success');
+    } else if (state === 'failure') {
+      targetText = failureText;
+      button.classList.add('is-error');
+    }
+
+    if (typeof button.textContent === 'string') {
+      button.textContent = targetText;
+    } else {
+      button.innerText = targetText;
+    }
+
+    if (state === 'success' || state === 'failure') {
+      if (button._copyResetId) {
+        window.clearTimeout(button._copyResetId);
+      }
+
+      button._copyResetId = window.setTimeout(function () {
+        var resetText = button.getAttribute('data-copy-label') || original;
+        if (typeof button.textContent === 'string') {
+          button.textContent = resetText;
+        } else {
+          button.innerText = resetText;
+        }
+        button.classList.remove('is-success');
+        button.classList.remove('is-error');
+      }, 2000);
+    }
+  }
+
+  function bindCopyButton(button) {
+    if (!button) {
+      return;
+    }
+
+    button.setAttribute('aria-live', 'polite');
+    button.setAttribute('aria-atomic', 'true');
+
+    button.addEventListener('click', function () {
+      var targetSelector = button.getAttribute('data-copy-target');
+      if (!targetSelector) {
+        setCopyButtonState(button, 'failure');
+        return;
+      }
+
+      var target = document.querySelector(targetSelector);
+      if (!target) {
+        setCopyButtonState(button, 'failure');
+        return;
+      }
+
+      var text = '';
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        text = target.value;
+      } else {
+        text = target.textContent || target.innerText || '';
+      }
+
+      if (!text) {
+        setCopyButtonState(button, 'failure');
+        return;
+      }
+
+      copyToClipboard(text).then(function () {
+        setCopyButtonState(button, 'success');
+      }).catch(function () {
+        setCopyButtonState(button, 'failure');
+      });
+    });
+  }
+
+  function initCopyButtons(root) {
+    var buttons = toArray((root || document).querySelectorAll('[data-copy-target]'));
+    buttons.forEach(function (button) {
+      bindCopyButton(button);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var tabsets = toArray(document.querySelectorAll('[data-report-tabs]'));
     tabsets.forEach(function (tabset) {
       initReportTabs(tabset);
     });
+
+    initCopyButtons(document);
   });
 })();
 </script>
