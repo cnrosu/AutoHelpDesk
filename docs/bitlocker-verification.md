@@ -32,10 +32,10 @@ Get-BitLockerVolume -MountPoint 'C:' | Format-List *
 manage-bde -protectors -get C:
 ```
 
-Confirm that at least one protector reports a `KeyProtectorType` of
-`RecoveryPassword` or that `manage-bde` lists a **Numerical Password** entry. If
-those entries exist, the analyzer will now record the recovery password as
-present.
+Confirm that at least one protector reports either a `KeyProtectorType` of
+`RecoveryPassword`, a friendly name that includes **Numerical Password**, or a
+`RecoveryPasswordId` value. If any of those indicators are present, the analyzer
+records the recovery password as available.
 
 ## Why the measured boot info card appears
 
@@ -48,7 +48,9 @@ binding details.
 
 ### Manual verification
 
-Use these commands to check what the collector gathered:
+Use these commands to check what the collector gathered. Replace `$folder` with
+the root folder that contains your collected JSON (for example, the path output
+by `Device-Report.ps1`, where the `Security\measured-boot.json` file lives):
 
 ```powershell
 # Dump protector PCR bindings (if available)
@@ -57,7 +59,8 @@ Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtecto
     Select-Object KeyProtectorType, PcrBinding, PcrHashAlgorithm
 
 # Review the measured boot collector output directly (JSON file)
-Get-Content "$env:PROGRAMDATA\AutoHelpDesk\collectors\measured-boot.json"
+$folder = "C:\\Users\\Me\\Desktop\\DiagReports\\20240915_132233"
+Get-Content (Join-Path $folder 'Security/measured-boot.json')
 ```
 
 If `PcrBinding` is empty for all TPM protectors, AutoHelpDesk cannot confirm the
