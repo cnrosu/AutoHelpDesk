@@ -10,6 +10,103 @@ The verb part of the name identifies the action that the cmdlet performs. The no
 the name identifies the entity on which the action is performed. For example, the `Get-Command`
 cmdlet retrieves all the commands that are registered in PowerShell.
 
+## Canonical Snippets
+
+Use these PowerShell snippets as the starting point for new AutoHelpDesk components.
+
+### Collector Function Skeleton
+
+```powershell
+function Get-AhdSampleData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    try {
+        Get-ChildItem -Path $Path -File -ErrorAction Stop | ForEach-Object {
+            [pscustomobject]@{
+                Path      = $_.FullName
+                Timestamp = $_.LastWriteTimeUtc
+            }
+        }
+    }
+    catch {
+        throw
+    }
+}
+```
+
+### Analyzer Function Skeleton
+
+```powershell
+function Test-AhdSampleData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$InputObject
+    )
+
+    foreach ($record in $InputObject) {
+        if ($record.Timestamp -lt (Get-Date).AddDays(-30)) {
+            [pscustomobject]@{
+                Name        = 'StaleSampleItem'
+                Severity    = 'Moderate'
+                Evidence    = "Item at $($record.Path) is older than 30 days."
+                Remediation = 'Review the source system and update or remove stale content.'
+            }
+        }
+    }
+}
+```
+
+### Heuristic Rule Object
+
+```powershell
+[pscustomobject]@{
+    Name        = 'Sample.Rule.OutdatedFile'
+    Severity    = 'High'
+    Evidence    = 'Critical configuration file has not been updated in 90 days.'
+    Remediation = 'Confirm the configuration is still valid or deploy the current baseline.'
+}
+```
+
+### Config Constants Hashtable
+
+```powershell
+$Script:Config = @{
+    Thresholds = @{
+        StaleDays = 30
+        MaxItems  = 500
+    }
+}
+```
+
+### Doc Header Template
+
+```markdown
+# Summary
+
+## Signals
+
+## Detection
+
+## Remediation
+
+## References
+```
+
+## Common Anti-Patterns
+
+Avoid these patterns to keep modules efficient and production ready.
+
+- **Using `Write-Host` in non-interactive code** – prefer `Write-Verbose`, `Write-Information`, or structured output to support automation.
+- **Calling `Get-ChildItem -Recurse` without bounds** – set `-Depth`, filter extensions, or scope specific directories to prevent runaway scans.
+- **Catching exceptions without handling or rethrowing** – ensure every `catch` block logs actionable details or rethrows to preserve errors.
+- **Returning untyped hashtables** – emit `[pscustomobject]` instances so downstream analyzers receive predictable property sets.
+- **Running `Select-String -Recurse` on non-filesystem providers** – limit recursive searches to filesystem paths or enumerate supported locations first.
+
 > [!NOTE]
 > PowerShell uses the term _verb_ to describe a word that implies an action even if that word isn't
 > a standard verb in the English language. For example, the term `New` is a valid PowerShell verb
