@@ -2,24 +2,20 @@
 AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that allow unrestricted remote addresses because they enable cross-VLAN propagation. This scenario illustrates how a single permissive rule on TCP 135/139/445 can let ransomware traverse network segments. Use the steps below to gather evidence, validate exposure, and tighten access without breaking legitimate workflows.
 
 ## Signals to Collect
-- `Get-NetFirewallRule -DisplayName "Remote Assistance (DCOM-In)" | Get-NetFirewallAddressFilter` → Inspect remote address scope for SMB-related rules.
-- `Get-NetTCPConnection -LocalPort 135` (or `netstat -an | find "135"`) → Confirm RPC Endpoint Mapper is listening.
-- `Test-NetConnection -ComputerName <target> -Port 135` from another VLAN → Validate cross-segment reachability.
-- `New-PSDrive -Name T -PSProvider FileSystem -Root \\<server>\TestShare` → Verify SMB authentication succeeds across VLANs (disconnect after test).
+- `$smbRules = Get-NetFirewallRule | Where-Object { $_.DisplayName -match 'File and Printer Sharing|SMB|LanmanServer' } | Where-Object Enabled -eq True` → Enumerate enabled SMB-related firewall rules.
+- `$addr = $smbRules | Get-NetFirewallAddressFilter` → Retrieve address filters applied to each SMB rule.
+- Extract `RemoteAddress` for each rule and note entries scoped to `Any`, blank values, or networks outside trusted local subnets.
 
 ## Detection Rule
-- Normalize inbound firewall rules covering TCP/UDP ports 135, 137, 138, 139, or 445.
-- Raise a **high-severity** issue (`Security/Firewall/SmbInbound`) when those rules allow unrestricted or unknown remote scopes (Public, Any, or empty address filters).
-- Attach evidence summarizing rule names, profiles, local ports, and remote scopes to show technicians which entries need adjustment.
-- Produce additional informational cards if rule inventory is incomplete, noting that SMB exposure checks could not run.
+- **CrossVLANExposure**: Flag any enabled SMB firewall rule whose profile includes **Public**, or whose `RemoteAddress` is `Any`, blank, or otherwise not restricted to local subnets. Classify these findings as **High severity** and include the rule name, profile, and address scope in the evidence payload.
 
 ## Heuristic Mapping
-- `Security.Firewall` (Check ID `Security/Firewall/SmbInbound`)
+- `Security/SMB/CrossVLANExposure`
 
 ## Remediation
-1. Restrict affected firewall rules to trusted management subnets or disable them entirely if SMB/Remote Assistance is unused.
-2. Implement upstream VLAN ACLs or firewall policies to block SMB ports between user segments unless explicitly required.
-3. Monitor for unexpected SMB connections across VLANs using network telemetry or SIEM alerts.
+1. Restrict SMB-related rules to the **Domain** profile and limit remote addresses to trusted local subnets or management networks.
+2. Harden NTLM and disable guest/anonymous access in accordance with the Windows security baseline to prevent unauthenticated traversal if a rule must stay open.
+3. Implement upstream VLAN ACLs or firewall policies to block SMB ports between user segments unless explicitly required.
 4. Publish a runbook for technicians detailing how to request temporary access without creating broad permanent rules.
 5. Re-run AutoHelpDesk firewall collectors to confirm inbound SMB rules now show restricted scopes.
 
