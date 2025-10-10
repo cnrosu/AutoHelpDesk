@@ -303,7 +303,16 @@ function Convert-ToIssueCard {
     $content = Get-IssueCardContent -Issue $Issue
     $severity = ConvertTo-NormalizedSeverity $Issue.Severity
     $detail = Format-AnalyzerEvidence -Value $content.Evidence
-    $hasNewLines = $detail -match "\r|\n"
+    if ($null -ne $detail) { $detail = [string]$detail } else { $detail = '' }
+    $hasEvidence = -not [string]::IsNullOrWhiteSpace($detail)
+
+    $explanation = $null
+    if ($Issue -and $Issue.PSObject.Properties['Explanation']) {
+        $explanationCandidate = [string]$Issue.Explanation
+        if (-not [string]::IsNullOrWhiteSpace($explanationCandidate)) {
+            $explanation = $explanationCandidate.Trim()
+        }
+    }
 
     $card = [pscustomobject]@{
         Severity    = $severity
@@ -311,8 +320,8 @@ function Convert-ToIssueCard {
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
-        Explanation = if ($hasNewLines) { $null } else { $detail }
-        Evidence    = if ($hasNewLines) { $detail } else { $null }
+        Explanation = $explanation
+        Evidence    = if ($hasEvidence) { $detail } else { $null }
         Remediation = $content.Remediation
         RemediationScript = $content.RemediationScript
         Source     = $issueSource
