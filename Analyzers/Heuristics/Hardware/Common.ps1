@@ -324,6 +324,22 @@ function Get-DriverPropertyValue {
     return $null
 }
 
+function Test-BluetoothIndicator {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+
+    $normalized = $Value.Trim()
+    if (-not $normalized) { return $false }
+
+    if ($normalized -match '(?i)bluetooth') { return $true }
+
+    $pattern = '(?i)(^|[^a-z0-9])(bth|ibt|qcbt|btath)[a-z0-9_-]*'
+    if ($normalized -match $pattern) { return $true }
+
+    return $false
+}
+
 function Get-DriverLabel {
     param($Entry)
 
