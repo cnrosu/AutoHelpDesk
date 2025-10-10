@@ -1,25 +1,30 @@
 ## Summary
-The Microsoft Defender heuristic compares real-time monitoring, engine status, and companion safeguards to determine which cards to raise. When `RealTimeProtectionEnabled` is false, AutoHelpDesk emits a high-severity alert even if signatures and tamper protection remain healthy. This doc outlines the data sources, evaluation order, and remediation workflow so technicians can quickly restore protection.
+The Microsoft Defender heuristic compares real-time monitoring, engine status, and companion safeguards to determine which cards to raise. When `RealTimeProtectionEnabled` is false, AutoHelpDesk emits a critical-severity alert even if signatures and tamper protection remain healthy, and it supplements that finding with tamper, cloud, signature age, and exclusion drift checks. This doc outlines the data sources, evaluation order, thresholds, and remediation workflow so technicians can quickly restore protection.
 
 ## Signals to Collect
-- `Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled, TamperProtectionEnabled, AMServiceEnabled` → Capture the core Defender state flags.
-- `Get-MpPreference | Select-Object DisableRealtimeMonitoring, MAPSReporting, SubmitSamplesConsent` → Review policies that may suppress monitoring.
-- `Get-MpThreat -ThreatIDDefaultAction Unknown | Select-Object DetectionTime, ThreatName, ActionSuccess` → Confirm recent detections and ensure the engine is operating.
+- `Get-MpComputerStatus` → Persist `RealTimeProtectionEnabled`, `IsTamperProtected`, `AntivirusSignatureLastUpdated`, `AMServiceEnabled`, and companion health flags for state comparison.
+- `Get-MpPreference` → Record `DisableRealtimeMonitoring`, MAPS/Cloud configuration (`MAPSReporting`, `SubmitSamplesConsent`, `CloudBlockLevel`), and all file/path/process exclusions.
+- *(Optional)* Parse a local Defender baseline exclusions file (for example, `C:\ProgramData\AutoHelpDesk\defender-exclusions-baseline.json`) to detect drift between expected and observed exclusions.
 
 ## Detection Rule
-- Raise a **high-severity** card when `RealTimeProtectionEnabled` equals `False`.
-- Raise a **critical** card when `AntivirusEnabled` equals `False`, indicating the Defender engine is disabled.
-- Continue emitting **normal** cards for signatures, tamper protection, and MAPS when their respective checks pass, even if real-time protection fails.
+- **RTPDisabled** → When `RealTimeProtectionEnabled = $false`, emit a **Critical** severity issue because real-time protection is off.
+- **TamperOff** → When `IsTamperProtected = $false` (from `Get-MpComputerStatus` or `Get-MpPreference`), emit a **High** severity issue.
+- **CloudOff** → When cloud/MAPS toggles (`MAPSReporting`, `SubmitSamplesConsent`, `CloudBlockLevel`) indicate cloud-delivered protection is disabled, emit a **Medium** severity issue.
+- **SignaturesOld** → When `(Get-Date) - AntivirusSignatureLastUpdated` exceeds **SignatureAgeHoursThreshold = 72** hours, emit a **Medium** severity issue.
+- **OverbroadExclusions** → When any exclusion path matches `%TEMP%`, `%USERPROFILE%`, `*\Downloads\*`, `%ProgramData%\*`, or other catch-all wildcards beyond the baseline, emit a **High** severity issue.
 
 ## Heuristic Mapping
-- `Security.Defender`
+- `Security/Defender/RTPDisabled`
+- `Security/Defender/TamperProtectionDisabled`
+- `Security/Defender/CloudProtectionDisabled`
+- `Security/Defender/OutdatedSignatures`
+- `Security/Defender/OverbroadExclusions`
 
 ## Remediation
-1. Re-enable real-time monitoring via PowerShell (`Set-MpPreference -DisableRealtimeMonitoring $false`) or the Windows Security app.
-2. Confirm tamper protection remains on so local users cannot toggle the setting again.
-3. Remove or reconfigure conflicting third-party antivirus agents that disable Defender, or reinstall Defender components if corruption is suspected.
-4. Run a full `Start-MpScan -ScanType FullScan` to ensure no malware persisted while protection was off.
-5. Re-run AutoHelpDesk collectors to verify real-time protection reports `True` and issue cards clear.
+1. **Enable core protections by policy**: enforce real-time protection, tamper protection, and cloud-delivered protection through Intune, Group Policy, or `Set-MpPreference -DisableRealtimeMonitoring $false` so endpoints cannot disable them locally.
+2. **Refresh Defender signatures**: run `Update-MpSignature` (or trigger the configured update channel) to immediately clear outdated signatures and revalidate detection capability.
+3. **Tighten exclusions**: review configured exclusions against the approved baseline, remove any patterns that cover `%TEMP%`, user profiles, downloads folders, or `%ProgramData%`, and scope any necessary exclusions to precise files.
+4. **Verify restoration**: rerun the AutoHelpDesk collectors to confirm all flags return to expected values and that no new overbroad exclusions or stale signatures persist.
 
 ## References
 - `docs/defender-real-time-protection.md`
@@ -28,10 +33,13 @@ The Microsoft Defender heuristic compares real-time monitoring, engine status, a
 
 ## What the cards are telling you
 - **Analyzer**: Security → Microsoft Defender
-- **High-severity issue**: **"Defender real-time protection disabled, creating antivirus protection gaps."**
+- **Critical-severity issue**: **"Defender real-time protection disabled, creating antivirus protection gaps."**
   - Triggered when `Get-MpComputerStatus` reports `RealTimeProtectionEnabled = False`.
-- **Critical issue (related but rarer)**: "Defender antivirus engine disabled, creating antivirus protection gaps." — emitted if `AntivirusEnabled = False`.
-- **Normal cards**: "Defender cloud-delivered protection enabled", "Defender signatures present (...)" and "Defender tamper protection enabled" surface when their respective configuration checks still pass, even if real-time monitoring is off.
+- **High-severity issue**: **"Defender tamper protection disabled, allowing unauthorized Defender changes."**
+  - Triggered when tamper protection flags (`IsTamperProtected`, `DisableTamperProtection`) indicate the safeguard is off.
+- **Medium-severity issues**: cover cloud-delivered protection disabled and Defender signatures older than 72 hours.
+- **High-severity issue**: flags overbroad exclusions that cover `%TEMP%`, user profiles, downloads folders, or `%ProgramData%`.
+- **Normal cards**: confirm healthy states when real-time protection, tamper protection, cloud delivered protection, signatures, and exclusions all align with policy.
 
 > **Impact (plain English):** When real-time protection is off, Microsoft Defender stops intercepting new files and processes, leaving the machine exposed to fresh malware until a manual or scheduled scan runs.
 
@@ -42,15 +50,15 @@ The Microsoft Defender heuristic compares real-time monitoring, engine status, a
   - `Get-MpThreat` → returns recent detections for the "No recent Defender detections" card.
 - The analyzer (`Analyzers/Heuristics/Security/Security.Defender.ps1`) converts those fields into issue/normal cards. Each check is evaluated independently, so one failure (real-time protection) can coexist with multiple passing checks (signatures, MAPS, tamper protection).
 
-## Why good cards can appear next to a high-severity issue
-The collector snapshots multiple Defender subsystems at once. Real-time monitoring is controlled by the `RealTimeProtectionEnabled` flag, while signature currency, tamper protection, and cloud-delivered protection have their own independent controls. It is therefore common to see:
-- **High**: Real-time protection disabled.
-- **Good**: Signatures present and current — because updates are still installing successfully.
-- **Good**: Tamper protection enabled — the policy itself remains active even if a local admin disabled real-time scanning temporarily.
-- **Good**: Cloud-delivered protection enabled — MAPS reporting and cloud block level are still configured for blocking mode.
-These cards describe different aspects of Defender’s configuration, so technicians should treat the high-severity real-time protection finding as actionable even when other safeguards remain in place.
+## Why good cards can appear next to a critical issue
+The collector snapshots multiple Defender subsystems at once. Real-time monitoring is controlled by the `RealTimeProtectionEnabled` flag, while signature currency, tamper protection, exclusion hygiene, and cloud-delivered protection each have independent controls and thresholds. It is therefore common to see:
+- **Critical**: Real-time protection disabled.
+- **High**: Tamper protection disabled or overbroad exclusions detected.
+- **Medium**: Cloud-delivered protection disabled or signatures older than the 72-hour threshold.
+- **Good**: Remaining safeguards showing compliant states because updates are still installing successfully and policy is intact.
+These cards describe different aspects of Defender’s configuration, so technicians should treat the critical real-time protection finding—and any accompanying tamper, cloud, signature, or exclusion findings—as actionable even when other safeguards remain in place.
 
-## Typical causes of the high-severity card
+## Typical causes of the critical card
 - A user or script ran `Set-MpPreference -DisableRealtimeMonitoring $true` (often to install unsigned software) and never re-enabled it.
 - Third-party security products turned Defender’s real-time engine off to avoid conflicts, leaving Defender dormant without another AV registered.
 - Tamper protection was temporarily relaxed by an administrator or Intune security task, allowing the setting to be toggled off.
@@ -68,7 +76,7 @@ These cards describe different aspects of Defender’s configuration, so technic
 ## Verification steps
 - `Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled` should return `True`.
 - In Windows Security, the **Real-time protection** toggle should appear as **On** and be greyed out if tamper protection is controlling it.
-- Re-run the AutoHelpDesk collectors/analyzer; the high-severity card should clear, leaving only the normal cards if other checks still pass.
+- Re-run the AutoHelpDesk collectors/analyzer; the critical card should clear, leaving only the normal cards if other checks still pass.
 
 ## Additional references
 - [Microsoft Learn: Enable and configure Microsoft Defender Antivirus](https://learn.microsoft.com/microsoft-365/security/defender-endpoint/configure-microsoft-defender-antivirus)
