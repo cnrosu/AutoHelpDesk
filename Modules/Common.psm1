@@ -709,7 +709,109 @@ function New-IssueCardHtml {
   $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } elseif ($Entry.Severity) { $Entry.Severity.ToUpperInvariant() } else { 'ISSUE' }
   $badgeHtml = Encode-Html $badgeText
   $areaHtml = Encode-Html $Entry.Area
+  $resolvedTitle = $null
+  $troubleshootingHtml = $null
   $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
+
+  $tshootCommand = $null
+  try { $tshootCommand = Get-Command -Name Get-TroubleshootingForCard -ErrorAction Stop } catch { $tshootCommand = $null }
+  if ($tshootCommand) {
+    $titleForLookup = if ($Entry.PSObject.Properties['Title'] -and $Entry.Title) { $Entry.Title } else { $messageValue }
+    $areaForLookup = if ($Entry.Area) { $Entry.Area } else { '' }
+    $checkIdForLookup = if ($Entry.PSObject.Properties['CheckId']) { $Entry.CheckId } else { $null }
+
+    try {
+      $tsCardOriginal = Get-TroubleshootingForCard -CheckId $checkIdForLookup -Area $areaForLookup -Title $titleForLookup
+    } catch {
+      $tsCardOriginal = $null
+    }
+
+    if ($tsCardOriginal) {
+      $tsCard = $tsCardOriginal
+      try {
+        $tsCard = $tsCardOriginal | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+      } catch {
+        try { $tsCard = $tsCardOriginal | Select-Object * } catch { $tsCard = $tsCardOriginal }
+      }
+
+      $bind = @{}
+      $addSource = {
+        param($source)
+        if (-not $source) { return }
+        if ($source -is [System.Collections.IDictionary]) {
+          foreach ($key in $source.Keys) {
+            if (-not $bind.ContainsKey($key)) { $bind[$key] = $source[$key] }
+          }
+          return
+        }
+        $props = @()
+        try { $props = $source | Get-Member -MemberType *Property -ErrorAction Stop } catch { $props = @() }
+        foreach ($prop in $props) {
+          $name = $prop.Name
+          if (-not $bind.ContainsKey($name)) {
+            try { $bind[$name] = $source.$name } catch { }
+          }
+        }
+      }
+
+      if ($Entry.PSObject.Properties['Data']) { & $addSource $Entry.Data }
+      if ($Entry.PSObject.Properties['Payload']) { & $addSource $Entry.Payload }
+      if ($Entry.PSObject.Properties['Meta']) { & $addSource $Entry.Meta }
+
+      $templateCommand = Get-Command -Name Resolve-Template -ErrorAction SilentlyContinue
+      $templateSafeCommand = Get-Command -Name Resolve-TemplateSafe -ErrorAction SilentlyContinue
+      $titleFallback = if (-not [string]::IsNullOrWhiteSpace($messageValue)) { $messageValue } else { $titleForLookup }
+      if ($tsCard.title_template) {
+        if ($templateSafeCommand) {
+          $candidate = Resolve-TemplateSafe -Template $tsCard.title_template -Data $bind -Fallback $titleFallback
+          if (-not [string]::IsNullOrWhiteSpace($candidate)) { $resolvedTitle = $candidate }
+        } elseif ($templateCommand) {
+          try {
+            $candidate = Resolve-Template -Template $tsCard.title_template -Data $bind
+          } catch {
+            $candidate = $null
+          }
+          if ([string]::IsNullOrWhiteSpace($candidate)) { $candidate = $titleFallback }
+          if (-not [string]::IsNullOrWhiteSpace($candidate)) { $resolvedTitle = $candidate }
+        }
+      }
+
+      if ($templateCommand) {
+        if ($tsCard.troubleshooting) {
+          if ($tsCard.troubleshooting.overview) {
+            $tsCard.troubleshooting.overview = Resolve-Template -Template $tsCard.troubleshooting.overview -Data $bind
+          }
+          if ($tsCard.troubleshooting.scenarios) {
+            foreach ($sc in $tsCard.troubleshooting.scenarios) {
+              if (-not $sc) { continue }
+              if ($sc.title) { $sc.title = Resolve-Template -Template $sc.title -Data $bind }
+              if ($sc.steps) { $sc.steps = @($sc.steps | ForEach-Object { Resolve-Template -Template $_ -Data $bind }) }
+              if ($sc.validation) { $sc.validation = @($sc.validation | ForEach-Object { Resolve-Template -Template $_ -Data $bind }) }
+              if ($sc.roll_back) { $sc.roll_back = @($sc.roll_back | ForEach-Object { Resolve-Template -Template $_ -Data $bind }) }
+              if ($sc.scripts) {
+                foreach ($scriptEntry in $sc.scripts) {
+                  if ($scriptEntry.name) { $scriptEntry.name = Resolve-Template -Template $scriptEntry.name -Data $bind }
+                  if ($scriptEntry.code) { $scriptEntry.code = Resolve-Template -Template $scriptEntry.code -Data $bind }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      $tsHtmlCommand = Get-Command -Name New-TroubleshootingHtml -ErrorAction SilentlyContinue
+      if ($tsHtmlCommand -and $tsCard.troubleshooting) {
+        try { $troubleshootingHtml = New-TroubleshootingHtml -Card $tsCard } catch { $troubleshootingHtml = $null }
+      }
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($resolvedTitle)) {
+    $Entry.RenderTitle = $resolvedTitle
+    $messageValue = $resolvedTitle
+  } elseif ($Entry.PSObject.Properties['RenderTitle'] -and -not [string]::IsNullOrWhiteSpace($Entry.RenderTitle)) {
+    $messageValue = $Entry.RenderTitle
+  }
   $messageHtml = Encode-Html $messageValue
   $hasMessage = -not [string]::IsNullOrWhiteSpace($messageValue)
   $summaryText = if ($hasMessage) { "<strong>$areaHtml</strong>: $messageHtml" } else { "<strong>$areaHtml</strong>" }
@@ -724,6 +826,10 @@ function New-IssueCardHtml {
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
     [void]$bodyBuilder.Append("<details class='report-evidence'><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details>")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($troubleshootingHtml)) {
+    [void]$bodyBuilder.Append($troubleshootingHtml)
   }
 
   $hasRemediation = -not [string]::IsNullOrWhiteSpace($Entry.Remediation)
