@@ -9,6 +9,167 @@ function Invoke-HardwareHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Hardware'
+    $issueCount = 0
+
+    $formatBatteryRuntime = {
+        param([double]$Minutes)
+
+        if ($null -eq $Minutes) { return $null }
+
+        $timeSpan = [System.TimeSpan]::FromMinutes($Minutes)
+        $parts = New-Object System.Collections.Generic.List[string]
+
+        if ($timeSpan.Days -gt 0) { $parts.Add(("{0}d" -f $timeSpan.Days)) | Out-Null }
+        if ($timeSpan.Hours -gt 0) { $parts.Add(("{0}h" -f $timeSpan.Hours)) | Out-Null }
+        if ($timeSpan.Minutes -gt 0) { $parts.Add(("{0}m" -f $timeSpan.Minutes)) | Out-Null }
+
+        if ($parts.Count -eq 0) {
+            $parts.Add(("{0}m" -f [math]::Round($Minutes, 0))) | Out-Null
+        }
+
+        return $parts -join ' '
+    }
+
+    $batteryArtifact = Get-AnalyzerArtifact -Context $Context -Name 'battery'
+    Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Resolved battery artifact' -Data ([ordered]@{
+        Found = [bool]$batteryArtifact
+    })
+
+    if ($batteryArtifact) {
+        $batteryPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $batteryArtifact)
+        Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Resolved battery payload' -Data ([ordered]@{
+            HasPayload = [bool]$batteryPayload
+        })
+
+        if ($batteryPayload) {
+            $batteryErrors = @()
+            if ($batteryPayload.PSObject.Properties['Errors'] -and $batteryPayload.Errors) {
+                $batteryErrors = @($batteryPayload.Errors | Where-Object { $_ })
+            }
+
+            $batteryEntries = @()
+            if ($batteryPayload.PSObject.Properties['Batteries'] -and $batteryPayload.Batteries) {
+                $batteryEntries = @($batteryPayload.Batteries | Where-Object { $_ })
+            }
+
+            $averageLife = $null
+            if ($batteryPayload.PSObject.Properties['AverageLife']) {
+                $averageLife = $batteryPayload.AverageLife
+            }
+
+            Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Parsed battery payload' -Data ([ordered]@{
+                BatteryCount       = $batteryEntries.Count
+                AverageLifeMinutes = if ($averageLife -and $averageLife.PSObject.Properties['AtFullChargeMinutes']) { $averageLife.AtFullChargeMinutes } else { $null }
+                ErrorCount         = $batteryErrors.Count
+            })
+
+            if ($batteryErrors.Count -gt 0) {
+                $firstError = $batteryErrors | Select-Object -First 1
+                $errorText = if ($firstError -and $firstError.PSObject.Properties['Error'] -and $firstError.Error) { [string]$firstError.Error } else { 'Unknown error' }
+                $source = if ($firstError -and $firstError.PSObject.Properties['Source'] -and $firstError.Source) { [string]$firstError.Source } else { 'powercfg.exe /batteryreport' }
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Battery report command reported an error, so health data may be incomplete.' -Evidence ("{0}: {1}" -f $source, $errorText) -Subcategory 'Battery'
+                $issueCount++
+            }
+
+            foreach ($battery in $batteryEntries) {
+                if (-not $battery) { continue }
+
+                $label = if ($battery.PSObject.Properties['Name'] -and $battery.Name) { [string]$battery.Name } else { 'Primary battery' }
+
+                $design = $null
+                if ($battery.PSObject.Properties['DesignCapacitymWh']) {
+                    $designValue = $battery.DesignCapacitymWh
+                    if ($designValue -ne $null -and $designValue -ne '') { $design = [double]$designValue }
+                }
+
+                $full = $null
+                if ($battery.PSObject.Properties['FullChargeCapacitymWh']) {
+                    $fullValue = $battery.FullChargeCapacitymWh
+                    if ($fullValue -ne $null -and $fullValue -ne '') { $full = [double]$fullValue }
+                }
+
+                $cycleCount = $null
+                if ($battery.PSObject.Properties['CycleCount']) {
+                    $cycleValue = $battery.CycleCount
+                    if ($cycleValue -ne $null -and $cycleValue -ne '') { $cycleCount = [int]$cycleValue }
+                }
+
+                $capacityPct = $null
+                if ($design -and $design -gt 0 -and $full -ne $null -and $full -ge 0) {
+                    $capacityPct = [math]::Round(($full / $design) * 100, 1)
+                }
+
+                $wearPct = if ($capacityPct -ne $null) { [math]::Round(100 - $capacityPct, 1) } else { $null }
+                if ($wearPct -ne $null -and $wearPct -lt 0) { $wearPct = 0 }
+
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+                if ($design -ne $null) { $evidenceLines.Add(("Design capacity: {0:N0} mWh" -f $design)) | Out-Null }
+                if ($full -ne $null) { $evidenceLines.Add(("Full charge capacity: {0:N0} mWh" -f $full)) | Out-Null }
+                if ($wearPct -ne $null) { $evidenceLines.Add(("Estimated wear: {0:N1}% loss" -f $wearPct)) | Out-Null }
+                if ($cycleCount -ne $null) { $evidenceLines.Add(("Reported cycle count: {0}" -f $cycleCount)) | Out-Null }
+
+                if ($averageLife) {
+                    $lifeDisplay = $null
+                    if ($averageLife.PSObject.Properties['AtFullChargeMinutes'] -and $averageLife.AtFullChargeMinutes -ne $null) {
+                        $lifeDisplay = & $formatBatteryRuntime ([double]$averageLife.AtFullChargeMinutes)
+                    }
+                    if (-not $lifeDisplay -and $averageLife.PSObject.Properties['AtFullCharge'] -and $averageLife.AtFullCharge) {
+                        $lifeDisplay = [string]$averageLife.AtFullCharge
+                    }
+                    if ($lifeDisplay) {
+                        $evidenceLines.Add(("Average runtime (full charge): {0}" -f $lifeDisplay)) | Out-Null
+                    }
+                }
+
+                $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
+
+                if ($capacityPct -eq $null) {
+                    if ($design -or $full) {
+                        $title = "Battery {0} reported incomplete capacity data, so degradation cannot be calculated." -f $label
+                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Battery'
+                        $issueCount++
+                    }
+                } elseif ($capacityPct -lt 60) {
+                    $title = "Battery '{0}' holds {1}% of its original charge capacity, so unplugged runtime will feel dramatically shorter." -f $label, $capacityPct
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Battery'
+                    $issueCount++
+                } elseif ($capacityPct -lt 80) {
+                    $title = "Battery '{0}' holds {1}% of its original charge capacity, so unplugged runtime will be noticeably shorter." -f $label, $capacityPct
+                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Battery'
+                    $issueCount++
+                } else {
+                    $title = "Battery '{0}' retains {1}% of its original charge capacity, so runtime remains close to new." -f $label, $capacityPct
+                    Add-CategoryNormal -CategoryResult $result -Title $title -Evidence $evidence -Subcategory 'Battery'
+                }
+
+                if ($design -ne $null -and $full -ne $null) {
+                    $detailsParts = New-Object System.Collections.Generic.List[string]
+                    if ($cycleCount -ne $null) { $detailsParts.Add(("Cycle count: {0}" -f $cycleCount)) | Out-Null }
+                    if ($battery.PSObject.Properties['Chemistry'] -and $battery.Chemistry) { $detailsParts.Add(("Chemistry: {0}" -f $battery.Chemistry)) | Out-Null }
+                    if ($battery.PSObject.Properties['Manufacturer'] -and $battery.Manufacturer) { $detailsParts.Add(("Manufacturer: {0}" -f $battery.Manufacturer)) | Out-Null }
+
+                    $details = if ($detailsParts.Count -gt 0) { $detailsParts.ToArray() -join '; ' } else { '' }
+                    $status = "Full: {0:N0} mWh | Design: {1:N0} mWh" -f $full, $design
+                    Add-CategoryCheck -CategoryResult $result -Name ("Battery {0} capacity" -f $label) -Status $status -Details $details
+                }
+
+                if ($averageLife) {
+                    $runtimeDisplay = $null
+                    if ($averageLife.PSObject.Properties['AtFullChargeMinutes'] -and $averageLife.AtFullChargeMinutes -ne $null) {
+                        $runtimeDisplay = & $formatBatteryRuntime ([double]$averageLife.AtFullChargeMinutes)
+                    }
+                    if (-not $runtimeDisplay -and $averageLife.PSObject.Properties['AtFullCharge'] -and $averageLife.AtFullCharge) {
+                        $runtimeDisplay = [string]$averageLife.AtFullCharge
+                    }
+
+                    if ($runtimeDisplay) {
+                        $details = if ($averageLife.PSObject.Properties['Period'] -and $averageLife.Period) { "Period: $($averageLife.Period)" } else { '' }
+                        Add-CategoryCheck -CategoryResult $result -Name ("Battery {0} average runtime" -f $label) -Status $runtimeDisplay -Details $details
+                    }
+                }
+            }
+        }
+    }
 
     $driversArtifact = Get-AnalyzerArtifact -Context $Context -Name 'drivers'
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver artifact' -Data ([ordered]@{
@@ -74,8 +235,6 @@ function Invoke-HardwareHeuristics {
 
     $bluetoothDrivers = New-Object System.Collections.Generic.List[pscustomobject]
     $bluetoothProblemDevices = New-Object System.Collections.Generic.List[pscustomobject]
-
-    $issueCount = 0
     foreach ($entry in $entries) {
         if (-not $entry) { continue }
 
