@@ -57,6 +57,10 @@ function Invoke-HardwareHeuristics {
                 $averageLife = $batteryPayload.AverageLife
             }
 
+            $lowWearThreshold    = 10.0
+            $mediumWearThreshold = 20.0
+            $highWearThreshold   = 30.0
+
             Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Parsed battery payload' -Data ([ordered]@{
                 BatteryCount       = $batteryEntries.Count
                 AverageLifeMinutes = if ($averageLife -and $averageLife.PSObject.Properties['AtFullChargeMinutes']) { $averageLife.AtFullChargeMinutes } else { $null }
@@ -88,25 +92,93 @@ function Invoke-HardwareHeuristics {
                     if ($fullValue -ne $null -and $fullValue -ne '') { $full = [double]$fullValue }
                 }
 
+                $remaining = $null
+                if ($battery.PSObject.Properties['RemainingCapacitymWh']) {
+                    $remainingValue = $battery.RemainingCapacitymWh
+                    if ($remainingValue -ne $null -and $remainingValue -ne '') { $remaining = [double]$remainingValue }
+                }
+
+                $designmAh = $null
+                if ($battery.PSObject.Properties['DesignCapacitymAh']) {
+                    $designmAhValue = $battery.DesignCapacitymAh
+                    if ($designmAhValue -ne $null -and $designmAhValue -ne '') { $designmAh = [double]$designmAhValue }
+                }
+
+                $fullmAh = $null
+                if ($battery.PSObject.Properties['FullChargeCapacitymAh']) {
+                    $fullmAhValue = $battery.FullChargeCapacitymAh
+                    if ($fullmAhValue -ne $null -and $fullmAhValue -ne '') { $fullmAh = [double]$fullmAhValue }
+                }
+
+                $remainingmAh = $null
+                if ($battery.PSObject.Properties['RemainingCapacitymAh']) {
+                    $remainingmAhValue = $battery.RemainingCapacitymAh
+                    if ($remainingmAhValue -ne $null -and $remainingmAhValue -ne '') { $remainingmAh = [double]$remainingmAhValue }
+                }
+
                 $cycleCount = $null
                 if ($battery.PSObject.Properties['CycleCount']) {
                     $cycleValue = $battery.CycleCount
                     if ($cycleValue -ne $null -and $cycleValue -ne '') { $cycleCount = [int]$cycleValue }
                 }
 
-                $capacityPct = $null
-                if ($design -and $design -gt 0 -and $full -ne $null -and $full -ge 0) {
-                    $capacityPct = [math]::Round(($full / $design) * 100, 1)
+                $wearPct = $null
+                if ($battery.PSObject.Properties['DegradationPercent'] -and $battery.DegradationPercent -ne $null -and $battery.DegradationPercent -ne '') {
+                    $wearPct = [double]$battery.DegradationPercent
+                } elseif ($design -and $design -gt 0 -and $full -ne $null -and $full -ge 0) {
+                    $wearPct = [math]::Round((1 - ($full / $design)) * 100, 2)
                 }
 
-                $wearPct = if ($capacityPct -ne $null) { [math]::Round(100 - $capacityPct, 1) } else { $null }
-                if ($wearPct -ne $null -and $wearPct -lt 0) { $wearPct = 0 }
+                if ($wearPct -ne $null) {
+                    if ($wearPct -lt 0) { $wearPct = 0 }
+                    if ($wearPct -gt 100) { $wearPct = 100 }
+                }
+
+                $charging = $null
+                if ($battery.PSObject.Properties['Status_Charging']) {
+                    $charging = [bool]$battery.Status_Charging
+                }
+
+                $powerOnline = $null
+                if ($battery.PSObject.Properties['Status_PowerOnline']) {
+                    $powerOnline = [bool]$battery.Status_PowerOnline
+                }
+
+                $impactSummaryParts = New-Object System.Collections.Generic.List[string]
+                if ($fullmAh -ne $null) { $impactSummaryParts.Add(("Full≈{0:N0}mAh" -f $fullmAh)) | Out-Null }
+                if ($remainingmAh -ne $null) { $impactSummaryParts.Add(("Now≈{0:N0}mAh" -f $remainingmAh)) | Out-Null }
+                if ($design -ne $null) { $impactSummaryParts.Add(("Design={0:N0}mWh" -f $design)) | Out-Null }
+                if ($wearPct -ne $null) { $impactSummaryParts.Add(("Degradation={0:N1}%" -f $wearPct)) | Out-Null }
+                if ($charging -ne $null -and $charging) { $impactSummaryParts.Add('Charging') | Out-Null }
 
                 $evidenceLines = New-Object System.Collections.Generic.List[string]
-                if ($design -ne $null) { $evidenceLines.Add(("Design capacity: {0:N0} mWh" -f $design)) | Out-Null }
-                if ($full -ne $null) { $evidenceLines.Add(("Full charge capacity: {0:N0} mWh" -f $full)) | Out-Null }
-                if ($wearPct -ne $null) { $evidenceLines.Add(("Estimated wear: {0:N1}% loss" -f $wearPct)) | Out-Null }
-                if ($cycleCount -ne $null) { $evidenceLines.Add(("Reported cycle count: {0}" -f $cycleCount)) | Out-Null }
+                if ($impactSummaryParts.Count -gt 0) {
+                    $evidenceLines.Add("Snapshot: {0}" -f ($impactSummaryParts.ToArray() -join ' · ')) | Out-Null
+                }
+                if ($design -ne $null) {
+                    $evidenceLines.Add(("Design capacity: {0:N0} mWh{1}" -f $design, if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' })) | Out-Null
+                }
+                if ($full -ne $null) {
+                    $evidenceLines.Add(("Full-charge capacity: {0:N0} mWh{1}" -f $full, if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' })) | Out-Null
+                }
+                if ($remaining -ne $null) {
+                    $evidenceLines.Add(("Remaining capacity: {0:N0} mWh{1}" -f $remaining, if ($remainingmAh -ne $null) { " (~{0:N0} mAh)" -f $remainingmAh } else { '' })) | Out-Null
+                }
+                if ($wearPct -ne $null) {
+                    $evidenceLines.Add(("Estimated wear: {0:N1}%" -f $wearPct)) | Out-Null
+                }
+                if ($cycleCount -ne $null) {
+                    $evidenceLines.Add(("Reported cycle count: {0}" -f $cycleCount)) | Out-Null
+                }
+                if ($battery.PSObject.Properties['AverageDischargeMilliwatts'] -and $battery.AverageDischargeMilliwatts) {
+                    $evidenceLines.Add(("Average discharge rate: {0:N0} mW" -f $battery.AverageDischargeMilliwatts)) | Out-Null
+                }
+                if ($charging -ne $null) {
+                    $evidenceLines.Add(("Charging: {0}" -f ([string]$charging))) | Out-Null
+                }
+                if ($powerOnline -ne $null) {
+                    $evidenceLines.Add(("Power source online: {0}" -f ([string]$powerOnline))) | Out-Null
+                }
 
                 if ($averageLife) {
                     $lifeDisplay = $null
@@ -123,23 +195,44 @@ function Invoke-HardwareHeuristics {
 
                 $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
 
-                if ($capacityPct -eq $null) {
+                $remediation = $null
+                $title = $null
+                $severity = 'info'
+
+                if ($wearPct -eq $null) {
                     if ($design -or $full) {
-                        $title = "Battery {0} reported incomplete capacity data, so degradation cannot be calculated." -f $label
-                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Battery'
+                        $title = "Battery '{0}' reported incomplete capacity data, so unplugged runtime cannot be estimated." -f $label
+                        $remediation = 'Ensure the battery exposes design and full-charge capacity through WMI, or rerun diagnostics after a full charge/discharge cycle.'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Battery' -Remediation $remediation
                         $issueCount++
                     }
-                } elseif ($capacityPct -lt 60) {
-                    $title = "Battery '{0}' holds {1}% of its original charge capacity, so unplugged runtime will feel dramatically shorter." -f $label, $capacityPct
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Battery'
-                    $issueCount++
-                } elseif ($capacityPct -lt 80) {
-                    $title = "Battery '{0}' holds {1}% of its original charge capacity, so unplugged runtime will be noticeably shorter." -f $label, $capacityPct
-                    Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title $title -Evidence $evidence -Subcategory 'Battery'
-                    $issueCount++
                 } else {
-                    $title = "Battery '{0}' retains {1}% of its original charge capacity, so runtime remains close to new." -f $label, $capacityPct
-                    Add-CategoryNormal -CategoryResult $result -Title $title -Evidence $evidence -Subcategory 'Battery'
+                    if     ($wearPct -ge $highWearThreshold)   { $severity = 'high' }
+                    elseif ($wearPct -ge $mediumWearThreshold) { $severity = 'medium' }
+                    elseif ($wearPct -ge $lowWearThreshold)    { $severity = 'low' }
+                    else                                       { $severity = 'info' }
+
+                    switch ($severity) {
+                        'high' {
+                            $title = "Battery '{0}' has lost about {1:N1}% of its original capacity, so unplugged runtime will feel dramatically shorter." -f $label, $wearPct
+                            $remediation = 'Battery wear is high. Consider calibrating with a full charge/discharge and plan for replacement if runtime is insufficient.'
+                        }
+                        'medium' {
+                            $title = "Battery '{0}' has lost about {1:N1}% of its original capacity, so unplugged runtime will be noticeably shorter." -f $label, $wearPct
+                            $remediation = 'Battery wear is moderate. Monitor runtime; calibration may help tighten the reported full-charge capacity.'
+                        }
+                        'low' {
+                            $title = "Battery '{0}' shows about {1:N1}% wear, so unplugged runtime will be slightly shorter than new." -f $label, $wearPct
+                            $remediation = 'Slight wear detected. No action is required beyond periodic rechecks.'
+                        }
+                        default {
+                            $title = "Battery '{0}' is in good health, so unplugged runtime should match expectations." -f $label
+                            $remediation = 'Battery health is good. No action required.'
+                        }
+                    }
+
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Battery' -Remediation $remediation
+                    $issueCount++
                 }
 
                 if ($design -ne $null -and $full -ne $null) {
@@ -148,8 +241,9 @@ function Invoke-HardwareHeuristics {
                     if ($battery.PSObject.Properties['Chemistry'] -and $battery.Chemistry) { $detailsParts.Add(("Chemistry: {0}" -f $battery.Chemistry)) | Out-Null }
                     if ($battery.PSObject.Properties['Manufacturer'] -and $battery.Manufacturer) { $detailsParts.Add(("Manufacturer: {0}" -f $battery.Manufacturer)) | Out-Null }
 
+                    $wearDisplay = if ($wearPct -ne $null) { " | Wear: {0:N1}%" -f $wearPct } else { '' }
                     $details = if ($detailsParts.Count -gt 0) { $detailsParts.ToArray() -join '; ' } else { '' }
-                    $status = "Full: {0:N0} mWh | Design: {1:N0} mWh" -f $full, $design
+                    $status = "Full: {0:N0} mWh{1} | Design: {2:N0} mWh{3}{4}" -f $full, (if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' }), $design, (if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' }), $wearDisplay
                     Add-CategoryCheck -CategoryResult $result -Name ("Battery {0} capacity" -f $label) -Status $status -Details $details
                 }
 
