@@ -8,8 +8,30 @@ function Normalize-Windows11CpuName {
     $normalized = $normalized -replace '\(tm\)', ''
     $normalized = $normalized -replace '®', ''
     $normalized = $normalized -replace '™', ''
+    $normalized = $normalized -replace '\b\d+(st|nd|rd|th)\s+gen(eration)?\b', ''
+    $normalized = $normalized -replace '\bgeneration\s+\d+\b', ''
+    $normalized = $normalized -replace '\bgen\s+\d+\b', ''
+    $normalized = $normalized -replace '\bintel\b', ''
+    $normalized = $normalized -replace '\bamd\b', ''
+    $normalized = $normalized -replace '\bqualcomm\b', ''
+    $normalized = $normalized -replace '\bsnapdragon\b', ''
+    $normalized = $normalized -replace '\bapu\b', ''
+    $normalized = $normalized -replace '\bprocessor\b', ''
+    $normalized = $normalized -replace '\bcpu\b', ''
+    $normalized = $normalized -replace '\bwith\s+radeon\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+vega\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+radeon\s+vega\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+intel\s+uhd\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+intel\s+iris\s+xe\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+intel\s+iris\s+graphics\b', ''
+    $normalized = $normalized -replace '\bwith\s+radeon\s+graphics\s+\d+\w*\b', ''
+    $normalized = $normalized -replace '\b[0-9]+\s*-?core\b', ''
+    $normalized = $normalized -replace '\b[0-9]+\s*-?thread\b', ''
+    $normalized = $normalized -replace '@\s*[0-9\.]+\s*ghz', ''
     $normalized = $normalized -replace '\s+', ' '
-    return $normalized.Trim()
+    $normalized = $normalized.Trim()
+    if ([string]::IsNullOrWhiteSpace($normalized)) { return $null }
+    return $normalized
 }
 
 $script:Windows11CpuCatalog = $null
@@ -145,6 +167,13 @@ function Invoke-SystemWindows11UpgradeChecks {
         $vbPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $vbArtifact)
     }
     Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved VBS payload' -Data ([ordered]@{ HasPayload = [bool]$vbPayload })
+
+    $measuredBootArtifact = Get-AnalyzerArtifact -Context $Context -Name 'measuredboot'
+    $measuredBootPayload = $null
+    if ($measuredBootArtifact) {
+        $measuredBootPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $measuredBootArtifact)
+    }
+    Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved measured boot payload' -Data ([ordered]@{ HasPayload = [bool]$measuredBootPayload })
 
     $bitlockerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'bitlocker'
     $bitlockerPayload = $null
@@ -351,25 +380,56 @@ function Invoke-SystemWindows11UpgradeChecks {
         & $updateSeverity $highestSeverityRef $severityRank $severity
     }
 
+    $secureBootVerification = $null
+    $secureBootEnabled = $null
+    $secureBootVerificationError = $null
+    if ($measuredBootPayload -and $measuredBootPayload.PSObject.Properties['SecureBoot']) {
+        $secureBootVerification = $measuredBootPayload.SecureBoot
+        if ($secureBootVerification) {
+            if ($secureBootVerification.PSObject.Properties['Error'] -and $secureBootVerification.Error) {
+                $secureBootVerificationError = [string]$secureBootVerification.Error
+            } elseif ($secureBootVerification.PSObject.Properties['Enabled']) {
+                $secureBootEnabled = [bool]$secureBootVerification.Enabled
+            }
+        }
+    }
+
     $biosMode = Get-SystemInfoValue -Lines $systemInfoLines -Label 'BIOS Mode'
     $firmwareMet = $null
     $firmwareStatus = 'Unknown'
-    $firmwareDetails = 'Firmware mode not reported.'
+    $firmwareDetailParts = [System.Collections.Generic.List[string]]::new()
     if ($biosMode) {
+        $firmwareDetailParts.Add("BIOS Mode: $biosMode") | Out-Null
         if ($biosMode -match '(?i)uefi') {
             $firmwareMet = $true
             $firmwareStatus = 'Pass'
-            $firmwareDetails = "BIOS Mode: $biosMode"
         } else {
             $firmwareMet = $false
             $firmwareStatus = 'Fail'
-            $firmwareDetails = "BIOS Mode: $biosMode"
         }
     }
+    if ($firmwareMet -ne $true -and $secureBootEnabled -eq $true) {
+        $firmwareMet = $true
+        $firmwareStatus = 'Pass'
+        $firmwareDetailParts.Add('UEFI inferred from Secure Boot success.') | Out-Null
+    }
+    if ($secureBootVerificationError) {
+        $firmwareDetailParts.Add("Secure Boot verification error: $secureBootVerificationError") | Out-Null
+    }
+    if ($firmwareDetailParts.Count -eq 0) {
+        $firmwareDetailParts.Add('Firmware mode not reported.') | Out-Null
+    }
+    $firmwareDetails = $firmwareDetailParts.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: UEFI firmware' -Status $firmwareStatus -Details $firmwareDetails
     if ($firmwareMet -ne $true) {
         $severity = if ($firmwareMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($biosMode) { "Device reports BIOS Mode '$biosMode', which is not UEFI." } else { 'Firmware mode could not be determined from system information.' }
+        $description = if ($biosMode) {
+            "Device reports BIOS Mode '$biosMode', which is not UEFI."
+        } elseif ($secureBootVerificationError) {
+            "Unable to confirm UEFI because Secure Boot verification failed: $secureBootVerificationError"
+        } else {
+            'Firmware mode could not be determined from collected data.'
+        }
         $remediation = 'Switch the system firmware to UEFI mode before starting the Windows 11 upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'UEFI firmware'
@@ -383,22 +443,45 @@ function Invoke-SystemWindows11UpgradeChecks {
     $secureBootState = Get-SystemInfoValue -Lines $systemInfoLines -Label 'Secure Boot State'
     $secureBootMet = $null
     $secureBootStatus = 'Unknown'
-    $secureBootDetails = 'Secure Boot state not reported.'
+    $secureBootDetailParts = [System.Collections.Generic.List[string]]::new()
     if ($secureBootState) {
+        $secureBootDetailParts.Add("Secure Boot state: $secureBootState") | Out-Null
         if ($secureBootState -match '^(?i)(on|enabled|active)$') {
             $secureBootMet = $true
             $secureBootStatus = 'Pass'
-            $secureBootDetails = "Secure Boot state: $secureBootState"
         } else {
             $secureBootMet = $false
             $secureBootStatus = 'Fail'
-            $secureBootDetails = "Secure Boot state: $secureBootState"
         }
     }
+    if ($secureBootEnabled -ne $null) {
+        $secureBootDetailParts.Add("Confirm-SecureBootUEFI Enabled: $secureBootEnabled") | Out-Null
+        $secureBootMet = [bool]$secureBootEnabled
+        $secureBootStatus = if ($secureBootEnabled) { 'Pass' } else { 'Fail' }
+    }
+    if ($secureBootVerificationError) {
+        $secureBootDetailParts.Add("Confirm-SecureBootUEFI error: $secureBootVerificationError") | Out-Null
+    }
+    if ($secureBootDetailParts.Count -eq 0) {
+        $secureBootDetailParts.Add('Secure Boot state not reported.') | Out-Null
+    }
+    $secureBootDetails = $secureBootDetailParts.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Secure Boot' -Status $secureBootStatus -Details $secureBootDetails
     if ($secureBootMet -ne $true) {
         $severity = if ($secureBootMet -eq $false) { 'high' } else { 'info' }
-        $description = if ($secureBootState) { "Secure Boot reported as '$secureBootState'." } else { 'Secure Boot status unavailable from system information.' }
+        $description = if ($secureBootMet -eq $false) {
+            if ($secureBootEnabled -eq $false) {
+                'Confirm-SecureBootUEFI reported Secure Boot disabled.'
+            } elseif ($secureBootState) {
+                "Secure Boot reported as '$secureBootState'."
+            } elseif ($secureBootVerificationError) {
+                "Secure Boot verification failed: $secureBootVerificationError"
+            } else {
+                'Secure Boot status unavailable from collected data.'
+            }
+        } else {
+            'Secure Boot status unavailable from collected data.'
+        }
         $remediation = 'Enable Secure Boot in UEFI firmware before attempting the upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'Secure Boot'
