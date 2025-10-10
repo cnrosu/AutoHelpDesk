@@ -493,7 +493,8 @@ function Resolve-IntuneImeAppContext {
     }
 
     $guidPattern = '(?i)(?<value>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})'
-    $matchGuid = [regex]::Match($Line, "(?i)app(?:lication)?\s*(?:id|guid)\s*[:=]\s*$guidPattern")
+
+    $matchGuid = [regex]::Match($Line, "(?i)app(?:lication)?\s*(?:id|guid)\s*[:=]\s*(?<value>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})")
     if ($matchGuid.Success) {
         $id = $matchGuid.Groups['value'].Value.ToLowerInvariant()
     } else {
@@ -507,9 +508,12 @@ function Resolve-IntuneImeAppContext {
         $name = $name.Trim(" \t\r\n'\"")
     }
 
+    if (-not $name) { $name = $null }
+    if (-not $id) { $id = $null }
+
     return [pscustomobject]@{
-        Name = if ($name) { $name } else { $null }
-        Id   = if ($id) { $id } else { $null }
+        Name = $name
+        Id   = $id
     }
 }
 
@@ -598,14 +602,14 @@ function Parse-IntuneImeWin32Status {
             continue
         }
 
-        if ($line -match '(?i)(download|content|cdn|proxy).*?(error|fail|timeout|timed out|unavailable|denied|forbidden|tls)') {
+        if ($line -match "(?i)(download|content|cdn|proxy).*?(error|fail|timeout|timed out|unavailable|denied|forbidden|tls)") {
             $state.ContentErrors.Add([pscustomobject]@{
                 Time    = $record.Time
                 Message = $line
                 Source  = $record.Source
             }) | Out-Null
 
-            if ($line -match '(?i)timeout|timed out|proxy|tls') {
+            if ($line -match "(?i)timeout|timed out|proxy|tls") {
                 $state.TimeoutMentions++
             }
         }
@@ -638,7 +642,7 @@ function Parse-IntuneImeWin32Status {
                     Source  = 'ime_content.txt'
                 }) | Out-Null
 
-                if ($line -match '(?i)timeout|timed out|proxy|tls') {
+                if ($line -match "(?i)timeout|timed out|proxy|tls") {
                     $state.TimeoutMentions++
                 }
             } else {
