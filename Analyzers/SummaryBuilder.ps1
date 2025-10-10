@@ -352,18 +352,24 @@ function Get-AnalyzerSummary {
             }
 
             foreach ($entry in $configEntries) {
-                if ($entry.PSObject.Properties['IPv4Address']) {
-                    foreach ($value in Get-AllStrings -Value $entry.IPv4Address) {
+                $ipv4Raw = $null
+                if ($entry.PSObject.Properties['IPv4Address']) { $ipv4Raw = $entry.IPv4Address }
+                if ($null -ne $ipv4Raw) {
+                    foreach ($value in Get-AllStrings -Value $ipv4Raw) {
                         if ($value -and $value -notmatch '^169\.254\.') { $ipv4.Add($value) | Out-Null }
                     }
                 }
-                if ($entry.PSObject.Properties['IPv4DefaultGateway']) {
-                    foreach ($value in Get-AllStrings -Value $entry.IPv4DefaultGateway) {
+                $gatewayRaw = $null
+                if ($entry.PSObject.Properties['IPv4DefaultGateway']) { $gatewayRaw = $entry.IPv4DefaultGateway }
+                if ($null -ne $gatewayRaw) {
+                    foreach ($value in Get-AllStrings -Value $gatewayRaw) {
                         if ($value) { $gateways.Add($value) | Out-Null }
                     }
                 }
-                if ($entry.PSObject.Properties['DNSServer']) {
-                    foreach ($value in Get-AllStrings -Value $entry.DNSServer) {
+                $dnsRaw = $null
+                if ($entry.PSObject.Properties['DNSServer']) { $dnsRaw = $entry.DNSServer }
+                if ($null -ne $dnsRaw) {
+                    foreach ($value in Get-AllStrings -Value $dnsRaw) {
                         if ($value) { $dns.Add($value) | Out-Null }
                     }
                 }
