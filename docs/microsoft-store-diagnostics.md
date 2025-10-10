@@ -13,23 +13,22 @@ resorting to reinstalls.
 | **Microsoft Store (AppX)** | The Store itself and its dependencies must be installed for all users. | Run an elevated PowerShell session and execute:<br/>```powershell
 Get-AppxPackage -AllUsers Microsoft.WindowsStore | Select-Object Name, Version, Status
 ```
-`Status` is empty on healthy installs. A missing row indicates the Store was
-removed (common on heavily debloated images).
+Healthy systems return a row with `Status` blank or `Ok`. A missing row indicates the Store was removed (common on heavily debloated images), while an error in the `Status` column signals package corruption.
 | **ClipSVC (Client License Service)** | Handles Store licensing. If it is disabled the Store opens but downloads fail with licensing errors. | In PowerShell run:<br/>```powershell
 Get-Service -Name ClipSVC, wlidsvc | Select-Object Name, Status, StartType
 ```
-Both services should report `Running` and `Manual` or `Automatic` start types. If
-they are stopped, start them with `Start-Service ClipSVC` and `Start-Service wlidsvc`.
+`wlidsvc` (Microsoft Account Sign-in Assistant) should be `Running`. `ClipSVC` is demand-start and often reports `Stopped` while the Store is idle; that is healthy so long as its `StartType` is `Manual` or `Automatic`. If it refuses to start with `Start-Service ClipSVC`, record the error and re-register the Store package.
 | **Windows Update & Delivery Optimization** | Store apps use Windows Update infrastructure. Stopped update services cause Store download failures. | Check:<br/>```powershell
 Get-Service -Name wuauserv, bits, DoSvc | Select-Object Name, Status, StartType
 ```
 All services must be running. Restart them if they are stuck in `Stopping`.
 | **System time, region, and SSL** | Incorrect clock or region breaks secure channel handshakes. | Run:<br/>```powershell
+Get-Service W32Time
 w32tm /query /status
+Get-Date
 Get-WinSystemLocale
 ```
-Ensure the time is synchronized and the locale matches the user's Microsoft
-account region.
+Azure AD-joined devices often have the **Windows Time** service stopped; that is expected if `Get-Service W32Time` shows a `Disabled` start type. In that case, compare `Get-Date` with a reliable time source or the **Settings > Time & language** pane. Whatever the configuration, the clock must be accurate and the locale should match the user's Microsoft account region.
 
 ## 2. Rule out Microsoft-side outages
 
@@ -63,7 +62,7 @@ account region.
    Test-NetConnection -ComputerName storeedgefd.dsx.mp.microsoft.com -Port 443
    ```
 
-   Successful TLS handshake proves the device can reach the Store CDN.
+   Successful TLS handshake proves the device can reach the Store CDN. If the test fails, capture the output and log an issue such as **"Microsoft Store CDN unavailable"** so downstream technicians understand that content delivery, not the Store app, is at fault.
 2. If the device uses a proxy or firewall, review the rules against Microsoft's
    published endpoints (`*.microsoft.com`, `*.msedge.net`, `*.akamaized.net`).
 3. On managed networks, confirm SSL inspection is disabled for the Store CDN. If
