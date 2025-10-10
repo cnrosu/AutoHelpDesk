@@ -28,7 +28,7 @@ function Invoke-EventsNetlogonTrustChecks {
     $recentCutoff = $nowUtc.AddDays(-7)
     $extendedCutoff = $nowUtc.AddDays(-14)
 
-    $matches = New-Object System.Collections.Generic.List[pscustomobject]
+    $matches = @()
 
     foreach ($entry in $entries) {
         if (-not $entry) { continue }
@@ -99,11 +99,11 @@ function Invoke-EventsNetlogonTrustChecks {
 
         if (-not $isNetlogonEvent -and -not $isLsasrvEvent) { continue }
 
-        $matches.Add([pscustomobject]@{
+        $matches += [pscustomobject]@{
             Id       = $id
             TimeUtc  = $timeUtc
             Provider = $providerNormalized
-        }) | Out-Null
+        }
     }
 
     if ($matches.Count -eq 0) { return }
