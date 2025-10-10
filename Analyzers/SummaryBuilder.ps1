@@ -200,7 +200,8 @@ function Format-DeviceState {
     param(
         [string]$Domain,
         [bool]$PartOfDomain,
-        [bool]$IsAzureAdJoined
+        [bool]$IsAzureAdJoined,
+        [string]$AzureAdTenant
     )
 
     if ($PartOfDomain) {
@@ -210,7 +211,8 @@ function Format-DeviceState {
 
     $domainLabel = if ($Domain) { $Domain } else { 'Unknown domain' }
     if ($IsAzureAdJoined) {
-        return "Azure AD joined ($domainLabel)"
+        $tenantLabel = if ($AzureAdTenant) { $AzureAdTenant } else { $domainLabel }
+        return "Azure AD joined ($tenantLabel)"
     }
 
     return "Not domain joined (Domain: $domainLabel)"
@@ -251,6 +253,21 @@ function Get-AzureAdJoinState {
     return $false
 }
 
+function Get-AzureAdTenantName {
+    param([string]$DsRegCmdOutput)
+
+    if (-not $DsRegCmdOutput) { return $null }
+
+    foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
+        if ($line -match '^(?i)TenantName\s*:\s*(.+)$') {
+            $tenant = $matches[1].Trim()
+            if ($tenant) { return $tenant }
+        }
+    }
+
+    return $null
+}
+
 function Get-AnalyzerSummary {
     param(
         [Parameter(Mandatory)]
@@ -263,6 +280,7 @@ function Get-AnalyzerSummary {
         Domain          = $null
         IsDomainJoined  = $null
         IsAzureAdJoined = $false
+        AzureAdTenant   = $null
         OperatingSystem = $null
         OSVersion       = $null
         OSBuild         = $null
@@ -311,8 +329,28 @@ function Get-AnalyzerSummary {
     $identityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'identity'
     if ($identityArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $identityArtifact)
-        if ($payload -and $payload.DsRegCmd -is [string]) {
-            $summary.IsAzureAdJoined = Get-AzureAdJoinState -DsRegCmdOutput $payload.DsRegCmd
+        if ($payload -and $payload.DsRegCmd) {
+            $dsRegRaw = $payload.DsRegCmd
+            $dsRegText = $null
+
+            if ($dsRegRaw -is [string]) {
+                $dsRegText = $dsRegRaw
+            } elseif ($dsRegRaw -is [System.Collections.IEnumerable]) {
+                $dsRegText = ($dsRegRaw | ForEach-Object {
+                        if ($_ -is [string]) { $_ }
+                        elseif ($null -ne $_) { [string]$_ }
+                    }) -join "`n"
+            } elseif ($null -ne $dsRegRaw) {
+                $dsRegText = [string]$dsRegRaw
+            }
+
+            if ($dsRegText) {
+                $summary.IsAzureAdJoined = Get-AzureAdJoinState -DsRegCmdOutput $dsRegText
+                if ($summary.IsAzureAdJoined) {
+                    $tenantName = Get-AzureAdTenantName -DsRegCmdOutput $dsRegText
+                    if ($tenantName) { $summary.AzureAdTenant = $tenantName }
+                }
+            }
         }
     }
 
@@ -416,7 +454,7 @@ function Get-AnalyzerSummary {
 
     $domainText = if ($summary.Domain) { $summary.Domain } else { 'Unknown' }
     $partOfDomain = if ($null -ne $summary.IsDomainJoined) { [bool]$summary.IsDomainJoined } else { $false }
-    $summary.DeviceState = Format-DeviceState -Domain $domainText -PartOfDomain $partOfDomain -IsAzureAdJoined $summary.IsAzureAdJoined
+    $summary.DeviceState = Format-DeviceState -Domain $domainText -PartOfDomain $partOfDomain -IsAzureAdJoined $summary.IsAzureAdJoined -AzureAdTenant $summary.AzureAdTenant
 
     if (-not $summary.DeviceName) { $summary.DeviceName = 'Unknown' }
     if (-not $summary.OperatingSystem) { $summary.OperatingSystem = 'Unknown' }
