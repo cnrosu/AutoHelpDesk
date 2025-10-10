@@ -63,18 +63,24 @@ function Invoke-SecurityCredentialManagementChecks {
     $runAsPplBoot = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RunAsPPLBoot')
     $credentialGuardRunning = ($securityServicesRunning -contains 1)
     $lsaEvidenceLines = [System.Collections.Generic.List[string]]::new()
+    $missingRunAsPpl = ($runAsPpl -eq $null)
+    $missingRunAsPplBoot = ($runAsPplBoot -eq $null)
+
     if ($credentialGuardRunning) { $lsaEvidenceLines.Add('SecurityServicesRunning includes 1 (Credential Guard).') }
-    if ($runAsPpl -ne $null) { $lsaEvidenceLines.Add("RunAsPPL: $runAsPpl") }
-    if ($runAsPplBoot -ne $null) { $lsaEvidenceLines.Add("RunAsPPLBoot: $runAsPplBoot") }
-    $lsaEvidence = $lsaEvidenceLines.ToArray() -join "`n"
+    if (-not $missingRunAsPpl) { $lsaEvidenceLines.Add("RunAsPPL: $runAsPpl") }
+    if (-not $missingRunAsPplBoot) { $lsaEvidenceLines.Add("RunAsPPLBoot: $runAsPplBoot") }
     Write-HeuristicDebug -Source 'Security' -Message 'Credential Guard evaluation summary' -Data ([ordered]@{
         CredentialGuardRunning = $credentialGuardRunning
         RunAsPpl             = $runAsPpl
         RunAsPplBoot         = $runAsPplBoot
     })
     if ($credentialGuardRunning -and $runAsPpl -eq 1) {
+        $lsaEvidence = $lsaEvidenceLines.ToArray() -join "`n"
         Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Credential Guard with LSA protection enabled' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
     } else {
+        if ($missingRunAsPpl) { $lsaEvidenceLines.Add('RunAsPPL registry value missing or unreadable.') }
+        if ($missingRunAsPplBoot) { $lsaEvidenceLines.Add('RunAsPPLBoot registry value missing or unreadable.') }
+        $lsaEvidence = $lsaEvidenceLines.ToArray() -join "`n"
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Credential Guard or LSA protection is not enforced, leaving LSASS credentials vulnerable.' -Evidence $lsaEvidence -Subcategory 'Credential Guard'
     }
 
