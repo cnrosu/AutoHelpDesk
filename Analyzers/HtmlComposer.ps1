@@ -215,9 +215,11 @@ function ConvertTo-HtmlSafe {
 
     if ($null -eq $Text) { return '' }
 
-    return ($Text -replace '&', '&amp;'
-                  -replace '<', '&lt;'
-                  -replace '>', '&gt;')
+    $encoded = $Text.Replace('&', '&amp;')
+    $encoded = $encoded.Replace('<', '&lt;')
+    $encoded = $encoded.Replace('>', '&gt;')
+
+    return $encoded
 }
 
 function New-CodeBlockHtml {
