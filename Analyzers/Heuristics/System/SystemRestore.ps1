@@ -47,7 +47,7 @@ function Invoke-SystemRestoreChecks {
     }
 
     if ($configError) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore registry configuration unavailable, so protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence ("$configSource: $configError") -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore registry configuration unavailable, so protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence ("${configSource}: $configError") -Subcategory $subcategory
     }
 
     $driveConfigs = @()
@@ -108,7 +108,7 @@ function Invoke-SystemRestoreChecks {
     }
 
     if ($restorePointError) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore points could not be enumerated, so available rollbacks may be hidden during troubleshooting.' -Evidence ("$restorePointSource: $restorePointError") -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore points could not be enumerated, so available rollbacks may be hidden during troubleshooting.' -Evidence ("${restorePointSource}: $restorePointError") -Subcategory $subcategory
     }
 
     $globalDisabled = $false
