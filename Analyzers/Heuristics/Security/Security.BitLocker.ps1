@@ -39,7 +39,7 @@ function Invoke-SecurityBitLockerChecks {
                     if ($protector.PSObject -and $protector.PSObject.Properties['KeyProtectorType']) {
                         $protectorText = [string]$protector.KeyProtectorType
                     }
-                    if ($protectorText -match '(?i)RecoveryPassword') {
+                    if ($protectorText -match '(?i)(Recovery\s*Password|Numerical\s*Password)') {
                         $hasRecoveryProtector = $true
                     }
                     if (-not [string]::IsNullOrWhiteSpace($protectorText)) {
