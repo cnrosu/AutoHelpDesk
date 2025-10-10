@@ -8,12 +8,19 @@ param(
     [string]$OutputDirectory
 )
 
-if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-    $OutputDirectory = Join-Path -Path $scriptRoot -ChildPath '..\\output'
+function Get-ScriptRoot {
+    if ($script:PSScriptRoot -and -not [string]::IsNullOrWhiteSpace($script:PSScriptRoot)) { return $script:PSScriptRoot }
+    if ($MyInvocation.MyCommand.Path) { return (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+    return (Get-Location).Path
 }
 
-. (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
+$__ScriptRoot = Get-ScriptRoot
+
+if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $OutputDirectory = Join-Path -Path $__ScriptRoot -ChildPath '..\output'
+}
+
+. (Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1')
 
 function Get-AzureAdJoinStatus {
     try {
