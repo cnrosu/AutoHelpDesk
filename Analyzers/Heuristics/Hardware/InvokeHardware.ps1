@@ -156,13 +156,16 @@ function Invoke-HardwareHeuristics {
                     $evidenceLines.Add("Snapshot: {0}" -f ($impactSummaryParts.ToArray() -join ' · ')) | Out-Null
                 }
                 if ($design -ne $null) {
-                    $evidenceLines.Add(("Design capacity: {0:N0} mWh{1}" -f $design, if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' })) | Out-Null
+                    $designSuffix = if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' }
+                    $evidenceLines.Add(("Design capacity: {0:N0} mWh{1}" -f $design, $designSuffix)) | Out-Null
                 }
                 if ($full -ne $null) {
-                    $evidenceLines.Add(("Full-charge capacity: {0:N0} mWh{1}" -f $full, if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' })) | Out-Null
+                    $fullSuffix = if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' }
+                    $evidenceLines.Add(("Full-charge capacity: {0:N0} mWh{1}" -f $full, $fullSuffix)) | Out-Null
                 }
                 if ($remaining -ne $null) {
-                    $evidenceLines.Add(("Remaining capacity: {0:N0} mWh{1}" -f $remaining, if ($remainingmAh -ne $null) { " (~{0:N0} mAh)" -f $remainingmAh } else { '' })) | Out-Null
+                    $remainingSuffix = if ($remainingmAh -ne $null) { " (~{0:N0} mAh)" -f $remainingmAh } else { '' }
+                    $evidenceLines.Add(("Remaining capacity: {0:N0} mWh{1}" -f $remaining, $remainingSuffix)) | Out-Null
                 }
                 if ($wearPct -ne $null) {
                     $evidenceLines.Add(("Estimated wear: {0:N1}%" -f $wearPct)) | Out-Null
@@ -243,7 +246,9 @@ function Invoke-HardwareHeuristics {
 
                     $wearDisplay = if ($wearPct -ne $null) { " | Wear: {0:N1}%" -f $wearPct } else { '' }
                     $details = if ($detailsParts.Count -gt 0) { $detailsParts.ToArray() -join '; ' } else { '' }
-                    $status = "Full: {0:N0} mWh{1} | Design: {2:N0} mWh{3}{4}" -f $full, (if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' }), $design, (if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' }), $wearDisplay
+                    $fullStatusSuffix = if ($fullmAh -ne $null) { " (~{0:N0} mAh)" -f $fullmAh } else { '' }
+                    $designStatusSuffix = if ($designmAh -ne $null) { " (~{0:N0} mAh)" -f $designmAh } else { '' }
+                    $status = "Full: {0:N0} mWh{1} | Design: {2:N0} mWh{3}{4}" -f $full, $fullStatusSuffix, $design, $designStatusSuffix, $wearDisplay
                     Add-CategoryCheck -CategoryResult $result -Name ("Battery {0} capacity" -f $label) -Status $status -Details $details
                 }
 
