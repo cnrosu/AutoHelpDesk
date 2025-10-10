@@ -10,59 +10,72 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
-function Get-StorePackageState {
-    $package = $null
+function Test-StoreInstallLocation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$PackageFamilyName = 'Microsoft.WindowsStore'
+    )
+
+    $result = [ordered]@{
+        storePackagePresent = $false
+        installedLocationOk = $false
+        appxManifestFound   = $false
+        installLocation     = $null
+        notes               = @()
+    }
+
     try {
-        $package = Get-AppxPackage -Name 'Microsoft.WindowsStore' -ErrorAction SilentlyContinue
+        $pkg = Get-AppxPackage -AllUsers $PackageFamilyName -ErrorAction Stop
     } catch {
-        $package = $null
+        $result.notes += "Get-AppxPackage failed: $($_.Exception.Message)"
+        return [pscustomobject]$result
     }
 
-    $present = [bool]$package
-    $locationOk = $false
-    if ($present -and $package.PSObject.Properties['InstalledLocation']) {
-        $installedLocation = $package.InstalledLocation
-        if ($installedLocation) {
-            try {
-                $locationOk = Test-Path -LiteralPath $installedLocation -ErrorAction Stop
-            } catch {
-                $locationOk = $false
-            }
-        }
+    if (-not $pkg) {
+        $result.notes += 'Package not found.'
+        return [pscustomobject]$result
     }
 
-    $manifestFound = $false
-    if ($present) {
+    $result.storePackagePresent = $true
+    $result.installLocation = $pkg.InstallLocation
+
+    if ([string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
+        $result.notes += 'InstallLocation string was empty.'
+        return [pscustomobject]$result
+    }
+
+    if (Test-Path -LiteralPath $pkg.InstallLocation) {
+        $result.installedLocationOk = $true
+    } else {
+        $result.notes += 'InstallLocation path did not exist.'
+        return [pscustomobject]$result
+    }
+
+    $manifestPath = Join-Path -LiteralPath $pkg.InstallLocation -ChildPath 'AppxManifest.xml'
+    if (Test-Path -LiteralPath $manifestPath) {
         try {
-            $storeRoot = 'C:\\Program Files\\WindowsApps'
-            $storeFolders = Get-ChildItem -LiteralPath $storeRoot -ErrorAction Stop |
-                Where-Object { $_.Name -like 'Microsoft.WindowsStore_*' }
-
-            foreach ($folder in $storeFolders) {
-                try {
-                    $manifest = Get-ChildItem -LiteralPath $folder.FullName -Filter 'AppxManifest.xml' -ErrorAction Stop |
-                        Select-Object -First 1
-                    if ($manifest) {
-                        $manifestFound = $true
-                        break
-                    }
-                } catch [System.UnauthorizedAccessException] {
-                    throw
-                } catch {
-                    # Ignore other per-folder errors and continue scanning.
-                }
-            }
-        } catch [System.UnauthorizedAccessException] {
-            $manifestFound = $null
+            $null = Get-Content -LiteralPath $manifestPath -TotalCount 1 -ErrorAction Stop
+            $result.appxManifestFound = $true
         } catch {
-            $manifestFound = $false
+            $result.notes += "Manifest unreadable: $($_.Exception.Message)"
         }
+    } else {
+        $result.notes += 'AppxManifest.xml missing at expected path.'
     }
+
+    return [pscustomobject]$result
+}
+
+function Get-StorePackageState {
+    $state = Test-StoreInstallLocation -PackageFamilyName 'Microsoft.WindowsStore'
 
     return [ordered]@{
-        storePackagePresent = $present
-        installedLocationOk = if ($present) { [bool]$locationOk } else { $false }
-        appxManifestFound   = if ($present) { $manifestFound } else { $false }
+        storePackagePresent = $state.storePackagePresent
+        installedLocationOk = $state.installedLocationOk
+        appxManifestFound   = $state.appxManifestFound
+        installLocation     = $state.installLocation
+        notes               = $state.notes
     }
 }
 
@@ -193,6 +206,8 @@ function Invoke-Main {
         storePackagePresent = $packageState.storePackagePresent
         installedLocationOk = $packageState.installedLocationOk
         appxManifestFound   = $packageState.appxManifestFound
+        installLocation     = $packageState.installLocation
+        notes               = $packageState.notes
         services            = $services
         proxy               = $proxy
         reachability        = $reachability

@@ -37,6 +37,21 @@ function Invoke-SystemMicrosoftStoreChecks {
         $appxManifestFound = $payload.appxManifestFound
     }
 
+    $installLocation = $null
+    if ($propertyNames -contains 'installLocation') {
+        $installLocation = [string]$payload.installLocation
+    }
+
+    $storeNotes = @()
+    if ($propertyNames -contains 'notes') {
+        $value = $payload.notes
+        if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+            $storeNotes = @($value)
+        } elseif ($value) {
+            $storeNotes = @($value)
+        }
+    }
+
     $services = @()
     if ($propertyNames -contains 'services') {
         if ($payload.services -is [System.Collections.IEnumerable] -and -not ($payload.services -is [string])) {
@@ -93,8 +108,8 @@ function Invoke-SystemMicrosoftStoreChecks {
         if ($installedLocationOk -eq $false) {
             $highReasons.Add('Microsoft Store package InstalledLocation is missing or inaccessible.') | Out-Null
         }
-        if ($appxManifestFound -eq $false) {
-            $highReasons.Add('AppxManifest.xml for Microsoft Store was not found under C:\Program Files\WindowsApps.') | Out-Null
+        if ($installedLocationOk -eq $true -and $appxManifestFound -eq $false) {
+            $mediumReasons.Add('InstallLocation exists but AppxManifest.xml was missing or unreadable; re-register is recommended.') | Out-Null
         }
     }
 
@@ -187,6 +202,15 @@ function Invoke-SystemMicrosoftStoreChecks {
     $evidenceLines.Add("installedLocationOk=$((& $formatBool $installedLocationOk))") | Out-Null
     $manifestStatus = if ($null -eq $appxManifestFound) { 'Unknown' } elseif ($appxManifestFound -eq $true) { 'True' } else { 'False' }
     $evidenceLines.Add("appxManifestFound=$manifestStatus") | Out-Null
+    if ($installLocation) {
+        $evidenceLines.Add("installLocation=$installLocation") | Out-Null
+    }
+    if ($storeNotes.Count -gt 0) {
+        foreach ($note in $storeNotes) {
+            if ($null -eq $note) { continue }
+            $evidenceLines.Add("note=$note") | Out-Null
+        }
+    }
 
     foreach ($name in $criticalServices + $pathServices) {
         $entry = if ($serviceMap.ContainsKey($name)) { $serviceMap[$name] } else { $null }
@@ -233,14 +257,33 @@ function Invoke-SystemMicrosoftStoreChecks {
 
     if ($highReasons.Count -gt 0) {
         $reasonText = ($highReasons + $mediumReasons) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Microsoft Store functional checks failing' -Evidence (($reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
+        $summaryLine = 'Microsoft Store cannot operate because required components are missing or misconfigured, blocking app installs and updates for users.'
+        if ($highReasons | Where-Object { $_ -like 'Microsoft Store package missing*' }) {
+            $summaryLine = 'Microsoft Store cannot launch because the package is missing, leaving users unable to download or update apps.'
+        } elseif ($highReasons | Where-Object { $_ -like 'Microsoft Store package InstalledLocation is missing or inaccessible*' }) {
+            $summaryLine = 'Microsoft Store cannot launch because its installation folder is missing or inaccessible, preventing users from installing apps.'
+        } elseif ($highReasons | Where-Object { $_ -like 'Critical service*' }) {
+            $summaryLine = 'Microsoft Store background services are disabled or stopped, so app downloads and updates will fail for users.'
+        }
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
     } elseif ($mediumReasons.Count -gt 0) {
         $reasonText = $mediumReasons -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Microsoft Store functional checks failing' -Evidence (($reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
+        $summaryLine = 'Microsoft Store has configuration issues that may disrupt app downloads or updates for users.'
+        if ($mediumReasons | Where-Object { $_ -like 'InstallLocation exists but AppxManifest.xml was missing or unreadable*' }) {
+            $summaryLine = 'Microsoft Store is installed but its manifest could not be read, so re-registering the app may be required for users to launch it reliably.'
+        } elseif ($mediumReasons | Where-Object { $_ -like 'Service *' }) {
+            $summaryLine = 'Microsoft Store support services need attention, which can delay or block app installations for users.'
+        } elseif ($mediumReasons | Where-Object { $_ -like 'WinHTTP proxy is non-direct*' }) {
+            $summaryLine = 'Microsoft Store traffic is routed through a proxy that is failing checks, so downloads may not reach Microsoft endpoints.'
+        } elseif ($mediumReasons | Where-Object { $_ -like 'At least two Microsoft Store endpoints failed*' }) {
+            $summaryLine = 'Microsoft Store cannot reach required Microsoft endpoints, so users may see download and sign-in failures.'
+        }
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
     } else {
         $totalReachability = if ($knownEndpoints -gt 0) { $knownEndpoints } elseif ($reachability -and ($reachability.Count -gt 0)) { $reachability.Count } else { 0 }
         $tcpSummary = if ($totalReachability -gt 0) { "$successfulTcp/$totalReachability" } else { "$successfulTcp/?" }
         $successSummary = "storePackagePresent=true; services OK (AppXSVC/ClipSVC/InstallService Running or Manual); proxy=$proxySummary; endpoints reachable ($tcpSummary TCP 443 OK)"
-        Add-CategoryNormal -CategoryResult $Result -Title 'Microsoft Store functional checks passed' -Evidence (($successSummary, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
+        $summaryLine = 'Microsoft Store is healthy, so users should be able to browse and install apps normally.'
+        Add-CategoryNormal -CategoryResult $Result -Title 'Microsoft Store functional checks passed' -Evidence (($summaryLine, '', $successSummary, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
     }
 }
