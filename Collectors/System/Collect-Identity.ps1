@@ -5,8 +5,13 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\\output')
+    [string]$OutputDirectory
 )
+
+if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $OutputDirectory = Join-Path -Path $scriptRoot -ChildPath '..\\output'
+}
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
