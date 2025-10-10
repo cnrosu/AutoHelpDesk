@@ -1,5 +1,5 @@
 ## Summary
-The hardware analyzer validates Bluetooth availability by scanning driver and problem-device inventories for known radio indicators. When no evidence of a Bluetooth stack appears, AutoHelpDesk raises a warning to show technicians the data sources it evaluated. Understanding the logic helps teams defend against false positives and gather proof when adapters truly are missing or unhealthy.
+The hardware analyzer now validates Bluetooth availability by asking Windows for a live radio inventory and the Bluetooth Support Service status. When no healthy USB radio is enumerated or the service is stopped, AutoHelpDesk raises guidance that explains what was checked. Understanding the logic helps teams defend against false positives and gather proof when adapters truly are missing or unhealthy.
 
 ## Signals to Collect
 - `Get-PnpDevice -Class Bluetooth -Status OK,Error,Degraded` → Enumerate Bluetooth adapters that are present, failing, or degraded.
@@ -24,21 +24,4 @@ The hardware analyzer validates Bluetooth availability by scanning driver and pr
 
 # Bluetooth adapter detection heuristic
 
-The hardware analyzer infers whether a Bluetooth radio is available by scanning the
-`driverquery` inventory that ships with diagnostic packages. A driver is considered a
-Bluetooth indicator when any of the following strings are present in the metadata we
-collect for that driver:
-
-- The literal word `Bluetooth` (case-insensitive).
-- Driver, service, or module names that start with common vendor prefixes such as
-  `BTH`, `IBT`, `QCBT`, or `BTATH`.
-
-If none of the driver entries or PnP problem-device records match those indicators we
-raise the "Bluetooth adapter not detected" warning. The heuristic now attaches
-troubleshooting evidence that lists how many entries were scanned in each source and
-confirms which indicator set was checked. This makes it clear to technicians why the
-warning fired and what data was examined during detection.
-
-When a Bluetooth driver is discovered, the analyzer continues to evaluate its health:
-we flag stopped automatic services, error states, or PnP problem codes, and otherwise
-report the adapter as working normally.
+The hardware analyzer evaluates Bluetooth by replaying the following one-liner against the collected payload: `if ((Get-Service bthserv).Status -eq 'Running' -and (Get-PnpDevice -Class Bluetooth | Where-Object { $_.InstanceId -like 'USB\VID*' -and $_.Status -eq 'OK' })) { 'YES' } else { 'NO' }`. Any "NO" outcome generates a technician-facing issue that includes the service status plus the enumerated radios so the real-world impact is obvious. If the query itself fails, the analyzer reports that the device or service snapshot was unavailable so technicians know the limitation came from collection rather than the endpoint.

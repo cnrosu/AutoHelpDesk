@@ -326,14 +326,64 @@ function Invoke-HardwareHeuristics {
         return $result
     }
 
+    $hasBluetoothDeviceSnapshot = $false
+    $bluetoothDevicesPayload = $null
+    $bluetoothDeviceRecords = @()
+    $bluetoothDeviceError = $null
+    $bluetoothDeviceSource = $null
+    if ($payload.PSObject.Properties['BluetoothDevices']) {
+        $bluetoothDevicesPayload = $payload.BluetoothDevices
+        if ($bluetoothDevicesPayload) {
+            $hasBluetoothDeviceSnapshot = $true
+            $bluetoothDeviceSource = if ($bluetoothDevicesPayload.PSObject.Properties['Source']) { [string]$bluetoothDevicesPayload.Source } else { 'Get-PnpDevice -Class Bluetooth' }
+            if ($bluetoothDevicesPayload.PSObject.Properties['Error'] -and $bluetoothDevicesPayload.Error) {
+                $bluetoothDeviceError = [string]$bluetoothDevicesPayload.Error
+            } elseif ($bluetoothDevicesPayload.PSObject.Properties['Items'] -and $bluetoothDevicesPayload.Items) {
+                $bluetoothDeviceRecords = @($bluetoothDevicesPayload.Items | Where-Object { $_ })
+            }
+        }
+    }
+
+    $hasBluetoothServiceSnapshot = $false
+    $bluetoothServicePayload = $null
+    $bluetoothServiceStatus = $null
+    $bluetoothServiceExists = $null
+    $bluetoothServiceError = $null
+    $bluetoothServiceSource = 'Get-Service'
+    if ($payload.PSObject.Properties['BluetoothService']) {
+        $bluetoothServicePayload = $payload.BluetoothService
+        if ($bluetoothServicePayload) {
+            $hasBluetoothServiceSnapshot = $true
+            if ($bluetoothServicePayload.PSObject.Properties['Source'] -and $bluetoothServicePayload.Source) {
+                $bluetoothServiceSource = [string]$bluetoothServicePayload.Source
+            }
+            if ($bluetoothServicePayload.PSObject.Properties['Error'] -and $bluetoothServicePayload.Error) {
+                $bluetoothServiceError = [string]$bluetoothServicePayload.Error
+            }
+            if ($bluetoothServicePayload.PSObject.Properties['Status'] -and $bluetoothServicePayload.Status) {
+                $bluetoothServiceStatus = ([string]$bluetoothServicePayload.Status).Trim()
+            }
+            if ($bluetoothServicePayload.PSObject.Properties['Exists']) {
+                try { $bluetoothServiceExists = [bool]$bluetoothServicePayload.Exists } catch { $bluetoothServiceExists = $null }
+            }
+        }
+    }
+
+    if (-not $hasBluetoothDeviceSnapshot -and -not $bluetoothDeviceError) {
+        $bluetoothDeviceError = 'Bluetooth device snapshot missing from driver collector payload.'
+        if (-not $bluetoothDeviceSource) { $bluetoothDeviceSource = 'Get-PnpDevice -Class Bluetooth' }
+    }
+
+    if (-not $hasBluetoothServiceSnapshot -and -not $bluetoothServiceError) {
+        $bluetoothServiceError = 'Bluetooth service snapshot missing from driver collector payload.'
+    }
+
     $failureEventMap = Get-DriverFailureEventMap -Context $Context
     Write-HeuristicDebug -Source 'Hardware' -Message 'Loaded driver failure event map' -Data ([ordered]@{
         HasEvents = ($failureEventMap -and ($failureEventMap.Count -gt 0))
         Keys      = if ($failureEventMap) { $failureEventMap.Count } else { 0 }
     })
 
-    $bluetoothDrivers = New-Object System.Collections.Generic.List[pscustomobject]
-    $bluetoothProblemDevices = New-Object System.Collections.Generic.List[pscustomobject]
     foreach ($entry in $entries) {
         if (-not $entry) { continue }
 
@@ -361,30 +411,6 @@ function Invoke-HardwareHeuristics {
         $startModeNormalized = Normalize-DriverStartMode -Value $startModeRaw
         $driverTypeRaw = Get-DriverPropertyValue -Entry $entry -Names @('Driver Type','Type','Service Type')
         $driverTypeNormalized = Normalize-DriverType -Value $driverTypeRaw
-
-        $classRaw = Get-DriverPropertyValue -Entry $entry -Names @('Class Name','ClassName','Class')
-        $descriptionRaw = Get-DriverPropertyValue -Entry $entry -Names @('Device Description','Description')
-        $serviceNameRaw = Get-DriverPropertyValue -Entry $entry -Names @('Service Name','Driver Name','Module Name')
-        $isBluetooth = $false
-        foreach ($candidate in @($classRaw, $label, $descriptionRaw, $serviceNameRaw)) {
-            if (-not $candidate) { continue }
-            if (Test-BluetoothIndicator -Value $candidate) {
-                $isBluetooth = $true
-                break
-            }
-        }
-        if ($isBluetooth) {
-            $bluetoothDrivers.Add([pscustomobject]@{
-                Entry               = $entry
-                Label               = $label
-                StatusRaw           = $statusRaw
-                StatusNormalized    = $statusNormalized
-                StateRaw            = $stateRaw
-                StateNormalized     = $stateNormalized
-                StartModeRaw        = $startModeRaw
-                StartModeNormalized = $startModeNormalized
-            }) | Out-Null
-        }
 
         $shouldFlagStartIssue = $false
         $failureEvents = @()
@@ -476,16 +502,6 @@ function Invoke-HardwareHeuristics {
                     break
                 }
             }
-            if ($isBluetoothDevice) {
-                $bluetoothProblemDevices.Add([pscustomobject]@{
-                    Entry      = $entry
-                    Label      = $label
-                    Problem    = $normalized
-                    StatusRaw  = $statusRaw
-                    ProblemRaw = $problemRaw
-                }) | Out-Null
-            }
-
             if ($normalized -eq 'missing-driver') {
                 if ($isBluetoothDevice) { continue }
                 $title = "Device {0} is missing drivers (Code 28), so functionality may be limited." -f $label
@@ -503,54 +519,76 @@ function Invoke-HardwareHeuristics {
         }
     }
 
-    Write-HeuristicDebug -Source 'Hardware' -Message 'Bluetooth device detection summary' -Data ([ordered]@{
-        DriverEntriesTotal    = $entries.Count
-        DriverEntriesMatched  = $bluetoothDrivers.Count
-        ProblemEntriesTotal   = $pnpEntries.Count
-        ProblemEntriesMatched = $bluetoothProblemDevices.Count
+    Write-HeuristicDebug -Source 'Hardware/Bluetooth' -Message 'Bluetooth snapshot summary' -Data ([ordered]@{
+        DeviceSnapshotPresent  = $hasBluetoothDeviceSnapshot
+        DeviceRecordCount      = $bluetoothDeviceRecords.Count
+        DeviceErrorPresent     = [bool]$bluetoothDeviceError
+        ServiceSnapshotPresent = $hasBluetoothServiceSnapshot
+        ServiceStatus          = $bluetoothServiceStatus
+        ServiceExists          = $bluetoothServiceExists
+        ServiceErrorPresent    = [bool]$bluetoothServiceError
     })
 
-    $bluetoothDetected = ($bluetoothDrivers.Count -gt 0) -or ($bluetoothProblemDevices.Count -gt 0)
-    if (-not $bluetoothDetected) {
-        $evidenceLines = @()
-        $evidenceLines += "Driver inventory entries scanned: $($entries.Count)"
-        $evidenceLines += "Bluetooth indicators matched in drivers: $($bluetoothDrivers.Count)"
-        $evidenceLines += "Problem devices parsed: $($pnpEntries.Count)"
-        $evidenceLines += "Bluetooth indicators matched in problem devices: $($bluetoothProblemDevices.Count)"
-        $evidenceLines += "Indicators checked: 'bluetooth', drivers starting with BTH*/IBT*/QCBT*/BTATH*"
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence ($evidenceLines -join "`n") -Subcategory 'Bluetooth'
+    $bluetoothCanEvaluate = $true
+    if ($bluetoothDeviceError) {
+        $title = 'Bluetooth hardware query failed, so wireless accessory health could not be evaluated automatically.'
+        $evidence = "{0}: {1}" -f $bluetoothDeviceSource, $bluetoothDeviceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Bluetooth'
         $issueCount++
-    } else {
-        $bluetoothIssueEvidence = New-Object System.Collections.Generic.List[string]
-        $bluetoothIssueFound = $false
+        $bluetoothCanEvaluate = $false
+    }
 
-        foreach ($record in $bluetoothDrivers) {
-            $shouldFlagBluetooth = $false
+    if ($bluetoothServiceError) {
+        $title = 'Bluetooth service snapshot missing, so technicians cannot confirm if wireless accessories will work.'
+        $evidence = "{0}: {1}" -f $bluetoothServiceSource, $bluetoothServiceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Bluetooth'
+        $issueCount++
+        $bluetoothCanEvaluate = $false
+    }
 
-            if ($record.StatusNormalized -in @('error','degraded')) {
-                $shouldFlagBluetooth = $true
-            } elseif ($record.StartModeNormalized -in @('boot','system','auto') -and $record.StateNormalized -notin @('running','pending')) {
-                $shouldFlagBluetooth = $true
+    if ($bluetoothCanEvaluate) {
+        $radioCandidates = @()
+        if ($bluetoothDeviceRecords.Count -gt 0) {
+            $radioCandidates = @($bluetoothDeviceRecords | Where-Object { $_.InstanceId -and ($_.InstanceId -like 'USB\VID*') })
+        }
+
+        $radiosOk = @()
+        $radiosWithIssues = @()
+        foreach ($radio in $radioCandidates) {
+            $statusValue = if ($radio.Status) { [string]$radio.Status } else { 'Unknown' }
+            if ($statusValue -eq 'OK') {
+                $radiosOk += $radio
+                continue
             }
-
-            if ($shouldFlagBluetooth) {
-                $bluetoothIssueFound = $true
-                $driverEvidence = Get-DriverEvidence -Entry $record.Entry
-                if ($driverEvidence) { $bluetoothIssueEvidence.Add($driverEvidence) | Out-Null }
+            if ($statusValue -in @('Error','Degraded')) {
+                $radiosWithIssues += $radio
             }
         }
 
-        foreach ($device in $bluetoothProblemDevices) {
-            if ($device.Problem -in @('missing-driver','problem')) {
-                $bluetoothIssueFound = $true
-                $pnpEvidence = Get-PnpDeviceEvidence -Entry $device.Entry
-                if ($pnpEvidence) { $bluetoothIssueEvidence.Add($pnpEvidence) | Out-Null }
-            }
+        $serviceRunning = $bluetoothServiceStatus -eq 'Running'
+        $serviceKnown = ($bluetoothServiceStatus -ne $null -and $bluetoothServiceStatus -ne '') -or ($bluetoothServiceExists -ne $null)
+
+        $evidenceLines = New-Object System.Collections.Generic.List[string]
+        $serviceDisplay = if ($bluetoothServiceExists -eq $false) { 'Not Found' } elseif ($serviceKnown) { if ($bluetoothServiceStatus) { $bluetoothServiceStatus } else { 'Unknown' } } else { 'Unknown' }
+        $evidenceLines.Add("Bluetooth Support Service (bthserv) status: $serviceDisplay") | Out-Null
+        $evidenceLines.Add("USB Bluetooth radios detected: $($radioCandidates.Count)") | Out-Null
+
+        foreach ($radio in $radioCandidates) {
+            $name = if ($radio.FriendlyName) { [string]$radio.FriendlyName } elseif ($radio.InstanceId) { [string]$radio.InstanceId } else { 'Unknown device' }
+            $statusText = if ($radio.Status) { [string]$radio.Status } else { 'Unknown' }
+            $evidenceLines.Add("- $name — Status: $statusText") | Out-Null
         }
 
-        if ($bluetoothIssueFound) {
-            $evidence = if ($bluetoothIssueEvidence.Count -gt 0) { $bluetoothIssueEvidence.ToArray() } else { $null }
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Bluetooth adapter detected but not working, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+        $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
+
+        if ($radioCandidates.Count -eq 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            $issueCount++
+        } elseif ($radiosOk.Count -eq 0 -or $radiosWithIssues.Count -gt 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            $issueCount++
+        } elseif (-not $serviceRunning) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
             $issueCount++
         } else {
             Add-CategoryNormal -CategoryResult $result -Title 'Bluetooth adapter detected and appears to be working normally.' -Subcategory 'Bluetooth'
