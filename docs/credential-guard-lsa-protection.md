@@ -1,3 +1,28 @@
+## Summary
+This card fires when AutoHelpDesk detects Credential Guard running without LSA protection (RunAsPPL), leaving LSASS exposed despite virtualization-based security. The guidance below outlines the raw data inspected, how severity is determined, and the steps to enforce protected process light. Technicians can use it to validate the alert and harden devices consistently.
+
+## Signals to Collect
+- `Get-CimInstance -ClassName Win32_DeviceGuard | Select-Object -ExpandProperty SecurityServicesRunning` → Confirm Credential Guard reports as active (value `1`).
+- `Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' | Select-Object RunAsPPL, RunAsPPLBoot` → Inspect LSA protection registry flags.
+- `Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 20 | Where-Object { $_.Id -eq 3065 }` → Verify protected process enforcement events after remediation.
+
+## Detection Rule
+- Require `SecurityServicesRunning` to include `1` (Credential Guard active) before evaluating LSA protection.
+- Raise a **high-severity** issue when `RunAsPPL` is missing or not equal to `1`, even if `RunAsPPLBoot` is staged for next boot.
+- Produce a **normal** card when both Credential Guard and RunAsPPL return enabled, embedding the registry evidence in the message.
+
+## Heuristic Mapping
+- `Security.CredentialPolicies`
+
+## Remediation
+1. Deploy Group Policy or MDM policy setting **Configure LSASS to run as a protected process** (value `RunAsPPL = 1`).
+2. Ensure Credential Guard prerequisites (TPM, Secure Boot, virtualization support) remain satisfied so the service can continue running.
+3. Reboot the device to restart LSASS as a protected process.
+4. Validate success by re-running AutoHelpDesk collectors or checking for Event ID 3065 in the Code Integrity log.
+
+## References
+- `docs/credential-guard-lsa-protection.md`
+
 # Understanding the "Credential Guard or LSA protection is not enforced" card
 
 ## What the card is telling you

@@ -1,3 +1,31 @@
+## Summary
+AutoHelpDesk’s Microsoft Store heuristic reviews package presence, licensing services, network reachability, and diagnostic output to determine whether the storefront is functional. This checklist gives technicians a consistent order of operations to gather evidence and remediate issues without unnecessary reinstalls. Applying the steps also satisfies analyzer requirements for Store troubleshooting artifacts.
+
+## Signals to Collect
+- `Get-AppxPackage -AllUsers Microsoft.WindowsStore | Select-Object Name, Version, Status` → Confirm the Store package is installed and healthy.
+- `Get-Service -Name ClipSVC, wlidsvc, DoSvc, bits, wuauserv | Select-Object Name, Status, StartType` → Validate dependent services.
+- `Test-NetConnection -ComputerName storeedgefd.dsx.mp.microsoft.com -Port 443` → Check CDN connectivity.
+- `& "$Env:SystemRoot\System32\StoreDiag.exe" /report "$Env:USERPROFILE\Desktop\StoreDiagReport"` → Generate the Microsoft Store diagnostic report for evidence.
+
+## Detection Rule
+- Mark the Store as **not applicable** when the package and AppXSVC service are absent on the SKU.
+- Raise **high severity** when the package is missing, the manifest path is inaccessible, or multiple core services fail health checks.
+- Raise **medium severity** when connectivity tests fail for Store endpoints or the WinHTTP proxy blocks access.
+- Emit a **normal** card when all functional checks succeed, attaching the summarized evidence list.
+
+## Heuristic Mapping
+- `System.MicrosoftStore`
+
+## Remediation
+1. Reinstall or re-register the Microsoft Store package for all users if the package is missing or corrupted.
+2. Start required services (ClipSVC, wlidsvc, BITS, Windows Update, Delivery Optimization) and set their startup types per Microsoft guidance.
+3. Resolve connectivity blockers by updating proxy/firewall rules or fixing TLS inspection issues for Store endpoints.
+4. Run Store diagnostics (`StoreDiag.exe`, `wsreset.exe`) and address any cache or licensing errors reported.
+5. Document findings and rerun AutoHelpDesk collectors to confirm the Store functional check passes.
+
+## References
+- `docs/microsoft-store-diagnostics.md`
+
 # Comprehensive Microsoft Store Health Checks
 
 This playbook collects the most reliable ways to confirm the Microsoft Store is
