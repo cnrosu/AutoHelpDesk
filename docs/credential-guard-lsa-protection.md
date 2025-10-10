@@ -2,23 +2,25 @@
 This card fires when AutoHelpDesk detects Credential Guard running without LSA protection (RunAsPPL), leaving LSASS exposed despite virtualization-based security. The guidance below outlines the raw data inspected, how severity is determined, and the steps to enforce protected process light. Technicians can use it to validate the alert and harden devices consistently.
 
 ## Signals to Collect
-- `Get-CimInstance -ClassName Win32_DeviceGuard | Select-Object -ExpandProperty SecurityServicesRunning` → Confirm Credential Guard reports as active (value `1`).
-- `Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' | Select-Object RunAsPPL, RunAsPPLBoot` → Inspect LSA protection registry flags.
-- `Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 20 | Where-Object { $_.Id -eq 3065 }` → Verify protected process enforcement events after remediation.
+- `Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -Class Win32_DeviceGuard` → Determine whether virtualization-based security (VBS) and hypervisor-protected code integrity (HVCI) are supported and running.
+- `Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' | Select-Object RunAsPPL` → Check whether LSASS is configured to run as a protected process (RunAsPPL).
+- *(Optional)* `systeminfo.exe` → Parse the **Virtualization-based security** lines to corroborate capability and current state when Device Guard data is unavailable.
 
 ## Detection Rule
-- Require `SecurityServicesRunning` to include `1` (Credential Guard active) before evaluating LSA protection.
-- Raise a **high-severity** issue when `RunAsPPL` is missing or not equal to `1`, even if `RunAsPPLBoot` is staged for next boot.
-- Produce a **normal** card when both Credential Guard and RunAsPPL return enabled, embedding the registry evidence in the message.
+- **High severity:** Hardware reports VBS/HVCI capable and `RunAsPPL` is missing or set to `0` (`RunAsPPLDisabled`).
+- **Medium severity:** Hardware reports VBS/HVCI capable but VBS is not enabled or running (`VBSNotEnabled`).
+- **Low severity:** Hardware reports VBS/HVCI not capable (`HardwareNotCapable`) so remediation focuses on firmware/BIOS enablement or exceptions.
 
 ## Heuristic Mapping
-- `Security.CredentialPolicies`
+- `Security/LSA/RunAsPPLDisabled`
+- `Security/VBS/NotEnabled`
+- `Security/VBS/HardwareNotCapable`
 
 ## Remediation
-1. Deploy Group Policy or MDM policy setting **Configure LSASS to run as a protected process** (value `RunAsPPL = 1`).
-2. Ensure Credential Guard prerequisites (TPM, Secure Boot, virtualization support) remain satisfied so the service can continue running.
-3. Reboot the device to restart LSASS as a protected process.
-4. Validate success by re-running AutoHelpDesk collectors or checking for Event ID 3065 in the Code Integrity log.
+1. Enable virtualization-based security (Credential Guard) and HVCI through Group Policy, MDM, or security baselines so the hypervisor isolates LSASS.
+2. Configure LSASS to run as a protected process (`RunAsPPL = 1`) via policy, and reboot to apply the change.
+3. If hardware is not capable, update firmware/BIOS, enable virtualization/Secure Boot features, or document a carve-out until compatible hardware is available.
+4. Validate the fix by re-running collectors or checking Device Guard status to confirm VBS and RunAsPPL are active.
 
 ## References
 - `docs/credential-guard-lsa-protection.md`
