@@ -201,7 +201,8 @@ function Format-DeviceState {
         [string]$Domain,
         [bool]$PartOfDomain,
         [bool]$IsAzureAdJoined,
-        [string]$AzureAdTenant
+        [string]$AzureAdTenant,
+        [bool]$IsIntuneManaged
     )
 
     if ($PartOfDomain) {
@@ -212,6 +213,9 @@ function Format-DeviceState {
     $domainLabel = if ($Domain) { $Domain } else { 'Unknown domain' }
     if ($IsAzureAdJoined) {
         $tenantLabel = if ($AzureAdTenant) { $AzureAdTenant } else { $domainLabel }
+        if ($IsIntuneManaged) {
+            return "Azure AD joined ($tenantLabel) + Intune"
+        }
         return "Azure AD joined ($tenantLabel)"
     }
 
@@ -245,7 +249,7 @@ function Get-AzureAdJoinState {
     if (-not $DsRegCmdOutput) { return $false }
 
     foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
-        if ($line -match '^(?i)AzureAdJoined\s*:\s*(Yes|No)') {
+        if ($line -match '^(?i)\s*AzureAdJoined\s*:\s*(Yes|No)') {
             return ($matches[1].ToLowerInvariant() -eq 'yes')
         }
     }
@@ -259,13 +263,37 @@ function Get-AzureAdTenantName {
     if (-not $DsRegCmdOutput) { return $null }
 
     foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
-        if ($line -match '^(?i)TenantName\s*:\s*(.+)$') {
+        if ($line -match '^(?i)\s*TenantName\s*:\s*(.+)$') {
             $tenant = $matches[1].Trim()
             if ($tenant) { return $tenant }
         }
     }
 
     return $null
+}
+
+function Test-IsIntuneManaged {
+    param([string]$DsRegCmdOutput)
+
+    if (-not $DsRegCmdOutput) { return $false }
+
+    foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
+        if ($line -match '^(?i)\s*Mdm[a-zA-Z]*\s*:\s*(.+)$') {
+            $value = $matches[1]
+            if ($null -eq $value) { continue }
+
+            $trimmed = $value.Trim()
+            if (-not $trimmed) { continue }
+
+            if ($trimmed -match '^(?i)\(null\)|\(not\s+set\)|none|not\s+configured|n/?a$') { continue }
+
+            if ($trimmed -match '(?i)intune' -or $trimmed -match '(?i)manage\.microsoft\.com') {
+                return $true
+            }
+        }
+    }
+
+    return $false
 }
 
 function Get-AnalyzerSummary {
@@ -289,6 +317,7 @@ function Get-AnalyzerSummary {
         Gateways        = @()
         DnsServers      = @()
         GeneratedAt     = Get-Date
+        IsIntuneManaged = $false
     }
 
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
@@ -346,6 +375,7 @@ function Get-AnalyzerSummary {
 
             if ($dsRegText) {
                 $summary.IsAzureAdJoined = Get-AzureAdJoinState -DsRegCmdOutput $dsRegText
+                $summary.IsIntuneManaged = Test-IsIntuneManaged -DsRegCmdOutput $dsRegText
                 if ($summary.IsAzureAdJoined) {
                     $tenantName = Get-AzureAdTenantName -DsRegCmdOutput $dsRegText
                     if ($tenantName) { $summary.AzureAdTenant = $tenantName }
@@ -454,7 +484,7 @@ function Get-AnalyzerSummary {
 
     $domainText = if ($summary.Domain) { $summary.Domain } else { 'Unknown' }
     $partOfDomain = if ($null -ne $summary.IsDomainJoined) { [bool]$summary.IsDomainJoined } else { $false }
-    $summary.DeviceState = Format-DeviceState -Domain $domainText -PartOfDomain $partOfDomain -IsAzureAdJoined $summary.IsAzureAdJoined -AzureAdTenant $summary.AzureAdTenant
+    $summary.DeviceState = Format-DeviceState -Domain $domainText -PartOfDomain $partOfDomain -IsAzureAdJoined $summary.IsAzureAdJoined -AzureAdTenant $summary.AzureAdTenant -IsIntuneManaged $summary.IsIntuneManaged
 
     if (-not $summary.DeviceName) { $summary.DeviceName = 'Unknown' }
     if (-not $summary.OperatingSystem) { $summary.OperatingSystem = 'Unknown' }
