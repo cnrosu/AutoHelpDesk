@@ -31,6 +31,24 @@ if (-not (Get-Command -Name Join-PathSafe -ErrorAction SilentlyContinue)) {
     }
 }
 
+if (-not (Get-Command -Name Join-PathSafe -ErrorAction SilentlyContinue)) {
+    function Join-PathSafe {
+        param(
+            [Parameter(Mandatory = $true)]
+            [AllowNull()]
+            [AllowEmptyCollection()]
+            $Path,
+            [Parameter(Mandatory = $true)]
+            [string]$ChildPath
+        )
+
+        $base = @($Path | Where-Object { $_ })
+        if ($base.Count -eq 0) { return $null }
+
+        return Join-Path -Path $base[0] -ChildPath $ChildPath
+    }
+}
+
 # Ensure callers don’t pass empty output directories (defense-in-depth)
 function Resolve-CollectorOutputDirectory {
     param(
