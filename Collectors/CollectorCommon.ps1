@@ -10,11 +10,16 @@ if (-not (Get-Variable -Name 'CollectorCommonState' -Scope Global -ErrorAction S
     }
 }
 
+# Ensure callers don’t pass empty output directories (defense-in-depth)
 function Resolve-CollectorOutputDirectory {
     param(
         [Parameter(Mandatory)]
         [string]$RequestedPath
     )
+
+    if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+        throw "Output directory was not provided or is empty."
+    }
 
     if (-not (Test-Path -Path $RequestedPath)) {
         $null = New-Item -Path $RequestedPath -ItemType Directory -Force
