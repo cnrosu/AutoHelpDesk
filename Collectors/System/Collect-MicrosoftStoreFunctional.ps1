@@ -5,10 +5,22 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\\output')
+    [string]$OutputDirectory
 )
 
-. (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
+function Get-ScriptRoot {
+    if ($script:PSScriptRoot -and -not [string]::IsNullOrWhiteSpace($script:PSScriptRoot)) { return $script:PSScriptRoot }
+    if ($MyInvocation.MyCommand.Path) { return (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+    return (Get-Location).Path
+}
+
+$__ScriptRoot = Get-ScriptRoot
+
+if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $OutputDirectory = Join-Path -Path $__ScriptRoot -ChildPath '..\output'
+}
+
+. (Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1')
 
 function Test-StoreInstallLocation {
     [CmdletBinding()]
