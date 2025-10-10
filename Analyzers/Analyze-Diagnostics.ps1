@@ -62,6 +62,9 @@ Write-Verbose 'Active Directory heuristics completed.'
 $officeCategories = Invoke-OfficeHeuristics   -Context $context
 if ($officeCategories) { foreach ($item in @($officeCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Office heuristics completed.'
+$intuneCategories = Invoke-IntuneHeuristics -Context $context
+if ($intuneCategories) { foreach ($item in @($intuneCategories)) { $categoriesList.Add($item) } }
+Write-Verbose 'Intune heuristics completed.'
 $storageCategories = Invoke-StorageHeuristics  -Context $context
 if ($storageCategories) { foreach ($item in @($storageCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Storage heuristics completed.'
