@@ -7,23 +7,25 @@ description: Best practices for using LAPS or compensating password-rotation con
 Azure AD joined endpoints still maintain local administrator accounts, so static credentials remain a lateral-movement risk without automated rotation. This doc explains why Windows LAPS (or equivalent tooling) must remain in scope for cloud-managed devices and how to justify compensating controls when LAPS cannot be deployed. Applying the guidance keeps AutoHelpDesk heuristics satisfied and reduces credential-reuse exposure.
 
 ## Signals to Collect
-- `Get-LapsAADPassword -DeviceName <DeviceName>` → Confirm Azure AD secret escrow and rotation timestamps.
-- `Get-LocalGroupMember -Group Administrators | Select-Object Name, ObjectClass, PrincipalSource` → Inventory local administrators that require rotation.
-- `Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Policies\LAPS' | Select-Object BackupDirectory, PasswordAgeDays` → Validate LAPS policy enforcement on the device.
+- `Get-LocalUser -Name "Administrator"` (or targeted admin account) → Confirm the local admin account exists when policy requires rotation coverage.
+- `Get-WinEvent -LogName "Microsoft-Windows-LAPS/Operational" -MaxEvents 200` → Parse rotation timestamps and password read operations for audit analysis.
+- `Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Policies\LAPS'` → Read policy values (e.g., `PasswordAgeDays`, complexity settings) to confirm rotation interval and enforcement.
 
 ## Detection Rule
-- Raise **high severity** when no LAPS/PLAP artifact is found in collector payloads, indicating unmanaged local admin passwords.
-- Record a **normal** card when the collector confirms an Intune or Group Policy LAPS configuration with escrow enabled.
-- Attach evidence describing missing payloads or stale password timestamps whenever rotation cannot be confirmed.
+- **RotationStale (High):** Flag when the time since the last successful password rotation exceeds **RotationDaysThreshold = 30** days.
+- **PasswordReadSpike (High):** Flag when password read events exceed **ReadSpike24h = 5** within a 24-hour window or **ReadSpike72h = 10** within a 72-hour window.
+- **PolicyMissing (Medium):** Flag when required LAPS policy registry values (e.g., `PasswordAgeDays`, backup directory) are absent on devices expected to enforce rotation.
 
 ## Heuristic Mapping
-- `Security.CredentialPolicies`
+- `Security/LAPS/RotationStale`
+- `Security/LAPS/PasswordReadSpike`
+- `Security/LAPS/PolicyMissing`
 
 ## Remediation
-1. Configure Windows LAPS via Intune or Group Policy to rotate the built-in Administrator (or a custom local admin) credential and escrow secrets in Azure AD.
-2. Audit the *Administrators* group and remove users or break-glass accounts that do not require standing access.
-3. Document compensating controls (e.g., just-in-time elevation, privileged access management) when LAPS deployment is blocked.
-4. Re-run AutoHelpDesk collectors to confirm the LAPS artifact now includes rotation metadata.
+1. Enforce the Windows LAPS rotation policy so every managed local admin account rotates automatically on a ≤30-day cadence.
+2. Limit password read permissions to least-privileged roles and investigate any abnormal read spikes in the LAPS operational log.
+3. Trigger an immediate password rotation for accounts with stale secrets and verify the updated timestamp in the collector output.
+4. Review the LAPS audit trail and registry policy values to confirm policy presence; document compensating controls if enforcement is not possible.
 
 ## References
 - `docs/azuread-laps-best-practices.md`
