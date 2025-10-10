@@ -473,8 +473,9 @@ function Resolve-IntuneImeAppContext {
     $id = $null
 
     $quotedPatterns = @(
-        "(?i)app(?:lication)?\s*(?:name|')?\s*[:=]\s*'(?<value>[^']+)'",
-        '"(?<value>[^"]+)"'
+        '(?i)app(?:lication)?\s*(?:name|["''])?\s*[:=]\s*["''](?<value>[^"'']+)["'']',
+        '"(?<value>[^"]+)"',
+        "'(?<value>[^']+)'"
     )
 
     foreach ($pattern in $quotedPatterns) {
@@ -486,15 +487,15 @@ function Resolve-IntuneImeAppContext {
     }
 
     if (-not $name) {
-        $match = [regex]::Match($Line, "(?i)app(?:lication)?\s*name\s*[:=]\s*(?<value>[A-Za-z0-9\._\-\s]+)")
+        $match = [regex]::Match($Line, '(?i)app(?:lication)?\s*name\s*[:=]\s*(?<value>[A-Za-z0-9\._\-\s]+)')
         if ($match.Success) {
-            $name = $match.Groups['value'].Value.Trim(" \t\r\n'\"")
+            $name = $match.Groups['value'].Value.Trim(" `t`r`n'`"")
         }
     }
 
     $guidPattern = '(?i)(?<value>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})'
 
-    $matchGuid = [regex]::Match($Line, "(?i)app(?:lication)?\s*(?:id|guid)\s*[:=]\s*(?<value>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})")
+    $matchGuid = [regex]::Match($Line, '(?i)app(?:lication)?\s*(?:id|guid)\s*[:=]\s*(?<value>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})')
     if ($matchGuid.Success) {
         $id = $matchGuid.Groups['value'].Value.ToLowerInvariant()
     } else {
@@ -505,7 +506,7 @@ function Resolve-IntuneImeAppContext {
     }
 
     if ($name) {
-        $name = $name.Trim(" \t\r\n'\"")
+        $name = $name.Trim(" `t`r`n'`"")
     }
 
     if (-not $name) { $name = $null }
