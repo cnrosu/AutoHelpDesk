@@ -709,15 +709,14 @@ function New-IssueCardHtml {
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    [void]$bodyBuilder.Append("<details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details>")
+    [void]$bodyBuilder.Append("<details class='report-evidence'><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details>")
   }
 
   $hasRemediation = -not [string]::IsNullOrWhiteSpace($Entry.Remediation)
   $hasRemediationScript = -not [string]::IsNullOrWhiteSpace($Entry.RemediationScript)
   if ($hasRemediation -or $hasRemediationScript) {
     $remediationBuilder = [System.Text.StringBuilder]::new()
-    [void]$remediationBuilder.Append("<div class='report-remediation'>")
-    [void]$remediationBuilder.Append("<h4 class='report-remediation__title'>Remediation</h4>")
+    [void]$remediationBuilder.Append("<details class='report-remediation'><summary class='report-remediation__summary'>Remediation</summary><div class='report-remediation__body'>")
 
     if ($hasRemediation) {
       $remediationHtml = Encode-Html $Entry.Remediation
@@ -734,7 +733,7 @@ function New-IssueCardHtml {
       [void]$remediationBuilder.Append("<div class='report-remediation__code'><button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button><pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre></div>")
     }
 
-    [void]$remediationBuilder.Append('</div>')
+    [void]$remediationBuilder.Append('</div></details>')
     [void]$bodyBuilder.Append($remediationBuilder.ToString())
   }
 
@@ -780,7 +779,7 @@ function New-GoodCardHtml {
   [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
 
   $evidenceHtml = Encode-Html $Entry.Evidence
-  [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details></div>")
+  [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence'><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details></div>")
 
   [void]$cardBuilder.Append("</details>")
   return $cardBuilder.ToString()
