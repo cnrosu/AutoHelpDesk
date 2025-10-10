@@ -22,6 +22,40 @@ function Invoke-SecurityBitLockerChecks {
             $osProtectedEvidence = [System.Collections.Generic.List[string]]::new()
             $hasRecoveryProtector = $false
 
+            function Test-BitLockerProtectorIsRecovery {
+                param($Protector)
+
+                if (-not $Protector) { return $false }
+
+                $textCandidates = [System.Collections.Generic.List[string]]::new()
+                try {
+                    $textCandidates.Add([string]$Protector) | Out-Null
+                } catch {
+                    # ignore serialization failures
+                }
+
+                if ($Protector.PSObject) {
+                    foreach ($name in @('KeyProtectorType', 'KeyProtectorFriendlyName')) {
+                        if ($Protector.PSObject.Properties[$name] -and $Protector.$name) {
+                            $textCandidates.Add([string]$Protector.$name) | Out-Null
+                        }
+                    }
+
+                    if ($Protector.PSObject.Properties['RecoveryPasswordId'] -and $Protector.RecoveryPasswordId) {
+                        return $true
+                    }
+                }
+
+                foreach ($candidate in $textCandidates) {
+                    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+                    if ($candidate -match '(?i)recovery\s*password' -or $candidate -match '(?i)numerical\s*password' -or $candidate -match '(?i)recovery\s*key') {
+                        return $true
+                    }
+                }
+
+                return $false
+            }
+
             foreach ($volume in $volumes) {
                 if (-not $volume) { continue }
                 $mount = if ($volume.MountPoint) { [string]$volume.MountPoint } else { '' }
@@ -39,9 +73,7 @@ function Invoke-SecurityBitLockerChecks {
                     if ($protector.PSObject -and $protector.PSObject.Properties['KeyProtectorType']) {
                         $protectorText = [string]$protector.KeyProtectorType
                     }
-                    if ($protectorText -match '(?i)RecoveryPassword') {
-                        $hasRecoveryProtector = $true
-                    }
+                    if (Test-BitLockerProtectorIsRecovery $protector) { $hasRecoveryProtector = $true }
                     if (-not [string]::IsNullOrWhiteSpace($protectorText)) {
                         $null = $protectorTypes.Add($protectorText)
                     }
