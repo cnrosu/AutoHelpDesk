@@ -103,7 +103,7 @@ function Invoke-EventsNetlogonTrustChecks {
             Id       = $id
             TimeUtc  = $timeUtc
             Provider = $providerNormalized
-        }
+        })
     }
 
     if ($eventMatches.Count -eq 0) { return }
