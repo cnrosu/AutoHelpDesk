@@ -8,6 +8,8 @@ param(
     [string]$OutputDirectory
 )
 
+$ErrorActionPreference = 'Stop'
+
 function Get-ScriptRoot {
     if ($script:PSScriptRoot -and -not [string]::IsNullOrWhiteSpace($script:PSScriptRoot)) { return $script:PSScriptRoot }
     if ($MyInvocation.MyCommand.Path) { return (Split-Path -Parent $MyInvocation.MyCommand.Path) }
@@ -16,11 +18,24 @@ function Get-ScriptRoot {
 
 $__ScriptRoot = Get-ScriptRoot
 
-if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path -Path $__ScriptRoot -ChildPath '..\output'
-}
+if ([string]::IsNullOrWhiteSpace($__ScriptRoot)) { throw 'Script root unavailable.' }
 
-. (Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1')
+$collectorCommonPath = Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1'
+if (-not (Test-Path -LiteralPath $collectorCommonPath)) { throw 'Unable to resolve CollectorCommon.ps1 path.' }
+. $collectorCommonPath
+
+if (-not (Get-Command -Name Join-PathSafe -ErrorAction SilentlyContinue)) { throw 'Join-PathSafe helper is unavailable.' }
+
+if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $defaultOutput = Join-PathSafe $__ScriptRoot '..\output'
+    if (-not $defaultOutput) {
+        Write-Verbose 'Script root unavailable; defaulting output to current directory.'
+        $locationPath = (Get-Location).Path
+        $defaultOutput = Join-PathSafe $locationPath '..\output'
+        if (-not $defaultOutput) { $defaultOutput = $locationPath }
+    }
+    $OutputDirectory = $defaultOutput
+}
 
 function Test-StoreInstallLocation {
     [CmdletBinding()]
@@ -37,34 +52,40 @@ function Test-StoreInstallLocation {
         notes               = @()
     }
 
+    $pkg = $null
     try {
-        $pkg = Get-AppxPackage -AllUsers $PackageFamilyName -ErrorAction Stop
+        $pkg = Get-AppxPackage -AllUsers $PackageFamilyName -ErrorAction SilentlyContinue
     } catch {
         $result.notes += "Get-AppxPackage failed: $($_.Exception.Message)"
-        return [pscustomobject]$result
     }
 
     if (-not $pkg) {
-        $result.notes += 'Package not found.'
+        $result.notes += 'Store package missing or inaccessible.'
         return [pscustomobject]$result
     }
 
     $result.storePackagePresent = $true
-    $result.installLocation = $pkg.InstallLocation
+    $installLocation = $pkg.InstallLocation
+    $result.installLocation = $installLocation
 
-    if ([string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
+    if ([string]::IsNullOrWhiteSpace($installLocation)) {
         $result.notes += 'InstallLocation string was empty.'
         return [pscustomobject]$result
     }
 
-    if (Test-Path -LiteralPath $pkg.InstallLocation) {
-        $result.installedLocationOk = $true
-    } else {
+    if (-not (Test-Path -LiteralPath $installLocation)) {
         $result.notes += 'InstallLocation path did not exist.'
         return [pscustomobject]$result
     }
 
-    $manifestPath = Join-Path -LiteralPath $pkg.InstallLocation -ChildPath 'AppxManifest.xml'
+    $result.installedLocationOk = $true
+
+    $manifestPath = Join-PathSafe $installLocation 'AppxManifest.xml'
+    if (-not $manifestPath) {
+        $result.notes += 'Unable to resolve AppxManifest.xml location.'
+        return [pscustomobject]$result
+    }
+
     if (Test-Path -LiteralPath $manifestPath) {
         try {
             $null = Get-Content -LiteralPath $manifestPath -TotalCount 1 -ErrorAction Stop
