@@ -2,26 +2,29 @@
 AutoHelpDesk’s Microsoft Store heuristic reviews package presence, licensing services, network reachability, and diagnostic output to determine whether the storefront is functional. This checklist gives technicians a consistent order of operations to gather evidence and remediate issues without unnecessary reinstalls. Applying the steps also satisfies analyzer requirements for Store troubleshooting artifacts.
 
 ## Signals to Collect
-- `Get-AppxPackage -AllUsers Microsoft.WindowsStore | Select-Object Name, Version, Status` → Confirm the Store package is installed and healthy.
-- `Get-Service -Name ClipSVC, wlidsvc, DoSvc, bits, wuauserv | Select-Object Name, Status, StartType` → Validate dependent services.
-- `Test-NetConnection -ComputerName storeedgefd.dsx.mp.microsoft.com -Port 443` → Check CDN connectivity.
-- `& "$Env:SystemRoot\System32\StoreDiag.exe" /report "$Env:USERPROFILE\Desktop\StoreDiagReport"` → Generate the Microsoft Store diagnostic report for evidence.
+- `Get-Service ClipSVC, InstallService, DoSvc` → Capture the health of core Microsoft Store and Delivery Optimization services.
+- `Get-WinEvent -LogName "Microsoft-Windows-AppXDeploymentServer/Operational" -MaxEvents 200` → Review recent AppX deployment events for failures.
+- `Get-WinEvent -LogName "Microsoft-Windows-DeliveryOptimization/Operational" -MaxEvents 200` → Review recent Delivery Optimization events for throttling or blocking signals.
+- `Test-NetConnection storeedgefd.dsx.mp.microsoft.com` and `Test-NetConnection dl.delivery.mp.microsoft.com` (ICMP or `-Port 443` as permitted) → Validate reachability to Store CDN endpoints.
 
 ## Detection Rule
-- Mark the Store as **not applicable** when the package and AppXSVC service are absent on the SKU.
-- Raise **high severity** when the package is missing, the manifest path is inaccessible, or multiple core services fail health checks.
-- Raise **medium severity** when connectivity tests fail for Store endpoints or the WinHTTP proxy blocks access.
-- Emit a **normal** card when all functional checks succeed, attaching the summarized evidence list.
+- Flag **medium severity** when any core Store service (ClipSVC, InstallService, Delivery Optimization) is stopped outside expected demand-start behavior (`CoreServiceStopped`).
+- Flag **medium severity** when Delivery Optimization cannot reach required endpoints or network tests fail (`DeliveryOptimizationBlocked`).
+- Flag **medium severity** when more than five AppX deployment errors are recorded within a 24-hour window (`AppxDeploymentFailures`).
 
 ## Heuristic Mapping
-- `System.MicrosoftStore`
+- `Apps/Store/CoreServiceStopped`
+- `Apps/Store/DeliveryOptimizationBlocked`
+- `Apps/Store/AppxDeploymentFailures`
+
+## Thresholds
+- `AppxFailures24hThreshold = 5`
 
 ## Remediation
-1. Reinstall or re-register the Microsoft Store package for all users if the package is missing or corrupted.
-2. Start required services (ClipSVC, wlidsvc, BITS, Windows Update, Delivery Optimization) and set their startup types per Microsoft guidance.
-3. Resolve connectivity blockers by updating proxy/firewall rules or fixing TLS inspection issues for Store endpoints.
-4. Run Store diagnostics (`StoreDiag.exe`, `wsreset.exe`) and address any cache or licensing errors reported.
-5. Document findings and rerun AutoHelpDesk collectors to confirm the Store functional check passes.
+1. Start or set Microsoft Store core services (ClipSVC, InstallService, Delivery Optimization) to their required startup modes; confirm they remain running after remediation.
+2. Restore Delivery Optimization access by approving Microsoft Store endpoints on firewalls, proxies, or network filtering tools.
+3. Clear the Microsoft Store cache and re-register the Store package when repeated AppX deployment errors persist after service recovery, following the runbook steps.
+4. Document findings and rerun AutoHelpDesk collectors to confirm the Store functional check passes.
 
 ## References
 - `docs/microsoft-store-diagnostics.md`

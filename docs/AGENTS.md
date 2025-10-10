@@ -3,9 +3,6 @@
 - Every issue card emitted by analyzers or report components must include a single, plain-English sentence summarizing the real-world impact for technicians or end users. Keep this line concise (one sentence) and ensure it clearly conveys the consequence of the issue.
 - When editing heuristics, analyzers, or report templates, verify that any new or updated issue cards follow this plain-English explanation requirement. If the collected data cannot supply enough context, note that in the explanation.
 - Refer to the "Issue card authoring conventions" section of `README.md` for additional background.
-- Documentation-focused pull requests must satisfy the "Doc Update Definition of Done" criteria below before merge approval.
-
-## Doc Update Definition of Done
 
 ### Summary
 Doc PRs must leave written guidance clearer than they found it, align with live product behavior, and document reviewer-visible outcomes within two business days of change request receipt. The acceptance criteria below define the minimum bar for merge readiness.
@@ -36,3 +33,12 @@ Doc PRs must leave written guidance clearer than they found it, align with live 
 ### References
 - `README.md` — Issue card authoring conventions and broader style guidance.
 - Internal support playbooks or release notes describing the current product behavior.
+
+## Heuristic Authoring Checklist
+1) Signals to Collect
+2) Evaluation Logic
+3) Thresholds & Severity
+4) Evidence Rendering
+5) Remediation
+6) References
+

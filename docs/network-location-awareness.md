@@ -2,23 +2,23 @@
 The services analyzer tracks the Network Location Awareness (NLA) service because Windows relies on it to classify network profiles and react to connectivity changes. Missing or stopped instances generate high-severity findings, while stopped manual services on workstations are downgraded to medium severity. This document explains the data pipeline and outcomes so technicians can validate or remediate alerts quickly.
 
 ## Signals to Collect
-- `Get-Service -Name NlaSvc | Select-Object Name, Status, StartType` → Capture the live NLA state.
-- `Get-CimInstance -ClassName Win32_Service -Filter "Name='NlaSvc'" | Select-Object Name, StartMode, State` → Confirm service registry entries when collectors miss data.
-- `sc.exe qc NlaSvc` → Review dependencies and confirm configuration for troubleshooting repeated stoppages.
+- `Get-NetConnectionProfile | Select Name,NetworkCategory,IPv4Connectivity,InterfaceAlias` → Track profile names, categories, and interface bindings that may flap.
+- `Get-Service NlaSvc` → Verify the Windows Network Location Awareness service status and start type.
+- *(Optional)* `Get-WinEvent "Microsoft-Windows-NlaSvc/Operational" -MaxEvents 200` → Review historical profile transition events when available.
 
 ## Detection Rule
-- Raise a **high-severity** issue when the NLA service entry is missing or the service is stopped/disabled outside the workstation-manual scenario.
-- Raise a **medium-severity** issue when a workstation reports NLA stopped with a manual startup type.
-- Emit a **normal** card when NLA is present and running, including evidence summarizing status and startup type.
+- **ProfileFlaps (Medium):** Trigger when the device records three or more network category changes within a 24-hour window (`FlapThreshold24h = 3`) if event history is available, or when the active profile is *Public* while the domain controller remains reachable.
+- **ServiceUnhealthy (Medium):** Trigger when the `NlaSvc` service is not running, fails to start, or shows evidence of frequent restarts.
 
 ## Heuristic Mapping
-- `Services.NetworkLocation`
+- `Network/NLA/ProfileFlaps`
+- `Network/NLA/ServiceUnhealthy`
 
 ## Remediation
-1. Restore the NLA service entry if missing by repairing the TCP/IP stack or reapplying the Windows feature set.
-2. Set the startup type to Automatic (or Automatic (Delayed)) and start the service to re-enable dynamic network classification.
-3. Verify dependent services (e.g., DHCP Client) and network drivers are healthy to prevent repeated failures.
-4. Re-run AutoHelpDesk service collectors to confirm the NLA card now reports a running state.
+1. Confirm device time synchronization, DNS resolution, and domain controller reachability so NLA can correctly evaluate domain connectivity.
+2. Disable or remove conflicting virtual NICs or adapters that repeatedly reset the active network profile.
+3. Inspect the `NlaSvc` service for crash loops or manual stoppages and ensure it runs under the expected startup configuration.
+4. After applying fixes, re-run the collectors to confirm profile stability and a healthy NLA service state.
 
 ## References
 - `docs/network-location-awareness.md`

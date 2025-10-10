@@ -1,96 +1,99 @@
 ## Summary
-AutoHelpDesk flags BitLocker volumes that lack recovery password protectors and measured boot payloads that omit PCR binding data, because both gaps prevent reliable recovery and attestation. This guide explains the signals the analyzers consume and how technicians can reproduce the checks on an endpoint. Following these steps validates whether the alerts reflect real configuration gaps or collector issues.
+AutoHelpDesk verifies that the operating system drive is fully encrypted with BitLocker, protected by a TPM-based key protector, and not repeatedly entering recovery mode. This guide explains the telemetry the analyzers rely on and how technicians can reproduce each check to validate whether alerts represent real risk or collection errors.
 
 ## Signals to Collect
-- `Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector | Select-Object KeyProtectorId, KeyProtectorType, AutoUnlockEnabled` → Enumerate protectors and confirm a recovery password exists.
-- `manage-bde -protectors -get C:` → Capture the CLI view that surfaces **Numerical Password** entries.
-- `Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector | Where-Object { $_.KeyProtectorType -match 'TPM' } | Select-Object KeyProtectorType, PcrBinding, PcrHashAlgorithm` → Inspect PCR binding data for measured boot.
-- `Get-Content (Join-Path $folder 'Security/measured-boot.json')` → Review the collector artifact to confirm PCR data was captured.
+- `Get-BitLockerVolume | Select-Object MountPoint, ProtectionStatus, VolumeStatus, KeyProtector` → Capture encryption state, protector status, and available key protectors for every volume.
+- `Confirm-SecureBootUEFI` → Verify Secure Boot is enabled when the platform supports UEFI validation.
+- `Get-CimInstance -ClassName Win32_Tpm -Namespace root\cimv2\Security\MicrosoftTpm` → Inspect TPM ownership and provisioning information.
+- `Get-WinEvent -LogName 'Microsoft-Windows-BitLocker/BitLocker Management' -MaxEvents 200` → Review recent BitLocker recovery and unlock activity for loop detection.
 
 ## Detection Rule
-- Emit **high severity** when no BitLocker volume exposes a recovery password or numerical password protector.
-- Emit an **informational** card when the measured boot artifact lacks PCR binding data for all TPM protectors.
-- Document evidence with the raw protector list or measured boot payload whenever the collector fails or returns empty sets.
+- **OSDriveUnprotected (Critical):** Flag when the operating system volume reports `VolumeStatus -ne 'FullyEncrypted'` **or** `ProtectionStatus -ne 'On'`.
+- **NoTPMProtector (High):** Flag when the operating system volume lacks any TPM-based key protector entry.
+- **RecoveryLoop (Medium):** Flag when three or more BitLocker recovery or unlock events occur within the past 24 hours. Use `RecoveryEvents24hThreshold = 3` as the evaluation threshold.
 
 ## Heuristic Mapping
-- `Security.BitLocker`
-- `Security.MeasuredBoot`
+- `Security/BitLocker/OSDriveUnprotected`
+- `Security/BitLocker/NoTPMProtector`
+- `Security/BitLocker/RecoveryLoop`
 
 ## Remediation
-1. Add a BitLocker recovery password protector to each protected volume (`Add-BitLockerKeyProtector -MountPoint 'C:' -RecoveryPasswordProtector`).
-2. Escrow the recovery password in the approved directory service or key vault and confirm rotation policies match corporate standards.
-3. Reconfigure TPM-based protectors to bind the expected PCR set (e.g., `Set-BitLockerVolume -MountPoint 'C:' -TPMProtector`) if measured boot data is absent.
-4. Re-run the AutoHelpDesk collectors to verify the recovery protector and PCR bindings now appear in the payloads.
+1. Enable BitLocker on the operating system drive with TPM protection (add a PIN if required by policy) and confirm Secure Boot plus PCR bindings are active.
+2. Ensure TPM ownership is established, key protectors are escrowed to the approved directory service or vault, and policies enforce recovery key backup.
+3. Investigate repeated recovery prompts, address underlying hardware or firmware issues, then clear recovery counters by successfully booting without prompts.
 
 ## References
 - `docs/bitlocker-verification.md`
 
-# Verifying BitLocker Recovery and Measured Boot Evidence
+# Verifying BitLocker OS Drive Protection and Recovery Stability
 
-This guide shows how the AutoHelpDesk security analyzers decide when to flag
-BitLocker recovery and measured boot issues, and how you can manually confirm
-those findings on a Windows endpoint.
+This section outlines how the AutoHelpDesk analyzers decide when to surface
+BitLocker issues around OS drive encryption, TPM usage, and recovery loops, and
+how you can confirm those findings on an affected Windows endpoint.
 
-## Why the "no recovery password" issue appears
+## Investigating "OS drive unprotected" alerts
 
-The BitLocker heuristic reviews every volume returned by `Get-BitLockerVolume`.
-The card *"No BitLocker recovery password protector detected"* is raised when
-no volume exposes a key protector that contains either a **Recovery Password**
-or a **Numerical Password** entry. These labels cover the two strings emitted by
-PowerShell (`RecoveryPassword`) and the `manage-bde` CLI (`Numerical Password`).
-If neither string is present, the analyzer assumes a recovery key is missing and
-warns that the device could be permanently locked if recovery is required.
+The OS drive alert triggers whenever `Get-BitLockerVolume` reports that the
+system volume is not fully encrypted or the protection status is anything other
+than `On`. Without active protection, end users can boot without BitLocker or
+may lose data if the drive is lost or stolen.
 
 ### Manual verification
 
-Run the following commands from an elevated PowerShell session to review the
-protectors for the system drive (replace `C:` if your OS volume uses a different
-letter):
+Run the following commands from an elevated PowerShell session (replace `C:`
+with the correct OS volume if different):
 
 ```powershell
-# Enumerate all protectors for the OS volume
-Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector |
-    Select-Object KeyProtectorId, KeyProtectorType, AutoUnlockEnabled
+# Capture overall BitLocker status for each volume
+Get-BitLockerVolume | Select-Object MountPoint, VolumeStatus, ProtectionStatus, EncryptionMethod
 
-# Show the raw output the analyzer receives
-Get-BitLockerVolume -MountPoint 'C:' | Format-List *
+# Review Secure Boot state on supported hardware
+Confirm-SecureBootUEFI
 
-# Alternative view that matches "Numerical Password" strings
-manage-bde -protectors -get C:
+# Inspect TPM provisioning information
+Get-CimInstance -ClassName Win32_Tpm -Namespace root\cimv2\Security\MicrosoftTpm | Format-List *
 ```
 
-Confirm that at least one protector reports either a `KeyProtectorType` of
-`RecoveryPassword`, a friendly name that includes **Numerical Password**, or a
-`RecoveryPasswordId` value. If any of those indicators are present, the analyzer
-records the recovery password as available.
+If the OS drive reports `FullyEncrypted` and `ProtectionStatus` shows `On`, the
+alert should clear after the next data collection. Any other state indicates the
+drive needs remediation.
 
-## Why the measured boot info card appears
+## Investigating "No TPM protector" alerts
 
-The measured boot collector queries PCR binding data for each BitLocker
-protector. The informational card *"BitLocker PCR binding data unavailable, so
-boot integrity attestation cannot be confirmed."* is raised when none of the
-protectors return a `PcrBinding` list. This typically happens on systems where
-TPM-based protectors are not bound to PCRs or when firmware/OS versions omit the
-binding details.
+This alert fires when the OS drive lacks a TPM-based key protector. Without a
+TPM protector (and optional PIN), attackers could bypass pre-boot checks, or the
+device might rely on weaker password-only protectors.
 
 ### Manual verification
 
-Use these commands to check what the collector gathered. Replace `$folder` with
-the root folder that contains your collected JSON (for example, the path output
-by `Device-Report.ps1`, where the `Security\measured-boot.json` file lives):
-
 ```powershell
-# Dump protector PCR bindings (if available)
+# Enumerate all protectors and locate TPM entries
 Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector |
-    Where-Object { $_.KeyProtectorType -match 'TPM' } |
-    Select-Object KeyProtectorType, PcrBinding, PcrHashAlgorithm
-
-# Review the measured boot collector output directly (JSON file)
-$folder = "C:\\Users\\Me\\Desktop\\DiagReports\\20240915_132233"
-Get-Content (Join-Path $folder 'Security/measured-boot.json')
+    Select-Object KeyProtectorType, AutoUnlockEnabled, KeyProtectorId
 ```
 
-If `PcrBinding` is empty for all TPM protectors, AutoHelpDesk cannot confirm the
-set of PCRs that guard the boot chain, so the informational card remains. If the
-bindings are populated, the analyzer will surface a normal card confirming the
-captured PCR data.
+Look for protectors with `KeyProtectorType` values such as `Tpm` or `TpmPin`.
+If none exist, add a TPM-based protector and ensure it is escrowed before
+closing the ticket.
+
+## Investigating "Recovery loop" alerts
+
+AutoHelpDesk counts BitLocker recovery-related events in the
+`Microsoft-Windows-BitLocker/BitLocker Management` log. When three or more
+events occur in a 24-hour window, the analyzer warns that the device may be
+stuck in a recovery loop that leaves users locked out or repeatedly prompted for
+the recovery key.
+
+### Manual verification
+
+```powershell
+$events = Get-WinEvent -LogName 'Microsoft-Windows-BitLocker/BitLocker Management' -MaxEvents 200 |
+    Where-Object { $_.TimeCreated -gt (Get-Date).AddHours(-24) -and $_.Id -in 24620, 24660, 24588 }
+
+$events | Format-Table TimeCreated, Id, LevelDisplayName, Message
+"Total recovery/unlock events (24h): $($events.Count)"
+```
+
+If the event count meets or exceeds `RecoveryEvents24hThreshold = 3`, collect
+the boot history, review firmware updates, and check for hardware changes that
+may cause repeated recovery prompts.
