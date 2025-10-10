@@ -2,22 +2,22 @@
 The hardware analyzer validates Bluetooth availability by scanning driver and problem-device inventories for known radio indicators. When no evidence of a Bluetooth stack appears, AutoHelpDesk raises a warning to show technicians the data sources it evaluated. Understanding the logic helps teams defend against false positives and gather proof when adapters truly are missing or unhealthy.
 
 ## Signals to Collect
-- `driverquery /v /fo csv | ConvertFrom-Csv | Where-Object { $_.Description -match 'Bluetooth' }` → Enumerate drivers with Bluetooth indicators.
-- `Get-PnpDevice -Class Bluetooth, Net | Select-Object FriendlyName, Status, ProblemCode` → Confirm Windows detects a Bluetooth-class device.
-- `Get-Service -Name bthserv | Select-Object Name, Status, StartType` → Verify the Bluetooth Support Service health when adapters exist.
+- `Get-PnpDevice -Class Bluetooth -Status OK,Error,Degraded` → Enumerate Bluetooth adapters that are present, failing, or degraded.
+- `Get-Service bthserv` → Confirm the Bluetooth Support Service state and startup mode.
+- **Optional:** `Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\Windows\Bluetooth\*` → Capture baseline policies that may require or forbid Bluetooth support.
 
 ## Detection Rule
-- Parse driver inventory and mark candidates when the description, service name, or binary name contains `Bluetooth` or known vendor prefixes (`BTH`, `IBT`, `QCBT`, `BTATH`).
-- Flag a **warning** card when neither driver inventory nor PnP problem devices contain Bluetooth indicators, including evidence summarizing the counts inspected.
-- Escalate to **high severity** when a Bluetooth device is found but reports error states or stopped automatic services.
+- **AdapterMissingOrDisabled (Low)**: Trigger when no adapter is reported **or** the Bluetooth Support Service is stopped while policy expects it to be enabled. Elevate to **Medium** if the policy baseline explicitly requires Bluetooth to remain enabled.
+- **PolicyConflict (Medium)**: Trigger when organizational policy disables Bluetooth but an adapter and/or service is still running, indicating a configuration mismatch with the baseline.
 
 ## Heuristic Mapping
-- `Hardware.Bluetooth`
+- `Hardware/Bluetooth/AdapterMissingOrDisabled`
+- `Hardware/Bluetooth/PolicyConflict`
 
 ## Remediation
-1. Install or update the OEM Bluetooth driver package so the adapter exposes a Bluetooth class device and loads an appropriate driver.
-2. Restart or set the **Bluetooth Support Service (bthserv)** to Automatic if service health caused the issue card.
-3. Re-run AutoHelpDesk hardware collectors to confirm the driver inventory now includes Bluetooth indicators.
+1. If Bluetooth support is required, install or update OEM drivers, enable the adapter in Device Manager, and set **bthserv** to the expected startup state.
+2. If Bluetooth is forbidden by baseline policy, disable the adapter and set **bthserv** according to the policy to resolve the mismatch.
+3. Re-run AutoHelpDesk hardware collectors to verify the adapter, service, and policy states now align with the organizational requirement matrix.
 
 ## References
 - `docs/bluetooth-detection.md`
