@@ -1,3 +1,30 @@
+## Summary
+AutoHelpDesk flags BitLocker volumes that lack recovery password protectors and measured boot payloads that omit PCR binding data, because both gaps prevent reliable recovery and attestation. This guide explains the signals the analyzers consume and how technicians can reproduce the checks on an endpoint. Following these steps validates whether the alerts reflect real configuration gaps or collector issues.
+
+## Signals to Collect
+- `Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector | Select-Object KeyProtectorId, KeyProtectorType, AutoUnlockEnabled` → Enumerate protectors and confirm a recovery password exists.
+- `manage-bde -protectors -get C:` → Capture the CLI view that surfaces **Numerical Password** entries.
+- `Get-BitLockerVolume -MountPoint 'C:' | Select-Object -ExpandProperty KeyProtector | Where-Object { $_.KeyProtectorType -match 'TPM' } | Select-Object KeyProtectorType, PcrBinding, PcrHashAlgorithm` → Inspect PCR binding data for measured boot.
+- `Get-Content (Join-Path $folder 'Security/measured-boot.json')` → Review the collector artifact to confirm PCR data was captured.
+
+## Detection Rule
+- Emit **high severity** when no BitLocker volume exposes a recovery password or numerical password protector.
+- Emit an **informational** card when the measured boot artifact lacks PCR binding data for all TPM protectors.
+- Document evidence with the raw protector list or measured boot payload whenever the collector fails or returns empty sets.
+
+## Heuristic Mapping
+- `Security.BitLocker`
+- `Security.MeasuredBoot`
+
+## Remediation
+1. Add a BitLocker recovery password protector to each protected volume (`Add-BitLockerKeyProtector -MountPoint 'C:' -RecoveryPasswordProtector`).
+2. Escrow the recovery password in the approved directory service or key vault and confirm rotation policies match corporate standards.
+3. Reconfigure TPM-based protectors to bind the expected PCR set (e.g., `Set-BitLockerVolume -MountPoint 'C:' -TPMProtector`) if measured boot data is absent.
+4. Re-run the AutoHelpDesk collectors to verify the recovery protector and PCR bindings now appear in the payloads.
+
+## References
+- `docs/bitlocker-verification.md`
+
 # Verifying BitLocker Recovery and Measured Boot Evidence
 
 This guide shows how the AutoHelpDesk security analyzers decide when to flag

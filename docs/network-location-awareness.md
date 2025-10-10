@@ -1,3 +1,28 @@
+## Summary
+The services analyzer tracks the Network Location Awareness (NLA) service because Windows relies on it to classify network profiles and react to connectivity changes. Missing or stopped instances generate high-severity findings, while stopped manual services on workstations are downgraded to medium severity. This document explains the data pipeline and outcomes so technicians can validate or remediate alerts quickly.
+
+## Signals to Collect
+- `Get-Service -Name NlaSvc | Select-Object Name, Status, StartType` → Capture the live NLA state.
+- `Get-CimInstance -ClassName Win32_Service -Filter "Name='NlaSvc'" | Select-Object Name, StartMode, State` → Confirm service registry entries when collectors miss data.
+- `sc.exe qc NlaSvc` → Review dependencies and confirm configuration for troubleshooting repeated stoppages.
+
+## Detection Rule
+- Raise a **high-severity** issue when the NLA service entry is missing or the service is stopped/disabled outside the workstation-manual scenario.
+- Raise a **medium-severity** issue when a workstation reports NLA stopped with a manual startup type.
+- Emit a **normal** card when NLA is present and running, including evidence summarizing status and startup type.
+
+## Heuristic Mapping
+- `Services.NetworkLocation`
+
+## Remediation
+1. Restore the NLA service entry if missing by repairing the TCP/IP stack or reapplying the Windows feature set.
+2. Set the startup type to Automatic (or Automatic (Delayed)) and start the service to re-enable dynamic network classification.
+3. Verify dependent services (e.g., DHCP Client) and network drivers are healthy to prevent repeated failures.
+4. Re-run AutoHelpDesk service collectors to confirm the NLA card now reports a running state.
+
+## References
+- `docs/network-location-awareness.md`
+
 # Network Location Awareness service heuristic
 
 The services analyzer evaluates the Network Location Awareness (NLA) service to confirm

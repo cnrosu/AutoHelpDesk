@@ -1,3 +1,29 @@
+## Summary
+The Microsoft Defender heuristic compares real-time monitoring, engine status, and companion safeguards to determine which cards to raise. When `RealTimeProtectionEnabled` is false, AutoHelpDesk emits a high-severity alert even if signatures and tamper protection remain healthy. This doc outlines the data sources, evaluation order, and remediation workflow so technicians can quickly restore protection.
+
+## Signals to Collect
+- `Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled, TamperProtectionEnabled, AMServiceEnabled` → Capture the core Defender state flags.
+- `Get-MpPreference | Select-Object DisableRealtimeMonitoring, MAPSReporting, SubmitSamplesConsent` → Review policies that may suppress monitoring.
+- `Get-MpThreat -ThreatIDDefaultAction Unknown | Select-Object DetectionTime, ThreatName, ActionSuccess` → Confirm recent detections and ensure the engine is operating.
+
+## Detection Rule
+- Raise a **high-severity** card when `RealTimeProtectionEnabled` equals `False`.
+- Raise a **critical** card when `AntivirusEnabled` equals `False`, indicating the Defender engine is disabled.
+- Continue emitting **normal** cards for signatures, tamper protection, and MAPS when their respective checks pass, even if real-time protection fails.
+
+## Heuristic Mapping
+- `Security.Defender`
+
+## Remediation
+1. Re-enable real-time monitoring via PowerShell (`Set-MpPreference -DisableRealtimeMonitoring $false`) or the Windows Security app.
+2. Confirm tamper protection remains on so local users cannot toggle the setting again.
+3. Remove or reconfigure conflicting third-party antivirus agents that disable Defender, or reinstall Defender components if corruption is suspected.
+4. Run a full `Start-MpScan -ScanType FullScan` to ensure no malware persisted while protection was off.
+5. Re-run AutoHelpDesk collectors to verify real-time protection reports `True` and issue cards clear.
+
+## References
+- `docs/defender-real-time-protection.md`
+
 # Understanding the "Defender real-time protection disabled" and companion cards
 
 ## What the cards are telling you
