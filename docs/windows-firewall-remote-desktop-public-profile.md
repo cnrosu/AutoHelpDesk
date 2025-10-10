@@ -2,25 +2,22 @@
 AutoHelpDesk inspects inbound Remote Desktop firewall rules to ensure the Public profile is not exposed. If enabled rules include Public or Any profiles, the heuristic raises a high-severity alert because untrusted networks could reach the host. This playbook clarifies the detection inputs and remediation path for Devolutions Remote Desktop Manager and similar tooling.
 
 ## Signals to Collect
-- `Get-NetFirewallRule -DisplayGroup "Remote Desktop" -PolicyStore ActiveStore | Get-NetFirewallProfile` → List active RDP rules and their profiles.
-- `Get-NetFirewallRule -DisplayName "Remote Desktop Manager*" | Format-Table DisplayName, Profile, Enabled, Direction` → Inspect vendor-specific rules like Devolutions RDM.
-- `Get-WinEvent -LogName 'Microsoft-Windows-Security-Auditing' -FilterHashtable @{Id=4625; StartTime=(Get-Date).AddHours(-4)}` → Review failed logons that might indicate brute-force attempts.
+- `$rdpRules = Get-NetFirewallRule -DisplayGroup "Remote Desktop" -Enabled True` → Capture enabled firewall rules associated with Remote Desktop.
+- `$addr = $rdpRules | Get-NetFirewallAddressFilter` → Resolve any scope restrictions applied to those rules.
+- `HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp` → Inspect the `UserAuthentication` DWORD where `1` indicates Network Level Authentication (NLA) is enabled.
 
 ## Detection Rule
-- Normalize enabled inbound firewall rules whose display name, group, or description references "Remote Desktop" or "RDP".
-- Raise a **high-severity** issue when any matching rule includes the Public profile (or equivalent tokens such as Any/All).
-- Emit a **normal** card when Remote Desktop rules exist but exclude the Public profile, including evidence of the restricted profiles.
-- Surface a **medium-severity** issue when firewall rule queries fail, noting that Remote Desktop exposure could not be verified.
+- **ExposedOnPublic (Severity: Critical):** Flag any enabled Remote Desktop firewall rule whose profile list includes Public, indicating RDP is reachable from untrusted networks.
+- **NLADisabled (Severity: High):** Alert when the `UserAuthentication` value is not `1`, meaning NLA is disabled for the RDP listener.
 
 ## Heuristic Mapping
-- `Security.Firewall` (Check ID `Security/RdpPublicProfile`)
+- `Security/RDP/ExposedOnPublic`
+- `Security/RDP/NLADisabled`
 
 ## Remediation
-1. Edit affected Remote Desktop firewall rules so only Domain and/or Private profiles remain selected, or restrict remote IP ranges to trusted networks.
-2. Audit Remote Desktop Manager or JetSoCat configuration to prevent it from re-enabling Public profile access during updates.
-3. Validate that remote access requirements are satisfied through VPN or gateway solutions instead of open Public rules.
-4. Monitor Security event logs for ongoing RDP brute-force attempts and respond if suspicious activity continues.
-5. Re-run AutoHelpDesk firewall collectors to confirm the Public profile is no longer present in RDP rules.
+1. Disable or remove RDP firewall rules that apply to the Public profile, or scope them strictly to Domain/Private networks and trusted address ranges.
+2. Enable Network Level Authentication by setting `UserAuthentication` to `1` on the `RDP-Tcp` listener and verifying clients support NLA.
+3. Re-run AutoHelpDesk collectors to confirm RDP is not exposed on Public networks and that NLA remains enforced.
 
 ## References
 - `docs/windows-firewall-remote-desktop-public-profile.md`
