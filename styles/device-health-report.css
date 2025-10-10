@@ -307,6 +307,39 @@ details.report-card[open] > summary {
   margin-top: 0;
 }
 
+.report-card__body > .report-evidence:first-child {
+  margin-top: 0;
+}
+
+.report-evidence {
+  margin-top: var(--space-md);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface-muted);
+  overflow: hidden;
+}
+
+.report-evidence__summary {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-heading);
+  cursor: pointer;
+}
+
+.report-evidence[open] > .report-evidence__summary {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.report-evidence__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+}
+
+.report-evidence__body .report-pre {
+  margin: 0;
+}
+
 .report-remediation {
   margin-top: var(--space-md);
   padding: var(--space-md);

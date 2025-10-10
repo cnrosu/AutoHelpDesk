@@ -709,7 +709,7 @@ function New-IssueCardHtml {
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
     $evidenceHtml = Encode-Html $Entry.Evidence
-    [void]$bodyBuilder.Append("<pre class='report-pre'>$evidenceHtml</pre>")
+    [void]$bodyBuilder.Append("<details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details>")
   }
 
   $hasRemediation = -not [string]::IsNullOrWhiteSpace($Entry.Remediation)
@@ -780,7 +780,7 @@ function New-GoodCardHtml {
   [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
 
   $evidenceHtml = Encode-Html $Entry.Evidence
-  [void]$cardBuilder.Append("<div class='report-card__body'><pre class='report-pre'>$evidenceHtml</pre></div>")
+  [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details></div>")
 
   [void]$cardBuilder.Append("</details>")
   return $cardBuilder.ToString()
