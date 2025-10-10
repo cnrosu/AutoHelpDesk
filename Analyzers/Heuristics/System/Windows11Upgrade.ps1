@@ -147,6 +147,13 @@ function Invoke-SystemWindows11UpgradeChecks {
     $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
     Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved system payload' -Data ([ordered]@{ HasPayload = [bool]$systemPayload })
 
+    $firmwareArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firmware'
+    $firmwarePayload = $null
+    if ($firmwareArtifact) {
+        $firmwarePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $firmwareArtifact)
+    }
+    Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved firmware payload' -Data ([ordered]@{ HasPayload = [bool]$firmwarePayload })
+
     $storageArtifact = Get-AnalyzerArtifact -Context $Context -Name 'storage'
     $storagePayload = $null
     if ($storageArtifact) {
@@ -189,6 +196,7 @@ function Invoke-SystemWindows11UpgradeChecks {
     $os = $null
     $computerSystem = $null
     $processors = @()
+    $alreadyWindows11 = $false
     if ($systemPayload) {
         if ($systemPayload.PSObject.Properties['OperatingSystem'] -and -not $systemPayload.OperatingSystem.Error) {
             $os = $systemPayload.OperatingSystem
@@ -287,12 +295,12 @@ function Invoke-SystemWindows11UpgradeChecks {
     $cpuStatus = if ($cpuMet -eq $true) { 'Pass' } elseif ($cpuMet -eq $false) { 'Fail' } else { 'Unknown' }
     $cpuDetails = if ($cpuDetailsBuilder.Length -gt 0) { $cpuDetailsBuilder.ToString() } else { 'Processor compatibility assessment inconclusive.' }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: CPU compatibility' -Status $cpuStatus -Details $cpuDetails
-    if ($cpuMet -ne $true) {
-        $severity = if ($cpuMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($cpuMet -eq $false) {
-            if ($cpuDetailsBuilder.Length -gt 0) { $cpuDetailsBuilder.ToString() } else { 'Installed processor not in Microsoft-supported catalog.' }
+    if ($cpuMet -eq $false) {
+        $severity = 'critical'
+        $description = if ($cpuDetailsBuilder.Length -gt 0) {
+            'Windows 11 setup blocks unsupported CPUs. ' + $cpuDetailsBuilder.ToString()
         } else {
-            'Processor compatibility could not be confirmed from collected data.'
+            'Windows 11 setup blocks unsupported CPUs, and the processor was not found in the Microsoft-supported catalog.'
         }
         $remediation = 'Replace the processor or move the workload to hardware with a Microsoft-supported CPU before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
@@ -327,13 +335,9 @@ function Invoke-SystemWindows11UpgradeChecks {
         }
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: 64-bit operating system' -Status $architectureStatus -Details $architectureDetails
-    if ($architectureMet -ne $true) {
-        $severity = if ($architectureMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($architectureMet -eq $false) {
-            "Operating system architecture '$architectureDetails' is not 64-bit."
-        } else {
-            'Operating system architecture could not be verified.'
-        }
+    if ($architectureMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 requires a 64-bit operating system, but the collected data shows a non-64-bit build.'
         $remediation = 'Install a supported 64-bit edition of Windows before attempting the upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = '64-bit operating system'
@@ -355,6 +359,7 @@ function Invoke-SystemWindows11UpgradeChecks {
                 $upgradeMet = $true
                 $upgradeStatus = 'Pass'
                 $upgradeDetails = "Current OS already Windows 11 ($caption)."
+                $alreadyWindows11 = $true
             } elseif ($captionLower -match 'windows\s+10' -or $captionLower -match 'windows\s+8(\.1)?') {
                 $upgradeMet = $true
                 $upgradeStatus = 'Pass'
@@ -367,9 +372,9 @@ function Invoke-SystemWindows11UpgradeChecks {
         }
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Supported upgrade path' -Status $upgradeStatus -Details $upgradeDetails
-    if ($upgradeMet -ne $true) {
-        $severity = if ($upgradeMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($upgradeMet -eq $false) { $upgradeDetails } else { 'Operating system version could not be determined.' }
+    if ($upgradeMet -eq $false) {
+        $severity = 'critical'
+        $description = $upgradeDetails
         $remediation = 'Upgrade to Windows 10, Windows 8, or Windows 8.1 64-bit before moving to Windows 11.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'Supported upgrade path'
@@ -380,56 +385,99 @@ function Invoke-SystemWindows11UpgradeChecks {
         & $updateSeverity $highestSeverityRef $severityRank $severity
     }
 
-    $secureBootVerification = $null
-    $secureBootEnabled = $null
-    $secureBootVerificationError = $null
+    if ($alreadyWindows11) {
+        Add-CategoryNormal -CategoryResult $Result -Title 'Already on Windows 11' -Evidence "Detected $caption." -Subcategory 'Windows 11 Upgrade'
+        return $Result
+    }
+
+    $measuredSecureBoot = $null
+    $measuredSecureBootEnabled = $null
+    $measuredSecureBootError = $null
     if ($measuredBootPayload -and $measuredBootPayload.PSObject.Properties['SecureBoot']) {
-        $secureBootVerification = $measuredBootPayload.SecureBoot
-        if ($secureBootVerification) {
-            if ($secureBootVerification.PSObject.Properties['Error'] -and $secureBootVerification.Error) {
-                $secureBootVerificationError = [string]$secureBootVerification.Error
-            } elseif ($secureBootVerification.PSObject.Properties['Enabled']) {
-                $secureBootEnabled = [bool]$secureBootVerification.Enabled
+        $measuredSecureBoot = $measuredBootPayload.SecureBoot
+        if ($measuredSecureBoot) {
+            if ($measuredSecureBoot.PSObject.Properties['Error'] -and $measuredSecureBoot.Error) {
+                $measuredSecureBootError = [string]$measuredSecureBoot.Error
+            } elseif ($measuredSecureBoot.PSObject.Properties['Enabled']) {
+                $measuredSecureBootEnabled = [bool]$measuredSecureBoot.Enabled
             }
         }
     }
 
-    $biosMode = Get-SystemInfoValue -Lines $systemInfoLines -Label 'BIOS Mode'
+    $firm = $null
+    if ($firmwarePayload -and $firmwarePayload.PSObject.Properties['Firmware']) {
+        $firm = $firmwarePayload.Firmware
+    }
+
     $firmwareMet = $null
     $firmwareStatus = 'Unknown'
     $firmwareDetailParts = [System.Collections.Generic.List[string]]::new()
-    if ($biosMode) {
-        $firmwareDetailParts.Add("BIOS Mode: $biosMode") | Out-Null
-        if ($biosMode -match '(?i)uefi') {
-            $firmwareMet = $true
-            $firmwareStatus = 'Pass'
-        } else {
-            $firmwareMet = $false
-            $firmwareStatus = 'Fail'
-        }
+
+    $uefi = $null
+    if ($firm -and $firm.PSObject.Properties['UefiDetected']) {
+        $uefiValue = $firm.UefiDetected
+        if ($null -ne $uefiValue) { $uefi = [bool]$uefiValue }
     }
-    if ($firmwareMet -ne $true -and $secureBootEnabled -eq $true) {
+
+    if ($uefi -eq $true) {
         $firmwareMet = $true
         $firmwareStatus = 'Pass'
-        $firmwareDetailParts.Add('UEFI inferred from Secure Boot success.') | Out-Null
+    } elseif ($uefi -eq $false) {
+        $firmwareMet = $false
+        $firmwareStatus = 'Fail'
     }
-    if ($secureBootVerificationError) {
-        $firmwareDetailParts.Add("Secure Boot verification error: $secureBootVerificationError") | Out-Null
+
+    if ($firm) {
+        if ($firm.PSObject.Properties['PEFirmwareType']) {
+            $peValue = $firm.PEFirmwareType
+            if ($null -ne $peValue) { $firmwareDetailParts.Add("PEFirmwareType registry value: $peValue") | Out-Null }
+        }
+        if ($firm.PSObject.Properties['UefiSources']) {
+            $sources = ConvertTo-Windows11Array $firm.UefiSources
+            if ($sources.Count -gt 0) {
+                $firmwareDetailParts.Add("UEFI sources: " + ($sources -join ', ')) | Out-Null
+            }
+        }
+        if ($firm.PSObject.Properties['EspDetected']) {
+            $espDetected = $firm.EspDetected
+            if ($espDetected -eq $true) {
+                $firmwareDetailParts.Add('EFI system partition detected.') | Out-Null
+                if ($null -eq $firmwareMet) {
+                    $firmwareMet = $true
+                    $firmwareStatus = 'Pass'
+                }
+            } elseif ($espDetected -eq $false) {
+                $firmwareDetailParts.Add('EFI system partition not detected.') | Out-Null
+            }
+        }
+        if ($firm.PSObject.Properties['Error'] -and $firm.Error) {
+            $firmwareDetailParts.Add("Firmware detection error: $($firm.Error)") | Out-Null
+        }
     }
+
+    if ($null -eq $firmwareMet) {
+        $biosMode = Get-SystemInfoValue -Lines $systemInfoLines -Label 'BIOS Mode'
+        if ($biosMode) {
+            $firmwareDetailParts.Add("BIOS Mode (systeminfo): $biosMode") | Out-Null
+            if ($biosMode -match '(?i)uefi') {
+                $firmwareMet = $true
+                $firmwareStatus = 'Pass'
+            } elseif ($biosMode -match '(?i)legacy|bios') {
+                $firmwareMet = $false
+                $firmwareStatus = 'Fail'
+            }
+        }
+    }
+
     if ($firmwareDetailParts.Count -eq 0) {
         $firmwareDetailParts.Add('Firmware mode not reported.') | Out-Null
     }
+
     $firmwareDetails = $firmwareDetailParts.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: UEFI firmware' -Status $firmwareStatus -Details $firmwareDetails
-    if ($firmwareMet -ne $true) {
-        $severity = if ($firmwareMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($biosMode) {
-            "Device reports BIOS Mode '$biosMode', which is not UEFI."
-        } elseif ($secureBootVerificationError) {
-            "Unable to confirm UEFI because Secure Boot verification failed: $secureBootVerificationError"
-        } else {
-            'Firmware mode could not be determined from collected data.'
-        }
+    if ($firmwareMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 setup requires UEFI firmware, but the device appears to be running in legacy BIOS mode.'
         $remediation = 'Switch the system firmware to UEFI mode before starting the Windows 11 upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'UEFI firmware'
@@ -440,48 +488,82 @@ function Invoke-SystemWindows11UpgradeChecks {
         & $updateSeverity $highestSeverityRef $severityRank $severity
     }
 
-    $secureBootState = Get-SystemInfoValue -Lines $systemInfoLines -Label 'Secure Boot State'
     $secureBootMet = $null
     $secureBootStatus = 'Unknown'
     $secureBootDetailParts = [System.Collections.Generic.List[string]]::new()
-    if ($secureBootState) {
-        $secureBootDetailParts.Add("Secure Boot state: $secureBootState") | Out-Null
-        if ($secureBootState -match '^(?i)(on|enabled|active)$') {
-            $secureBootMet = $true
-            $secureBootStatus = 'Pass'
-        } else {
-            $secureBootMet = $false
-            $secureBootStatus = 'Fail'
+
+    $sb = $firm?.SecureBoot
+    $sbConfirm = $null
+    $sbWmi = $null
+    $sbReg = $null
+    $sbErr = $null
+    if ($sb) {
+        if ($sb.PSObject.Properties['ConfirmSecureBootUEFI']) {
+            $sbConfirmValue = $sb.ConfirmSecureBootUEFI
+            if ($null -ne $sbConfirmValue) { $sbConfirm = [bool]$sbConfirmValue }
+        }
+        if ($sb.PSObject.Properties['MS_SecureBootEnabled']) {
+            $sbWmiValue = $sb.MS_SecureBootEnabled
+            if ($null -ne $sbWmiValue) { $sbWmi = [bool]$sbWmiValue }
+        }
+        if ($sb.PSObject.Properties['RegistryEnabled']) {
+            $sbRegValue = $sb.RegistryEnabled
+            if ($null -ne $sbRegValue) { $sbReg = [bool]$sbRegValue }
+        }
+        if ($sb.PSObject.Properties['Error'] -and $sb.Error) {
+            $sbErr = [string]$sb.Error
         }
     }
-    if ($secureBootEnabled -ne $null) {
-        $secureBootDetailParts.Add("Confirm-SecureBootUEFI Enabled: $secureBootEnabled") | Out-Null
-        $secureBootMet = [bool]$secureBootEnabled
-        $secureBootStatus = if ($secureBootEnabled) { 'Pass' } else { 'Fail' }
+
+    if ($sbConfirm -is [bool]) {
+        $secureBootMet = $sbConfirm
+        $secureBootStatus = if ($sbConfirm) { 'Pass' } else { 'Fail' }
+        $secureBootDetailParts.Add("Confirm-SecureBootUEFI: $sbConfirm") | Out-Null
+    } elseif ($sbWmi -is [bool]) {
+        $secureBootMet = $sbWmi
+        $secureBootStatus = if ($sbWmi) { 'Pass' } else { 'Fail' }
+        $secureBootDetailParts.Add("MS_SecureBoot.SecureBootEnabled: $sbWmi") | Out-Null
+    } elseif ($sbReg -is [bool]) {
+        $secureBootMet = $sbReg
+        $secureBootStatus = if ($sbReg) { 'Pass' } else { 'Fail' }
+        $secureBootDetailParts.Add("Registry UEFISecureBootEnabled: $sbReg") | Out-Null
     }
-    if ($secureBootVerificationError) {
-        $secureBootDetailParts.Add("Confirm-SecureBootUEFI error: $secureBootVerificationError") | Out-Null
+
+    if ($null -eq $secureBootMet -and $measuredSecureBootEnabled -ne $null) {
+        $secureBootMet = [bool]$measuredSecureBootEnabled
+        $secureBootStatus = if ($secureBootMet) { 'Pass' } else { 'Fail' }
+        $secureBootDetailParts.Add("Measured boot Secure Boot enabled: $measuredSecureBootEnabled") | Out-Null
+    }
+
+    if ($null -eq $secureBootMet) {
+        $secureBootState = Get-SystemInfoValue -Lines $systemInfoLines -Label 'Secure Boot State'
+        if ($secureBootState) {
+            $secureBootDetailParts.Add("Secure Boot State (systeminfo): $secureBootState") | Out-Null
+            if ($secureBootState -match '^(?i)(on|enabled|active)$') {
+                $secureBootMet = $true
+                $secureBootStatus = 'Pass'
+            } elseif ($secureBootState -match '^(?i)(off|disabled)$') {
+                $secureBootMet = $false
+                $secureBootStatus = 'Fail'
+            }
+        }
+    }
+
+    if ($sbErr) {
+        $secureBootDetailParts.Add("Secure Boot verification error: $sbErr") | Out-Null
+    }
+    if ($measuredSecureBootError) {
+        $secureBootDetailParts.Add("Measured boot Secure Boot error: $measuredSecureBootError") | Out-Null
     }
     if ($secureBootDetailParts.Count -eq 0) {
-        $secureBootDetailParts.Add('Secure Boot state not reported.') | Out-Null
+        $secureBootDetailParts.Add('Secure Boot signals not reported.') | Out-Null
     }
+
     $secureBootDetails = $secureBootDetailParts.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Secure Boot' -Status $secureBootStatus -Details $secureBootDetails
-    if ($secureBootMet -ne $true) {
-        $severity = if ($secureBootMet -eq $false) { 'high' } else { 'info' }
-        $description = if ($secureBootMet -eq $false) {
-            if ($secureBootEnabled -eq $false) {
-                'Confirm-SecureBootUEFI reported Secure Boot disabled.'
-            } elseif ($secureBootState) {
-                "Secure Boot reported as '$secureBootState'."
-            } elseif ($secureBootVerificationError) {
-                "Secure Boot verification failed: $secureBootVerificationError"
-            } else {
-                'Secure Boot status unavailable from collected data.'
-            }
-        } else {
-            'Secure Boot status unavailable from collected data.'
-        }
+    if ($secureBootMet -eq $false) {
+        $severity = 'high'
+        $description = 'Secure Boot appears disabled, so Windows 11 setup will block the upgrade until firmware protections are enabled.'
         $remediation = 'Enable Secure Boot in UEFI firmware before attempting the upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'Secure Boot'
@@ -491,55 +573,96 @@ function Invoke-SystemWindows11UpgradeChecks {
         }) | Out-Null
         & $updateSeverity $highestSeverityRef $severityRank $severity
     }
+
     $tpmMet = $null
     $tpmStatus = 'Unknown'
     $tpmDetailsLines = [System.Collections.Generic.List[string]]::new()
-    if ($tpmPayload -and $tpmPayload.Tpm) {
-        if ($tpmPayload.Tpm.PSObject.Properties['Error'] -and $tpmPayload.Tpm.Error) {
-            $tpmDetailsLines.Add($tpmPayload.Tpm.Error) | Out-Null
-        } else {
-            $tpm = $tpmPayload.Tpm
-            $present = $null
-            $ready = $null
-            $enabled = $null
-            $activated = $null
-            $specVersion = $null
-            if ($tpm.PSObject.Properties['TpmPresent']) { $present = [bool]$tpm.TpmPresent }
-            if ($tpm.PSObject.Properties['TpmReady']) { $ready = [bool]$tpm.TpmReady }
-            if ($tpm.PSObject.Properties['TpmEnabled']) { $enabled = [bool]$tpm.TpmEnabled }
-            if ($tpm.PSObject.Properties['TpmActivated']) { $activated = [bool]$tpm.TpmActivated }
-            if ($tpm.PSObject.Properties['SpecVersion']) { $specVersion = [string]$tpm.SpecVersion }
 
-            $tpmDetailsLines.Add("Present: $present") | Out-Null
-            $tpmDetailsLines.Add("Ready: $ready") | Out-Null
-            $tpmDetailsLines.Add("Enabled: $enabled") | Out-Null
-            $tpmDetailsLines.Add("Activated: $activated") | Out-Null
-            if ($specVersion) { $tpmDetailsLines.Add("SpecVersion: $specVersion") | Out-Null }
+    $tp = $null
+    if ($tpmPayload -and $tpmPayload.PSObject.Properties['Tpm']) {
+        $tp = $tpmPayload.Tpm
+    }
 
-            $hasVersion2 = $false
-            if ($specVersion) {
-                $hasVersion2 = ($specVersion -match '2\.0')
-            }
+    if (-not $tp) {
+        $tpmDetailsLines.Add('TPM artifact missing.') | Out-Null
+    } else {
+        if ($tp.PSObject.Properties['Error'] -and $tp.Error) {
+            $tpmDetailsLines.Add("TPM query error: $($tp.Error)") | Out-Null
+        }
 
-            if ($present -and $ready -and $enabled -and $activated -and $hasVersion2) {
-                $tpmMet = $true
+        $tpm = $null
+        if ($tp.PSObject.Properties['GetTpm']) { $tpm = $tp.GetTpm }
+        $win32 = $null
+        if ($tp.PSObject.Properties['Win32_Tpm']) { $win32 = $tp.Win32_Tpm }
+
+        $present = $null
+        $ready = $null
+        $enabled = $null
+        $activated = $null
+        $specVersion = $null
+
+        if ($tpm) {
+            if ($tpm.PSObject.Properties['TpmPresent'] -and $tpm.TpmPresent -ne $null) { $present = [bool]$tpm.TpmPresent }
+            if ($tpm.PSObject.Properties['TpmReady'] -and $tpm.TpmReady -ne $null) { $ready = [bool]$tpm.TpmReady }
+            if ($tpm.PSObject.Properties['TpmEnabled'] -and $tpm.TpmEnabled -ne $null) { $enabled = [bool]$tpm.TpmEnabled }
+            if ($tpm.PSObject.Properties['TpmActivated'] -and $tpm.TpmActivated -ne $null) { $activated = [bool]$tpm.TpmActivated }
+            if ($tpm.PSObject.Properties['SpecVersion'] -and $tpm.SpecVersion) { $specVersion = [string]$tpm.SpecVersion }
+        }
+
+        $win32Entries = @()
+        if ($win32) {
+            if ($win32 -is [System.Collections.IEnumerable] -and -not ($win32 -is [string])) {
+                $win32Entries = @($win32)
             } else {
-                $tpmMet = $false
+                $win32Entries = @($win32)
             }
         }
-    } elseif ($tpmPayload -and $tpmPayload.Tpm -eq $null) {
-        $tpmDetailsLines.Add('TPM payload empty.') | Out-Null
-    } else {
-        $tpmDetailsLines.Add('TPM artifact missing.') | Out-Null
+
+        foreach ($entry in $win32Entries) {
+            if (-not $entry) { continue }
+            if ($null -eq $present) {
+                if ($entry.PSObject.Properties['IsEnabled_InitialValue'] -and $entry.IsEnabled_InitialValue -ne $null) {
+                    $present = $true
+                } elseif ($entry.PSObject.Properties['ManufacturerId'] -and $entry.ManufacturerId -ne $null) {
+                    $present = $true
+                }
+            }
+            if ($entry.PSObject.Properties['IsEnabled_InitialValue'] -and $entry.IsEnabled_InitialValue -ne $null) {
+                $enabled = if ($entry.IsEnabled_InitialValue) { $true } elseif ($enabled -ne $true) { $false } else { $enabled }
+            }
+            if ($entry.PSObject.Properties['IsActivated_InitialValue'] -and $entry.IsActivated_InitialValue -ne $null) {
+                $activated = if ($entry.IsActivated_InitialValue) { $true } elseif ($activated -ne $true) { $false } else { $activated }
+            }
+            if ($null -eq $specVersion -and $entry.PSObject.Properties['SpecVersion'] -and $entry.SpecVersion) {
+                $specVersion = [string]$entry.SpecVersion
+            }
+        }
+
+        if ($specVersion) { $tpmDetailsLines.Add("SpecVersion: $specVersion") | Out-Null }
+        if ($present -ne $null) { $tpmDetailsLines.Add("Present: $present") | Out-Null }
+        if ($ready -ne $null) { $tpmDetailsLines.Add("Ready: $ready") | Out-Null }
+        if ($enabled -ne $null) { $tpmDetailsLines.Add("Enabled: $enabled") | Out-Null }
+        if ($activated -ne $null) { $tpmDetailsLines.Add("Activated: $activated") | Out-Null }
+
+        $hasVersion2 = $false
+        if ($specVersion) { $hasVersion2 = ($specVersion -match '2\.0') }
+
+        if ($present -eq $false -or $ready -eq $false -or $enabled -eq $false -or $activated -eq $false -or ($specVersion -and -not $hasVersion2)) {
+            $tpmMet = $false
+            $tpmStatus = 'Fail'
+        } elseif ($present -eq $true -and $enabled -eq $true -and $activated -eq $true -and $hasVersion2 -and ($ready -ne $false)) {
+            $tpmMet = $true
+            $tpmStatus = 'Pass'
+        }
     }
 
     $tpmStatus = if ($tpmMet -eq $true) { 'Pass' } elseif ($tpmMet -eq $false) { 'Fail' } else { 'Unknown' }
     $tpmDetails = $tpmDetailsLines.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: TPM 2.0' -Status $tpmStatus -Details $tpmDetails
-    if ($tpmMet -ne $true) {
-        $severity = if ($tpmMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($tpmMet -eq $false) { 'TPM did not report as present, ready, enabled, activated, and version 2.0.' } else { 'TPM status could not be confirmed.' }
-        $remediation = 'Enable and initialize TPM 2.0 in firmware before upgrading.'
+    if ($tpmMet -eq $false) {
+        $severity = 'high'
+        $description = 'Windows 11 requires TPM 2.0 capabilities, but the collected data shows they are disabled or missing.'
+        $remediation = 'Enable and initialize TPM 2.0 (present, ready, enabled, activated) before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'TPM 2.0'
             Description = $description
@@ -567,9 +690,9 @@ function Invoke-SystemWindows11UpgradeChecks {
         }
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Installed RAM' -Status $ramStatus -Details $ramDetails
-    if ($ramMet -ne $true) {
-        $severity = if ($ramMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($ramMet -eq $false) { "$ramDetails is below the 4 GB minimum." } else { 'Unable to determine installed RAM capacity.' }
+    if ($ramMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 requires at least 4 GB of RAM, but the collected data shows this device below that threshold.'
         $remediation = 'Install at least 4 GB of RAM before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'Installed RAM'
@@ -656,9 +779,9 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: System drive capacity' -Status $capacityStatus -Details $capacityDetails
-    if ($capacityMet -ne $true) {
-        $severity = if ($capacityMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($capacityMet -eq $false) { "$capacityDetails is below the 64 GB minimum." } else { 'Unable to determine system drive size.' }
+    if ($capacityMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 setup requires 64 GB or more on the system drive, but the collected size falls below that minimum.'
         $remediation = 'Expand or replace the system drive to provide at least 64 GB before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'System drive capacity'
@@ -670,9 +793,9 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: System drive free space' -Status $freeStatus -Details $freeDetails
-    if ($freeMet -ne $true) {
-        $severity = if ($freeMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($freeMet -eq $false) { "$freeDetails is below the 20 GB setup minimum." } else { 'Unable to determine free space on the system volume.' }
+    if ($freeMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 setup needs 20 GB of free space on the system volume, but the collected reading is below that requirement.'
         $remediation = 'Free at least 20 GB on the system volume before running setup.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'System drive free space'
@@ -684,9 +807,9 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: System drive health' -Status $healthStatus -Details $healthDetails
-    if ($healthMet -ne $true) {
-        $severity = if ($healthMet -eq $false) { 'high' } else { 'info' }
-        $description = if ($healthMet -eq $false) { "$healthDetails indicates the system volume is not healthy." } else { 'Unable to verify system volume health.' }
+    if ($healthMet -eq $false) {
+        $severity = 'high'
+        $description = 'Windows 11 upgrade should not proceed while the system volume reports a degraded health state.'
         $remediation = 'Resolve disk health issues (e.g., replace failing drive or repair volume) before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'System drive health'
@@ -725,9 +848,9 @@ function Invoke-SystemWindows11UpgradeChecks {
         }
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: GPT system disk' -Status $partitionStatus -Details $partitionDetails
-    if ($partitionMet -ne $true) {
-        $severity = if ($partitionMet -eq $false) { 'critical' } else { 'info' }
-        $description = if ($partitionMet -eq $false) { 'No disks reported with GPT partition style.' } else { 'Unable to determine disk partition style.' }
+    if ($partitionMet -eq $false) {
+        $severity = 'critical'
+        $description = 'Windows 11 requires the system disk to use GPT so UEFI features can operate, but no GPT disks were reported.'
         $remediation = 'Convert the system disk to GPT (or reinstall in UEFI mode) before upgrading.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'GPT system disk'
@@ -774,9 +897,9 @@ function Invoke-SystemWindows11UpgradeChecks {
         $bitlockerDetails = [string]$bitlockerPayload.Error
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: BitLocker suspension' -Status $bitlockerStatus -Details $bitlockerDetails
-    if ($bitlockerMet -ne $true) {
-        $severity = if ($bitlockerMet -eq $false) { 'medium' } else { 'info' }
-        $description = if ($bitlockerMet -eq $false) { 'BitLocker protection is active on the system volume and must be suspended before upgrade.' } else { 'Unable to confirm BitLocker status for the system volume.' }
+    if ($bitlockerMet -eq $false) {
+        $severity = 'medium'
+        $description = 'Windows 11 setup halts when BitLocker remains active on the system drive, so suspend protection before upgrading.'
         $remediation = 'Suspend BitLocker protection on the system drive before starting the Windows 11 setup.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'BitLocker suspension'
@@ -821,9 +944,9 @@ function Invoke-SystemWindows11UpgradeChecks {
 
     $vbsDetails = $vbsDetailsLines.ToArray() -join '; '
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Virtualization-based security' -Status $vbsStatus -Details $vbsDetails
-    if ($vbsMet -ne $true) {
-        $severity = if ($vbsMet -eq $false) { 'medium' } else { 'info' }
-        $description = if ($vbsMet -eq $false) { 'Virtualization-based security features are available but not running.' } else { 'Unable to verify virtualization-based security state.' }
+    if ($vbsMet -eq $false) {
+        $severity = 'medium'
+        $description = 'Windows 11 enables virtualization-based security by default, so turn on Credential Guard or Memory Integrity to avoid the upgrade disabling protection.'
         $remediation = 'Enable Credential Guard or Memory Integrity so VBS remains on after the upgrade.'
         $requirementFailures.Add([pscustomobject]@{
             Name        = 'Virtualization-based security'
@@ -837,6 +960,7 @@ function Invoke-SystemWindows11UpgradeChecks {
     if ($requirementFailures.Count -eq 0) {
         $summaryEvidence = @()
         if ($cpuDetails) { $summaryEvidence += $cpuDetails }
+        if ($firmwareDetails) { $summaryEvidence += $firmwareDetails }
         if ($ramDetails) { $summaryEvidence += $ramDetails }
         if ($capacityDetails) { $summaryEvidence += $capacityDetails }
         if ($freeDetails) { $summaryEvidence += $freeDetails }
