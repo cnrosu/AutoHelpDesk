@@ -106,10 +106,11 @@ function Invoke-HardwareHeuristics {
 
         $classRaw = Get-DriverPropertyValue -Entry $entry -Names @('Class Name','ClassName','Class')
         $descriptionRaw = Get-DriverPropertyValue -Entry $entry -Names @('Device Description','Description')
+        $serviceNameRaw = Get-DriverPropertyValue -Entry $entry -Names @('Service Name','Driver Name','Module Name')
         $isBluetooth = $false
-        foreach ($candidate in @($classRaw, $label, $descriptionRaw)) {
+        foreach ($candidate in @($classRaw, $label, $descriptionRaw, $serviceNameRaw)) {
             if (-not $candidate) { continue }
-            if ($candidate -match '(?i)bluetooth') {
+            if (Test-BluetoothIndicator -Value $candidate) {
                 $isBluetooth = $true
                 break
             }
@@ -191,6 +192,7 @@ function Invoke-HardwareHeuristics {
         Length  = if ($pnpText) { $pnpText.Length } else { 0 }
     })
 
+    $pnpEntries = @()
     if ($pnpText) {
         $pnpEntries = Parse-DriverQueryEntries -Text $pnpText
         Write-HeuristicDebug -Source 'Hardware' -Message 'Parsed problem device entries' -Data ([ordered]@{
@@ -207,10 +209,11 @@ function Invoke-HardwareHeuristics {
 
             $className = Get-DriverPropertyValue -Entry $entry -Names @('Class Name','ClassName','Class')
             $description = Get-DriverPropertyValue -Entry $entry -Names @('Device Description','Friendly Name','Name')
+            $instanceId = Get-DriverPropertyValue -Entry $entry -Names @('Instance ID','InstanceId','Device Instance ID')
             $isBluetoothDevice = $false
-            foreach ($candidate in @($className, $label, $description)) {
+            foreach ($candidate in @($className, $label, $description, $instanceId)) {
                 if (-not $candidate) { continue }
-                if ($candidate -match '(?i)bluetooth') {
+                if (Test-BluetoothIndicator -Value $candidate) {
                     $isBluetoothDevice = $true
                     break
                 }
@@ -243,13 +246,21 @@ function Invoke-HardwareHeuristics {
     }
 
     Write-HeuristicDebug -Source 'Hardware' -Message 'Bluetooth device detection summary' -Data ([ordered]@{
-        DriverEntries  = $bluetoothDrivers.Count
-        ProblemEntries = $bluetoothProblemDevices.Count
+        DriverEntriesTotal    = $entries.Count
+        DriverEntriesMatched  = $bluetoothDrivers.Count
+        ProblemEntriesTotal   = $pnpEntries.Count
+        ProblemEntriesMatched = $bluetoothProblemDevices.Count
     })
 
     $bluetoothDetected = ($bluetoothDrivers.Count -gt 0) -or ($bluetoothProblemDevices.Count -gt 0)
     if (-not $bluetoothDetected) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Subcategory 'Bluetooth'
+        $evidenceLines = @()
+        $evidenceLines += "Driver inventory entries scanned: $($entries.Count)"
+        $evidenceLines += "Bluetooth indicators matched in drivers: $($bluetoothDrivers.Count)"
+        $evidenceLines += "Problem devices parsed: $($pnpEntries.Count)"
+        $evidenceLines += "Bluetooth indicators matched in problem devices: $($bluetoothProblemDevices.Count)"
+        $evidenceLines += "Indicators checked: 'bluetooth', drivers starting with BTH*/IBT*/QCBT*/BTATH*"
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence ($evidenceLines -join "`n") -Subcategory 'Bluetooth'
         $issueCount++
     } else {
         $bluetoothIssueEvidence = New-Object System.Collections.Generic.List[string]
