@@ -153,7 +153,7 @@ function Invoke-SystemRestoreChecks {
         if ($config.PSObject.Properties['DisableConfig']) {
             $evidence.Add(("DisableConfig={0}" -f $config.DisableConfig)) | Out-Null
         }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'System Restore disabled, so rollbacks are unavailable when updates or drivers fail.' -Evidence (($evidence | Where-Object { $_ }) | Select-Object -First 5) -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'System Restore disabled, so rollbacks are unavailable when updates or drivers fail.' -Evidence (($evidence | Where-Object { $_ }) | Select-Object -First 5) -Subcategory $subcategory
         return
     }
 
@@ -167,7 +167,7 @@ function Invoke-SystemRestoreChecks {
                 "DisableSR={0}" -f $flag
             }
         }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'System Restore disabled on every monitored drive, so rollbacks are unavailable when updates or drivers fail.' -Evidence ($evidence | Where-Object { $_ }) -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'System Restore disabled on every monitored drive, so rollbacks are unavailable when updates or drivers fail.' -Evidence ($evidence | Where-Object { $_ }) -Subcategory $subcategory
         return
     }
 
@@ -188,7 +188,7 @@ function Invoke-SystemRestoreChecks {
         $culture = [System.Globalization.CultureInfo]::InvariantCulture
         $style = [System.Globalization.DateTimeStyles]::RoundtripKind
 
-        $sorted = $restorePoints | Sort-Object -Property @{ Expression = {
+        $sorted = @($restorePoints | Sort-Object -Property @{ Expression = {
             if ($_.PSObject.Properties['CreationTime'] -and $_.CreationTime) {
                 try {
                     return [datetime]::Parse($_.CreationTime, $culture, $style)
@@ -197,7 +197,19 @@ function Invoke-SystemRestoreChecks {
                 }
             }
             return Get-Date '1900-01-01'
-        }; Descending = $true }
+        }; Descending = $true })
+
+        $latestRestorePointTimestamp = $null
+        if ($sorted.Count -gt 0) {
+            $candidate = $sorted[0]
+            if ($candidate.PSObject.Properties['CreationTime'] -and $candidate.CreationTime) {
+                try {
+                    $latestRestorePointTimestamp = [datetime]::Parse($candidate.CreationTime, $culture, $style)
+                } catch {
+                    $latestRestorePointTimestamp = $null
+                }
+            }
+        }
 
         foreach ($point in $sorted | Select-Object -First 5) {
             if (-not $point) { continue }
@@ -225,6 +237,20 @@ function Invoke-SystemRestoreChecks {
         $evidenceText = ($evidenceLines | Where-Object { $_ }) -join "`n"
         if ([string]::IsNullOrWhiteSpace($evidenceText)) {
             $evidenceText = $null
+        }
+
+        if ($latestRestorePointTimestamp) {
+            $threshold = (Get-Date).AddDays(-30)
+            if ($latestRestorePointTimestamp -lt $threshold) {
+                $evidenceDetails = if ($evidenceText) { $evidenceText } else { $null }
+                $freshnessEvidence = New-Object System.Collections.Generic.List[string]
+                $freshnessEvidence.Add(("Most recent restore point: {0}" -f $latestRestorePointTimestamp.ToString('yyyy-MM-dd HH:mm'))) | Out-Null
+                if ($evidenceDetails) {
+                    $freshnessEvidence.Add($evidenceDetails) | Out-Null
+                }
+                Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore lacks recent restore points, so you cannot roll back to last month''s changes.' -Evidence (($freshnessEvidence | Where-Object { $_ }) -join "`n") -Subcategory $subcategory
+                return
+            }
         }
 
         Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidenceText -Subcategory $subcategory
