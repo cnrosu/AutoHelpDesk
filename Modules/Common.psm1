@@ -790,7 +790,7 @@ function New-GoodCardHtml {
   }
 
   $cardBuilder = [System.Text.StringBuilder]::new()
-  [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass' open><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
+  [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
 
   $evidenceHtml = Encode-Html $Entry.Evidence
   [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details></div>")
