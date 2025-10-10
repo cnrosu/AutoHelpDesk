@@ -69,11 +69,54 @@ function Get-RegistryValueFromEntries {
         [string]$Name
     )
 
+    if (-not $Entries) { return $null }
+
     foreach ($entry in (ConvertTo-List $Entries)) {
         if (-not $entry) { continue }
-        if ($entry.Path -and $entry.Path -match $PathPattern) {
-            if ($entry.Values -and $entry.Values.PSObject.Properties[$Name]) {
-                return $entry.Values.$Name
+        if (-not $Name) { continue }
+        if ($entry.PSObject.Properties['Error'] -and $entry.Error) { continue }
+        if ($PathPattern -and -not ($entry.Path -and $entry.Path -match $PathPattern)) { continue }
+
+        $values = $null
+        if ($entry.PSObject.Properties['Values']) {
+            $values = $entry.Values
+        }
+
+        if (-not $values) { continue }
+
+        if ($values -is [System.Collections.IDictionary]) {
+            foreach ($key in $values.Keys) {
+                if ($null -eq $key) { continue }
+                if ([string]$key -ieq $Name) {
+                    return $values[$key]
+                }
+            }
+        }
+
+        $property = $values.PSObject.Properties[$Name]
+        if ($property) { return $property.Value }
+
+        foreach ($candidate in $values.PSObject.Properties) {
+            if (-not $candidate) { continue }
+            if ($candidate.Name -ieq $Name) {
+                return $candidate.Value
+            }
+        }
+
+        $valueItems = @()
+        if ($values -is [System.Collections.IEnumerable] -and -not ($values -is [string]) -and -not ($values -is [pscustomobject])) {
+            $valueItems = ConvertTo-List $values
+        }
+
+        foreach ($item in $valueItems) {
+            if (-not $item) { continue }
+            if ($item -is [System.Collections.DictionaryEntry]) {
+                if ([string]$item.Key -ieq $Name) { return $item.Value }
+                continue
+            }
+
+            if ($item.PSObject.Properties['Name'] -and $item.PSObject.Properties['Value']) {
+                if ($item.Name -ieq $Name) { return $item.Value }
             }
         }
     }
