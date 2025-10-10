@@ -637,6 +637,7 @@ function Build-SummaryCardHtml {
 
     $deviceName = if ($Summary.DeviceName) { $Summary.DeviceName } else { 'Unknown' }
     $deviceState = if ($Summary.DeviceState) { $Summary.DeviceState } else { 'Unknown' }
+    $mdmEnrollment = if ($Summary.MdmEnrollment) { $Summary.MdmEnrollment } else { 'Unknown' }
 
     $osParts = [System.Collections.Generic.List[string]]::new()
     if ($Summary.OperatingSystem) { $osParts.Add($Summary.OperatingSystem) }
@@ -739,6 +740,7 @@ function Build-SummaryCardHtml {
     $null = $sb.AppendLine("            <table class='report-table report-table--key-value' cellspacing='0' cellpadding='0'>")
     $null = $sb.AppendLine("              <tr><td>Device Name</td><td>$(Encode-Html $deviceName)</td></tr>")
     $null = $sb.AppendLine("              <tr><td>Device State</td><td>$(Encode-Html $deviceState)</td></tr>")
+    $null = $sb.AppendLine("              <tr><td>MAM/MDM Enrollment</td><td>$(Encode-Html $mdmEnrollment)</td></tr>")
     $null = $sb.AppendLine("              <tr><td>System</td><td>$(Encode-Html $osText)</td></tr>")
     $null = $sb.AppendLine('            </table>')
     $null = $sb.AppendLine('          </td>')
