@@ -126,6 +126,9 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Autorun Policies** – Notes hardened Autorun/Autoplay registry values, raises medium issues when required values are absent, and flags informational gaps when artifacts are missing.
 - **User Account Control** – Confirms secure UAC prompts and raises high-severity issues when the configuration is insecure.
 
+### Intune
+- **Enrollment & Connectivity** – Flags devices that cannot register with Intune because Azure AD join, Primary Refresh Token availability, time synchronization, or conditional access policy blocks prevent service connectivity, and escalates when repeated token failures compound a CA block.
+
 ### Active Directory
 - **Collection** – Emits informational findings when AD diagnostics are missing or when domain checks are not applicable (for example, Azure AD–joined devices).
 - **Discovery** – Distinguishes Azure AD–only joins and raises critical issues when no domain controllers are discovered.
