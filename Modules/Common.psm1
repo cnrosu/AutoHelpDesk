@@ -27,6 +27,20 @@ $script:RegexKeyValueLine = [System.Text.RegularExpressions.Regex]::new(
   [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
+function Join-PathSafe {
+  param(
+    [Parameter(Mandatory=$true)]
+    [AllowNull()]
+    [AllowEmptyCollection()]
+    $Path,
+    [Parameter(Mandatory=$true)]
+    [string]$ChildPath
+  )
+  $base = @($Path | Where-Object { $_ })
+  if ($base.Count -eq 0) { return $null }
+  return Join-Path -Path $base[0] -ChildPath $ChildPath
+}
+
 # DHCP analyzers expect Write-DhcpDebug and related helpers. Prefer the central
 # analyzer logger when available but gracefully fall back to verbose output so
 # the helpers remain useful when executed standalone.

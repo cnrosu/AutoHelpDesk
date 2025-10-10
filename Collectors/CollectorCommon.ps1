@@ -10,6 +10,27 @@ if (-not (Get-Variable -Name 'CollectorCommonState' -Scope Global -ErrorAction S
     }
 }
 
+$collectorCommonRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($collectorCommonRoot) -and $MyInvocation.MyCommand.Path) {
+    $collectorCommonRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($collectorCommonRoot)) {
+    $collectorCommonRoot = (Get-Location).Path
+}
+
+if (-not (Get-Command -Name Join-PathSafe -ErrorAction SilentlyContinue)) {
+    $repoRoot = Split-Path -Parent $collectorCommonRoot
+    if ([string]::IsNullOrWhiteSpace($repoRoot)) { $repoRoot = $collectorCommonRoot }
+    $commonModulePath = Join-Path -Path $repoRoot -ChildPath 'Modules\Common.psm1'
+    if (Test-Path -LiteralPath $commonModulePath) {
+        try {
+            Import-Module -Name $commonModulePath -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Verbose "Failed to import Common module: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Ensure callers don’t pass empty output directories (defense-in-depth)
 function Resolve-CollectorOutputDirectory {
     param(

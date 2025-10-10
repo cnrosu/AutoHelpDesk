@@ -16,11 +16,25 @@ function Get-ScriptRoot {
 
 $__ScriptRoot = Get-ScriptRoot
 
+if ([string]::IsNullOrWhiteSpace($__ScriptRoot)) { throw 'Script root unavailable.' }
+
+$collectorCommonPath = Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1'
+if (-not (Test-Path -LiteralPath $collectorCommonPath)) { throw 'Unable to resolve CollectorCommon.ps1 path.' }
+. $collectorCommonPath
+
+if (-not (Get-Command -Name Join-PathSafe -ErrorAction SilentlyContinue)) { throw 'Join-PathSafe helper is unavailable.' }
+
 if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path -Path $__ScriptRoot -ChildPath '..\output'
+    $defaultOutput = Join-PathSafe $__ScriptRoot '..\output'
+    if (-not $defaultOutput) {
+        Write-Verbose 'Script root unavailable; defaulting output to current directory.'
+        $locationPath = (Get-Location).Path
+        $defaultOutput = Join-PathSafe $locationPath '..\output'
+        if (-not $defaultOutput) { $defaultOutput = $locationPath }
+    }
+    $OutputDirectory = $defaultOutput
 }
 
-. (Join-Path -Path $__ScriptRoot -ChildPath '..\CollectorCommon.ps1')
 
 function Get-AzureAdJoinStatus {
     try {
