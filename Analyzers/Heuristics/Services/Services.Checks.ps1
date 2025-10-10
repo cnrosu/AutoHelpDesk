@@ -68,7 +68,7 @@ function Invoke-ServiceCheckNetworkLocation {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'NlaSvc'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service missing' -Evidence 'Service entry not found; network profile detection will fail.' -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service missing — network profile detection will fail' -Evidence 'Service entry not found; network profile detection will fail.' -Subcategory 'Network Location Awareness'
         return
     }
 
@@ -79,9 +79,9 @@ function Invoke-ServiceCheckNetworkLocation {
 
     $evidence = "Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode
     if ($service.StartModeNormalized -eq 'manual' -and $IsWorkstation) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Network Location Awareness set to Manual and stopped' -Evidence $evidence -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Network Location Awareness manual and stopped — network profile changes will go undetected' -Evidence $evidence -Subcategory 'Network Location Awareness'
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service not running' -Evidence $evidence -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service not running — network profile detection is broken' -Evidence $evidence -Subcategory 'Network Location Awareness'
     }
 }
 
