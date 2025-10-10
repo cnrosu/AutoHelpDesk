@@ -166,6 +166,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 ### Hardware
 - **Collection** – Emits informational issues when driver or problem-device inventories are missing, unparsed, or empty.
 - **Device Manager** – Raises high-severity issues for drivers in failed states, medium issues for degraded devices, informational findings for lesser warnings, and records normals when Device Manager reports every device as healthy.
+- **Battery Health** – Pulls design and full-charge capacities from the battery report, warns when wear reduces runtime, records normals for healthy packs, and surfaces runtime estimates for technicians.
 
 ### Storage
 - **Collection** – Flags missing storage inventory or SMART snapshot artifacts so disk health cannot be evaluated.
