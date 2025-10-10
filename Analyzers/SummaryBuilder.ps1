@@ -218,6 +218,100 @@ function Format-DeviceState {
     return "Not domain joined (Domain: $domainLabel)"
 }
 
+function ConvertTo-MultilineText {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [string]) {
+        $text = $Value
+        if (-not $text) { return $null }
+        $trimmed = $text.Trim()
+        if (-not $trimmed) { return $null }
+        return ($trimmed -replace '\r?\n', "`n")
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $builder = [System.Text.StringBuilder]::new()
+        foreach ($item in $Value) {
+            $converted = ConvertTo-MultilineText -Value $item
+            if (-not $converted) { continue }
+            if ($builder.Length -gt 0) { [void]$builder.AppendLine() }
+            [void]$builder.Append($converted)
+        }
+
+        if ($builder.Length -eq 0) { return $null }
+        return $builder.ToString().Trim()
+    }
+
+    $stringValue = [string]$Value
+    if (-not $stringValue) { return $null }
+    $stringValue = $stringValue.Trim()
+    if (-not $stringValue) { return $null }
+    return $stringValue
+}
+
+function Get-DsRegCmdTextFromArtifact {
+    param(
+        $Artifact
+    )
+
+    if (-not $Artifact) { return $null }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $Artifact)
+    if ($null -eq $payload) { return $null }
+
+    $candidates = New-Object System.Collections.Generic.List[object]
+
+    if ($payload.PSObject -and $payload.PSObject.Properties['DsRegCmd']) {
+        $candidates.Add($payload.DsRegCmd) | Out-Null
+    }
+    if ($payload.PSObject -and $payload.PSObject.Properties['Output']) {
+        $candidates.Add($payload.Output) | Out-Null
+    }
+    if ($payload.PSObject -and $payload.PSObject.Properties['StdOut']) {
+        $candidates.Add($payload.StdOut) | Out-Null
+    }
+    if ($payload.PSObject -and $payload.PSObject.Properties['Content']) {
+        $candidates.Add($payload.Content) | Out-Null
+    }
+
+    if ($candidates.Count -eq 0) {
+        $candidates.Add($payload) | Out-Null
+    }
+
+    foreach ($candidate in $candidates) {
+        $text = ConvertTo-MultilineText -Value $candidate
+        if ($text) { return $text }
+    }
+
+    return $null
+}
+
+function Get-DsRegCmdText {
+    param(
+        $Context
+    )
+
+    $artifactNames = @('identity','dsregcmd_status','dsregcmd','dsreg_status','dsreg')
+    foreach ($name in $artifactNames) {
+        $artifact = Get-AnalyzerArtifact -Context $Context -Name $name
+        if (-not $artifact) { continue }
+
+        if ($artifact -is [System.Collections.IEnumerable] -and -not ($artifact -is [string])) {
+            foreach ($entry in $artifact) {
+                $text = Get-DsRegCmdTextFromArtifact -Artifact $entry
+                if ($text) { return $text }
+            }
+        } else {
+            $text = Get-DsRegCmdTextFromArtifact -Artifact $artifact
+            if ($text) { return $text }
+        }
+    }
+
+    return $null
+}
+
 function Parse-HostNameFromSystemInfo {
     param([string]$SystemInfoText)
 
@@ -245,7 +339,7 @@ function Get-AzureAdJoinState {
     if (-not $DsRegCmdOutput) { return $false }
 
     foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
-        if ($line -match '^(?i)AzureAdJoined\s*:\s*(Yes|No)') {
+        if ($line -match '^(?i)\s*AzureAdJoined\s*:\s*(Yes|No)') {
             return ($matches[1].ToLowerInvariant() -eq 'yes')
         }
     }
@@ -259,13 +353,81 @@ function Get-AzureAdTenantName {
     if (-not $DsRegCmdOutput) { return $null }
 
     foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
-        if ($line -match '^(?i)TenantName\s*:\s*(.+)$') {
+        if ($line -match '^(?i)\s*TenantName\s*:\s*(.+)$') {
             $tenant = $matches[1].Trim()
             if ($tenant) { return $tenant }
         }
     }
 
     return $null
+}
+
+function Get-MdmEnrollmentInfo {
+    param([string]$DsRegCmdOutput)
+
+    if (-not $DsRegCmdOutput) {
+        return [pscustomobject]@{
+            IsEnrolled   = $false
+            IsIntune     = $false
+            DisplayLabel = $null
+        }
+    }
+
+    $values = New-Object System.Collections.Generic.List[string]
+    foreach ($line in [regex]::Split($DsRegCmdOutput, '\r?\n')) {
+        if ($line -notmatch '^(?i)\s*Mdm[a-zA-Z]*\s*:\s*(.+)$') { continue }
+        $value = $matches[1]
+        if ($null -eq $value) { continue }
+
+        $trimmed = $value.Trim()
+        if (-not $trimmed) { continue }
+        if ($trimmed -match '^(?i)\(null\)|\(not\s+set\)|none|not\s+configured|n/?a$') { continue }
+
+        if (-not ($values.Contains($trimmed))) {
+            $values.Add($trimmed) | Out-Null
+        }
+    }
+
+    if ($values.Count -eq 0) {
+        return [pscustomobject]@{
+            IsEnrolled   = $false
+            IsIntune     = $false
+            DisplayLabel = $null
+        }
+    }
+
+    foreach ($value in $values) {
+        if ($value -match '(?i)intune' -or $value -match '(?i)manage\.microsoft\.com') {
+            return [pscustomobject]@{
+                IsEnrolled   = $true
+                IsIntune     = $true
+                DisplayLabel = 'Intune'
+            }
+        }
+    }
+
+    $first = $values[0]
+    $label = $first
+    $host = $null
+    try {
+        if ($first -match '^[a-zA-Z][a-zA-Z0-9+\.-]*://') {
+            $uri = [Uri]$first
+            if ($uri.Host) { $host = $uri.Host }
+        }
+    } catch {
+    }
+
+    if ($host) {
+        $label = "Detected ($host)"
+    } elseif ($first -match '^[A-Za-z0-9][A-Za-z0-9\.-]*$') {
+        $label = "Detected ($first)"
+    }
+
+    return [pscustomobject]@{
+        IsEnrolled   = $true
+        IsIntune     = $false
+        DisplayLabel = $label
+    }
 }
 
 function Get-AnalyzerSummary {
@@ -289,6 +451,8 @@ function Get-AnalyzerSummary {
         Gateways        = @()
         DnsServers      = @()
         GeneratedAt     = Get-Date
+        IsIntuneManaged = $false
+        MdmEnrollment   = $null
     }
 
     $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
@@ -326,31 +490,18 @@ function Get-AnalyzerSummary {
         }
     }
 
-    $identityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'identity'
-    if ($identityArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $identityArtifact)
-        if ($payload -and $payload.DsRegCmd) {
-            $dsRegRaw = $payload.DsRegCmd
-            $dsRegText = $null
-
-            if ($dsRegRaw -is [string]) {
-                $dsRegText = $dsRegRaw
-            } elseif ($dsRegRaw -is [System.Collections.IEnumerable]) {
-                $dsRegText = ($dsRegRaw | ForEach-Object {
-                        if ($_ -is [string]) { $_ }
-                        elseif ($null -ne $_) { [string]$_ }
-                    }) -join "`n"
-            } elseif ($null -ne $dsRegRaw) {
-                $dsRegText = [string]$dsRegRaw
-            }
-
-            if ($dsRegText) {
-                $summary.IsAzureAdJoined = Get-AzureAdJoinState -DsRegCmdOutput $dsRegText
-                if ($summary.IsAzureAdJoined) {
-                    $tenantName = Get-AzureAdTenantName -DsRegCmdOutput $dsRegText
-                    if ($tenantName) { $summary.AzureAdTenant = $tenantName }
-                }
-            }
+    $dsRegText = Get-DsRegCmdText -Context $Context
+    if ($dsRegText) {
+        $summary.IsAzureAdJoined = Get-AzureAdJoinState -DsRegCmdOutput $dsRegText
+        $mdmInfo = Get-MdmEnrollmentInfo -DsRegCmdOutput $dsRegText
+        if ($mdmInfo) {
+            if ($mdmInfo.IsIntune) { $summary.IsIntuneManaged = $true }
+            if ($mdmInfo.DisplayLabel) { $summary.MdmEnrollment = $mdmInfo.DisplayLabel }
+            elseif ($mdmInfo.IsEnrolled) { $summary.MdmEnrollment = 'Detected' }
+        }
+        if ($summary.IsAzureAdJoined) {
+            $tenantName = Get-AzureAdTenantName -DsRegCmdOutput $dsRegText
+            if ($tenantName) { $summary.AzureAdTenant = $tenantName }
         }
     }
 
@@ -454,6 +605,14 @@ function Get-AnalyzerSummary {
 
     $domainText = if ($summary.Domain) { $summary.Domain } else { 'Unknown' }
     $partOfDomain = if ($null -ne $summary.IsDomainJoined) { [bool]$summary.IsDomainJoined } else { $false }
+    if (-not $summary.MdmEnrollment) {
+        if ($dsRegText) {
+            $summary.MdmEnrollment = 'None detected'
+        } else {
+            $summary.MdmEnrollment = 'Unknown'
+        }
+    }
+
     $summary.DeviceState = Format-DeviceState -Domain $domainText -PartOfDomain $partOfDomain -IsAzureAdJoined $summary.IsAzureAdJoined -AzureAdTenant $summary.AzureAdTenant
 
     if (-not $summary.DeviceName) { $summary.DeviceName = 'Unknown' }
