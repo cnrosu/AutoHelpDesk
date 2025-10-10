@@ -104,6 +104,58 @@ function Get-NetworkCanonicalIpv4 {
     return $null
 }
 
+function Test-NetworkBroadcastIpv4Address {
+    param([string]$Address)
+
+    if (-not $Address) { return $false }
+
+    $canonical = Get-NetworkCanonicalIpv4 $Address
+    if (-not $canonical) { return $false }
+
+    if ($canonical -eq '255.255.255.255') { return $true }
+
+    return ($canonical -match '^\d+\.\d+\.\d+\.255$')
+}
+
+function Test-NetworkMulticastIpv4Address {
+    param([string]$Address)
+
+    if (-not $Address) { return $false }
+
+    $canonical = Get-NetworkCanonicalIpv4 $Address
+    if (-not $canonical) { return $false }
+
+    $segments = $canonical.Split('.')
+    if ($segments.Count -lt 1) { return $false }
+
+    $firstOctet = $null
+    if (-not [int]::TryParse($segments[0], [ref]$firstOctet)) { return $false }
+
+    return ($firstOctet -ge 224 -and $firstOctet -le 239)
+}
+
+function Test-NetworkInvalidUnicastMac {
+    param([string]$MacAddress)
+
+    if ([string]::IsNullOrWhiteSpace($MacAddress)) { return $true }
+
+    $normalized = Normalize-NetworkMacAddress $MacAddress
+    if (-not $normalized) { return $true }
+
+    return ($normalized -eq 'FF:FF:FF:FF:FF:FF' -or $normalized -eq '00:00:00:00:00:00')
+}
+
+function Test-NetworkStandardMulticastMac {
+    param([string]$MacAddress)
+
+    if ([string]::IsNullOrWhiteSpace($MacAddress)) { return $false }
+
+    $normalized = Normalize-NetworkMacAddress $MacAddress
+    if (-not $normalized) { return $false }
+
+    return $normalized -like '01:00:5E:*'
+}
+
 function Get-NetworkCanonicalIpv6 {
     param([string]$Text)
 
@@ -2325,23 +2377,125 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache'
             }
 
-            $poisonCandidates = @()
-            foreach ($entry in $arpEntries) {
-                if (-not $entry) { continue }
-                $mac = $entry.NormalizedMac
-                $typeText = if ($entry.Type) { [string]$entry.Type } else { '' }
+            $broadcastEntries = @()
+            $multicastEntries = @()
+            $unicastInvalidEntries = @()
+            $gatewayArpEntries = New-Object System.Collections.Generic.List[object]
 
-                if (($mac -and ($mac -eq 'FF:FF:FF:FF:FF:FF' -or $mac -eq '00:00:00:00:00:00')) -or ($typeText -and $typeText.ToLowerInvariant() -match 'invalid|incomplete')) {
-                    $macDisplay = if ($mac) { $mac } else { 'unknown' }
-                    $typeDisplay = if ($typeText) { $typeText } else { 'unknown type' }
-                    $poisonCandidates += "{0}→{1} ({2})" -f $entry.InternetAddress, $macDisplay, $typeDisplay
+            foreach ($entry in $arpEntries) {
+                if (-not $entry -or -not $entry.InternetAddress) { continue }
+
+                $ipAddress = Get-NetworkCanonicalIpv4 $entry.InternetAddress
+                if (-not $ipAddress) { continue }
+
+                if (Test-NetworkBroadcastIpv4Address $ipAddress) {
+                    $broadcastEntries += $entry
+                    continue
+                }
+
+                if (Test-NetworkMulticastIpv4Address $ipAddress) {
+                    $multicastEntries += $entry
+                    continue
+                }
+
+                $macForEvaluation = if ($entry.NormalizedMac) { $entry.NormalizedMac } else { $entry.PhysicalAddress }
+                if (Test-NetworkInvalidUnicastMac $macForEvaluation) {
+                    $unicastInvalidEntries += $entry
                 }
             }
 
-            if ($poisonCandidates.Count -gt 0) {
-                $evidence = $poisonCandidates -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'ARP cache includes broadcast or invalid MAC replies, so endpoint connectivity may flap from poisoning attempts.' -Evidence $evidence -Subcategory 'ARP Cache'
+            foreach ($gateway in $gatewayMap.Keys) {
+                $detail = $gatewayMap[$gateway]
+                if (-not $detail -or -not $detail.ArpMatches) { continue }
+                $match = $detail.ArpMatches | Select-Object -First 1
+                if (-not $match) { continue }
+                $gatewayArpEntries.Add($match) | Out-Null
             }
+
+            $gatewayAlerts = New-Object System.Collections.Generic.List[object]
+            foreach ($gatewayEntry in $gatewayArpEntries) {
+                $macForEvaluation = if ($gatewayEntry.NormalizedMac) { $gatewayEntry.NormalizedMac } else { $gatewayEntry.PhysicalAddress }
+                if (Test-NetworkInvalidUnicastMac $macForEvaluation) {
+                    $gatewayAlerts.Add($gatewayEntry) | Out-Null
+                }
+            }
+
+            $severity = 'info'
+            if ($gatewayAlerts.Count -gt 0) {
+                $severity = 'high'
+            } elseif ($unicastInvalidEntries.Count -gt 0) {
+                $severity = 'medium'
+            }
+
+            $formatArpEntry = {
+                param($entry)
+
+                if (-not $entry) { return $null }
+
+                $ipDisplay = Get-NetworkCanonicalIpv4 $entry.InternetAddress
+                if (-not $ipDisplay) { $ipDisplay = $entry.InternetAddress }
+
+                $macDisplay = if ($entry.NormalizedMac) { $entry.NormalizedMac } elseif ($entry.PhysicalAddress) { $entry.PhysicalAddress } else { 'unknown' }
+                $typeDisplay = if ($entry.Type) { [string]$entry.Type } else { 'unknown' }
+
+                return "{0}→{1} [{2}]" -f $ipDisplay, $macDisplay, $typeDisplay
+            }
+
+            $gatewaySummary = @()
+            foreach ($gatewayEntry in $gatewayArpEntries) {
+                $formatted = & $formatArpEntry $gatewayEntry
+                if ($formatted) { $gatewaySummary += $formatted }
+            }
+
+            $suppressedEvidence = @()
+            if ($broadcastEntries.Count -gt 0) {
+                $sample = $broadcastEntries | Select-Object -First 2
+                $formattedSample = ($sample | ForEach-Object { & $formatArpEntry $_ }) -join '; '
+                if ($broadcastEntries.Count -gt 2) { $formattedSample = "{0}; …" -f $formattedSample }
+                if ($formattedSample) {
+                    $suppressedEvidence += "Suppressed broadcast entries (expected): $formattedSample"
+                }
+            }
+
+            if ($multicastEntries.Count -gt 0) {
+                $sample = $multicastEntries | Select-Object -First 2
+                $formattedSample = ($sample | ForEach-Object { & $formatArpEntry $_ }) -join '; '
+                if ($multicastEntries.Count -gt 2) { $formattedSample = "{0}; …" -f $formattedSample }
+                if ($formattedSample) {
+                    $suppressedEvidence += "Suppressed multicast entries (expected): $formattedSample"
+                }
+            }
+
+            $primaryEvidence = @()
+            switch ($severity) {
+                'high' {
+                    $title = 'Default gateway resolved to an invalid MAC, so users may be routed through a spoofed device.'
+                    $remediation = 'Investigate ARP for default gateway. Clear ARP cache (arp -d *), power-cycle router/switch, and verify gateway MAC against device label/UI. If it returns or flaps, check for ARP spoofing.'
+                    foreach ($entry in $gatewayAlerts) {
+                        $formatted = & $formatArpEntry $entry
+                        if ($formatted) { $primaryEvidence += $formatted }
+                    }
+                }
+                'medium' {
+                    $title = 'Unicast neighbors resolved to broadcast or zero MACs, so their traffic may be intercepted or dropped.'
+                    $remediation = 'Clear ARP cache (arp -d *). Re-check neighbors. If unicast entries keep resolving to FF:FF:FF:FF:FF:FF or 00:00:00:00:00:00, isolate the suspect IP or segment and review switch CAM/port security.'
+                    foreach ($entry in $unicastInvalidEntries) {
+                        $formatted = & $formatArpEntry $entry
+                        if ($formatted) { $primaryEvidence += $formatted }
+                    }
+                }
+                default {
+                    $title = 'We suppress broadcast and multicast ARP entries, so warnings apply only to unicast neighbors with invalid MACs or evidence of flapping.'
+                    $remediation = 'No action needed. Broadcast/multicast ARP entries are expected. Monitor gateway mapping for changes.'
+                }
+            }
+
+            $evidence = @()
+            if ($primaryEvidence.Count -gt 0) { $evidence += $primaryEvidence }
+            if ($gatewaySummary.Count -gt 0) { $evidence += "Gateway ARP: $($gatewaySummary -join '; ')" }
+            if ($suppressedEvidence.Count -gt 0) { $evidence += $suppressedEvidence }
+
+            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $remediation
 
             $localMacAlerts = @()
             foreach ($mac in $localMacs) {
