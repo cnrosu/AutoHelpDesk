@@ -999,3 +999,96 @@ details.report-card[open] > summary {
   border-color: var(--color-state-critical-border);
   color: var(--color-state-critical-text);
 }
+
+/* Troubleshooting + Code styling */
+details.troubleshooting {
+  margin-top: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  background: #fafbff;
+}
+
+details.troubleshooting > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.ts-overview {
+  margin-bottom: 0.6rem;
+  line-height: 1.5;
+}
+
+.ts-quickfix {
+  margin: 0.5rem 0 0.75rem 0;
+}
+
+.ts-quickfix .pill {
+  display: inline-block;
+  background: #ffe9a8;
+  color: #6b4f00;
+  padding: 0.15rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-right: 0.4rem;
+}
+
+.ts-scenario {
+  border-top: 1px dashed #d9d9e3;
+  padding-top: 0.7rem;
+  margin-top: 0.7rem;
+}
+
+.ts-scenario h5 {
+  margin: 0 0 0.4rem 0;
+  font-size: 1rem;
+}
+
+.codeblock {
+  position: relative;
+  margin: 0.5rem 0 0.75rem 0;
+  border: 1px solid #e5e7eb;
+  background: #0b1020;
+  color: #e8e8ff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-caption {
+  font-size: 0.85rem;
+  background: #0f1530;
+  color: #d2d8ff;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid #253059;
+}
+
+.codeblock pre {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  overflow-x: auto;
+}
+
+.btn-copy {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #5162a8;
+  background: #1a2560;
+  color: #d8e2ff;
+  cursor: pointer;
+}
+
+.btn-copy:hover {
+  filter: brightness(1.15);
+}
+
+.scenario-validation .label,
+.scenario-rollback .label {
+  font-weight: 600;
+  margin: 0.4rem 0 0.2rem 0;
+  font-size: 0.9rem;
+}

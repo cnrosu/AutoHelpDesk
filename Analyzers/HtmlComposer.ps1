@@ -208,6 +208,42 @@ function Format-AnalyzerEvidence {
     }
 }
 
+# --- HTML helpers: safe encoding, code blocks, copy button ---
+
+function ConvertTo-HtmlSafe {
+    param([string]$Text)
+
+    if ($null -eq $Text) { return '' }
+
+    return ($Text -replace '&', '&amp;'
+                  -replace '<', '&lt;'
+                  -replace '>', '&gt;')
+}
+
+function New-CodeBlockHtml {
+    param(
+        [ValidateSet('powershell', 'cmd', 'bash', 'python')]
+        [string]$Language = 'powershell',
+        [string]$Code,
+        [string]$Caption = $null
+    )
+
+    $safe = ConvertTo-HtmlSafe -Text $Code
+    $captionHtml = $null
+    if ($null -ne $Caption -and $Caption -ne '') {
+        $captionHtml = ConvertTo-HtmlSafe -Text $Caption
+    }
+    $cap = if ($captionHtml) { "<div class='code-caption'>$captionHtml</div>" } else { '' }
+
+@"
+<div class='codeblock'>
+  $cap
+  <pre><code class='language-$Language'>$safe</code></pre>
+  <button class='btn-copy' onclick="window.copyCode(this)">Copy</button>
+</div>
+"@
+}
+
 function Get-IssueCardContent {
     param($Issue)
 
@@ -1751,6 +1787,64 @@ function New-AnalyzerHtml {
       bindCopyButton(button);
     });
   }
+
+  window.copyCode = function (btn) {
+    try {
+      if (!btn) {
+        return;
+      }
+
+      var container = null;
+      if (typeof btn.closest === 'function') {
+        container = btn.closest('.codeblock');
+      }
+      if (!container) {
+        container = btn.parentElement || null;
+      }
+
+      if (!container) {
+        return;
+      }
+
+      var pre = container.querySelector('pre');
+      if (!pre) {
+        return;
+      }
+
+      var text = pre.innerText || pre.textContent || '';
+      if (!text) {
+        return;
+      }
+
+      var original = btn.getAttribute('data-copy-label-inline');
+      if (!original) {
+        original = btn.textContent || btn.innerText || 'Copy';
+        btn.setAttribute('data-copy-label-inline', original);
+      }
+
+      var setText = function (value) {
+        if (typeof btn.textContent === 'string') {
+          btn.textContent = value;
+        } else {
+          btn.innerText = value;
+        }
+      };
+
+      copyToClipboard(text).then(function () {
+        setText('Copied!');
+        window.setTimeout(function () {
+          setText(btn.getAttribute('data-copy-label-inline') || original);
+        }, 1200);
+      }).catch(function (err) {
+        console.warn('Copy failed', err);
+        window.setTimeout(function () {
+          setText(btn.getAttribute('data-copy-label-inline') || original);
+        }, 1200);
+      });
+    } catch (err) {
+      console.warn('Copy failed', err);
+    }
+  };
 
   document.addEventListener('DOMContentLoaded', function () {
     var tabsets = toArray(document.querySelectorAll('[data-report-tabs]'));
