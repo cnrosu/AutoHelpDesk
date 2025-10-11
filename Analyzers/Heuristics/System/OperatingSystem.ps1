@@ -28,6 +28,10 @@ function Invoke-SystemOperatingSystemChecks {
         if ($caption) {
             $description = if ($build) { "{0} (build {1})" -f $caption, $build } else { [string]$caption }
             $captionLower = $caption.ToLowerInvariant()
+            $versionLabel = $null
+            if ($os.PSObject.Properties['Version'] -and $os.Version) {
+                $versionLabel = [string]$os.Version
+            }
             if ($captionLower -match 'windows\s+11') {
                 Add-CategoryNormal -CategoryResult $Result -Title ("Operating system supported: {0}" -f $description) -Subcategory 'Operating System'
             } else {
@@ -35,7 +39,18 @@ function Invoke-SystemOperatingSystemChecks {
                 if ($unsupportedMatch.Success) {
                     $versionLabel = $unsupportedMatch.Groups[1].Value
                     $evidence = "Detected operating system: {0}. Microsoft support for Windows {1} has ended; upgrade to Windows 11." -f $description, $versionLabel
-                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported' -Evidence $evidence -Subcategory 'Operating System'
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported, so Microsoft no longer ships fixes or security updates.' -Evidence $evidence -Subcategory 'Operating System' -Data @{
+                        Area = 'System/OS'
+                        Kind = 'OsSupport'
+                        OS = @{
+                            Caption = $caption
+                            Build   = $build
+                            Edition = $os.Edition
+                            Architecture = $os.OSArchitecture
+                            VersionLabel = $versionLabel
+                            IsWin11 = ($captionLower -match 'windows\s+11')
+                        }
+                    }
                 } else {
                     Add-CategoryCheck -CategoryResult $Result -Name 'Operating system' -Status $description
                 }
