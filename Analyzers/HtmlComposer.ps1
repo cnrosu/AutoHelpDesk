@@ -1695,6 +1695,20 @@ function New-AnalyzerHtml {
     }
   }
 
+  function getActiveTab(tabs) {
+    if (!tabs || !tabs.length) {
+      return null;
+    }
+
+    for (var index = 0; index < tabs.length; index += 1) {
+      if (tabs[index] && tabs[index].getAttribute('aria-selected') === 'true') {
+        return tabs[index];
+      }
+    }
+
+    return tabs[0] || null;
+  }
+
   function handleKey(event, tabs, currentTab, tabset) {
     var key = event.key || event.keyCode;
     var currentIndex = -1;
@@ -1761,6 +1775,51 @@ function New-AnalyzerHtml {
         handleKey(event, tabs, tab, tabset);
       });
     });
+
+    if (tabs.length > 1) {
+      tabset.addEventListener('wheel', function (event) {
+        if (!event) {
+          return;
+        }
+
+        var deltaX = typeof event.deltaX === 'number' ? event.deltaX : 0;
+        var deltaY = typeof event.deltaY === 'number' ? event.deltaY : 0;
+
+        if (Math.abs(deltaX) <= Math.abs(deltaY) || Math.abs(deltaX) < 2) {
+          return;
+        }
+
+        event.preventDefault();
+
+        var activeTab = getActiveTab(tabs);
+        if (!activeTab) {
+          return;
+        }
+
+        var currentIndex = tabs.indexOf ? tabs.indexOf(activeTab) : -1;
+        if (currentIndex < 0) {
+          for (var idx = 0; idx < tabs.length; idx += 1) {
+            if (tabs[idx] === activeTab) {
+              currentIndex = idx;
+              break;
+            }
+          }
+        }
+
+        if (currentIndex < 0) {
+          currentIndex = 0;
+        }
+
+        var direction = deltaX > 0 ? 1 : -1;
+        var targetIndex = (currentIndex + direction + tabs.length) % tabs.length;
+        var nextTab = tabs[targetIndex];
+
+        if (nextTab && nextTab !== activeTab) {
+          setActiveTab(tabset, tabs, nextTab, true);
+          focusTab(nextTab);
+        }
+      });
+    }
 
     var initialTab = null;
     var hash = window.location.hash ? window.location.hash.substring(1) : '';
