@@ -1,0 +1,3203 @@
+{
+  "cards": [
+    {
+      "card_id": "Network/Network/pseudotitle",
+      "title": "$pseudoTitle",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/pseudotitle",
+        "tags": []
+      },
+      "explanation": "This card indicates '$pseudoTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($ignoredPseudo -join ', ')",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$pseudoTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$certEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$certEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/adapter-0-is-patched-to-1-instead-of-documented-2-so-cabling-records-are-wrong-and-technicians-may-troubleshoot-the-wrong-switch-port-f-alias-observeddisplay-expecteddisplay",
+      "title": "(\"Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port.\" -f $alias, $observedDisplay, $expectedDisplay)",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$lldpSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/adapter-0-is-patched-to-1-instead-of-documented-2-so-cabling-records-are-wrong-and-technicians-may-troubleshoot-the-wrong-switch-port-f-alias-observeddisplay-expecteddisplay",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port.\" -f $alias, $observedDisplay, $expectedDisplay)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port.\" -f $alias, $observedDisplay, $expectedDisplay)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/adapter-0-lacks-lldp-neighbor-data-so-1-cannot-be-verified-and-mispatches-may-go-unnoticed-f-alias-expectedlabel",
+      "title": "(\"Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed.\" -f $alias, $expectedLabel)",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$lldpSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/adapter-0-lacks-lldp-neighbor-data-so-1-cannot-be-verified-and-mispatches-may-go-unnoticed-f-alias-expectedlabel",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed.\" -f $alias, $expectedLabel)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed.\" -f $alias, $expectedLabel)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/adapter-0-policy-1-disagrees-with-negotiated-2-so-throughput-and-stability-will-suffer-until-they-match-f-alias-policylabel-linklabel",
+      "title": "(\"Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match.\" -f $alias, $policyLabel, $linkLabel)",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/adapter-0-policy-1-disagrees-with-negotiated-2-so-throughput-and-stability-will-suffer-until-they-match-f-alias-policylabel-linklabel",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match.\" -f $alias, $policyLabel, $linkLabel)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Adapter {0} policy {1} disagrees with negotiated {2}, so throughput and stability will suffer until they match.\" -f $alias, $policyLabel, $linkLabel)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/adapter-0-stuck-at-100-mb-half-duplex-so-users-will-hit-collisions-and-slow-lan-throughput-f-alias",
+      "title": "(\"Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput.\" -f $alias)",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/adapter-0-stuck-at-100-mb-half-duplex-so-users-will-hit-collisions-and-slow-lan-throughput-f-alias",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput.\" -f $alias)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Adapter {0} stuck at 100 Mb half duplex, so users will hit collisions and slow LAN throughput.\" -f $alias)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/autodiscover-for-0-targets-1-so-mail-setup-may-fail-for-exchange-online-f-domain-targettext",
+      "title": "(\"Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online.\" -f $domain, $targetText)",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Autodiscover DNS",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/autodiscover-for-0-targets-1-so-mail-setup-may-fail-for-exchange-online-f-domain-targettext",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online.\" -f $domain, $targetText)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Expected autodiscover.outlook.com for Exchange Online onboarding.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online.\" -f $domain, $targetText)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/autodiscover-lookup-failed-for-0-so-mail-setup-may-fail-f-domain",
+      "title": "(\"Autodiscover lookup failed for {0}, so mail setup may fail.\" -f $domain)",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Autodiscover DNS",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/autodiscover-lookup-failed-for-0-so-mail-setup-may-fail-f-domain",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Autodiscover lookup failed for {0}, so mail setup may fail.\" -f $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Autodiscover lookup failed for {0}, so mail setup may fail.\" -f $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/dhcp-analyzer-failed-0-f-analyzer-script-name",
+      "title": "(\"DHCP analyzer failed: {0}\" -f $analyzer.Script.Name)",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DHCP",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/dhcp-analyzer-failed-0-f-analyzer-script-name",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"DHCP analyzer failed: {0}\" -f $analyzer.Script.Name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$_.Exception.Message",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"DHCP analyzer failed: {0}\" -f $analyzer.Script.Name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/dns-registration-disabled-on-0-so-name-resolution-may-fail-on-domain-devices-f-alias",
+      "title": "(\"DNS registration disabled on {0}, so name resolution may fail on domain devices.\" -f $alias)",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/dns-registration-disabled-on-0-so-name-resolution-may-fail-on-domain-devices-f-alias",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"DNS registration disabled on {0}, so name resolution may fail on domain devices.\" -f $alias)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "RegisterThisConnectionsAddress = False",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"DNS registration disabled on {0}, so name resolution may fail on domain devices.\" -f $alias)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/0-record-missing-for-1-so-mail-setup-may-fail-f-additional-label-domain",
+      "title": "(\"{0} record missing for {1}, so mail setup may fail.\" -f $additional.Label, $domain)",
+      "severity": "low",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Autodiscover DNS",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/0-record-missing-for-1-so-mail-setup-may-fail-f-additional-label-domain",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"{0} record missing for {1}, so mail setup may fail.\" -f $additional.Label, $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$additional.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"{0} record missing for {1}, so mail setup may fail.\" -f $additional.Label, $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/adapters-missing-dns-servers-0-so-name-resolution-may-fail-on-domain-devices-f-missinginterfaces-join",
+      "title": "('Adapters missing DNS servers: {0}, so name resolution may fail on domain devices.' -f ($missingInterfaces -join ', ')",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/adapters-missing-dns-servers-0-so-name-resolution-may-fail-on-domain-devices-f-missinginterfaces-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Adapters missing DNS servers: {0}, so name resolution may fail on domain devices.' -f ($missingInterfaces -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Adapters missing DNS servers: {0}, so name resolution may fail on domain devices.' -f ($missingInterfaces -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/dns-lookup-failures-0-dns-resolution-is-failing-f-names-join",
+      "title": "('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Resolution",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/dns-lookup-failures-0-dns-resolution-is-failing-f-names-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/ping-to-dns-0-failed-showing-dns-resolution-is-failing-f-remoteaddress",
+      "title": "('Ping to DNS {0} failed, showing DNS resolution is failing.' -f $remoteAddress)",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Latency",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/ping-to-dns-0-failed-showing-dns-resolution-is-failing-f-remoteaddress",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Ping to DNS {0} failed, showing DNS resolution is failing.' -f $remoteAddress)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Ping to DNS {0} failed, showing DNS resolution is failing.' -f $remoteAddress)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/public-dns-servers-detected-0-risking-resolution-failures-on-domain-devices-f-unique-join",
+      "title": "('Public DNS servers detected: {0}, risking resolution failures on domain devices.' -f ($unique -join ', ')",
+      "severity": "$severity",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/public-dns-servers-detected-0-risking-resolution-failures-on-domain-devices-f-unique-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Public DNS servers detected: {0}, risking resolution failures on domain devices.' -f ($unique -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Prioritize internal DNS for domain services.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Public DNS servers detected: {0}, risking resolution failures on domain devices.' -f ($unique -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/user-proxy-enabled-0-f-internet-proxyserver",
+      "title": "('User proxy enabled: {0}' -f $internet.ProxyServer)",
+      "severity": "low",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Proxy Configuration",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/user-proxy-enabled-0-f-internet-proxyserver",
+        "tags": []
+      },
+      "explanation": "This card indicates '('User proxy enabled: {0}' -f $internet.ProxyServer)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('User proxy enabled: {0}' -f $internet.ProxyServer)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/ap-supports-wpa3-but-client-connected-as-wpa2",
+      "title": "AP supports WPA3 but client connected as WPA2",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/ap-supports-wpa3-but-client-connected-as-wpa2",
+        "tags": []
+      },
+      "explanation": "This card indicates 'AP supports WPA3 but client connected as WPA2'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$fallbackEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'AP supports WPA3 but client connected as WPA2'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/autodiscover-dns-queries-failed-so-missing-or-invalid-records-can-cause-mail-setup-failures",
+      "title": "Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.",
+      "severity": "low",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Autodiscover",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/autodiscover-dns-queries-failed-so-missing-or-invalid-records-can-cause-mail-setup-failures",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($details -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/dns-client-policy-query-failed-so-name-resolution-policy-issues-may-be-hidden-and-cause-failures",
+      "title": "DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/dns-client-policy-query-failed-so-name-resolution-policy-issues-may-be-hidden-and-cause-failures",
+        "tags": []
+      },
+      "explanation": "This card indicates 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$policy.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/dns-diagnostics-not-collected-so-latency-and-name-resolution-issues-may-be-missed",
+      "title": "DNS diagnostics not collected, so latency and name resolution issues may be missed.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Resolution",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/dns-diagnostics-not-collected-so-latency-and-name-resolution-issues-may-be-missed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'DNS diagnostics not collected, so latency and name resolution issues may be missed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'DNS diagnostics not collected, so latency and name resolution issues may be missed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$collectorMissingCheckId",
+      "title": "Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$collectorMissingCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$unparsedCheckId",
+      "title": "Firewall profile data could not be parsed, so firewall enforcement is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$unparsedCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile data could not be parsed, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$unparsedEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile data could not be parsed, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$unparsedCheckId",
+      "title": "Firewall profile data empty, so firewall enforcement is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$unparsedCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile data empty, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile data empty, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$errorCheckId",
+      "title": "Firewall profile data missing, so firewall enforcement is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$errorCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile data missing, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile data missing, so firewall enforcement is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$errorCheckId",
+      "title": "Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$errorCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$payloadError",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/gateway-mac-address-changed-so-users-could-be-routed-through-an-untrusted-device",
+      "title": "Gateway MAC address changed, so users could be routed through an untrusted device.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/gateway-mac-address-changed-so-users-could-be-routed-through-an-untrusted-device",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Gateway MAC address changed, so users could be routed through an untrusted device.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Gateway MAC address changed, so users could be routed through an untrusted device.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/gateway-resolved-to-a-suspicious-vendor-mac-so-users-may-be-redirected-through-a-malicious-host",
+      "title": "Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/gateway-resolved-to-a-suspicious-vendor-mac-so-users-may-be-redirected-through-a-malicious-host",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/global-ipv6-addresses-appeared-on-an-ipv4-only-network-so-rogue-router-advertisements-may-break-connectivity",
+      "title": "Global IPv6 addresses appeared on an IPv4-only network, so rogue router advertisements may break connectivity.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "IPv6 Routing",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/global-ipv6-addresses-appeared-on-an-ipv4-only-network-so-rogue-router-advertisements-may-break-connectivity",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Global IPv6 addresses appeared on an IPv4-only network, so rogue router advertisements may break connectivity.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Global IPv6 addresses appeared on an IPv4-only network, so rogue router advertisements may break connectivity.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/host-mac-responds-for-multiple-ips-so-neighbors-may-lose-connectivity-to-their-addresses",
+      "title": "Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/host-mac-responds-for-multiple-ips-so-neighbors-may-lose-connectivity-to-their-addresses",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/ipv6-router-mac-changed-so-clients-may-follow-rogue-router-advertisements-unless-ra-guard-blocks-them",
+      "title": "IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "IPv6 Routing",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/ipv6-router-mac-changed-so-clients-may-follow-rogue-router-advertisements-unless-ra-guard-blocks-them",
+        "tags": []
+      },
+      "explanation": "This card indicates 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/lldp-collector-missing-so-switch-port-documentation-cannot-be-verified-and-mispatches-may-go-unnoticed",
+      "title": "LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$lldpSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/lldp-collector-missing-so-switch-port-documentation-cannot-be-verified-and-mispatches-may-go-unnoticed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/lldp-neighbors-missing-so-switch-port-documentation-cannot-be-verified-and-mispatches-may-go-unnoticed",
+      "title": "LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$lldpSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/lldp-neighbors-missing-so-switch-port-documentation-cannot-be-verified-and-mispatches-may-go-unnoticed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/latency-test-reported-timeouts-showing-dns-resolution-is-failing",
+      "title": "Latency test reported timeouts, showing DNS resolution is failing.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Latency",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/latency-test-reported-timeouts-showing-dns-resolution-is-failing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Latency test reported timeouts, showing DNS resolution is failing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Latency test reported timeouts, showing DNS resolution is failing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/machine-certificate-inventory-failed-so-802-1x-certificate-health-is-unknown",
+      "title": "Machine certificate inventory failed, so 802.1X certificate health is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/machine-certificate-inventory-failed-so-802-1x-certificate-health-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Machine certificate inventory failed, so 802.1X certificate health is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$certError",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Machine certificate inventory failed, so 802.1X certificate health is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/multiple-ipv6-router-macs-detected-so-rogue-router-advertisements-may-hijack-clients-unless-ra-guard-is-enforced",
+      "title": "Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "IPv6 Routing",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/multiple-ipv6-router-macs-detected-so-rogue-router-advertisements-may-hijack-clients-unless-ra-guard-is-enforced",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/multiple-gateways-share-the-same-mac-so-traffic-may-be-hijacked-by-a-spoofing-bridge",
+      "title": "Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/multiple-gateways-share-the-same-mac-so-traffic-may-be-hijacked-by-a-spoofing-bridge",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/network-adapter-inventory-incomplete-so-link-status-is-unknown",
+      "title": "Network adapter inventory incomplete, so link status is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Network Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/network-adapter-inventory-incomplete-so-link-status-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network adapter inventory incomplete, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network adapter inventory incomplete, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/network-adapter-inventory-not-collected-so-link-status-is-unknown",
+      "title": "Network adapter inventory not collected, so link status is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Network Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/network-adapter-inventory-not-collected-so-link-status-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network adapter inventory not collected, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network adapter inventory not collected, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/network-base-diagnostics-not-collected-so-connectivity-failures-may-go-undetected",
+      "title": "Network base diagnostics not collected, so connectivity failures may go undetected.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/network-base-diagnostics-not-collected-so-connectivity-failures-may-go-undetected",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network base diagnostics not collected, so connectivity failures may go undetected.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network base diagnostics not collected, so connectivity failures may go undetected.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/no-ipv4-configuration-found-so-connectivity-will-fail-without-valid-addressing",
+      "title": "No IPv4 configuration found, so connectivity will fail without valid addressing.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "IP Configuration",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/no-ipv4-configuration-found-so-connectivity-will-fail-without-valid-addressing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No IPv4 configuration found, so connectivity will fail without valid addressing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "ipconfig /all output did not include IPv4 details.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No IPv4 configuration found, so connectivity will fail without valid addressing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/no-active-network-adapters-reported-so-the-device-has-no-path-for-network-connectivity",
+      "title": "No active network adapters reported, so the device has no path for network connectivity.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Network Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/no-active-network-adapters-reported-so-the-device-has-no-path-for-network-connectivity",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No active network adapters reported, so the device has no path for network connectivity.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No active network adapters reported, so the device has no path for network connectivity.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/no-valid-machine-certificate-is-installed-so-wired-802-1x-authentication-cannot-succeed",
+      "title": "No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/no-valid-machine-certificate-is-installed-so-wired-802-1x-authentication-cannot-succeed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/no-wired-interfaces-reported-by-netsh-so-802-1x-status-is-unknown",
+      "title": "No wired interfaces reported by netsh, so 802.1X status is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/no-wired-interfaces-reported-by-netsh-so-802-1x-status-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No wired interfaces reported by netsh, so 802.1X status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No wired interfaces reported by netsh, so 802.1X status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/not-connected-to-wi-fi-so-wireless-encryption-state-is-unknown",
+      "title": "Not connected to Wi-Fi, so wireless encryption state is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Security",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/not-connected-to-wi-fi-so-wireless-encryption-state-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Not connected to Wi-Fi, so wireless encryption state is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Not connected to Wi-Fi, so wireless encryption state is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/open-unencrypted-wi-fi-network",
+      "title": "Open (unencrypted) Wi-Fi network",
+      "severity": "critical",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/open-unencrypted-wi-fi-network",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Open (unencrypted) Wi-Fi network'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Open (unencrypted) Wi-Fi network'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/outlook-https-connectivity-failed-so-outlook-can-t-connect-to-exchange-online",
+      "title": "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online.",
+      "severity": "high",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Outlook Connectivity",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/outlook-https-connectivity-failed-so-outlook-can-t-connect-to-exchange-online",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/routing-table-missing-default-route-so-outbound-connectivity-will-fail",
+      "title": "Routing table missing default route, so outbound connectivity will fail.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Routing",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/routing-table-missing-default-route-so-outbound-connectivity-will-fail",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Routing table missing default route, so outbound connectivity will fail.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "route print output did not include 0.0.0.0/0.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Routing table missing default route, so outbound connectivity will fail.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/switch-port-inventory-missing-so-lldp-data-cannot-confirm-wiring-and-mispatches-may-linger",
+      "title": "Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$lldpSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/switch-port-inventory-missing-so-lldp-data-cannot-confirm-wiring-and-mispatches-may-linger",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/unable-to-enumerate-dns-servers-so-name-resolution-may-fail-on-domain-devices",
+      "title": "Unable to enumerate DNS servers, so name resolution may fail on domain devices.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "DNS Client",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/unable-to-enumerate-dns-servers-so-name-resolution-may-fail-on-domain-devices",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$entry.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/unable-to-enumerate-network-adapters-so-link-status-is-unknown",
+      "title": "Unable to enumerate network adapters, so link status is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Network Adapters",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/unable-to-enumerate-network-adapters-so-link-status-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to enumerate network adapters, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$adapters",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to enumerate network adapters, so link status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/unable-to-test-outlook-connectivity-leaving-potential-loss-of-access-to-exchange-online-unverified",
+      "title": "Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Outlook Connectivity",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/unable-to-test-outlook-connectivity-leaving-potential-loss-of-access-to-exchange-online-unverified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$conn.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wep-network-detected",
+      "title": "WEP network detected",
+      "severity": "critical",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wep-network-detected",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WEP network detected'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WEP network detected'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa2-using-tkip-legacy-cipher-enabled",
+      "title": "WPA2 using TKIP (legacy cipher enabled)",
+      "severity": "critical",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-using-tkip-legacy-cipher-enabled",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA2 using TKIP (legacy cipher enabled)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$tkipEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA2 using TKIP (legacy cipher enabled)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa2-enterprise-802-1x-eap",
+      "title": "WPA2-Enterprise (802.1X/EAP)",
+      "severity": "low",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-enterprise-802-1x-eap",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA2-Enterprise (802.1X/EAP)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA2-Enterprise (802.1X/EAP)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa2-personal-passphrase-strength-unknown-scoring-failed",
+      "title": "WPA2-Personal passphrase strength unknown (scoring failed)",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-personal-passphrase-strength-unknown-scoring-failed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA2-Personal passphrase strength unknown (scoring failed)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA2-Personal passphrase strength unknown (scoring failed)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa2-wpa3-transition-mixed-mode",
+      "title": "WPA2/WPA3 transition (mixed) mode",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-wpa3-transition-mixed-mode",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA2/WPA3 transition (mixed) mode'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$transitionEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA2/WPA3 transition (mixed) mode'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa3-enterprise-active",
+      "title": "WPA3-Enterprise active",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa3-enterprise-active",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA3-Enterprise active'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA3-Enterprise active'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa3-personal-active-sae",
+      "title": "WPA3-Personal active (SAE)",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa3-personal-active-sae",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WPA3-Personal active (SAE)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WPA3-Personal active (SAE)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/winhttp-proxy-configured",
+      "title": "WinHTTP proxy configured",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Proxy Configuration",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/winhttp-proxy-configured",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP proxy configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$winHttpText",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP proxy configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "$disabledCheckId",
+      "title": "Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.",
+      "severity": "critical",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$disabledCheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Firewall is disabled for one or more profiles — the endpoint is unprotected from network attacks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wired-802-1x-diagnostics-not-collected-so-port-authentication-posture-is-unknown",
+      "title": "Wired 802.1X diagnostics not collected, so port authentication posture is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wired-802-1x-diagnostics-not-collected-so-port-authentication-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wired 802.1X diagnostics not collected, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wired 802.1X diagnostics not collected, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wired-802-1x-diagnostics-returned-no-payload-so-port-authentication-posture-is-unknown",
+      "title": "Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wired-802-1x-diagnostics-returned-no-payload-so-port-authentication-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wired-802-1x-diagnostics-unavailable-so-port-authentication-posture-is-unknown",
+      "title": "Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wired-802-1x-diagnostics-unavailable-so-port-authentication-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$lanPayload.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wireless-diagnostics-not-collected-so-wi-fi-security-posture-cannot-be-evaluated",
+      "title": "Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Security",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wireless-diagnostics-not-collected-so-wi-fi-security-posture-cannot-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wireless-diagnostics-unavailable-so-wi-fi-security-posture-is-unknown",
+      "title": "Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Security",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wireless-diagnostics-unavailable-so-wi-fi-security-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$wlanPayload.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/wireless-interface-inventory-empty-so-wi-fi-security-posture-cannot-be-evaluated",
+      "title": "Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "Security",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wireless-interface-inventory-empty-so-wi-fi-security-posture-cannot-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Network/Network/netsh-failed-to-enumerate-wired-interfaces-so-802-1x-status-is-unknown",
+      "title": "netsh failed to enumerate wired interfaces, so 802.1X status is unknown.",
+      "severity": "info",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$wiredSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/netsh-failed-to-enumerate-wired-interfaces-so-802-1x-status-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$interfaceError",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

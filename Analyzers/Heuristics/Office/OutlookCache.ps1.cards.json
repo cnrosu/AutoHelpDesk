@@ -1,0 +1,70 @@
+{
+  "cards": [
+    {
+      "card_id": "Office/OutlookCache/large-outlook-cache-files-detected-so-oversized-ost-caches-can-slow-outlook-performance",
+      "title": "Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.",
+      "severity": "medium",
+      "area": "Office/OutlookCache",
+      "category": "Office",
+      "subcategory": "Outlook Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Office/OutlookCache.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Office/OutlookCache/large-outlook-cache-files-detected-so-oversized-ost-caches-can-slow-outlook-performance",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($names -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Office/OutlookCache/outlook-cache-inventory-not-collected-so-oversized-cache-files-may-be-missed",
+      "title": "Outlook cache inventory not collected, so oversized cache files may be missed.",
+      "severity": "info",
+      "area": "Office/OutlookCache",
+      "category": "Office",
+      "subcategory": "Outlook Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Office/OutlookCache.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Office/OutlookCache/outlook-cache-inventory-not-collected-so-oversized-cache-files-may-be-missed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Outlook cache inventory not collected, so oversized cache files may be missed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Outlook cache inventory not collected, so oversized cache files may be missed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

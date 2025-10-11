@@ -1,0 +1,136 @@
+{
+  "cards": [
+    {
+      "card_id": "AD/GroupPolicy/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "AD/GroupPolicy",
+      "category": "AD",
+      "subcategory": "Group Policy",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/GroupPolicy.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/GroupPolicy/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidenceBuilder.ToString",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/GroupPolicy/group-policy-errors-accessing-sysvol-netlogon-so-device-policies-aren-t-applied",
+      "title": "Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied.",
+      "severity": "high",
+      "area": "AD/GroupPolicy",
+      "category": "AD",
+      "subcategory": "Group Policy",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/GroupPolicy.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/GroupPolicy/group-policy-errors-accessing-sysvol-netlogon-so-device-policies-aren-t-applied",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/GroupPolicy/group-policy-processing-failures-detected-so-device-policies-aren-t-applied",
+      "title": "Group Policy processing failures detected, so device policies aren't applied.",
+      "severity": "medium",
+      "area": "AD/GroupPolicy",
+      "category": "AD",
+      "subcategory": "Group Policy",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/GroupPolicy.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/GroupPolicy/group-policy-processing-failures-detected-so-device-policies-aren-t-applied",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Group Policy processing failures detected, so device policies aren't applied.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Group Policy processing failures detected, so device policies aren't applied.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/GroupPolicy/unable-to-read-group-policy-event-log-so-device-policy-failures-may-be-hidden",
+      "title": "Unable to read Group Policy event log, so device policy failures may be hidden.",
+      "severity": "info",
+      "area": "AD/GroupPolicy",
+      "category": "AD",
+      "subcategory": "Group Policy",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/GroupPolicy.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/GroupPolicy/unable-to-read-group-policy-event-log-so-device-policy-failures-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to read Group Policy event log, so device policy failures may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$groupPolicyLog.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to read Group Policy event log, so device policy failures may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

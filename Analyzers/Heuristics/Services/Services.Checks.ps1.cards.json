@@ -1,0 +1,1240 @@
+{
+  "cards": [
+    {
+      "card_id": "Services/Checks/manualworkstationtitle",
+      "title": "$manualWorkstationTitle",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "BITS Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/manualworkstationtitle",
+        "tags": []
+      },
+      "explanation": "This card indicates '$manualWorkstationTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$manualWorkstationEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$manualWorkstationTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/title",
+      "title": "$title",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Workstation Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/title",
+      "title": "$title",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Print Spooler Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"Status: {0}; StartType: {1}\" -f $service.Status, $service.StartMode)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/automatic-services-not-running-indicating-outages-in-critical-services",
+      "title": "Automatic services not running, indicating outages in critical services.",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Service Inventory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/automatic-services-not-running-indicating-outages-in-critical-services",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Automatic services not running, indicating outages in critical services.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($summary -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Automatic services not running, indicating outages in critical services.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/bits-automatic-but-not-running",
+      "title": "BITS automatic but not running",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "BITS Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/bits-automatic-but-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BITS automatic but not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BITS automatic but not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/bits-disabled-background-transfers-stopped",
+      "title": "BITS disabled — background transfers stopped",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "BITS Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/bits-disabled-background-transfers-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BITS disabled — background transfers stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BITS disabled — background transfers stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/bits-manual-start-and-currently-stopped",
+      "title": "BITS manual start and currently stopped",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "BITS Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/bits-manual-start-and-currently-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BITS manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BITS manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/bits-service-missing",
+      "title": "BITS service missing",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "BITS Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/bits-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BITS service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Background transfers for Windows Update, AV, and Office will fail.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BITS service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/dns-client-dnscache-service-missing",
+      "title": "DNS Client (Dnscache) service missing",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "DNS Client Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/dns-client-dnscache-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'DNS Client (Dnscache) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; DNS resolution will fail.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'DNS Client (Dnscache) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/dns-client-service-offline-name-resolution-will-break",
+      "title": "DNS Client service offline — name resolution will break",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "DNS Client Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/dns-client-service-offline-name-resolution-will-break",
+        "tags": []
+      },
+      "explanation": "This card indicates 'DNS Client service offline — name resolution will break'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'DNS Client service offline — name resolution will break'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/network-location-awareness-service-missing",
+      "title": "Network Location Awareness service missing",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Network Location Awareness",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/network-location-awareness-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network Location Awareness service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; network profile detection will fail.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network Location Awareness service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/network-location-awareness-service-not-running",
+      "title": "Network Location Awareness service not running",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Network Location Awareness",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/network-location-awareness-service-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network Location Awareness service not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network Location Awareness service not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/network-location-awareness-set-to-manual-and-stopped",
+      "title": "Network Location Awareness set to Manual and stopped",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Network Location Awareness",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/network-location-awareness-set-to-manual-and-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Network Location Awareness set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Network Location Awareness set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/office-click-to-run-automatic-but-not-running",
+      "title": "Office Click-to-Run automatic but not running",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Office Click-to-Run",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/office-click-to-run-automatic-but-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Office Click-to-Run automatic but not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Office Click-to-Run automatic but not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/office-click-to-run-manual-disabled-on-server",
+      "title": "Office Click-to-Run manual/disabled on server",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Office Click-to-Run",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/office-click-to-run-manual-disabled-on-server",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Office Click-to-Run manual/disabled on server'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Office Click-to-Run manual/disabled on server'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/office-click-to-run-not-set-to-automatic-on-workstation",
+      "title": "Office Click-to-Run not set to automatic on workstation",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Office Click-to-Run",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/office-click-to-run-not-set-to-automatic-on-workstation",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Office Click-to-Run not set to automatic on workstation'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Office Click-to-Run not set to automatic on workstation'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/print-spooler-not-running",
+      "title": "Print Spooler not running",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Print Spooler Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/print-spooler-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Print Spooler not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Print Spooler not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/print-spooler-service-missing",
+      "title": "Print Spooler service missing",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Print Spooler Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/print-spooler-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Print Spooler service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; printing features unavailable.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Print Spooler service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/rpc-rpcss-service-missing",
+      "title": "RPC (RpcSs) service missing",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "RPC Services",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/rpc-rpcss-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'RPC (RpcSs) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; Windows cannot operate without RPC.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'RPC (RpcSs) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/rpc-rpcss-service-not-running-system-instability-expected",
+      "title": "RPC (RpcSs) service not running — system instability expected",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "RPC Services",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/rpc-rpcss-service-not-running-system-instability-expected",
+        "tags": []
+      },
+      "explanation": "This card indicates 'RPC (RpcSs) service not running — system instability expected'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'RPC (RpcSs) service not running — system instability expected'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/rpc-endpoint-mapper-not-running-rpc-clients-will-fail",
+      "title": "RPC Endpoint Mapper not running — RPC clients will fail",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "RPC Services",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/rpc-endpoint-mapper-not-running-rpc-clients-will-fail",
+        "tags": []
+      },
+      "explanation": "This card indicates 'RPC Endpoint Mapper not running — RPC clients will fail'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'RPC Endpoint Mapper not running — RPC clients will fail'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/rpc-endpoint-mapper-service-missing",
+      "title": "RPC Endpoint Mapper service missing",
+      "severity": "critical",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "RPC Services",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/rpc-endpoint-mapper-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'RPC Endpoint Mapper service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; RPC endpoint resolution unavailable.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'RPC Endpoint Mapper service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-disabled",
+      "title": "WinHTTP Auto Proxy disabled",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-disabled",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy disabled'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy disabled'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-disabled-while-a-proxy-is-configured",
+      "title": "WinHTTP Auto Proxy disabled while a proxy is configured",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-disabled-while-a-proxy-is-configured",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy disabled while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy disabled while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-manual-start-while-a-proxy-is-configured",
+      "title": "WinHTTP Auto Proxy manual start while a proxy is configured",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-manual-start-while-a-proxy-is-configured",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy manual start while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy manual start while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-service-in-unexpected-state",
+      "title": "WinHTTP Auto Proxy service in unexpected state",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-service-in-unexpected-state",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy service in unexpected state'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy service in unexpected state'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-service-missing",
+      "title": "WinHTTP Auto Proxy service missing",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-service-missing-while-a-proxy-is-configured",
+      "title": "WinHTTP Auto Proxy service missing while a proxy is configured",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-service-missing-while-a-proxy-is-configured",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy service missing while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$ProxyInfo.Evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy service missing while a proxy is configured'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/winhttp-auto-proxy-service-not-running",
+      "title": "WinHTTP Auto Proxy service not running",
+      "severity": "$severity",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "WinHTTP Auto Proxy Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/winhttp-auto-proxy-service-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'WinHTTP Auto Proxy service not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'WinHTTP Auto Proxy service not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-disabled",
+      "title": "Windows Search disabled",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-disabled",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search disabled'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$title",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search disabled'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-manual-start-and-currently-stopped",
+      "title": "Windows Search manual start and currently stopped",
+      "severity": "info",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-manual-start-and-currently-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$title",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-manual-start-and-currently-stopped",
+      "title": "Windows Search manual start and currently stopped",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-manual-start-and-currently-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$title",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search manual start and currently stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-not-running",
+      "title": "Windows Search not running",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-not-running",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$title",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search not running'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-service-missing",
+      "title": "Windows Search service missing",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; search and Outlook indexing will fail.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/windows-search-set-to-manual-and-stopped",
+      "title": "Windows Search set to Manual and stopped",
+      "severity": "medium",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Windows Search Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/windows-search-set-to-manual-and-stopped",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Search set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$title",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Search set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Services/Checks/workstation-lanmanworkstation-service-missing",
+      "title": "Workstation (LanmanWorkstation) service missing",
+      "severity": "high",
+      "area": "Services/Checks",
+      "category": "Services",
+      "subcategory": "Workstation Service",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Services/Services.Checks.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Services/Checks/workstation-lanmanworkstation-service-missing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Workstation (LanmanWorkstation) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Service entry not found; SMB client functionality unavailable.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Workstation (LanmanWorkstation) service missing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

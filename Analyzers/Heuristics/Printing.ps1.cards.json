@@ -1,0 +1,103 @@
+{
+  "cards": [
+    {
+      "card_id": "Printing.ps1/printing-artifact-not-collected-so-printing-security-and-reliability-risks-can-t-be-evaluated",
+      "title": "Printing artifact not collected, so printing security and reliability risks can't be evaluated.",
+      "severity": "info",
+      "area": "Printing.ps1",
+      "category": "Printing.ps1",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing.ps1/printing-artifact-not-collected-so-printing-security-and-reliability-risks-can-t-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Printing artifact not collected, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Printing artifact not collected, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing.ps1/printing-data-collection-warning-so-printing-security-and-reliability-risks-may-be-hidden",
+      "title": "Printing data collection warning, so printing security and reliability risks may be hidden.",
+      "severity": "info",
+      "area": "Printing.ps1",
+      "category": "Printing.ps1",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing.ps1/printing-data-collection-warning-so-printing-security-and-reliability-risks-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Printing data collection warning, so printing security and reliability risks may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Printing data collection warning, so printing security and reliability risks may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing.ps1/printing-payload-missing-so-printing-security-and-reliability-risks-can-t-be-evaluated",
+      "title": "Printing payload missing, so printing security and reliability risks can't be evaluated.",
+      "severity": "info",
+      "area": "Printing.ps1",
+      "category": "Printing.ps1",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing.ps1/printing-payload-missing-so-printing-security-and-reliability-risks-can-t-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Printing payload missing, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Printing payload missing, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

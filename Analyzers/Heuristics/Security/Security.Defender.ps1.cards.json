@@ -1,0 +1,364 @@
+{
+  "cards": [
+    {
+      "card_id": "Security/Defender/recent-threats-detected-0-f-threatnames-join",
+      "title": "('Recent threats detected: {0}' -f ($threatNames -join ', ')",
+      "severity": "high",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/recent-threats-detected-0-f-threatnames-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Recent threats detected: {0}' -f ($threatNames -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Get-MpThreat returned recent detections; confirm remediation.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Recent threats detected: {0}' -f ($threatNames -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/defender-antivirus-engine-disabled-creating-antivirus-protection-gaps",
+      "title": "Defender antivirus engine disabled, creating antivirus protection gaps.",
+      "severity": "critical",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/defender-antivirus-engine-disabled-creating-antivirus-protection-gaps",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender antivirus engine disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Get-MpComputerStatus reports AntivirusEnabled = False.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender antivirus engine disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/defender-artifact-missing-expected-structure-leaving-antivirus-protection-gaps-unverified",
+      "title": "Defender artifact missing expected structure, leaving antivirus protection gaps unverified.",
+      "severity": "info",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/defender-artifact-missing-expected-structure-leaving-antivirus-protection-gaps-unverified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender artifact missing expected structure, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender artifact missing expected structure, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/defender-artifact-not-collected-leaving-antivirus-protection-gaps-unverified",
+      "title": "Defender artifact not collected, leaving antivirus protection gaps unverified.",
+      "severity": "info",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/defender-artifact-not-collected-leaving-antivirus-protection-gaps-unverified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender artifact not collected, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender artifact not collected, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/DefenderCloudProt",
+      "title": "Defender cloud-delivered protection disabled, creating antivirus protection gaps.",
+      "severity": "$cloudseverity",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/DefenderCloudProt",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender cloud-delivered protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$prefEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender cloud-delivered protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/defender-real-time-protection-disabled-creating-antivirus-protection-gaps",
+      "title": "Defender real-time protection disabled, creating antivirus protection gaps.",
+      "severity": "high",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/defender-real-time-protection-disabled-creating-antivirus-protection-gaps",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender real-time protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Get-MpComputerStatus reports RealTimeProtectionEnabled = False.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender real-time protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/DefenderTamper",
+      "title": "Defender tamper protection disabled, creating antivirus protection gaps.",
+      "severity": "high",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/DefenderTamper",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Defender tamper protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$prefEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Defender tamper protection disabled, creating antivirus protection gaps.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/unable-to-query-defender-preferences-leaving-antivirus-protection-gaps-unverified",
+      "title": "Unable to query Defender preferences, leaving antivirus protection gaps unverified.",
+      "severity": "medium",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/unable-to-query-defender-preferences-leaving-antivirus-protection-gaps-unverified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to query Defender preferences, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$preferencesEntry.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to query Defender preferences, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Defender/unable-to-query-defender-status-leaving-antivirus-protection-gaps-unverified",
+      "title": "Unable to query Defender status, leaving antivirus protection gaps unverified.",
+      "severity": "medium",
+      "area": "Security/Defender",
+      "category": "Security",
+      "subcategory": "Microsoft Defender",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Defender.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Defender/unable-to-query-defender-status-leaving-antivirus-protection-gaps-unverified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Unable to query Defender status, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$payload.Status.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Unable to query Defender status, leaving antivirus protection gaps unverified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Defender disabled or stale",
+            "steps": [
+              "Re-enable real-time protection; update signatures."
+            ],
+            "scripts": [
+              {
+                "name": "Defender quick fix",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-MpPreference -DisableRealtimeMonitoring $false -Force\nUpdate-MpSignature\nGet-MpComputerStatus | Select AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,SignatureVersion"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

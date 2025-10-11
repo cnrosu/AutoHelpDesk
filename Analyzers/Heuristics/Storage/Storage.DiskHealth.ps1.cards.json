@@ -1,0 +1,99 @@
+{
+  "cards": [
+    {
+      "card_id": "Storage/DiskHealth/disk-health-unavailable-so-failing-disks-may-go-unnoticed",
+      "title": "Disk health unavailable, so failing disks may go unnoticed.",
+      "severity": "info",
+      "area": "Storage/DiskHealth",
+      "category": "Storage",
+      "subcategory": "Disk Health",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.DiskHealth.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/DiskHealth/disk-health-unavailable-so-failing-disks-may-go-unnoticed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Disk health unavailable, so failing disks may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($errorDetails -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Disk health unavailable, so failing disks may go unnoticed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Storage/DiskHealth/disks-reporting-degraded-health-indicating-failing-disks",
+      "title": "Disks reporting degraded health, indicating failing disks.",
+      "severity": "high",
+      "area": "Storage/DiskHealth",
+      "category": "Storage",
+      "subcategory": "Disk Health",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.DiskHealth.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/DiskHealth/disks-reporting-degraded-health-indicating-failing-disks",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Disks reporting degraded health, indicating failing disks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($details -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Disks reporting degraded health, indicating failing disks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

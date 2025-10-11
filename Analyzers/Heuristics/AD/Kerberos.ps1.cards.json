@@ -1,0 +1,70 @@
+{
+  "cards": [
+    {
+      "card_id": "AD/Kerberos/messagebuilder-tostring",
+      "title": "$messageBuilder.ToString",
+      "severity": "$severity",
+      "area": "AD/Kerberos",
+      "category": "AD",
+      "subcategory": "Kerberos",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/Kerberos.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/Kerberos/messagebuilder-tostring",
+        "tags": []
+      },
+      "explanation": "This card indicates '$messageBuilder.ToString'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$failureSummary",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$messageBuilder.ToString'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/Kerberos/title",
+      "title": "$title",
+      "severity": "medium",
+      "area": "AD/Kerberos",
+      "category": "AD",
+      "subcategory": "Kerberos",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/Kerberos.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/Kerberos/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidencePartsBuilder.ToString",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

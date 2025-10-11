@@ -1,0 +1,250 @@
+{
+  "cards": [
+    {
+      "card_id": "Security/BitLocker/bitlocker-is-off-for-system-volume-s",
+      "title": "(\"BitLocker is OFF for system volume(s)",
+      "severity": "critical",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/bitlocker-is-off-for-system-volume-s",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"BitLocker is OFF for system volume(s)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"BitLocker is OFF for system volume(s)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/BitLocker/system-volume-s",
+      "title": "(\"System volume(s)",
+      "severity": "high",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/system-volume-s",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"System volume(s)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($evidenceLines.ToArray()",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"System volume(s)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/BitLocker/bitlocker-artifact-not-collected-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+      "title": "BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.",
+      "severity": "info",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/bitlocker-artifact-not-collected-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/BitLocker/bitlocker-data-missing-expected-structure-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+      "title": "BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.",
+      "severity": "info",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/bitlocker-data-missing-expected-structure-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/BitLocker/bitlocker-query-failed-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+      "title": "BitLocker query failed, so the encryption state and data exposure risk are unknown.",
+      "severity": "medium",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/bitlocker-query-failed-so-the-encryption-state-and-data-exposure-risk-are-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker query failed, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$payload.Volumes.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker query failed, so the encryption state and data exposure risk are unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/BitLocker/no-bitlocker-recovery-password-protector-detected-risking-data-exposure-if-recovery-is-needed",
+      "title": "No BitLocker recovery password protector detected, risking data exposure if recovery is needed.",
+      "severity": "high",
+      "area": "Security/BitLocker",
+      "category": "Security",
+      "subcategory": "BitLocker",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.BitLocker.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/BitLocker/no-bitlocker-recovery-password-protector-detected-risking-data-exposure-if-recovery-is-needed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No BitLocker recovery password protector detected, risking data exposure if recovery is needed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$volumeEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No BitLocker recovery password protector detected, risking data exposure if recovery is needed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – BitLocker not enabled",
+            "steps": [
+              "Check TPM and OS drive protectors.",
+              "Enable BitLocker and add recovery key."
+            ],
+            "scripts": [
+              {
+                "name": "Enable BitLocker",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Get-Tpm\n$os=(Get-BitLockerVolume | ? VolumeType -eq 'OperatingSystem')\nEnable-BitLocker -MountPoint $os.MountPoint -TpmProtector\nAdd-BitLockerKeyProtector -MountPoint $os.MountPoint -RecoveryPasswordProtector | Out-Null"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

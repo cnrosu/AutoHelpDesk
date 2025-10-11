@@ -1,0 +1,164 @@
+{
+  "cards": [
+    {
+      "card_id": "Storage/Volumes/volume-0-approaching-capacity-risking-system-or-storage-failures-f-volumedisplay",
+      "title": "(\"Volume {0} approaching capacity, risking system or storage failures.\" -f $volumeDisplay)",
+      "severity": "medium",
+      "area": "Storage/Volumes",
+      "category": "Storage",
+      "subcategory": "Free Space",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.Volumes.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/Volumes/volume-0-approaching-capacity-risking-system-or-storage-failures-f-volumedisplay",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Volume {0} approaching capacity, risking system or storage failures.\" -f $volumeDisplay)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Volume {0} approaching capacity, risking system or storage failures.\" -f $volumeDisplay)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Storage/Volumes/volume-0-critically-low-on-space-1-gb-remaining",
+      "title": "(\"Volume {0} critically low on space ({1} GB remaining)",
+      "severity": "high",
+      "area": "Storage/Volumes",
+      "category": "Storage",
+      "subcategory": "Free Space",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.Volumes.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/Volumes/volume-0-critically-low-on-space-1-gb-remaining",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Volume {0} critically low on space ({1} GB remaining)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Volume {0} critically low on space ({1} GB remaining)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Storage/Volumes/volume-0-nearly-out-of-space-1-gb-remaining",
+      "title": "(\"Volume {0} nearly out of space ({1} GB remaining)",
+      "severity": "critical",
+      "area": "Storage/Volumes",
+      "category": "Storage",
+      "subcategory": "Free Space",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.Volumes.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/Volumes/volume-0-nearly-out-of-space-1-gb-remaining",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Volume {0} nearly out of space ({1} GB remaining)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Volume {0} nearly out of space ({1} GB remaining)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Storage/Volumes/volume-inventory-unavailable-so-storage-depletion-risks-may-be-hidden",
+      "title": "Volume inventory unavailable, so storage depletion risks may be hidden.",
+      "severity": "info",
+      "area": "Storage/Volumes",
+      "category": "Storage",
+      "subcategory": "Free Space",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Storage/Storage.Volumes.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Storage/Volumes/volume-inventory-unavailable-so-storage-depletion-risks-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Volume inventory unavailable, so storage depletion risks may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($errorDetails -join \"`n\")",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Volume inventory unavailable, so storage depletion risks may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Disk issues or low space",
+            "steps": [
+              "Back up data; clean temp; evaluate SMART."
+            ],
+            "scripts": [
+              {
+                "name": "Cleanup",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "$paths=@($env:TEMP,'C:\\Windows\\Temp')\nforeach($p in $paths){ Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue }\nDism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

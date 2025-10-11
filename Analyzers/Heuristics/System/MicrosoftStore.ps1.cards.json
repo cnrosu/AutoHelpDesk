@@ -1,0 +1,103 @@
+{
+  "cards": [
+    {
+      "card_id": "System/MicrosoftStore/microsoft-store-functional-checks-failing",
+      "title": "Microsoft Store functional checks failing",
+      "severity": "high",
+      "area": "System/MicrosoftStore",
+      "category": "System",
+      "subcategory": "Microsoft Store",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/System/MicrosoftStore.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "System/MicrosoftStore/microsoft-store-functional-checks-failing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Microsoft Store functional checks failing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(($summaryLine, '', $reasonText, '', $evidence)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Microsoft Store functional checks failing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "System/MicrosoftStore/microsoft-store-functional-checks-failing",
+      "title": "Microsoft Store functional checks failing",
+      "severity": "medium",
+      "area": "System/MicrosoftStore",
+      "category": "System",
+      "subcategory": "Microsoft Store",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/System/MicrosoftStore.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "System/MicrosoftStore/microsoft-store-functional-checks-failing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Microsoft Store functional checks failing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(($summaryLine, '', $reasonText, '', $evidence)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Microsoft Store functional checks failing'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "System/MicrosoftStore/store-not-applicable-on-this-sku",
+      "title": "Store not applicable on this SKU",
+      "severity": "info",
+      "area": "System/MicrosoftStore",
+      "category": "System",
+      "subcategory": "Microsoft Store",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/System/MicrosoftStore.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "System/MicrosoftStore/store-not-applicable-on-this-sku",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Store not applicable on this SKU'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Microsoft Store package absent and AppXSVC service missing.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Store not applicable on this SKU'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "cards": [
+    {
+      "card_id": "AD/DiscoveryConnectivity/ad-srv-records-not-resolvable-so-active-directory-is-unreachable",
+      "title": "AD SRV records not resolvable, so Active Directory is unreachable.",
+      "severity": "high",
+      "area": "AD/DiscoveryConnectivity",
+      "category": "AD",
+      "subcategory": "DNS Discovery",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/DiscoveryConnectivity/ad-srv-records-not-resolvable-so-active-directory-is-unreachable",
+        "tags": []
+      },
+      "explanation": "This card indicates 'AD SRV records not resolvable, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'AD SRV records not resolvable, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/DiscoveryConnectivity/cannot-reach-any-dc-on-required-ports-so-active-directory-is-unreachable",
+      "title": "Cannot reach any DC on required ports, so Active Directory is unreachable.",
+      "severity": "high",
+      "area": "AD/DiscoveryConnectivity",
+      "category": "AD",
+      "subcategory": "Connectivity",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/DiscoveryConnectivity/cannot-reach-any-dc-on-required-ports-so-active-directory-is-unreachable",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Cannot reach any DC on required ports, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(($portMap.Keys | Sort-Object)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Cannot reach any DC on required ports, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/DiscoveryConnectivity/domain-shares-unreachable-dfs-dns-auth-so-sysvol-netlogon-can-t-deliver-gpos",
+      "title": "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs.",
+      "severity": "medium",
+      "area": "AD/DiscoveryConnectivity",
+      "category": "AD",
+      "subcategory": "SYSVOL",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/DiscoveryConnectivity/domain-shares-unreachable-dfs-dns-auth-so-sysvol-netlogon-can-t-deliver-gpos",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(($sharesFailingHosts | Sort-Object -Unique)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "AD/DiscoveryConnectivity/no-dc-discovered-so-active-directory-is-unreachable",
+      "title": "No DC discovered, so Active Directory is unreachable.",
+      "severity": "high",
+      "area": "AD/DiscoveryConnectivity",
+      "category": "AD",
+      "subcategory": "Discovery",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "AD/DiscoveryConnectivity/no-dc-discovered-so-active-directory-is-unreachable",
+        "tags": []
+      },
+      "explanation": "This card indicates 'No DC discovered, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidenceText",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'No DC discovered, so Active Directory is unreachable.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

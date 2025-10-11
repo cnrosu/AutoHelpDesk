@@ -1,0 +1,589 @@
+{
+  "cards": [
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Battery",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Battery",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Device Manager",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(Get-DriverEvidence -Entry $entry)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "$severity",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Device Manager",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "medium",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Device Manager",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(Get-PnpDeviceEvidence -Entry $entry)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Device Manager",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(Get-PnpDeviceEvidence -Entry $entry)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Bluetooth",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/title",
+      "title": "$title",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Bluetooth",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/title",
+        "tags": []
+      },
+      "explanation": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/battery-health-query-reported-an-error-so-health-data-may-be-incomplete",
+      "title": "Battery health query reported an error, so health data may be incomplete.",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Battery",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/battery-health-query-reported-an-error-so-health-data-may-be-incomplete",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Battery health query reported an error, so health data may be incomplete.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"{0}: {1}\" -f $source, $errorText)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Battery health query reported an error, so health data may be incomplete.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/bluetooth-adapter-detected-but-reports-errors-so-wireless-accessories-cannot-pair",
+      "title": "Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.",
+      "severity": "high",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Bluetooth",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/bluetooth-adapter-detected-but-reports-errors-so-wireless-accessories-cannot-pair",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/bluetooth-adapter-detected-but-support-service-is-not-running-so-wireless-accessories-cannot-pair",
+      "title": "Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.",
+      "severity": "high",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Bluetooth",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/bluetooth-adapter-detected-but-support-service-is-not-running-so-wireless-accessories-cannot-pair",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/bluetooth-adapter-not-detected-so-wireless-accessories-cannot-pair",
+      "title": "Bluetooth adapter not detected, so wireless accessories cannot pair.",
+      "severity": "warning",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Bluetooth",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/bluetooth-adapter-not-detected-so-wireless-accessories-cannot-pair",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Bluetooth adapter not detected, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Bluetooth adapter not detected, so wireless accessories cannot pair.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/driver-inventory-artifact-missing-so-device-manager-issues-can-t-be-evaluated",
+      "title": "Driver inventory artifact missing, so Device Manager issues can't be evaluated.",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/driver-inventory-artifact-missing-so-device-manager-issues-can-t-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Driver inventory artifact missing, so Device Manager issues can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Driver inventory artifact missing, so Device Manager issues can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/driver-inventory-command-failed-so-device-manager-issues-may-be-hidden",
+      "title": "Driver inventory command failed, so Device Manager issues may be hidden.",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/driver-inventory-command-failed-so-device-manager-issues-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Driver inventory command failed, so Device Manager issues may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"{0}: {1}\" -f $source, $evidence)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Driver inventory command failed, so Device Manager issues may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/driver-inventory-payload-missing-so-device-manager-issues-can-t-be-evaluated",
+      "title": "Driver inventory payload missing, so Device Manager issues can't be evaluated.",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/driver-inventory-payload-missing-so-device-manager-issues-can-t-be-evaluated",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Driver inventory payload missing, so Device Manager issues can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Driver inventory payload missing, so Device Manager issues can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Hardware/InvokeHardware/problem-device-inventory-command-failed-so-device-manager-issues-may-be-hidden",
+      "title": "Problem device inventory command failed, so Device Manager issues may be hidden.",
+      "severity": "info",
+      "area": "Hardware/InvokeHardware",
+      "category": "Hardware",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Hardware/InvokeHardware.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Hardware/InvokeHardware/problem-device-inventory-command-failed-so-device-manager-issues-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Problem device inventory command failed, so Device Manager issues may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"{0}: {1}\" -f $source, $evidence)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Problem device inventory command failed, so Device Manager issues may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

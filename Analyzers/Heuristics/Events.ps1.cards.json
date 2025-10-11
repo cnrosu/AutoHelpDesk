@@ -1,0 +1,169 @@
+{
+  "cards": [
+    {
+      "card_id": "Events.ps1/many-warnings-in-0-log-indicating-noisy-or-unhealthy-logs-f-logname",
+      "title": "(\"Many warnings in {0} log, indicating noisy or unhealthy logs.\" -f $logName)",
+      "severity": "low",
+      "area": "Events.ps1",
+      "category": "Events.ps1",
+      "subcategory": "$logSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Events.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Events.ps1/many-warnings-in-0-log-indicating-noisy-or-unhealthy-logs-f-logname",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Many warnings in {0} log, indicating noisy or unhealthy logs.\" -f $logName)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Many warnings in {0} log, indicating noisy or unhealthy logs.\" -f $logName)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Events.ps1/0-event-log-unable-to-read-0-event-log-so-noisy-or-unhealthy-logs-may-be-hidden-f-logname",
+      "title": "(\"{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden.\" -f $logName)",
+      "severity": "warning",
+      "area": "Events.ps1",
+      "category": "Events.ps1",
+      "subcategory": "$logSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Events.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Events.ps1/0-event-log-unable-to-read-0-event-log-so-noisy-or-unhealthy-logs-may-be-hidden-f-logname",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden.\" -f $logName)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$errorEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden.\" -f $logName)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Events.ps1/0-log-shows-many-errors-1-in-recent-sample",
+      "title": "(\"{0} log shows many errors ({1} in recent sample)",
+      "severity": "medium",
+      "area": "Events.ps1",
+      "category": "Events.ps1",
+      "subcategory": "$logSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Events.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Events.ps1/0-log-shows-many-errors-1-in-recent-sample",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"{0} log shows many errors ({1} in recent sample)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"Errors recorded: {0}\" -f $errorCount)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"{0} log shows many errors ({1} in recent sample)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Events.ps1/event-log-artifact-missing-so-noisy-or-unhealthy-logs-may-be-hidden",
+      "title": "Event log artifact missing, so noisy or unhealthy logs may be hidden.",
+      "severity": "warning",
+      "area": "Events.ps1",
+      "category": "Events.ps1",
+      "subcategory": "Collection",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Events.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Events.ps1/event-log-artifact-missing-so-noisy-or-unhealthy-logs-may-be-hidden",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Event log artifact missing, so noisy or unhealthy logs may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Event log artifact missing, so noisy or unhealthy logs may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Events.ps1/group-policy-operational-log-errors-detected-indicating-noisy-or-unhealthy-logs",
+      "title": "Group Policy Operational log errors detected, indicating noisy or unhealthy logs.",
+      "severity": "medium",
+      "area": "Events.ps1",
+      "category": "Events.ps1",
+      "subcategory": "$logSubcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Events.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Events.ps1/group-policy-operational-log-errors-detected-indicating-noisy-or-unhealthy-logs",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "(\"Errors: {0}\" -f $errorCount)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

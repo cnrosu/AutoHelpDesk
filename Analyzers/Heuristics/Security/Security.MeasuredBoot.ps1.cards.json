@@ -1,0 +1,443 @@
+{
+  "cards": [
+    {
+      "card_id": "Security/MeasuredBoot/bitlocker-pcr-binding-data-unavailable-so-boot-integrity-attestation-cannot-be-confirmed",
+      "title": "BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/bitlocker-pcr-binding-data-unavailable-so-boot-integrity-attestation-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/bitlocker-pcr-binding-data-unavailable-so-boot-integrity-attestation-cannot-be-confirmed",
+      "title": "BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/bitlocker-pcr-binding-data-unavailable-so-boot-integrity-attestation-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/bitlocker-pcr-binding-query-failed-so-boot-integrity-attestation-cannot-be-confirmed",
+      "title": "BitLocker PCR binding query failed, so boot integrity attestation cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/bitlocker-pcr-binding-query-failed-so-boot-integrity-attestation-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'BitLocker PCR binding query failed, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$volumeData.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'BitLocker PCR binding query failed, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/measured-boot-artifact-missing-expected-structure-so-boot-integrity-attestation-cannot-be-confirmed",
+      "title": "Measured boot artifact missing expected structure, so boot integrity attestation cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/measured-boot-artifact-missing-expected-structure-so-boot-integrity-attestation-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Measured boot artifact missing expected structure, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Measured boot artifact missing expected structure, so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/measured-boot-artifact-not-collected-mdm-required-so-boot-integrity-attestation-cannot-be-confirmed",
+      "title": "Measured boot artifact not collected (MDM required), so boot integrity attestation cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/measured-boot-artifact-not-collected-mdm-required-so-boot-integrity-attestation-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Measured boot artifact not collected (MDM required), so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Measured boot artifact not collected (MDM required), so boot integrity attestation cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/measured-boot-attestation-events-missing-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+      "title": "Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/measured-boot-attestation-events-missing-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$noEventEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/measured-boot-attestation-events-missing-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+      "title": "Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/measured-boot-attestation-events-missing-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/measured-boot-attestation-query-failed-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+      "title": "Measured boot attestation query failed (MDM required), so remote health attestations cannot be confirmed.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/measured-boot-attestation-query-failed-mdm-required-so-remote-health-attestations-cannot-be-confirmed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Measured boot attestation query failed (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$attestation.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Measured boot attestation query failed (MDM required), so remote health attestations cannot be confirmed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+      "title": "Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$secureBoot.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Secure Boot off",
+            "steps": [
+              "Check UEFI and Secure Boot support; plan migration."
+            ],
+            "scripts": [
+              {
+                "name": "Check state",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "Confirm-SecureBootUEFI\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -ErrorAction SilentlyContinue).UEFISecureBootEnabled"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+      "title": "Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Secure Boot off",
+            "steps": [
+              "Check UEFI and Secure Boot support; plan migration."
+            ],
+            "scripts": [
+              {
+                "name": "Check state",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "Confirm-SecureBootUEFI\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -ErrorAction SilentlyContinue).UEFISecureBootEnabled"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+      "title": "Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.",
+      "severity": "info",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/secure-boot-confirmation-unavailable-so-firmware-integrity-checks-cannot-be-verified",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Secure Boot off",
+            "steps": [
+              "Check UEFI and Secure Boot support; plan migration."
+            ],
+            "scripts": [
+              {
+                "name": "Check state",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "Confirm-SecureBootUEFI\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -ErrorAction SilentlyContinue).UEFISecureBootEnabled"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/MeasuredBoot/secure-boot-reported-disabled-so-firmware-integrity-checks-are-bypassed",
+      "title": "Secure Boot reported disabled, so firmware integrity checks are bypassed.",
+      "severity": "high",
+      "area": "Security/MeasuredBoot",
+      "category": "Security",
+      "subcategory": "Measured Boot",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.MeasuredBoot.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/MeasuredBoot/secure-boot-reported-disabled-so-firmware-integrity-checks-are-bypassed",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Secure Boot reported disabled, so firmware integrity checks are bypassed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Confirm-SecureBootUEFI returned False.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Secure Boot reported disabled, so firmware integrity checks are bypassed.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          },
+          {
+            "title": "Potential Issue – Secure Boot off",
+            "steps": [
+              "Check UEFI and Secure Boot support; plan migration."
+            ],
+            "scripts": [
+              {
+                "name": "Check state",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "Confirm-SecureBootUEFI\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -ErrorAction SilentlyContinue).UEFISecureBootEnabled"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "cards": [
+    {
+      "card_id": "Office/AutodiscoverDns/autodiscover-for-0-points-to-1-so-missing-or-invalid-autodiscover-records-cause-mail-setup-failures-f-domain-targettext",
+      "title": "(\"Autodiscover for {0} points to {1}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain, $targetText)",
+      "severity": "medium",
+      "area": "Office/AutodiscoverDns",
+      "category": "Office",
+      "subcategory": "Autodiscover DNS",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Office/AutodiscoverDns.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Office/AutodiscoverDns/autodiscover-for-0-points-to-1-so-missing-or-invalid-autodiscover-records-cause-mail-setup-failures-f-domain-targettext",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Autodiscover for {0} points to {1}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain, $targetText)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "Expected autodiscover.outlook.com for Exchange Online onboarding.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Autodiscover for {0} points to {1}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain, $targetText)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Office/AutodiscoverDns/cannot-locate-exchange-services-for-0-so-missing-or-invalid-autodiscover-records-cause-mail-setup-failures-f-domain",
+      "title": "(\"Cannot locate Exchange Services for {0}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain)",
+      "severity": "high",
+      "area": "Office/AutodiscoverDns",
+      "category": "Office",
+      "subcategory": "Autodiscover DNS",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Office/AutodiscoverDns.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Office/AutodiscoverDns/cannot-locate-exchange-services-for-0-so-missing-or-invalid-autodiscover-records-cause-mail-setup-failures-f-domain",
+        "tags": []
+      },
+      "explanation": "This card indicates '(\"Cannot locate Exchange Services for {0}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '(\"Cannot locate Exchange Services for {0}, so missing or invalid Autodiscover records cause mail setup failures.\" -f $domain)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – DNS misconfiguration",
+            "steps": [
+              "Verify DNS client servers.",
+              "Resolve critical SRV/CNAME records."
+            ],
+            "scripts": [
+              {
+                "name": "DNS checks",
+                "language": "powershell",
+                "elevation_required": false,
+                "code": "$d=(Get-CimInstance Win32_ComputerSystem).Domain\nGet-DnsClientServerAddress -AddressFamily IPv4\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$d -ErrorAction SilentlyContinue"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

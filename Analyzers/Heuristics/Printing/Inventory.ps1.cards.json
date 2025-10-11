@@ -1,0 +1,144 @@
+{
+  "cards": [
+    {
+      "card_id": "Printing/Inventory/printer-offline-0-exposing-printing-security-and-reliability-risks-f-name",
+      "title": "('Printer offline: {0}, exposing printing security and reliability risks.' -f $name)",
+      "severity": "medium",
+      "area": "Printing/Inventory",
+      "category": "Printing",
+      "subcategory": "Printers",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing/Inventory.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing/Inventory/printer-offline-0-exposing-printing-security-and-reliability-risks-f-name",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Printer offline: {0}, exposing printing security and reliability risks.' -f $name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Printer offline: {0}, exposing printing security and reliability risks.' -f $name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing/Inventory/printers-using-wsd-ports-0-exposing-printing-security-and-reliability-risks-f-wsdprinterslist-join",
+      "title": "('Printers using WSD ports: {0}, exposing printing security and reliability risks.' -f ($wsdPrintersList -join ', ')",
+      "severity": "low",
+      "area": "Printing/Inventory",
+      "category": "Printing",
+      "subcategory": "Printers",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing/Inventory.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing/Inventory/printers-using-wsd-ports-0-exposing-printing-security-and-reliability-risks-f-wsdprinterslist-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Printers using WSD ports: {0}, exposing printing security and reliability risks.' -f ($wsdPrintersList -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "WSD ports are less reliable for enterprise printing; prefer Standard TCP/IP.",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Printers using WSD ports: {0}, exposing printing security and reliability risks.' -f ($wsdPrintersList -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing/Inventory/stale-print-job-detected-on-0-exposing-printing-security-and-reliability-risks-f-name",
+      "title": "('Stale print job detected on {0}, exposing printing security and reliability risks.' -f $name)",
+      "severity": "$severity",
+      "area": "Printing/Inventory",
+      "category": "Printing",
+      "subcategory": "Queues",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing/Inventory.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing/Inventory/stale-print-job-detected-on-0-exposing-printing-security-and-reliability-risks-f-name",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Stale print job detected on {0}, exposing printing security and reliability risks.' -f $name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "((\"{0} age {1} minutes\" -f $jobName, $ageRounded)",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Stale print job detected on {0}, exposing printing security and reliability risks.' -f $name)'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing/Inventory/default-printer-offline-exposing-printing-security-and-reliability-risks",
+      "title": "Default printer offline, exposing printing security and reliability risks.",
+      "severity": "high",
+      "area": "Printing/Inventory",
+      "category": "Printing",
+      "subcategory": "Printers",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing/Inventory.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing/Inventory/default-printer-offline-exposing-printing-security-and-reliability-risks",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Default printer offline, exposing printing security and reliability risks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$name",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Default printer offline, exposing printing security and reliability risks.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    }
+  ]
+}

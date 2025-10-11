@@ -1,0 +1,373 @@
+{
+  "cards": [
+    {
+      "card_id": "$policy.CheckId",
+      "title": "$policy.Title",
+      "severity": "$policy.severity",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "$policy.CheckId",
+        "tags": []
+      },
+      "explanation": "This card indicates '$policy.Title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$policy.Title'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/firewall-profiles-disabled-0-leaving-the-system-unprotected-f-disabledprofiles-join",
+      "title": "('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')",
+      "severity": "high",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/firewall-profiles-disabled-0-leaving-the-system-unprotected-f-disabledprofiles-join",
+        "tags": []
+      },
+      "explanation": "This card indicates '('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/firewall-profile-query-failed-so-the-network-defense-posture-is-unknown",
+      "title": "Firewall profile query failed, so the network defense posture is unknown.",
+      "severity": "medium",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/firewall-profile-query-failed-so-the-network-defense-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall profile query failed, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$firewallPayload.Profiles.Error",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall profile query failed, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/MissingRules",
+      "title": "Firewall rule inventory missing, so port exposure checks could not run.",
+      "severity": "info",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/MissingRules",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall rule inventory missing, so port exposure checks could not run.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall rule inventory missing, so port exposure checks could not run.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/RdpPublicProfile",
+      "title": "Firewall rule query failed, so Remote Desktop exposure cannot be verified.",
+      "severity": "medium",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/RdpPublicProfile",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Firewall rule query failed, so Remote Desktop exposure cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$errorEvidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Firewall rule query failed, so Remote Desktop exposure cannot be verified.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/RdpPublicProfile",
+      "title": "Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.",
+      "severity": "high",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/RdpPublicProfile",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/RuleErrors",
+      "title": "Some firewall rules could not be parsed, so port exposure coverage may be incomplete.",
+      "severity": "info",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/RuleErrors",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "($ruleErrors.ToArray()",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/windows-firewall-not-captured-so-the-network-defense-posture-is-unknown",
+      "title": "Windows Firewall not captured, so the network defense posture is unknown.",
+      "severity": "high",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/windows-firewall-not-captured-so-the-network-defense-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Firewall not captured, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Firewall not captured, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Security/Firewall/windows-firewall-not-captured-so-the-network-defense-posture-is-unknown",
+      "title": "Windows Firewall not captured, so the network defense posture is unknown.",
+      "severity": "high",
+      "area": "Security/Firewall",
+      "category": "Security",
+      "subcategory": "Windows Firewall",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Security/Security.Firewall.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Security/Firewall/windows-firewall-not-captured-so-the-network-defense-posture-is-unknown",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Windows Firewall not captured, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Windows Firewall not captured, so the network defense posture is unknown.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Firewall/network ACLs blocking ports",
+            "steps": [
+              "Identify failing ports from evidence.",
+              "Enable profiles and allow required ports."
+            ],
+            "scripts": [
+              {
+                "name": "Enable profiles & test",
+                "language": "powershell",
+                "elevation_required": true,
+                "code": "Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True\n$ports=@(88,135,389,445,53)\nforeach($p in $ports){ Test-NetConnection -ComputerName localhost -Port $p | Select RemotePort,TcpTestSucceeded }"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
