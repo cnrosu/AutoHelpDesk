@@ -35,13 +35,6 @@ function Add-AdKerberosFindings {
     if ($failureCount -gt 0) {
         $severity = if ($failureCount -ge 15) { 'high' } else { 'medium' }
         if ($NoDcReachable -and $severity -eq 'high') { $severity = 'medium' }
-        $messageBuilder = [System.Text.StringBuilder]::new()
-        $null = $messageBuilder.Append(("Kerberos authentication failures detected ({0}), breaking Active Directory authentication" -f $failureCount))
-        if ($TimeSkewHigh -and ($failureEvents | Where-Object { $_.Message -match 'KRB_AP_ERR_SKEW' })) {
-            $null = $messageBuilder.Append(' related to time skew')
-        } elseif ($NoDcReachable) {
-            $null = $messageBuilder.Append('; DC unreachable')
-        }
         $failureGroups = $failureEvents | Group-Object -Property Id
         $failureSummaryParts = [System.Collections.Generic.List[string]]::new()
         foreach ($group in $failureGroups) {
@@ -49,7 +42,17 @@ function Add-AdKerberosFindings {
         }
 
         $failureSummary = ($failureSummaryParts -join ', ')
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $messageBuilder.ToString() -Evidence $failureSummary -Subcategory 'Kerberos'
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ("Kerberos failures detected: {0}" -f $failureSummary) -Evidence $failureSummary -Subcategory 'Kerberos' -Data @{
+            Area = 'AD/Kerberos'
+            Kind = 'KerberosFailures'
+            Kerberos = @{
+                NoDcReachable = $NoDcReachable
+                TimeSkewHigh  = $TimeSkewHigh
+                FailureCount  = $failureCount
+                FailureEvents = $failureEvents
+                Summary       = $failureSummary
+            }
+        }
     }
 
     [pscustomobject]@{

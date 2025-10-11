@@ -16,6 +16,8 @@ function Add-AdTimeFindings {
     $peerEntries = @()
     $sourceRaw = $null
 
+    $timeSkewEvidence = $null
+
     if ($TimeInfo) {
         $parsed = $TimeInfo.Parsed
         $offset = $null
@@ -29,10 +31,10 @@ function Add-AdTimeFindings {
 
         if ($offset -ne $null -and [math]::Abs([double]$offset) -gt 300) {
             $timeSkewHigh = $true
-            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Kerberos time skew, breaking Active Directory authentication.' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
+            $timeSkewEvidence = "Offset {0} seconds" -f [math]::Round([double]$offset, 2)
         } elseif ($synchronized -eq $false -or ($TimeInfo.Status -and $TimeInfo.Status.Succeeded -ne $true)) {
             $timeSkewHigh = $true
-            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Kerberos time skew, breaking Active Directory authentication.' -Evidence 'Time service not synchronized.' -Subcategory 'Time Synchronization'
+            $timeSkewEvidence = 'Time service not synchronized.'
         } elseif ($offset -ne $null -and [math]::Abs([double]$offset) -le 300) {
             Add-CategoryNormal -CategoryResult $Result -Title 'GOOD Time (skew ≤5m)' -Evidence ("Offset {0} seconds" -f [math]::Round([double]$offset, 2)) -Subcategory 'Time Synchronization'
         }
@@ -114,6 +116,29 @@ function Add-AdTimeFindings {
             }
             if (-not $evidencePieces) { $evidencePieces += 'Manual time source detected.' }
             Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Domain time misconfigured (manual NTP), so Active Directory cannot control system time.' -Evidence ($evidencePieces -join '; ') -Subcategory 'Time Synchronization'
+        }
+    }
+
+    if ($timeSkewHigh -and $timeSkewEvidence) {
+        $evidence = $timeSkewEvidence
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Kerberos/time skew detected (authentication may fail)' -Evidence $evidence -Subcategory 'Time Service' -Data @{
+            Area = 'AD/Time'
+            Kind = 'TimeSkew'
+            Time = @{
+                TimeSkewHigh = $timeSkewHigh
+                ClientType   = $clientType
+                SourceName   = $sourceName
+                Peers        = $peerEntries
+                ManualPeers  = $manualPeers
+            }
+        
+            Discovery = @{
+                CandidateHosts     = $CandidateHosts
+                CandidateAddresses = $CandidateAddresses
+                DomainName         = $DomainName
+                DomainJoined       = $DomainJoined
+                DomainRoleInt      = $DomainRoleInt
+            }
         }
     }
 
