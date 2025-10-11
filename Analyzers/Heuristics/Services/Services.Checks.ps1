@@ -322,7 +322,8 @@ function Invoke-ServiceCheckAutomaticInventory {
     }
 
     if ($stoppedAuto.Count -gt 0) {
-        $topStoppedAuto = $stoppedAuto | Select-Object -First 5
+        $failedServices = $stoppedAuto
+        $topStoppedAuto = $failedServices | Select-Object -First 5
         $summary = [System.Collections.Generic.List[string]]::new()
         foreach ($service in $topStoppedAuto) {
             $serviceState = if ($service.State) { $service.State } elseif ($service.Status) { $service.Status } else { 'Unknown' }
@@ -330,7 +331,42 @@ function Invoke-ServiceCheckAutomaticInventory {
             $null = $summary.Add(("{0} ({1}; StartType={2})" -f $service.DisplayName, $serviceState, $startMode))
         }
 
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory'
+        $serviceDataProjection = $failedServices | Select-Object `
+            @{ Name = 'Name'; Expression = {
+                    if ($_.PSObject.Properties['Name']) { $_.Name }
+                    elseif ($_.PSObject.Properties['ServiceName']) { $_.ServiceName }
+                    else { $null }
+                } },
+            @{ Name = 'DisplayName'; Expression = {
+                    if ($_.PSObject.Properties['DisplayName']) { $_.DisplayName }
+                    else { $null }
+                } },
+            @{ Name = 'Status'; Expression = {
+                    if ($_.PSObject.Properties['Status']) { $_.Status }
+                    elseif ($_.PSObject.Properties['State']) { $_.State }
+                    else { $null }
+                } },
+            @{ Name = 'StartType'; Expression = {
+                    if ($_.PSObject.Properties['StartType']) { $_.StartType }
+                    elseif ($_.PSObject.Properties['StartMode']) { $_.StartMode }
+                    else { $null }
+                } },
+            @{ Name = 'StartName'; Expression = {
+                    if ($_.PSObject.Properties['StartName']) { $_.StartName }
+                    elseif ($_.PSObject.Properties['LogOnAs']) { $_.LogOnAs }
+                    else { $null }
+                } },
+            @{ Name = 'LastExitCode'; Expression = {
+                    if ($_.PSObject.Properties['LastExitCode']) { $_.LastExitCode }
+                    elseif ($_.PSObject.Properties['ExitCode']) { $_.ExitCode }
+                    else { $null }
+                } }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory' -Data @{
+            Area = 'Services'
+            Kind = 'ServiceHealth'
+            Services = $serviceDataProjection
+        }
     } else {
         Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running' -Subcategory 'Service Inventory'
     }
