@@ -246,6 +246,146 @@ function New-CodeBlockHtml {
 "@
 }
 
+# --- Load troubleshooting metadata and resolve templates ---
+
+$script:TshootIndex = $null
+
+function Initialize-TroubleshootingIndex {
+    param([string]$JsonPath = "$PSScriptRoot\..\dist\troubleshooting\index.json")
+    if ($script:TshootIndex -ne $null) { return }
+    if (Test-Path $JsonPath) {
+        try {
+            $script:TshootIndex = @{}
+            $cards = Get-Content -Path $JsonPath -Raw | ConvertFrom-Json
+            foreach ($c in $cards) {
+                if ($c.card_id) { $script:TshootIndex[$c.card_id] = $c }
+                if ($c.meta -and $c.meta.check_id -and -not $script:TshootIndex.ContainsKey($c.meta.check_id)) {
+                    $script:TshootIndex[$c.meta.check_id] = $c
+                }
+                $k2 = "{0}|{1}" -f ($c.area ?? ''), ($c.title ?? '')
+                if (-not $script:TshootIndex.ContainsKey($k2)) { $script:TshootIndex[$k2] = $c }
+            }
+        } catch {
+            Write-Warning "Failed to parse troubleshooting index: $($_.Exception.Message)"
+            $script:TshootIndex = @{}
+        }
+    } else {
+        Write-Verbose "Troubleshooting index not found at $JsonPath"
+        $script:TshootIndex = @{}
+    }
+}
+
+function Get-TroubleshootingForCard {
+    param([string]$CheckId, [string]$Area, [string]$Title)
+    Initialize-TroubleshootingIndex
+    if ($CheckId -and $script:TshootIndex.ContainsKey($CheckId)) { return $script:TshootIndex[$CheckId] }
+    $k2 = "{0}|{1}" -f ($Area ?? ''), ($Title ?? '')
+    if ($script:TshootIndex.ContainsKey($k2)) { return $script:TshootIndex[$k2] }
+    return $null
+}
+
+function Resolve-Template {
+  param([string]$Template, [hashtable]$Data)
+  if ([string]::IsNullOrWhiteSpace($Template)) { return "" }
+  $pattern = '\{\{([A-Za-z0-9_]+)(?::([A-Za-z0-9_]+))?(?::([A-Za-z0-9_\-\.]+))?\}\}'
+  return ([regex]::Replace($Template, $pattern, {
+    param($m)
+    $name = $m.Groups[1].Value
+    $fmt  = $m.Groups[2].Value
+    $arg  = $m.Groups[3].Value
+
+    $val = $null
+    if ($Data -and $Data.ContainsKey($name)) { $val = $Data[$name] }
+    if ($null -eq $val) { return "" }
+
+    switch ($fmt) {
+      'percent' {
+        $num = [double]$val; if ($num -le 1) { $num *= 100 }
+        $d = if ($arg) { [int]$arg } else { 1 }
+        return ('{0:N' + $d + '}' -f $num) + '%'
+      }
+      'bytes' {
+        $n = [double]$val; $units = 'B','KB','MB','GB','TB','PB'; $i=0
+        while ($n -ge 1024 -and $i -lt $units.Length-1) { $n/=1024; $i++ }
+        return ('{0:N1} {1}' -f $n, $units[$i])
+      }
+      'number' { $d = if ($arg) { [int]$arg } else { 0 }; return ('{0:N' + $d + '}' -f ([double]$val)) }
+      'quote'  { return '"' + ($val.ToString().Replace('"','\"')) + '"' }
+      'lower'  { return $val.ToString().ToLowerInvariant() }
+      'upper'  { return $val.ToString().ToUpperInvariant() }
+      'trim'   { return $val.ToString().Trim() }
+      default  { return $val.ToString() }
+    }
+  }))
+}
+
+function Resolve-TemplateSafe {
+  param([string]$Template, [hashtable]$Data, [string]$Fallback)
+  try {
+    $r = Resolve-Template -Template $Template -Data $Data
+    if ([string]::IsNullOrWhiteSpace($r)) { return $Fallback }
+    return $r
+  } catch { return $Fallback }
+}
+
+function New-ScenarioHtml {
+    param([pscustomobject]$Scenario)
+    $title = ConvertTo-HtmlSafe $Scenario.title
+    $stepsHtml = ""
+    if ($Scenario.steps) {
+        $stepsHtml = "<ol>" + ($Scenario.steps | ForEach-Object { "<li>{0}</li>" -f (ConvertTo-HtmlSafe $_) }) -join "" + "</ol>"
+    }
+    $scriptsHtml = ""
+    if ($Scenario.scripts) {
+        $scriptsHtml = ($Scenario.scripts | ForEach-Object {
+            $lang = $_.language; if (-not $lang) { $lang = 'powershell' }
+            $cap  = $_.name
+            New-CodeBlockHtml -Language $lang -Code $_.code -Caption $cap
+        }) -join "`n"
+    }
+    $validationHtml = ""
+    if ($Scenario.validation) {
+        $validationHtml = "<div class='scenario-validation'><div class='label'>Validate:</div><ul>" +
+           ($Scenario.validation | ForEach-Object { "<li>{0}</li>" -f (ConvertTo-HtmlSafe $_) }) -join "" + "</ul></div>"
+    }
+    $rollbackHtml = ""
+    if ($Scenario.roll_back) {
+        $rollbackHtml = "<div class='scenario-rollback'><div class='label'>Rollback:</div><ul>" +
+           ($Scenario.roll_back | ForEach-Object { "<li>{0}</li>" -f (ConvertTo-HtmlSafe $_) }) -join "" + "</ul></div>"
+    }
+@"
+<div class='ts-scenario'>
+  <h5>$title</h5>
+  $stepsHtml
+  $scriptsHtml
+  $validationHtml
+  $rollbackHtml
+</div>
+"@
+}
+
+function New-TroubleshootingHtml {
+    param([pscustomobject]$Card)
+    if (-not $Card) { return "" }
+    $ov = ConvertTo-HtmlSafe $Card.troubleshooting.overview
+    $quickFixHtml = ""
+    if ($Card.troubleshooting.quick_fix) {
+        $quickFixHtml = "<div class='ts-quickfix'><span class='pill'>Quick fix</span> {0}</div>" -f (ConvertTo-HtmlSafe $Card.troubleshooting.quick_fix)
+    }
+    $scenariosHtml = ""
+    if ($Card.troubleshooting.scenarios) {
+        $scenariosHtml = ($Card.troubleshooting.scenarios | ForEach-Object { New-ScenarioHtml $_ }) -join "`n"
+    }
+@"
+<details class='troubleshooting' open>
+  <summary>🛠 Troubleshooting</summary>
+  <div class='ts-overview'>$ov</div>
+  $quickFixHtml
+  $scenariosHtml
+</details>
+"@
+}
+
 function Get-IssueCardContent {
     param($Issue)
 
@@ -352,17 +492,36 @@ function Convert-ToIssueCard {
         }
     }
 
+    $issueCheckId = $null
+    if ($Issue -and $Issue.PSObject.Properties['CheckId']) { $issueCheckId = [string]$Issue.CheckId }
+    elseif ($Issue -and $Issue.PSObject.Properties['Id']) { $issueCheckId = [string]$Issue.Id }
+
+    $issueData = $null
+    if ($Issue -and $Issue.PSObject.Properties['Data']) { $issueData = $Issue.Data }
+
+    $issuePayload = $null
+    if ($Issue -and $Issue.PSObject.Properties['Payload']) { $issuePayload = $Issue.Payload }
+
+    $issueMeta = $null
+    if ($Issue -and $Issue.PSObject.Properties['Meta']) { $issueMeta = $Issue.Meta }
+
     $card = [pscustomobject]@{
         Severity    = $severity
         CssClass    = if ($severity) { $severity } else { 'info' }
         BadgeText   = if ($Issue.Severity) { ([string]$Issue.Severity).ToUpperInvariant() } else { 'ISSUE' }
         Area        = Get-IssueAreaLabel -Category $Category -Entry $Issue
         Message     = $Issue.Title
+        RenderTitle = $null
+        Title       = $Issue.Title
         Explanation = $explanation
         Evidence    = if ($hasEvidence) { $detail } else { $null }
         Remediation = $content.Remediation
         RemediationScript = $content.RemediationScript
         Source     = $issueSource
+        CheckId    = $issueCheckId
+        Data       = $issueData
+        Payload    = $issuePayload
+        Meta       = $issueMeta
     }
 
     $generatedData = @{ Title = $card.Message; Severity = $card.Severity; HasEvidence = [bool]$card.Evidence; HasRemediation = [bool]$card.Remediation; HasRemediationScript = [bool]$card.RemediationScript }
