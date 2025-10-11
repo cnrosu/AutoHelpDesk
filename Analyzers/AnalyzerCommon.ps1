@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot '_troubleshooting/Catalog.Runtime.psm1')
+
 <#!
 .SYNOPSIS
     Shared helper functions for analyzer modules.
@@ -205,28 +207,84 @@ function New-CategoryResult {
 }
 
 function Add-CategoryIssue {
+    [CmdletBinding(DefaultParameterSetName='ByCardId')]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ParameterSetName='ByCardId')]
+        [Parameter(Mandatory, ParameterSetName='ByFields')]
         $CategoryResult,
 
-        [Parameter(Mandatory)]
-        [string]$Severity,
+        [Parameter(Mandatory, ParameterSetName='ByCardId')]
+        [Parameter(ParameterSetName='ByFields')]
+        [string]$CardId,
 
-        [Parameter(Mandatory)]
+        [Parameter(ParameterSetName='ByFields')]
+        [string]$Category,
+
+        [Parameter(ParameterSetName='ByFields')]
+        [string]$Subcategory,
+
+        [Parameter(ParameterSetName='ByCardId')]
+        [Parameter(Mandatory, ParameterSetName='ByFields')]
         [string]$Title,
 
-        [object]$Evidence = $null,
+        [Parameter()][ValidateSet('critical','high','medium','low','warning','info')]
+        [string]$Severity,
 
-        [string]$Subcategory = $null,
+        [Parameter()][string]$Area,
 
-        [string]$CheckId = $null,
+        [Parameter()][object]$Evidence,
 
-        [string]$Remediation = $null,
+        [Parameter()][object]$Data,
 
-        [string]$RemediationScript = $null,
+        [Parameter()][string]$CheckId,
 
-        [object]$Data = $null
+        [Parameter()][string]$Remediation,
+
+        [Parameter()][string]$RemediationScript
     )
+
+    if (-not $CategoryResult) { throw 'CategoryResult is required.' }
+
+    if (-not (Get-Variable -Name CATALOG_INDEX -Scope Script -ErrorAction SilentlyContinue)) {
+        Initialize-Catalog -PreferMerged -WriteArtifacts:$false | Out-Null
+        # Optional: Start-CatalogWatcher | Out-Null  # dev-only hot reload
+    }
+
+    $TitleTpl = $null
+    $CatalogCard = $null
+
+    if ($PSCmdlet.ParameterSetName -eq 'ByCardId') {
+        $CatalogCard = Get-CatalogCardById -CardId $CardId
+        if (-not $CatalogCard) { throw "Unknown card_id '$CardId'." }
+
+        $Category    = $CatalogCard.category
+        $Subcategory = $CatalogCard.subcategory
+        if (-not $Area) { $Area = if ($CatalogCard.area) { $CatalogCard.area } else { $CatalogCard.category } }
+        $TitleTpl    = $CatalogCard.title
+        if (-not $Severity) { $Severity = $CatalogCard.severity }
+        if (-not $CheckId -and $CatalogCard.meta -and $CatalogCard.meta.check_id) { $CheckId = $CatalogCard.meta.check_id }
+    } else {
+        if (-not $Category -and $CategoryResult.PSObject.Properties['Name']) {
+            $Category = [string]$CategoryResult.Name
+        }
+
+        if (-not $Area -and $Category) { $Area = $Category }
+
+        $maybe = $script:CATALOG.cards | Where-Object {
+            $_.title -eq $Title -and $_.category -eq $Category -and $_.subcategory -eq $Subcategory
+        } | Select-Object -First 1
+        if ($maybe) { Write-Warning "Card exists in catalog; prefer -CardId '$($maybe.card_id)' with -Data." }
+    }
+
+    if (-not $Area -and $Category) { $Area = $Category }
+
+    if (Get-Command ConvertTo-AnalyzerDataDictionary -ErrorAction SilentlyContinue) {
+        $Data = if ($Data) { ConvertTo-AnalyzerDataDictionary -InputObject $Data } else { $null }
+    }
+
+    if ($TitleTpl -and -not $Title) { $Title = $TitleTpl }
+
+    if (-not $Severity) { $Severity = 'info' }
 
     $source = Get-HeuristicSourceMetadata
 
@@ -241,6 +299,17 @@ function Add-CategoryIssue {
         }
     }
 
+    $payload = @{
+        schemaVersion = '1.1'
+        flags = @{ hasEvidence = [bool]$Evidence; hasData = [bool]$Data }
+        data  = $Data
+        meta  = @{ card_id = if ($CatalogCard) { $CatalogCard.card_id } else { $CardId }; template = @{ title = $TitleTpl } }
+    }
+
+    if ($CatalogCard -and $CatalogCard.explanation) {
+        $payload.meta['explanation'] = $CatalogCard.explanation
+    }
+
     $entry = [ordered]@{
         Severity    = $Severity
         Title       = $Title
@@ -248,12 +317,21 @@ function Add-CategoryIssue {
         Subcategory = $Subcategory
     }
 
-    if ($PSBoundParameters.ContainsKey('Data')) {
+    if ($Area) { $entry['Area'] = $Area }
+
+    if ($PSBoundParameters.ContainsKey('Data') -or $null -ne $Data) {
         $entry['Data'] = $Data
     }
 
-    if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
-        $entry['CheckId'] = $CheckId
+    if ($payload) {
+        $entry['Payload'] = $payload
+        $entry['Meta'] = $payload.meta
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CheckId)) { $entry['CheckId'] = $CheckId }
+
+    if ($CatalogCard -and $CatalogCard.explanation) {
+        $entry['Explanation'] = $CatalogCard.explanation
     }
 
     if ($PSBoundParameters.ContainsKey('Remediation') -and -not [string]::IsNullOrWhiteSpace($Remediation)) {
