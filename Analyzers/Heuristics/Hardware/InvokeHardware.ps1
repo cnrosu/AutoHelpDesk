@@ -198,7 +198,58 @@ function Get-HardwareInventorySummary {
             if ($getTpm.PSObject.Properties['ManufacturerId'] -and $getTpm.ManufacturerId) { $tpmInfo['ManufacturerId'] = [string]$getTpm.ManufacturerId }
             if ($getTpm.PSObject.Properties['ManufacturerVersion'] -and $getTpm.ManufacturerVersion) { $tpmInfo['ManufacturerVersion'] = [string]$getTpm.ManufacturerVersion }
             if ($getTpm.PSObject.Properties['LockoutHealTime'] -and $getTpm.LockoutHealTime -ne $null -and $getTpm.LockoutHealTime -ne '') {
-                $tpmInfo['LockoutHealTime'] = [int]$getTpm.LockoutHealTime
+                $lockoutHealRaw = $getTpm.LockoutHealTime
+                $lockoutHealSeconds = $null
+                $lockoutHealDisplay = $null
+
+                if ($lockoutHealRaw -is [TimeSpan]) {
+                    $lockoutHealSeconds = [int][math]::Round($lockoutHealRaw.TotalSeconds)
+                } elseif ($lockoutHealRaw -is [ValueType]) {
+                    try {
+                        $lockoutHealSeconds = [int][math]::Round([double]$lockoutHealRaw)
+                    } catch {
+                        $lockoutHealSeconds = $null
+                    }
+                }
+
+                if ($lockoutHealSeconds -eq $null) {
+                    $lockoutHealDisplay = [string]$lockoutHealRaw
+                    if ($lockoutHealDisplay) {
+                        $parsedInt = 0
+                        if ([int]::TryParse($lockoutHealDisplay, [ref]$parsedInt)) {
+                            $lockoutHealSeconds = $parsedInt
+                        } else {
+                            $parsedDouble = 0.0
+                            if ([double]::TryParse($lockoutHealDisplay, [ref]$parsedDouble)) {
+                                $lockoutHealSeconds = [int][math]::Round($parsedDouble)
+                            } elseif ($lockoutHealDisplay -match '^\s*(?<value>\d+(?:\.\d+)?)\s*(?<unit>seconds?|minutes?|hours?)\s*$') {
+                                $value = [double]$matches['value'].Value
+                                $unit = $matches['unit'].Value.ToLowerInvariant()
+                                switch ($unit) {
+                                    { $_ -eq 'second' -or $_ -eq 'seconds' } { $lockoutHealSeconds = [int][math]::Round($value) }
+                                    { $_ -eq 'minute' -or $_ -eq 'minutes' } { $lockoutHealSeconds = [int][math]::Round($value * 60) }
+                                    { $_ -eq 'hour'   -or $_ -eq 'hours' }   { $lockoutHealSeconds = [int][math]::Round($value * 3600) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if ($lockoutHealSeconds -ne $null) {
+                    $tpmInfo['LockoutHealTimeSeconds'] = $lockoutHealSeconds
+                    $tpmInfo['LockoutHealTime'] = $lockoutHealSeconds
+                }
+
+                if (-not $lockoutHealDisplay -and $lockoutHealRaw -ne $null) {
+                    $lockoutHealDisplay = [string]$lockoutHealRaw
+                }
+
+                if ($lockoutHealDisplay) {
+                    $tpmInfo['LockoutHealTimeDisplay'] = $lockoutHealDisplay
+                    if ($lockoutHealSeconds -eq $null) {
+                        $tpmInfo['LockoutHealTime'] = $lockoutHealDisplay
+                    }
+                }
             }
             if ($getTpm.PSObject.Properties['LockoutCount'] -and $getTpm.LockoutCount -ne $null -and $getTpm.LockoutCount -ne '') {
                 $tpmInfo['LockoutCount'] = [int]$getTpm.LockoutCount
