@@ -280,6 +280,27 @@ details.report-card[open] > summary {
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.report-card--raw-excerpt {
+  border-left-color: var(--color-border-subtle);
+}
+
+.report-card--raw-excerpt .report-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.raw-excerpt__summary-note {
+  margin-left: var(--space-xs);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-note);
+}
+
+.raw-excerpt__meta .report-note {
+  margin-top: 0;
+}
+
 .report-card__summary-text {
   flex: 1;
   min-width: 0;

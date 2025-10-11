@@ -1378,10 +1378,23 @@ function ConvertTo-RawCard {
 
     $metaHtml = ''
     if ($metaBuilder.Length -gt 0) {
-        $metaHtml = "<div><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
+        $metaHtml = "<div class='raw-excerpt__meta'><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
     }
 
-    return "<div class='report-card'><b>$(Encode-Html $Key)</b>$metaHtml<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre></div>"
+    $summaryContent = "<b>$(Encode-Html $Key)</b>"
+    if ($trimmedResult.WasTruncated) {
+        $summaryContent += "<span class='raw-excerpt__summary-note'>(truncated)</span>"
+    }
+
+    $cardBuilder = [System.Text.StringBuilder]::new()
+    $null = $cardBuilder.Append("<details class='report-card report-card--raw-excerpt'>")
+    $null = $cardBuilder.Append("<summary><div class='report-card__summary-text'>$summaryContent</div></summary>")
+    $null = $cardBuilder.Append("<div class='report-card__body'>")
+    if ($metaHtml) { $null = $cardBuilder.Append($metaHtml) }
+    $null = $cardBuilder.Append("<pre class='report-pre'>$(Encode-Html $($trimmedResult.Text))</pre>")
+    $null = $cardBuilder.Append('</div></details>')
+
+    return $cardBuilder.ToString()
 }
 
 function Build-DebugSection {
@@ -1419,7 +1432,7 @@ function Build-DebugSection {
 function Build-RawSection {
     param(
         $Context,
-        [int]$MaxArtifacts = 10,
+        [int]$MaxArtifacts = 0,
         [int]$MaxLines = 40,
         [int]$MaxChars = 2000
     )
@@ -1454,11 +1467,17 @@ function Build-RawSection {
     }
 
     $cardsBuilder = [System.Text.StringBuilder]::new()
-    $null = $cardsBuilder.Append("<div class='report-card'><i>Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters.</i></div>")
+    $limitEnabled = $MaxArtifacts -gt 0
+    $introText = if ($limitEnabled) {
+        "Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
+    } else {
+        "Showing all $($items.Count) artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
+    }
+    $null = $cardsBuilder.Append("<div class='report-card'><i>$introText</i></div>")
 
     $processed = 0
     foreach ($item in $items) {
-        if ($processed -ge $MaxArtifacts) { break }
+        if ($limitEnabled -and $processed -ge $MaxArtifacts) { break }
         $card = ConvertTo-RawCard -Key $item.Key -Entry $item.Entry -MaxLines $MaxLines -MaxChars $MaxChars
         if ($card) {
             $null = $cardsBuilder.Append($card)
@@ -1471,7 +1490,7 @@ function Build-RawSection {
         return "<div class='report-card'><i>No raw payload excerpts available.</i></div>"
     }
 
-    if ($items.Count -gt $processed) {
+    if ($limitEnabled -and $items.Count -gt $processed) {
         $remaining = $items.Count - $processed
         $null = $cardsBuilder.Append("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>")
     }
