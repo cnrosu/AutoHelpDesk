@@ -1621,7 +1621,7 @@ function New-AnalyzerHtml {
     $navSections = @(
         @{ Id = 'section-overview'; Label = 'Overview'; Description = 'Score & device summary'; ContentHtml = $summaryContent; PanelHeading = ''; PanelDescription = '' },
         @{ Id = $goodSectionId; Label = 'What Looks Good'; Count = $goodCount; ContentHtml = $goodContent; PanelHeading = '' },
-        @{ Id = $issuesSectionId; Label = 'Detected Issues'; Count = $issueCount; ContentHtml = $issuesContent; PanelHeading = "Detected Issues ($issueCount)" },
+        @{ Id = $issuesSectionId; Label = 'Detected Issues'; Count = $issueCount; ContentHtml = $issuesContent; PanelHeading = '' },
         @{ Id = $failedSectionId; Label = 'Failed Reports'; Count = $failedCount; ContentHtml = $failedContent; PanelHeading = $failedTitle },
         @{ Id = $rawSectionId; Label = 'Raw excerpts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Raw excerpts ($rawCount)" }
     )
