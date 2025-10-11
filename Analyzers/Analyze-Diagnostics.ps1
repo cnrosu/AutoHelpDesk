@@ -68,7 +68,13 @@ Write-Verbose 'Intune heuristics completed.'
 $storageCategories = Invoke-StorageHeuristics  -Context $context
 if ($storageCategories) { foreach ($item in @($storageCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Storage heuristics completed.'
-$hardwareCategories = Invoke-HardwareHeuristics -Context $context
+try {
+    $ErrorActionPreference = 'Stop'
+    $hardwareCategories = Invoke-HardwareHeuristics -Context $context
+} catch {
+    Write-Error ("[HARDWARE CRASH] {0}`n{1}`n{2}" -f $_.Exception.Message, $_.InvocationInfo.PositionMessage, $_.ScriptStackTrace)
+    throw
+}
 if ($hardwareCategories) { foreach ($item in @($hardwareCategories)) { $categoriesList.Add($item) } }
 Write-Verbose 'Hardware heuristics completed.'
 $eventsCategories = Invoke-EventsHeuristics   -Context $context

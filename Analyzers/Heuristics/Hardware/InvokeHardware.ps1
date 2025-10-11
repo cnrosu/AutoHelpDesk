@@ -345,7 +345,7 @@ function Get-HardwareInventorySummary {
                 try { $boolValue = [bool]$value } catch { $boolValue = $null }
                 if ($boolValue -ne $null) {
                     $secureBootInfo['ConfirmSecureBootUEFI'] = $boolValue
-                    $sources.Add("Confirm-SecureBootUEFI: {0}" -f ($boolValue.ToString())) | Out-Null
+                    $sources.Add("Confirm-SecureBootUEFI: {0}" -f $boolValue) | Out-Null
                 }
             }
         }
@@ -356,7 +356,7 @@ function Get-HardwareInventorySummary {
                 try { $boolValue = [bool]$value } catch { $boolValue = $null }
                 if ($boolValue -ne $null) {
                     $secureBootInfo['MS_SecureBootEnabled'] = $boolValue
-                    $sources.Add("MS_SecureBootEnabled: {0}" -f ($boolValue.ToString())) | Out-Null
+                    $sources.Add("MS_SecureBootEnabled: {0}" -f $boolValue) | Out-Null
                 }
             }
         }
@@ -367,7 +367,7 @@ function Get-HardwareInventorySummary {
                 try { $boolValue = [bool]$value } catch { $boolValue = $null }
                 if ($boolValue -ne $null) {
                     $secureBootInfo['RegistryEnabled'] = $boolValue
-                    $sources.Add("RegistryEnabled: {0}" -f ($boolValue.ToString())) | Out-Null
+                    $sources.Add("RegistryEnabled: {0}" -f $boolValue) | Out-Null
                 }
             }
         }
