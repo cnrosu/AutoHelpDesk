@@ -106,6 +106,44 @@ function Invoke-StorageVolumeEvaluation {
         }
     }
 
+    $hostName = $null
+    if ($Payload) {
+        foreach ($candidate in @('ComputerName','HostName','DeviceName','MachineName')) {
+            $prop = $Payload.PSObject.Properties[$candidate]
+            if (-not $prop) { continue }
+
+            $candidateValue = if ($prop.Value) { [string]$prop.Value } else { $null }
+            if (-not [string]::IsNullOrWhiteSpace($candidateValue)) {
+                $hostName = $candidateValue.Trim()
+                break
+            }
+        }
+    }
+
+    if (-not $hostName -and $env:COMPUTERNAME) {
+        $hostName = [string]$env:COMPUTERNAME
+    }
+
+    $composeIssueData = {
+        param(
+            [System.Collections.IDictionary]$Base,
+            [System.Collections.IDictionary]$Additional
+        )
+
+        $ordered = [ordered]@{}
+        foreach ($key in $Base.Keys) {
+            $ordered[$key] = $Base[$key]
+        }
+
+        if ($Additional) {
+            foreach ($entry in $Additional.GetEnumerator()) {
+                $ordered[$entry.Key] = $entry.Value
+            }
+        }
+
+        return [pscustomobject]$ordered
+    }
+
     Write-HeuristicDebug -Source 'Storage' -Message 'Volume entries resolved' -Data ([ordered]@{
         VolumeCount = $volumeEntries.Count
     })
@@ -194,15 +232,68 @@ function Invoke-StorageVolumeEvaluation {
             $critPercent = $threshold.CritPercent * 100
             $warnPercent = $threshold.WarnPercent * 100
             $criticalPercent = $threshold.CriticalPercent * 100
+
+            $criticalFloorTriggered = $freeGb -le $threshold.CriticalFloorGB
+            $criticalPercentTriggered = $freePct -le $criticalPercent
+            $highFloorTriggered = $freeGb -le $threshold.CritFloorGB
+            $highPercentTriggered = $freePct -le $critPercent
+            $warnFloorTriggered = $freeGb -le $threshold.WarnFloorGB
+            $warnPercentTriggered = $freePct -le $warnPercent
+
+            $issueDataBase = [ordered]@{
+                HostName                   = $hostName
+                VolumeLetter               = $driveLetterDisplay
+                Label                      = $volumeLabel
+                FriendlyName               = $volumeFriendlyName
+                SizeBytes                  = if ($size -gt 0) { [int64][math]::Round($size) } else { 0 }
+                FreeBytes                  = [int64][math]::Round($free)
+                SizeGb                     = $sizeGb
+                FreeGb                     = $freeGb
+                FreePct                    = if ($size -gt 0) { [math]::Round(($free / $size),4) } else { $null }
+                ThresholdProfile           = $threshold.Description
+                ThresholdWarningPct        = [math]::Round($threshold.WarnPercent,4)
+                ThresholdWarningFloorGb    = $threshold.WarnFloorGB
+                ThresholdHighPct           = [math]::Round($threshold.CritPercent,4)
+                ThresholdHighFloorGb       = $threshold.CritFloorGB
+                ThresholdCriticalPct       = [math]::Round($threshold.CriticalPercent,4)
+                ThresholdCriticalFloorGb   = $threshold.CriticalFloorGB
+            }
+
+            if ($volume.PSObject.Properties['ObjectId'] -and $volume.ObjectId) {
+                $issueDataBase['ObjectId'] = [string]$volume.ObjectId
+            }
+
+            if ($volume.PSObject.Properties['UniqueId'] -and $volume.UniqueId) {
+                $issueDataBase['UniqueId'] = [string]$volume.UniqueId
+            }
+
             if ($freeGb -le $threshold.CriticalFloorGB -or $freePct -le $criticalPercent) {
                 $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CriticalFloorGB, [math]::Round($criticalPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
+                $issueData = & $composeIssueData $issueDataBase ([ordered]@{
+                    CriticalFloorTriggered   = $criticalFloorTriggered
+                    CriticalPercentTriggered = $criticalPercentTriggered
+                })
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } elseif ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                 $evidence = "Free {0} GB ({1}%); high-risk floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
+                $issueData = & $composeIssueData $issueDataBase ([ordered]@{
+                    HighFloorTriggered   = $highFloorTriggered
+                    HighPercentTriggered = $highPercentTriggered
+                    CriticalFloorTriggered   = $criticalFloorTriggered
+                    CriticalPercentTriggered = $criticalPercentTriggered
+                })
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                 $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space'
+                $issueData = & $composeIssueData $issueDataBase ([ordered]@{
+                    WarningFloorTriggered   = $warnFloorTriggered
+                    WarningPercentTriggered = $warnPercentTriggered
+                    HighFloorTriggered      = $highFloorTriggered
+                    HighPercentTriggered    = $highPercentTriggered
+                    CriticalFloorTriggered  = $criticalFloorTriggered
+                    CriticalPercentTriggered= $criticalPercentTriggered
+                })
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } else {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title ("Volume {0} has {1}% free" -f $volumeDisplay, [math]::Round($freePct,1)) -Subcategory 'Free Space'
             }
@@ -217,7 +308,12 @@ function Invoke-StorageVolumeEvaluation {
                     $_.Error
                 }
             }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
+            $issueData = [ordered]@{
+                HostName    = $hostName
+                ErrorCount  = $volumeErrors.Count
+                Sources     = @($volumeErrors | Where-Object { $_.Source } | ForEach-Object { [string]$_.Source })
+            }
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space' -Data ([pscustomobject]$issueData)
         }
     }
 }
