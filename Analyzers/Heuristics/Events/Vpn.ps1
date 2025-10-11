@@ -56,7 +56,9 @@ function Invoke-EventsVpnAuthenticationChecks {
         }
     }
 
-    $cutoffUtc = [datetime]::UtcNow.AddDays(-7)
+    $nowUtc = [datetime]::UtcNow
+    $cutoffUtc = $nowUtc.AddDays(-7)
+    $WindowMinutes = [int][math]::Round(($nowUtc - $cutoffUtc).TotalMinutes)
     $matches = New-Object System.Collections.Generic.List[pscustomobject]
 
     foreach ($event in $rawEvents) {
@@ -168,5 +170,38 @@ function Invoke-EventsVpnAuthenticationChecks {
         $evidence['vpnProfiles'] = ($connectionSummaries | Select-Object -First 5)
     }
 
-    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'VPN authentication failing (certificate invalid or IKE SA failure)' -Evidence $evidence -Subcategory 'VPN / IKE'
+    $bucketed = @()
+    if ($matches.Count -gt 0) {
+        $grouped = $matches | Group-Object -Property { '{0}|{1}' -f $_.EventId, $_.MatchType }
+        $bucketed = foreach ($group in ($grouped | Sort-Object Count -Descending)) {
+            $first = $group.Group | Select-Object -First 1
+            $samples = foreach ($sample in ($group.Group | Sort-Object TimeUtc -Descending | Select-Object -First 5)) {
+                [pscustomobject]@{
+                    TimeCreated = if ($sample.TimeUtc) { $sample.TimeUtc.ToString('o') } else { $null }
+                    Provider    = $sample.Provider
+                    VpnName     = $sample.VpnName
+                    Server      = $sample.ServerAddress
+                    Message     = $sample.MsgSnippet
+                }
+            }
+
+            [pscustomobject]@{
+                EventId      = if ($first) { $first.EventId } else { $null }
+                MatchType    = if ($first) { $first.MatchType } else { $null }
+                Count        = $group.Count
+                SampleEvents = @($samples)
+            }
+        }
+    }
+
+    $title = 'VPN authentication failing (certificate invalid or IKE SA failure)'
+    $subcat = 'VPN / IKE'
+    $kind = 'VPN'
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Evidence $evidence -Subcategory $subcat -Data ([ordered]@{
+        Area          = 'Events'
+        Kind          = $kind
+        WindowMinutes = $WindowMinutes
+        Buckets       = @($bucketed)
+    })
 }

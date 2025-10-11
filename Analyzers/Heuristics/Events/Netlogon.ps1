@@ -26,6 +26,7 @@ function Invoke-EventsNetlogonTrustChecks {
 
     $nowUtc = (Get-Date).ToUniversalTime()
     $recentCutoff = $nowUtc.AddDays(-7)
+    $WindowMinutes = [int][math]::Round(($nowUtc - $recentCutoff).TotalMinutes)
     $extendedCutoff = $nowUtc.AddDays(-14)
 
     $eventMatches = New-Object System.Collections.Generic.List[pscustomobject]
@@ -137,5 +138,33 @@ function Invoke-EventsNetlogonTrustChecks {
 
     $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Netlogon secure channel / domain reachability issues' -Evidence $evidenceJson -Subcategory 'Netlogon/LSA (Domain Join)'
+    $bucketed = @()
+    if ($recentMatches.Count -gt 0) {
+        $grouped = $recentMatches | Group-Object -Property Id
+        $bucketed = foreach ($group in ($grouped | Sort-Object Count -Descending)) {
+            $samples = foreach ($sample in ($group.Group | Sort-Object TimeUtc -Descending | Select-Object -First 5)) {
+                [pscustomobject]@{
+                    TimeCreated = if ($sample.TimeUtc) { $sample.TimeUtc.ToString('o') } else { $null }
+                    Provider    = $sample.Provider
+                }
+            }
+
+            [pscustomobject]@{
+                Id           = $group.Name
+                Count        = $group.Count
+                SampleEvents = @($samples)
+            }
+        }
+    }
+
+    $title = 'Netlogon secure channel / domain reachability issues'
+    $subcat = 'Netlogon/LSA (Domain Join)'
+    $kind = 'Netlogon'
+
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidenceJson -Subcategory $subcat -Data ([ordered]@{
+        Area          = 'Events'
+        Kind          = $kind
+        WindowMinutes = $WindowMinutes
+        Buckets       = @($bucketed)
+    })
 }
