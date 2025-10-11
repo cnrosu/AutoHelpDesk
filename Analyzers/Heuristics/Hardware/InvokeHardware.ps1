@@ -253,12 +253,24 @@ function Get-HardwareInventorySummary {
                             if ([double]::TryParse($lockoutHealDisplay, [ref]$parsedDouble)) {
                                 $lockoutHealSeconds = [int][math]::Round($parsedDouble)
                             } elseif ($lockoutHealDisplay -match '^\s*(?<value>\d+(?:\.\d+)?)\s*(?<unit>seconds?|minutes?|hours?)\s*$') {
-                                $value = [double]$matches['value'].Value
-                                $unit = $matches['unit'].Value.ToLowerInvariant()
-                                switch ($unit) {
-                                    { $_ -eq 'second' -or $_ -eq 'seconds' } { $lockoutHealSeconds = [int][math]::Round($value) }
-                                    { $_ -eq 'minute' -or $_ -eq 'minutes' } { $lockoutHealSeconds = [int][math]::Round($value * 60) }
-                                    { $_ -eq 'hour'   -or $_ -eq 'hours' }   { $lockoutHealSeconds = [int][math]::Round($value * 3600) }
+                                $valueGroup = $null
+                                if ($matches -and $matches.ContainsKey('value')) {
+                                    $valueGroup = [string]$matches['value']
+                                }
+
+                                $unitGroup = $null
+                                if ($matches -and $matches.ContainsKey('unit')) {
+                                    $unitGroup = [string]$matches['unit']
+                                }
+
+                                if ($valueGroup -and $unitGroup) {
+                                    $value = [double]$valueGroup
+                                    $unit = $unitGroup.ToLowerInvariant()
+                                    switch ($unit) {
+                                        { $_ -eq 'second' -or $_ -eq 'seconds' } { $lockoutHealSeconds = [int][math]::Round($value) }
+                                        { $_ -eq 'minute' -or $_ -eq 'minutes' } { $lockoutHealSeconds = [int][math]::Round($value * 60) }
+                                        { $_ -eq 'hour'   -or $_ -eq 'hours' }   { $lockoutHealSeconds = [int][math]::Round($value * 3600) }
+                                    }
                                 }
                             }
                         }
