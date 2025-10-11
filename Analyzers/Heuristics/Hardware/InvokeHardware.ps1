@@ -19,6 +19,36 @@ function Get-HardwareSystemInfoValue {
     return $null
 }
 
+function Test-HardwareDictionaryKey {
+    param(
+        $Dictionary,
+        [string]$Key
+    )
+
+    if ($null -eq $Dictionary -or [string]::IsNullOrWhiteSpace($Key)) { return $false }
+
+    if ($Dictionary -is [hashtable]) {
+        return $Dictionary.ContainsKey($Key)
+    }
+
+    if ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) {
+        return $Dictionary.Contains($Key)
+    }
+
+    $psObject = $Dictionary.PSObject
+    if ($psObject -and $psObject.Methods['ContainsKey']) {
+        try { return [bool]$Dictionary.ContainsKey($Key) } catch { }
+    }
+
+    if ($psObject -and $psObject.Methods['Contains']) {
+        try { return [bool]$Dictionary.Contains($Key) } catch { }
+    }
+
+    if ($psObject -and $psObject.Properties[$Key]) { return $true }
+
+    return $false
+}
+
 function Get-HardwareInventorySummary {
     param(
         [Parameter(Mandatory)]
@@ -259,34 +289,40 @@ function Get-HardwareInventorySummary {
 
         if ($tpm.PSObject.Properties['Win32_Tpm'] -and $tpm.Win32_Tpm) {
             $win32 = $tpm.Win32_Tpm
-            if (-not $tpmInfo.ContainsKey('SpecVersion') -and $win32.PSObject.Properties['SpecVersion'] -and $win32.SpecVersion) {
+            if (-not (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'SpecVersion') -and $win32.PSObject.Properties['SpecVersion'] -and $win32.SpecVersion) {
                 $tpmInfo['SpecVersion'] = [string]$win32.SpecVersion
             }
-            if (-not $tpmInfo.ContainsKey('ManufacturerId') -and $win32.PSObject.Properties['ManufacturerId'] -and $win32.ManufacturerId) {
+            if (-not (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'ManufacturerId') -and $win32.PSObject.Properties['ManufacturerId'] -and $win32.ManufacturerId) {
                 $tpmInfo['ManufacturerId'] = [string]$win32.ManufacturerId
             }
-            if (-not $tpmInfo.ContainsKey('ManufacturerVersion') -and $win32.PSObject.Properties['ManufacturerVersion'] -and $win32.ManufacturerVersion) {
+            if (-not (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'ManufacturerVersion') -and $win32.PSObject.Properties['ManufacturerVersion'] -and $win32.ManufacturerVersion) {
                 $tpmInfo['ManufacturerVersion'] = [string]$win32.ManufacturerVersion
             }
         }
 
-        $tpmAvailable = ($tpmInfo.ContainsKey('Present') -or $tpmInfo.ContainsKey('Ready') -or $tpmInfo.ContainsKey('Enabled') -or $tpmInfo.ContainsKey('Activated') -or $tpmInfo.ContainsKey('SpecVersion'))
+        $tpmAvailable = (
+            (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Present') -or
+            (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Ready') -or
+            (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Enabled') -or
+            (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Activated') -or
+            (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'SpecVersion')
+        )
         if ($tpmAvailable) { $tpmInfo['Available'] = $true }
 
-        if ($tpmInfo.ContainsKey('Present')) {
+        if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Present') {
             if ($tpmInfo['Present'] -eq $true) {
                 $statusParts = @('Present')
-                if ($tpmInfo.ContainsKey('SpecVersion') -and $tpmInfo['SpecVersion']) {
+                if ((Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'SpecVersion') -and $tpmInfo['SpecVersion']) {
                     $statusParts += ("Spec {0}" -f $tpmInfo['SpecVersion'])
                 }
-                if ($tpmInfo.ContainsKey('Ready')) { $statusParts += (if ($tpmInfo['Ready']) { 'Ready' } else { 'Not Ready' }) }
-                if ($tpmInfo.ContainsKey('Enabled')) { $statusParts += (if ($tpmInfo['Enabled']) { 'Enabled' } else { 'Disabled' }) }
-                if ($tpmInfo.ContainsKey('Activated')) { $statusParts += (if ($tpmInfo['Activated']) { 'Activated' } else { 'Deactivated' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Ready') { $statusParts += (if ($tpmInfo['Ready']) { 'Ready' } else { 'Not Ready' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Enabled') { $statusParts += (if ($tpmInfo['Enabled']) { 'Enabled' } else { 'Disabled' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Activated') { $statusParts += (if ($tpmInfo['Activated']) { 'Activated' } else { 'Deactivated' }) }
                 $tpmInfo['Summary'] = ($statusParts -join ', ')
             } elseif ($tpmInfo['Present'] -eq $false) {
                 $tpmInfo['Summary'] = 'No TPM detected'
             }
-        } elseif ($tpmInfo.ContainsKey('Error')) {
+        } elseif (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Error') {
             $tpmInfo['Summary'] = 'TPM query reported an error'
         }
     }
@@ -339,14 +375,14 @@ function Get-HardwareInventorySummary {
             $secureBootInfo['Error'] = [string]$secureBoot.Error
         }
 
-        if ($sources.Count -gt 0 -or $secureBootInfo.ContainsKey('Error')) {
+        if ($sources.Count -gt 0 -or (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error')) {
             $secureBootInfo['Available'] = $true
         }
 
         $enabledStates = @()
-        if ($secureBootInfo.ContainsKey('ConfirmSecureBootUEFI')) { $enabledStates += $secureBootInfo['ConfirmSecureBootUEFI'] }
-        if ($secureBootInfo.ContainsKey('MS_SecureBootEnabled')) { $enabledStates += $secureBootInfo['MS_SecureBootEnabled'] }
-        if ($secureBootInfo.ContainsKey('RegistryEnabled')) { $enabledStates += $secureBootInfo['RegistryEnabled'] }
+        if (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'ConfirmSecureBootUEFI') { $enabledStates += $secureBootInfo['ConfirmSecureBootUEFI'] }
+        if (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'MS_SecureBootEnabled') { $enabledStates += $secureBootInfo['MS_SecureBootEnabled'] }
+        if (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'RegistryEnabled') { $enabledStates += $secureBootInfo['RegistryEnabled'] }
 
         if ($enabledStates.Count -gt 0) {
             if ($enabledStates -contains $false) {
@@ -354,7 +390,7 @@ function Get-HardwareInventorySummary {
             } elseif ($enabledStates -contains $true) {
                 $secureBootInfo['Summary'] = 'Secure Boot appears enabled'
             }
-        } elseif ($secureBootInfo.ContainsKey('Error')) {
+        } elseif (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error') {
             $secureBootInfo['Summary'] = 'Secure Boot status unavailable (error reported)'
         }
 
@@ -398,11 +434,11 @@ function Get-HardwareInventorySummary {
         }
     }
 
-    if ($biosInfo.ContainsKey('Version') -or $biosInfo.ContainsKey('Mode') -or $biosInfo.ContainsKey('Firmware')) {
+    if ((Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Version') -or (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Mode') -or (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Firmware')) {
         $biosInfo['Available'] = $true
         $summaryParts = New-Object System.Collections.Generic.List[string]
-        if ($biosInfo.ContainsKey('Version')) { $summaryParts.Add("Version: {0}" -f $biosInfo['Version']) | Out-Null }
-        if ($biosInfo.ContainsKey('Mode')) { $summaryParts.Add("Mode: {0}" -f $biosInfo['Mode']) | Out-Null }
+        if (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Version') { $summaryParts.Add("Version: {0}" -f $biosInfo['Version']) | Out-Null }
+        if (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Mode') { $summaryParts.Add("Mode: {0}" -f $biosInfo['Mode']) | Out-Null }
         if ($summaryParts.Count -gt 0) {
             $biosInfo['Summary'] = $summaryParts.ToArray() -join '; '
         }
@@ -413,12 +449,12 @@ function Get-HardwareInventorySummary {
     if (-not $memoryInfo['Available']) { $missingSignals.Add('RAM') | Out-Null }
     if (-not $modelInfo['Available']) { $missingSignals.Add('Model') | Out-Null }
     $tpmAvailable = ($tpmInfo['Available'] -eq $true)
-    if (-not $tpmAvailable -and -not $tpmInfo.ContainsKey('Error')) { $missingSignals.Add('TPM') | Out-Null }
-    if (-not $secureBootInfo['Available'] -and -not $secureBootInfo.ContainsKey('Error')) { $missingSignals.Add('Secure Boot') | Out-Null }
-    if (-not $biosInfo['Available'] -and -not $biosInfo.ContainsKey('Firmware')) { $missingSignals.Add('Firmware') | Out-Null }
+    if (-not $tpmAvailable -and -not (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Error')) { $missingSignals.Add('TPM') | Out-Null }
+    if (-not $secureBootInfo['Available'] -and -not (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error')) { $missingSignals.Add('Secure Boot') | Out-Null }
+    if (-not $biosInfo['Available'] -and -not (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Firmware')) { $missingSignals.Add('Firmware') | Out-Null }
 
     $evidenceLines = New-Object System.Collections.Generic.List[string]
-    if ($modelInfo.ContainsKey('Summary')) {
+    if (Test-HardwareDictionaryKey -Dictionary $modelInfo -Key 'Summary') {
         $evidenceLines.Add("Model: {0}" -f $modelInfo['Summary']) | Out-Null
     } elseif (-not $modelInfo['Available']) {
         $evidenceLines.Add('Model information unavailable.') | Out-Null
@@ -430,25 +466,25 @@ function Get-HardwareInventorySummary {
         $evidenceLines.Add('CPU information unavailable.') | Out-Null
     }
 
-    if ($memoryInfo.ContainsKey('Summary')) {
+    if (Test-HardwareDictionaryKey -Dictionary $memoryInfo -Key 'Summary') {
         $evidenceLines.Add("Memory: {0}" -f $memoryInfo['Summary']) | Out-Null
     } elseif (-not $memoryInfo['Available']) {
         $evidenceLines.Add('Memory information unavailable.') | Out-Null
     }
 
-    if ($tpmInfo.ContainsKey('Summary')) {
+    if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Summary') {
         $evidenceLines.Add("TPM: {0}" -f $tpmInfo['Summary']) | Out-Null
-    } elseif ($tpmInfo.ContainsKey('Error')) {
+    } elseif (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Error') {
         $evidenceLines.Add("TPM query error: {0}" -f $tpmInfo['Error']) | Out-Null
     }
 
-    if ($secureBootInfo.ContainsKey('Summary')) {
+    if (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Summary') {
         $evidenceLines.Add($secureBootInfo['Summary']) | Out-Null
-    } elseif ($secureBootInfo.ContainsKey('Error')) {
+    } elseif (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error') {
         $evidenceLines.Add("Secure Boot query error: {0}" -f $secureBootInfo['Error']) | Out-Null
     }
 
-    if ($biosInfo.ContainsKey('Summary')) {
+    if (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Summary') {
         $evidenceLines.Add("BIOS: {0}" -f $biosInfo['Summary']) | Out-Null
     }
 
@@ -467,8 +503,8 @@ function Get-HardwareInventorySummary {
         $tpmInfo['Available'] -or
         $secureBootInfo['Available'] -or
         $biosInfo['Available'] -or
-        $tpmInfo.ContainsKey('Error') -or
-        $secureBootInfo.ContainsKey('Error')
+        (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Error') -or
+        (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error')
     )
 
     if (-not $hasAnyData) {
