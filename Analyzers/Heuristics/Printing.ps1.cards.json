@@ -24,7 +24,7 @@
         "overview": "This card indicates 'Printing artifact not collected, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
         "scenarios": [
           {
-            "title": "Potential Issue – Generic misconfiguration",
+            "title": "Potential Issue \u2013 Generic misconfiguration",
             "steps": [
               "Use Evidence to target failing component; review services, logs, and policies."
             ],
@@ -57,7 +57,7 @@
         "overview": "This card indicates 'Printing data collection warning, so printing security and reliability risks may be hidden.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
         "scenarios": [
           {
-            "title": "Potential Issue – Generic misconfiguration",
+            "title": "Potential Issue \u2013 Generic misconfiguration",
             "steps": [
               "Use Evidence to target failing component; review services, logs, and policies."
             ],
@@ -90,7 +90,40 @@
         "overview": "This card indicates 'Printing payload missing, so printing security and reliability risks can't be evaluated.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
         "scenarios": [
           {
-            "title": "Potential Issue – Generic misconfiguration",
+            "title": "Potential Issue \u2013 Generic misconfiguration",
+            "steps": [
+              "Use Evidence to target failing component; review services, logs, and policies."
+            ],
+            "scripts": []
+          }
+        ]
+      }
+    },
+    {
+      "card_id": "Printing.ps1/printer-subsystem-issues-detected-so-queue-or-driver-problems-can-block-printing",
+      "title": "Printer subsystem issues detected, so queue or driver problems can block printing.",
+      "severity": "$severity",
+      "area": "Printing.ps1",
+      "category": "Printing.ps1",
+      "subcategory": "Printing",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Printing.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Printing.ps1/printer-subsystem-issues-detected-so-queue-or-driver-problems-can-block-printing",
+        "tags": []
+      },
+      "explanation": "This card indicates 'Printer subsystem issues detected, so queue or driver problems can block printing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$summary",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'Printer subsystem issues detected, so queue or driver problems can block printing.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue \u2013 Generic misconfiguration",
             "steps": [
               "Use Evidence to target failing component; review services, logs, and policies."
             ],
