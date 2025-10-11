@@ -191,18 +191,46 @@ function Invoke-StorageVolumeEvaluation {
             $details = "Free {0} GB of {1} GB ({2}% free); profile {3}" -f $freeGb, $sizeGb, ([math]::Round($freePct,1)), $threshold.Description
             Add-CategoryCheck -CategoryResult $CategoryResult -Name ("Volume {0}" -f $volumeDisplay) -Status ([string][math]::Round($freePct,1)) -Details $details
 
+            $volumeData = [ordered]@{
+                DriveLetter = if ($hasDriveLetter) { ([string]$volume.DriveLetter).Trim() } else { $null }
+                Label       = if ($volumeLabel) { $volumeLabel } elseif ($rawLabel) { $rawLabel } else { $label }
+                FreePct     = [double]([math]::Round($freePct,2))
+                FreeGB      = [double]$freeGb
+                TotalGB     = [double]$sizeGb
+                IsSystem    = if ($volume.PSObject.Properties['IsSystem']) { [bool]$volume.IsSystem } else { $false }
+                Description = $threshold.Description
+            }
+
+            $thresholdData = [ordered]@{
+                WarnFloorGB     = [double]$threshold.WarnFloorGB
+                CritFloorGB     = [double]$threshold.CritFloorGB
+                CriticalFloorGB = [double]$threshold.CriticalFloorGB
+                WarnPercent     = [double]($threshold.WarnPercent * 100)
+                CritPercent     = [double]($threshold.CritPercent * 100)
+                CriticalPercent = [double]($threshold.CriticalPercent * 100)
+                Description     = $threshold.Description
+            }
+
+            $issueData = @{
+                Area      = 'Storage/Volumes'
+                Kind      = 'FreeSpace'
+                Hostname  = $env:COMPUTERNAME
+                Thresholds = $thresholdData
+                Volumes   = @([pscustomobject]$volumeData)
+            }
+
             $critPercent = $threshold.CritPercent * 100
             $warnPercent = $threshold.WarnPercent * 100
             $criticalPercent = $threshold.CriticalPercent * 100
             if ($freeGb -le $threshold.CriticalFloorGB -or $freePct -le $criticalPercent) {
                 $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CriticalFloorGB, [math]::Round($criticalPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } elseif ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                 $evidence = "Free {0} GB ({1}%); high-risk floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                 $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
             } else {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title ("Volume {0} has {1}% free" -f $volumeDisplay, [math]::Round($freePct,1)) -Subcategory 'Free Space'
             }
@@ -217,7 +245,13 @@ function Invoke-StorageVolumeEvaluation {
                     $_.Error
                 }
             }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space'
+            $issueData = @{
+                Area     = 'Storage/Volumes'
+                Kind     = 'Inventory'
+                Hostname = $env:COMPUTERNAME
+                Errors   = $errorDetails
+            }
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space' -Data $issueData
         }
     }
 }
