@@ -800,6 +800,7 @@ function Build-SummaryCardHtml {
     $generatedAt = if ($Summary.GeneratedAt) { [datetime]$Summary.GeneratedAt } else { Get-Date }
     $generatedAtHtml = Encode-Html ($generatedAt.ToString("dddd, MMMM d, yyyy 'at' h:mm tt"))
 
+    $warningIcon = '⚠️'
     $severityKeys = @('critical','high','medium','warning','low','info')
     $counts = @{}
     foreach ($key in $severityKeys) { $counts[$key] = 0 }
@@ -833,7 +834,7 @@ function Build-SummaryCardHtml {
         critical = 'Critical'
         high     = 'High'
         medium   = 'Medium'
-        warning  = 'Warning'
+        warning  = "$warningIcon Warning"
         low      = 'Low'
         info     = 'Info'
         good     = 'All clear'
@@ -924,7 +925,7 @@ function Build-SummaryCardHtml {
             @{ Key = 'high';     Label = 'HIGH';     Class = 'bad' },
             @{ Key = 'medium';   Label = 'MEDIUM';   Class = 'medium' },
             @{ Key = 'low';      Label = 'LOW';      Class = 'ok' },
-            @{ Key = 'warning';  Label = 'WARNING';  Class = 'warning' },
+            @{ Key = 'warning';  Label = "$warningIcon WARNING";  Class = 'warning' },
             @{ Key = 'info';     Label = 'INFO';     Class = 'info' }
         )) {
         $count = if ($counts.ContainsKey($badge.Key)) { $counts[$badge.Key] } else { 0 }
