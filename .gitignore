@@ -25,3 +25,12 @@ DiagReports/
 # Misc
 *.orig
 "@ | Out-File -Encoding utf8 .gitignore
+
+#Visual Studio
+.vs/
+*.vsidx
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vscode/
