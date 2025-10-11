@@ -1,4 +1,14 @@
-. (Join-Path $PSScriptRoot '_troubleshooting/Catalog.Runtime.psm1')
+$catalogRuntimePath = Join-Path -Path $PSScriptRoot -ChildPath '_troubleshooting/Catalog.Runtime.psm1'
+
+if (-not (Get-Module | Where-Object { $_.Path -eq $catalogRuntimePath })) {
+    try {
+        Import-Module -Name $catalogRuntimePath -Scope Global -ErrorAction Stop | Out-Null
+    } catch {
+        # Fallback for hosts where Import-Module fails (for example, when executed under
+        # constrained language mode). Dot-source to ensure the catalog helpers are available.
+        . $catalogRuntimePath
+    }
+}
 
 <#!
 .SYNOPSIS
