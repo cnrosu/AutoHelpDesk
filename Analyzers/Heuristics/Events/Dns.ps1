@@ -25,7 +25,9 @@ function Invoke-EventsDnsChecks {
 
     if (-not $events -or $events.Count -eq 0) { return }
 
-    $cutoff = (Get-Date).ToUniversalTime().AddHours(-24)
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $cutoff = $nowUtc.AddHours(-24)
+    $WindowMinutes = [int][math]::Round(($nowUtc - $cutoff).TotalMinutes)
     $groups = @{}
 
     foreach ($event in $events) {
@@ -166,5 +168,28 @@ function Invoke-EventsDnsChecks {
     })
 
     $evidenceJson = $evidence | ConvertTo-Json -Depth 5 -Compress
-    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'DNS resolution timeouts observed' -Evidence $evidenceJson -Subcategory 'Networking / DNS'
+
+    $bucketed = @()
+    if ($flagged.Count -gt 0) {
+        $bucketed = foreach ($group in ($flagged | Sort-Object Count -Descending)) {
+            [pscustomobject]@{
+                Query       = $group.Query
+                Server      = $group.Server
+                Count       = $group.Count
+                LastUtc     = if ($group.LastUtc) { $group.LastUtc.ToString('o') } else { $null }
+                SampleNames = @($group.Samples)
+            }
+        }
+    }
+
+    $title = 'DNS resolution timeouts observed'
+    $subcat = 'Networking / DNS'
+    $kind = 'DNS'
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidenceJson -Subcategory $subcat -Data ([ordered]@{
+        Area          = 'Events'
+        Kind          = $kind
+        WindowMinutes = $WindowMinutes
+        Buckets       = @($bucketed)
+    })
 }

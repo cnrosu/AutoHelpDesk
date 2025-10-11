@@ -47,6 +47,11 @@ function Invoke-EventsAuthenticationChecks {
 
     if (-not $Authentication) { return }
 
+    $failureGroups = @()
+    $topAccounts = @()
+    $topSources = @()
+    $WindowMinutes = $null
+
     $kerberosData = $null
     if ($Authentication.PSObject.Properties['KerberosPreAuthFailures']) {
         $kerberosData = $Authentication.KerberosPreAuthFailures
@@ -222,7 +227,14 @@ function Invoke-EventsAuthenticationChecks {
 
         $severity = if ($correlationDetected) { 'high' } else { 'medium' }
         $title = 'Kerberos pre-authentication failures detected, possibly due to clock skew.'
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Authentication'
+        $kerberosWindowMinutes = 14 * 24 * 60
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Authentication' -Data ([ordered]@{
+            Area                = 'Events/Authentication'
+            Kind                = 'KerberosPreAuth'
+            WindowMinutes       = $kerberosWindowMinutes
+            Summary             = $kerberosSummary
+            CorrelatedEventIds  = @($correlatedEventIds.ToArray())
+        })
     }
 
     $accountData = $null
@@ -238,6 +250,26 @@ function Invoke-EventsAuthenticationChecks {
     $failedLogons = $null
     if ($accountData.PSObject.Properties['FailedLogons']) {
         $failedLogons = $accountData.FailedLogons
+    }
+
+    if (-not $WindowMinutes) {
+        $windowDays = $null
+        if ($accountData -and $accountData.PSObject.Properties['WindowDays'] -and $accountData.WindowDays) {
+            try { $windowDays = [int]$accountData.WindowDays } catch { $windowDays = $null }
+        }
+
+        if ($windowDays -and $windowDays -gt 0) {
+            $WindowMinutes = [int]($windowDays * 24 * 60)
+        } elseif ($failedLogons -and $failedLogons.PSObject.Properties['StartTime'] -and $failedLogons.StartTime) {
+            $startTime = ConvertTo-EventsDateTimeUtc -Value $failedLogons.StartTime
+            if ($startTime) {
+                $WindowMinutes = [int][math]::Round(((Get-Date).ToUniversalTime() - $startTime).TotalMinutes)
+            }
+        }
+    }
+
+    if (-not $WindowMinutes) {
+        $WindowMinutes = 7 * 24 * 60
     }
 
     if (-not $lockoutData -or -not $failedLogons) { return }
@@ -277,9 +309,19 @@ function Invoke-EventsAuthenticationChecks {
     foreach ($event in $failedEvents) {
         if (-not $event) { continue }
 
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) {
+            $eventData = $event.EventData
+        }
+
+        $eventId = $null
+        if ($event.PSObject.Properties['Id']) {
+            try { $eventId = [int]$event.Id } catch { $eventId = $event.Id }
+        }
+
         $userValue = $null
         foreach ($field in @('TargetUserName','TargetUser','AccountName','User','SubjectUserName')) {
-            $value = Get-EventsEventDataValue -EventData $event.EventData -Name $field
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $field
             if ($value) {
                 $userValue = [string]$value
                 break
@@ -287,12 +329,16 @@ function Invoke-EventsAuthenticationChecks {
         }
         $normalizedUser = Normalize-EventsUserName -UserName $userValue
 
+        $logonType = $null
+        $logonValue = Get-EventsEventDataValue -EventData $eventData -Name 'LogonType'
+        if ($logonValue) { $logonType = [string]$logonValue }
+
         $sourceType = $null
         $sourceLabel = $null
         $sourceNormalized = $null
 
         foreach ($field in @('IpAddress','WorkstationName','ClientAddress','ClientName','SourceHost')) {
-            $value = Get-EventsEventDataValue -EventData $event.EventData -Name $field
+            $value = Get-EventsEventDataValue -EventData $eventData -Name $field
             if ($value) {
                 $sourceLabel = [string]$value
                 break
@@ -341,11 +387,102 @@ function Invoke-EventsAuthenticationChecks {
             TimeUtc          = $timeUtc
             User             = $userValue
             UserNormalized   = $normalizedUser
+            EventId          = $eventId
             SourceType       = $sourceType
             SourceLabel      = $sourceLabel
             SourceNormalized = $sourceNormalized
             SourceKey        = ('{0}|{1}' -f $sourceType, $sourceNormalized)
+            LogonType        = $logonType
         }) | Out-Null
+    }
+
+    if ($failedRecords.Count -gt 0) {
+        $groupMap = @{}
+        foreach ($record in $failedRecords) {
+            $groupKey = if ($null -ne $record.EventId) { [string]$record.EventId } else { 'unknown' }
+            if (-not $groupMap.ContainsKey($groupKey)) {
+                $groupMap[$groupKey] = [ordered]@{
+                    Id      = $record.EventId
+                    Count   = 0
+                    Samples = @()
+                }
+            }
+
+            $bucket = $groupMap[$groupKey]
+            if ($null -eq $bucket['Id'] -and $null -ne $record.EventId) { $bucket['Id'] = $record.EventId }
+            $bucket['Count'] = [int]$bucket['Count'] + 1
+            if ($bucket['Samples'].Count -lt 5) {
+                $bucket['Samples'] += ,([pscustomobject]@{
+                    TimeCreated   = if ($record.TimeUtc) { $record.TimeUtc.ToString('o') } else { $null }
+                    Account       = $record.User
+                    AccountMasked = ConvertTo-EventsMaskedUser -Value $record.User
+                    Source        = $record.SourceLabel
+                    SourceMasked  = ConvertTo-EventsMaskedHost -Value $record.SourceLabel
+                    LogonType     = $record.LogonType
+                })
+            }
+            $groupMap[$groupKey] = $bucket
+        }
+
+        $failureGroups = foreach ($entry in (@($groupMap.GetEnumerator()) | Sort-Object -Property @{ Expression = { $_.Value.Count }; Descending = $true })) {
+            [pscustomobject]@{
+                Id           = $entry.Value.Id
+                Count        = [int]$entry.Value.Count
+                SampleEvents = @($entry.Value.Samples)
+            }
+        }
+
+        $accountMap = @{}
+        foreach ($record in $failedRecords) {
+            $accountKey = if ($record.UserNormalized) { $record.UserNormalized } else { 'unknown' }
+            if (-not $accountMap.ContainsKey($accountKey)) {
+                $accountMap[$accountKey] = [ordered]@{
+                    Account = $record.User
+                    Masked  = ConvertTo-EventsMaskedUser -Value $record.User
+                    Count   = 0
+                }
+            }
+
+            $accountEntry = $accountMap[$accountKey]
+            if (-not $accountEntry['Account'] -and $record.User) { $accountEntry['Account'] = $record.User }
+            if (-not $accountEntry['Masked'] -and $record.User) { $accountEntry['Masked'] = ConvertTo-EventsMaskedUser -Value $record.User }
+            $accountEntry['Count'] = [int]$accountEntry['Count'] + 1
+            $accountMap[$accountKey] = $accountEntry
+        }
+
+        $topAccounts = foreach ($entry in (@($accountMap.GetEnumerator()) | Sort-Object -Property @{ Expression = { $_.Value.Count }; Descending = $true } | Select-Object -First 5)) {
+            [pscustomobject]@{
+                Account       = $entry.Value.Account
+                AccountMasked = $entry.Value.Masked
+                Count         = [int]$entry.Value.Count
+            }
+        }
+
+        $sourceMap = @{}
+        foreach ($record in $failedRecords) {
+            $sourceKey = if ($record.SourceKey) { $record.SourceKey } else { 'unknown' }
+            if (-not $sourceMap.ContainsKey($sourceKey)) {
+                $sourceMap[$sourceKey] = [ordered]@{
+                    Source = $record.SourceLabel
+                    Masked = ConvertTo-EventsMaskedHost -Value $record.SourceLabel
+                    Count  = 0
+                }
+            }
+
+            $sourceEntry = $sourceMap[$sourceKey]
+            if (-not $sourceEntry['Source'] -and $record.SourceLabel) { $sourceEntry['Source'] = $record.SourceLabel }
+            if (-not $sourceEntry['Masked'] -and $record.SourceLabel) { $sourceEntry['Masked'] = ConvertTo-EventsMaskedHost -Value $record.SourceLabel }
+            $sourceEntry['Count'] = [int]$sourceEntry['Count'] + 1
+            $sourceMap[$sourceKey] = $sourceEntry
+        }
+
+        $topSources = foreach ($entry in (@($sourceMap.GetEnumerator()) | Sort-Object -Property @{ Expression = { $_.Value.Count }; Descending = $true } | Select-Object -First 5)) {
+            [pscustomobject]@{
+                Source       = $entry.Value.Source
+                SourceMasked = $entry.Value.Masked
+                Count        = [int]$entry.Value.Count
+            }
+        }
     }
 
     if ($lockoutRecords.Count -eq 0 -or $failedRecords.Count -eq 0) { return }
@@ -436,7 +573,14 @@ function Invoke-EventsAuthenticationChecks {
                 LastUtc      = $lastUtcString
             })
 
-            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated account lockouts (possibly from another host/session)' -Evidence $evidenceJson -Subcategory 'Authentication'
+            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated account lockouts (possibly from another host/session)' -Evidence $evidenceJson -Subcategory 'Authentication' -Data ([ordered]@{
+                Area          = 'Events/Authentication'
+                Kind          = 'EventFailures'
+                WindowMinutes = $WindowMinutes
+                Failures      = @($failureGroups)
+                TopAccounts   = @($topAccounts)
+                TopSources    = @($topSources)
+            })
         }
     }
 }
