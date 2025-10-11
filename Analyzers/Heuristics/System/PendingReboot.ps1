@@ -50,6 +50,7 @@ function Invoke-SystemPendingRebootChecks {
     $fileRenameEvidence = New-Object System.Collections.Generic.List[string]
     $fileRenameErrors = New-Object System.Collections.Generic.List[string]
     $pendingFileRenames = $false
+    $pendingSources = New-Object System.Collections.Generic.List[string]
 
     if ($payload.PSObject.Properties['PendingFileRenames']) {
         $renamePayload = $payload.PendingFileRenames
@@ -112,6 +113,16 @@ function Invoke-SystemPendingRebootChecks {
                 $line = '{0} ({1})' -f $entry.Name, $entry.Path
             }
             $evidenceLines.Add($line) | Out-Null
+            $sourceName = $null
+            if ($entry.PSObject.Properties['Name'] -and $entry.Name) {
+                $sourceName = [string]$entry.Name
+            } elseif ($entry.PSObject.Properties['Source'] -and $entry.Source) {
+                $sourceName = [string]$entry.Source
+            }
+            if (-not $sourceName) { $sourceName = 'Indicator' }
+            if (-not $pendingSources.Contains($sourceName)) {
+                $pendingSources.Add($sourceName) | Out-Null
+            }
         }
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Updates pending reboot, so a reboot is required to complete updates or resolve blocked operations.' -Evidence (($evidenceLines | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot'
     }
@@ -120,6 +131,9 @@ function Invoke-SystemPendingRebootChecks {
         $evidence = $fileRenameEvidence
         if ($evidence.Count -eq 0) {
             $evidence = @('PendingFileRenameOperations contains entries.')
+        }
+        if (-not $pendingSources.Contains('PendingFileRename')) {
+            $pendingSources.Add('PendingFileRename') | Out-Null
         }
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'File rename operations require a reboot to complete updates or resolve blocked operations.' -Evidence (($evidence | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot'
     }
@@ -140,6 +154,21 @@ function Invoke-SystemPendingRebootChecks {
         }
 
         $title = if ($nameMismatch) { 'Computer rename pending reboot, so a reboot is required to complete updates or resolve blocked operations.' } else { 'Hostname change pending reboot, so a reboot is required to complete updates or resolve blocked operations.' }
+        if ($nameMismatch -and -not $pendingSources.Contains('ComputerRename')) {
+            $pendingSources.Add('ComputerRename') | Out-Null
+        }
+        if ($tcpMismatch -and -not $pendingSources.Contains('TcpipRename')) {
+            $pendingSources.Add('TcpipRename') | Out-Null
+        }
         Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title $title -Evidence (($details | Where-Object { $_ }) -join "`n") -Subcategory 'Pending Reboot'
+    }
+
+    $sources = $pendingSources.ToArray()
+    if ($sources.Length -gt 0) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Pending reboot required, so updates remain blocked until the system restarts.' -Evidence ($sources -join ', ') -Subcategory 'Pending Reboot' -Data @{
+            Area = 'System/PendingReboot'
+            Kind = 'RebootFlags'
+            Sources = $sources
+        }
     }
 }
