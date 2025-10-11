@@ -1405,45 +1405,22 @@ function Build-DebugSection {
         return "<div class='report-card'><i>No debug metadata available.</i></div>"
     }
 
-    $builder = [System.Text.StringBuilder]::new()
-    foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
-        $entries = $Context.Artifacts[$key]
-        if (-not $entries) {
-            $null = $builder.AppendLine("${key}: (no entries)")
-            continue
-        }
-
-        if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
-            $count = $entries.Count
-            $firstPath = $entries[0].Path
-            $null = $builder.AppendLine("${key}: $count file(s); first = $firstPath")
-        } else {
-            $null = $builder.AppendLine("${key}: $($entries.Path)")
-        }
-    }
-
-    if ($builder.Length -eq 0) {
-        return "<div class='report-card'><i>No debug metadata available.</i></div>"
-    }
-
-    $linesText = $builder.ToString().TrimEnd(@([char]13, [char]10))
-    return "<div class='report-card'><b>Artifacts discovered</b><pre class='report-pre'>$(Encode-Html ($linesText))</pre></div>"
+    return "<div class='report-card'><i>Artifact inventory is now available in the Artifacts tab.</i></div>"
 }
 
 function Build-RawSection {
     param(
         $Context,
-        [int]$MaxArtifacts = 0,
         [int]$MaxLines = 40,
         [int]$MaxChars = 2000
     )
 
     $artifactCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
-    Write-HtmlDebug -Stage 'RawSection' -Message 'Starting raw artifact rendering.' -Data @{ Artifacts = $artifactCount; MaxArtifacts = $MaxArtifacts }
+    Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Starting artifact rendering.' -Data @{ Artifacts = $artifactCount; MaxLines = $MaxLines; MaxChars = $MaxChars }
 
     if (-not $Context -or -not $Context.Artifacts -or $Context.Artifacts.Count -eq 0) {
-        Write-HtmlDebug -Stage 'RawSection' -Message 'No artifacts available; returning placeholder.'
-        return "<div class='report-card'><i>No raw payloads available.</i></div>"
+        Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'No artifacts available; returning placeholder.'
+        return "<div class='report-card'><i>No artifacts available.</i></div>"
     }
 
     $items = New-Object System.Collections.Generic.List[pscustomobject]
@@ -1463,22 +1440,16 @@ function Build-RawSection {
     }
 
     if ($items.Count -eq 0) {
-        Write-HtmlDebug -Stage 'RawSection' -Message 'Artifacts resolved but none produced renderable entries.'
-        return "<div class='report-card'><i>No raw payloads available.</i></div>"
+        Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifacts resolved but none produced renderable entries.'
+        return "<div class='report-card'><i>No artifacts available.</i></div>"
     }
 
     $cardsBuilder = [System.Text.StringBuilder]::new()
-    $limitEnabled = $MaxArtifacts -gt 0
-    $introText = if ($limitEnabled) {
-        "Showing up to $MaxArtifacts artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
-    } else {
-        "Showing all $($items.Count) artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
-    }
+    $introText = "Showing all $($items.Count) artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
     $null = $cardsBuilder.Append("<div class='report-card'><i>$introText</i></div>")
 
     $processed = 0
     foreach ($item in $items) {
-        if ($limitEnabled -and $processed -ge $MaxArtifacts) { break }
         $card = ConvertTo-RawCard -Key $item.Key -Entry $item.Entry -MaxLines $MaxLines -MaxChars $MaxChars
         if ($card) {
             $null = $cardsBuilder.Append($card)
@@ -1487,16 +1458,11 @@ function Build-RawSection {
     }
 
     if ($processed -eq 0) {
-        Write-HtmlDebug -Stage 'RawSection' -Message 'Artifacts located but all entries were filtered out.' -Data @{ Candidates = $items.Count }
-        return "<div class='report-card'><i>No raw payload excerpts available.</i></div>"
+        Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifacts located but all entries were filtered out.' -Data @{ Candidates = $items.Count }
+        return "<div class='report-card'><i>No artifact excerpts available.</i></div>"
     }
 
-    if ($limitEnabled -and $items.Count -gt $processed) {
-        $remaining = $items.Count - $processed
-        $null = $cardsBuilder.Append("<div class='report-card'><i>$remaining additional artifact(s) available in the collector output folder.</i></div>")
-    }
-
-    Write-HtmlDebug -Stage 'RawSection' -Message 'Raw artifact section built.' -Data @{ Rendered = $processed; Remaining = [Math]::Max($items.Count - $processed, 0) }
+    Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifact section built.' -Data @{ Rendered = $processed }
     return $cardsBuilder.ToString()
 }
 
@@ -1643,7 +1609,7 @@ function New-AnalyzerHtml {
         @{ Id = $goodSectionId; Label = 'What Looks Good'; Count = $goodCount; ContentHtml = $goodContent; PanelHeading = '' },
         @{ Id = $issuesSectionId; Label = 'Detected Issues'; Count = $issueCount; ContentHtml = $issuesContent; PanelHeading = "Detected Issues ($issueCount)" },
         @{ Id = $failedSectionId; Label = 'Failed Reports'; Count = $failedCount; ContentHtml = $failedContent; PanelHeading = $failedTitle },
-        @{ Id = $rawSectionId; Label = 'Raw excerpts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Raw excerpts ($rawCount)" }
+        @{ Id = $rawSectionId; Label = 'Artifacts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Artifacts ($rawCount)" }
     )
     $navHtml = Build-ReportNavigation -Sections $navSections
     $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
