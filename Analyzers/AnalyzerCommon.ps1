@@ -204,6 +204,37 @@ function New-CategoryResult {
     }
 }
 
+function ConvertTo-AnalyzerDataDictionary {
+    param(
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $ordered = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $ordered[$key] = $Value[$key]
+        }
+
+        return $ordered
+    }
+
+    if ($Value -is [psobject]) {
+        $ordered = [ordered]@{}
+        foreach ($property in $Value.PSObject.Properties) {
+            $ordered[$property.Name] = $property.Value
+        }
+
+        return $ordered
+    }
+
+    return [ordered]@{ Value = $Value }
+}
+
 function Add-CategoryIssue {
     param(
         [Parameter(Mandatory)]
@@ -230,13 +261,15 @@ function Add-CategoryIssue {
 
     $source = Get-HeuristicSourceMetadata
 
-    if ($PSBoundParameters.ContainsKey('Evidence')) {
-        if ($Evidence -is [System.Collections.IEnumerable] -and -not ($Evidence -is [string])) {
-            $sanitizedEvidence = @($Evidence | Where-Object { $_ })
+    $evidenceSupplied = $PSBoundParameters.ContainsKey('Evidence')
+    $normalizedEvidence = $Evidence
+    if ($evidenceSupplied -and $null -ne $normalizedEvidence) {
+        if ($normalizedEvidence -is [System.Collections.IEnumerable] -and -not ($normalizedEvidence -is [string])) {
+            $sanitizedEvidence = @($normalizedEvidence | Where-Object { $_ })
             if ($sanitizedEvidence.Count -gt 0) {
-                $Evidence = $sanitizedEvidence
+                $normalizedEvidence = $sanitizedEvidence
             } else {
-                $Evidence = $null
+                $normalizedEvidence = $null
             }
         }
     }
@@ -244,24 +277,151 @@ function Add-CategoryIssue {
     $entry = [ordered]@{
         Severity    = $Severity
         Title       = $Title
-        Evidence    = $Evidence
+        Evidence    = $normalizedEvidence
         Subcategory = $Subcategory
     }
 
-    if ($PSBoundParameters.ContainsKey('Data')) {
-        $entry['Data'] = $Data
-    }
-
+    $checkIdValue = $null
     if ($PSBoundParameters.ContainsKey('CheckId') -and -not [string]::IsNullOrWhiteSpace($CheckId)) {
-        $entry['CheckId'] = $CheckId
+        $checkIdValue = $CheckId
+        $entry['CheckId'] = $checkIdValue
     }
 
+    $remediationValue = $null
     if ($PSBoundParameters.ContainsKey('Remediation') -and -not [string]::IsNullOrWhiteSpace($Remediation)) {
-        $entry['Remediation'] = $Remediation.Trim()
+        $remediationValue = $Remediation.Trim()
+        $entry['Remediation'] = $remediationValue
     }
 
+    $remediationScriptValue = $null
     if ($PSBoundParameters.ContainsKey('RemediationScript') -and -not [string]::IsNullOrWhiteSpace($RemediationScript)) {
-        $entry['RemediationScript'] = $RemediationScript
+        $remediationScriptValue = $RemediationScript
+        $entry['RemediationScript'] = $remediationScriptValue
+    }
+
+    $issueData = [ordered]@{
+        SchemaVersion = 1
+        Title         = $Title
+        Severity      = $Severity
+    }
+
+    $categoryProvided = $false
+    if ($CategoryResult -and $CategoryResult.PSObject.Properties['Name']) {
+        $categoryName = [string]$CategoryResult.Name
+        if (-not [string]::IsNullOrWhiteSpace($categoryName)) {
+            $issueData['Category'] = $categoryName
+            $categoryProvided = $true
+        }
+    }
+
+    $subcategoryProvided = $false
+    if (-not [string]::IsNullOrWhiteSpace($Subcategory)) {
+        $issueData['Subcategory'] = $Subcategory
+        $subcategoryProvided = $true
+    }
+
+    if ($checkIdValue) {
+        $issueData['CheckId'] = $checkIdValue
+    }
+    $issueData['HasCheckId'] = [bool]$checkIdValue
+    $issueData['HasSubcategory'] = $subcategoryProvided
+    $issueData['HasCategory'] = $categoryProvided
+
+    $hasEvidence = $false
+    $evidencePreview = $null
+    $issueData['EvidenceIsCollection'] = $false
+    $issueData['EvidenceCount'] = 0
+    if ($evidenceSupplied -and $null -ne $normalizedEvidence) {
+        if ($normalizedEvidence -is [string]) {
+            $trimmedEvidence = $normalizedEvidence.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($trimmedEvidence)) {
+                $hasEvidence = $true
+                $previewLength = [Math]::Min($trimmedEvidence.Length, 200)
+                $evidencePreview = $trimmedEvidence.Substring(0, $previewLength)
+                if ($trimmedEvidence.Length -gt $previewLength) {
+                    $evidencePreview = '{0}…' -f $evidencePreview
+                }
+            }
+        } elseif ($normalizedEvidence -is [System.Collections.IEnumerable] -and -not ($normalizedEvidence -is [string])) {
+            $collection = @($normalizedEvidence | Where-Object { $_ })
+            if ($collection.Count -gt 0) {
+                $hasEvidence = $true
+                $issueData['EvidenceIsCollection'] = $true
+                $issueData['EvidenceCount'] = $collection.Count
+                $previewItems = $collection | Select-Object -First 3
+                $previewStrings = @()
+                foreach ($item in $previewItems) {
+                    if ($item -is [System.Collections.DictionaryEntry]) {
+                        $previewStrings += ('{0}={1}' -f $item.Key, $item.Value)
+                        continue
+                    }
+
+                    if ($null -ne $item -and $item.PSObject -and $item.PSObject.Properties.Count -gt 0) {
+                        $innerPairs = @()
+                        foreach ($prop in $item.PSObject.Properties) {
+                            if ($innerPairs.Count -ge 3) { break }
+                            $innerPairs += ('{0}={1}' -f $prop.Name, $prop.Value)
+                        }
+
+                        if ($innerPairs.Count -gt 0) {
+                            $previewStrings += ('[{0}]' -f ($innerPairs -join '; '))
+                            continue
+                        }
+                    }
+
+                    if ($null -ne $item) {
+                        $previewStrings += [string]$item
+                    }
+                }
+
+                $previewStrings = $previewStrings | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+                if ($previewStrings.Count -gt 0) {
+                    $evidencePreview = $previewStrings -join '; '
+                }
+            }
+        } else {
+            $hasEvidence = $true
+            $evidencePreview = [string]$normalizedEvidence
+        }
+    }
+
+    $issueData['HasEvidence'] = $hasEvidence
+    $issueData['EvidenceProvided'] = $evidenceSupplied
+    if ($hasEvidence -and -not [string]::IsNullOrWhiteSpace($evidencePreview)) {
+        $issueData['EvidencePreview'] = $evidencePreview
+    }
+
+    if ($hasEvidence) {
+        $evidenceType = if ($normalizedEvidence -is [string]) {
+            'string'
+        } elseif ($normalizedEvidence -is [System.Collections.IEnumerable] -and -not ($normalizedEvidence -is [string])) {
+            'collection'
+        } elseif ($normalizedEvidence) {
+            $normalizedEvidence.GetType().Name
+        } else {
+            $null
+        }
+
+        if ($evidenceType) {
+            $issueData['EvidenceType'] = $evidenceType
+        }
+    }
+
+    $issueData['HasRemediation'] = [bool]$remediationValue
+    $issueData['HasRemediationScript'] = [bool]$remediationScriptValue
+    $issueData['HasSource'] = [bool]$source
+
+    if ($PSBoundParameters.ContainsKey('Data')) {
+        $customData = ConvertTo-AnalyzerDataDictionary -Value $Data
+        if ($customData) {
+            foreach ($key in $customData.Keys) {
+                $issueData[$key] = $customData[$key]
+            }
+        }
+    }
+
+    if ($issueData.Count -gt 0) {
+        $entry['Data'] = $issueData
     }
 
     if ($source) { $entry['Source'] = $source }
