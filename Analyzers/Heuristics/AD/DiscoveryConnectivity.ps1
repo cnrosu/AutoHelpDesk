@@ -25,6 +25,20 @@ function Add-AdDiscoveryFindings {
         if ($Discovery.DcList -and $Discovery.DcList.Succeeded) { $nltestSuccess = $true }
     }
 
+    $candidates = @()
+    $candidateHosts = @()
+    $candidateAddresses = @()
+    if ($Discovery -and $Discovery.Candidates) {
+        foreach ($candidate in $Discovery.Candidates) {
+            if ($candidate -and $candidate.Hostname) {
+                $candidateHosts += $candidate.Hostname
+                $candidates += $candidate.Hostname.ToLowerInvariant()
+            }
+            if ($candidate -and $candidate.Addresses) { $candidateAddresses += $candidate.Addresses }
+        }
+    }
+    $candidates = $candidates | Sort-Object -Unique
+
     if ($srvSuccess) {
         $dcNames = @()
         if ($Discovery -and $Discovery.Candidates) {
@@ -39,7 +53,16 @@ function Add-AdDiscoveryFindings {
         $evidence = ($srvErrors | ForEach-Object {
                 if ($_.Error) { "{0}: {1}" -f $_.Query, $_.Error } else { "{0}: no records" -f $_.Query }
             }) -join '; '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery' -Data @{
+            Area = 'AD/DiscoveryConnectivity'
+            Kind = 'SrvLookup'
+            Discovery = @{
+                SrvLookups         = $Discovery.SrvLookups
+                SrvSuccess         = $srvSuccess
+                CandidateHosts     = $candidateHosts
+                CandidateAddresses = $candidateAddresses
+            }
+        }
     }
 
     if (-not $srvSuccess -and -not $nltestSuccess -and $Discovery) {
@@ -53,23 +76,16 @@ function Add-AdDiscoveryFindings {
             elseif ($Discovery.DcList.Output) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dclist output: {0}" -f ($Discovery.DcList.Output -join ' | ')) }
         }
         $evidenceText = $evidenceBuilder.ToString()
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No DC discovered, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Discovery'
-    }
-
-    $candidates = @()
-    if ($Discovery -and $Discovery.Candidates) {
-        foreach ($candidate in $Discovery.Candidates) {
-            if ($candidate.Hostname) { $candidates += $candidate.Hostname.ToLowerInvariant() }
-        }
-    }
-    $candidates = $candidates | Sort-Object -Unique
-
-    $candidateHosts = @()
-    $candidateAddresses = @()
-    if ($Discovery -and $Discovery.Candidates) {
-        foreach ($candidate in $Discovery.Candidates) {
-            if ($candidate -and $candidate.Hostname) { $candidateHosts += $candidate.Hostname }
-            if ($candidate -and $candidate.Addresses) { $candidateAddresses += $candidate.Addresses }
+        $nltestEvidence = if ($candidates -and $candidates.Count -gt 0) { $candidates -join ', ' } else { $evidenceText }
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No reachable DC candidates were discovered.' -Evidence $nltestEvidence -Subcategory 'Discovery' -Data @{
+            Area = 'AD/DiscoveryConnectivity'
+            Kind = 'NltestDiscovery'
+            Discovery = @{
+                NltestSuccess     = $nltestSuccess
+                Candidates        = $candidates
+                CandidateHosts    = $candidateHosts
+                CandidateAddresses = $candidateAddresses
+            }
         }
     }
 
@@ -149,18 +165,6 @@ function Add-AdConnectivityFindings {
         Add-CategoryNormal -CategoryResult $Result -Title 'GOOD AD/Reachability (≥1 DC reachable + SYSVOL)' -Evidence (($reachableWithShares | Sort-Object -Unique) -join ', ') -Subcategory 'Connectivity'
     }
 
-    $testsWithoutErrors = 0
-    if ($reachTests) {
-        foreach ($test in $reachTests) {
-            if ($test -and -not $test.Error) { $testsWithoutErrors++ }
-        }
-    }
-
-    $allPortsTested = $portMap.Count -gt 0
-    if ($Candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence (($portMap.Keys | Sort-Object) -join ', ') -Subcategory 'Connectivity'
-    }
-
     $sharesFailingHosts = @()
     foreach ($host in $fullyReachableHosts) {
         if (-not $shareMap.ContainsKey($host)) { continue }
@@ -170,8 +174,42 @@ function Add-AdConnectivityFindings {
         }
     }
 
+    $testsWithoutErrors = 0
+    if ($reachTests) {
+        foreach ($test in $reachTests) {
+            if ($test -and -not $test.Error) { $testsWithoutErrors++ }
+        }
+    }
+
+    $allPortsTested = $portMap.Count -gt 0
+    if ($Candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
+        $evidenceText = ($portMap.Keys | Sort-Object) -join ', '
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Connectivity' -Data @{
+            Area = 'AD/DiscoveryConnectivity'
+            Kind = 'PortReachability'
+            Connectivity = @{
+                PortMap             = $portMap
+                FullyReachableHosts = $fullyReachableHosts
+                ReachableWithShares = $reachableWithShares
+                SharesFailingHosts  = $sharesFailingHosts
+                TestsWithoutErrors  = $testsWithoutErrors
+                AllPortsTested      = $allPortsTested
+                Candidates          = $candidates
+            }
+        }
+    }
+
     if ($sharesFailingHosts.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence (($sharesFailingHosts | Sort-Object -Unique) -join ', ') -Subcategory 'SYSVOL'
+        $sharesEvidence = ($sharesFailingHosts | Sort-Object -Unique) -join ', '
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence $sharesEvidence -Subcategory 'SYSVOL' -Data @{
+            Area = 'AD/DiscoveryConnectivity'
+            Kind = 'SysvolNetlogon'
+            Sysvol = @{
+                SharesFailingHosts  = $sharesFailingHosts
+                ReachableWithShares = $reachableWithShares
+                FullyReachableHosts = $fullyReachableHosts
+            }
+        }
     }
 
     [pscustomobject]@{
