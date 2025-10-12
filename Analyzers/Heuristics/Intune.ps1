@@ -355,12 +355,37 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         $evidence['PushLaunchTask'] = $taskParts -join '; '
     }
 
-    $remediation = 'Re-enable Windows push notifications and repair the PushLaunch scheduled task so Intune can receive sync wake-ups.'
+    $pushLaunchTemplate = '\\Microsoft\\Windows\\EnterpriseMgmt\\{EnrollmentGUID}\\PushLaunch'
+    $resolvedTaskName = $pushLaunchTemplate
+    $enrollmentGuid = $null
+    if ($taskStatus -and $taskStatus.TaskName) {
+        $candidateTask = [string]$taskStatus.TaskName
+        if ($candidateTask) {
+            $trimmedTask = $candidateTask.Trim()
+            if ($trimmedTask) {
+                $enterpriseMatch = [regex]::Match($trimmedTask, '\\\\Microsoft\\\\Windows\\\\EnterpriseMgmt\\\\([^\\]+)\\\\PushLaunch$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                if ($enterpriseMatch.Success) {
+                    $enrollmentGuid = $enterpriseMatch.Groups[1].Value
+                    if ($enrollmentGuid) {
+                        $resolvedTaskName = '\\Microsoft\\Windows\\EnterpriseMgmt\\{0}\\PushLaunch' -f $enrollmentGuid
+                    }
+                } elseif ($trimmedTask -match '\\\\EnterpriseMgmt\\\\') {
+                    $resolvedTaskName = $trimmedTask
+                }
+            }
+        }
+    }
+
+    $remediation = 'Re-enable Windows push notifications and repair the Intune PushLaunch scheduled task so sync wake-ups succeed. Confirm the task under \\Microsoft\\Windows\\EnterpriseMgmt\\{EnrollmentGUID}\\ in Task Scheduler before running the commands.'
+    if ($enrollmentGuid) {
+        $remediation += " Reported enrollment GUID: $enrollmentGuid."
+    }
+
     $remediationScript = @(
         'sc config dmwappushservice start= delayed-auto',
         'sc start dmwappushservice',
-        'schtasks /Change /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch" /Enable',
-        'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
+        ("schtasks /Change /TN \"{0}\" /Enable" -f $resolvedTaskName),
+        ("schtasks /Run /TN \"{0}\"" -f $resolvedTaskName)
     ) -join "`n"
 
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
