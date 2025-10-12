@@ -83,13 +83,13 @@ function Invoke-PrintingHeuristics {
         $driverMap = @{}
 
         $offlineSummary = [System.Collections.Generic.List[string]]::new()
-        $wsdSummary = [System.Collections.Generic.List[string]]::new()
         $stuckJobSummary = [System.Collections.Generic.List[string]]::new()
         $driverSummary = [System.Collections.Generic.List[string]]::new()
 
-        $hasHighSeverity = $false
-        $hasMediumSeverity = $false
-        $hasLowSeverity = $false
+        $offlineHasHighSeverity = $false
+        $offlineHasMediumSeverity = $false
+        $stuckHasHighSeverity = $false
+        $stuckHasMediumSeverity = $false
 
         foreach ($printer in $printers) {
             if (-not $printer) { continue }
@@ -143,7 +143,7 @@ function Invoke-PrintingHeuristics {
                         }
 
                         $jobSeverity = if ($age -ge 240) { 'high' } else { 'medium' }
-                        if ($jobSeverity -eq 'high') { $hasHighSeverity = $true } else { $hasMediumSeverity = $true }
+                        if ($jobSeverity -eq 'high') { $stuckHasHighSeverity = $true } else { $stuckHasMediumSeverity = $true }
 
                         $jobEntry = [ordered]@{
                             Printer     = $printerName
@@ -166,12 +166,10 @@ function Invoke-PrintingHeuristics {
             if ($isOffline) {
                 $hasIssues = $true
                 $offlineSummary.Add($printerName) | Out-Null
-                if ($printer.PSObject.Properties['Default'] -and $printer.Default) { $hasHighSeverity = $true } else { $hasMediumSeverity = $true }
+                if ($printer.PSObject.Properties['Default'] -and $printer.Default) { $offlineHasHighSeverity = $true } else { $offlineHasMediumSeverity = $true }
             }
             if ($usesWsd) {
                 $hasIssues = $true
-                if (-not $wsdSummary.Contains($printerName)) { $wsdSummary.Add($printerName) | Out-Null }
-                $hasLowSeverity = $true
             }
             if ($jobEntriesForPrinter.Count -gt 0) { $hasIssues = $true }
 
@@ -271,38 +269,36 @@ function Invoke-PrintingHeuristics {
             $driverEntries.Add([pscustomobject]$driverObject) | Out-Null
         }
 
-        if ($queueEntries.Count -gt 0 -or $driverEntries.Count -gt 0 -or $stuckJobEntries.Count -gt 0) {
-            $summaryParts = [System.Collections.Generic.List[string]]::new()
-            if ($offlineSummary.Count -gt 0) {
-                $summaryParts.Add(("Offline queues: {0}" -f ($offlineSummary.ToArray() -join ', '))) | Out-Null
-            }
-            if ($wsdSummary.Count -gt 0) {
-                $summaryParts.Add(("Queues using WSD: {0}" -f ($wsdSummary.ToArray() -join ', '))) | Out-Null
-            }
-            if ($stuckJobSummary.Count -gt 0) {
-                $summaryParts.Add(("Stuck jobs: {0}" -f ($stuckJobSummary.ToArray() -join '; '))) | Out-Null
-            }
-            if ($driverSummary.Count -gt 0) {
-                $summaryParts.Add(("Drivers involved: {0}" -f ($driverSummary.ToArray() -join ', '))) | Out-Null
-            }
+        $queueArray = $queueEntries.ToArray()
 
-            $summary = if ($summaryParts.Count -gt 0) { $summaryParts.ToArray() -join '; ' } else { 'Printer subsystem issues detected.' }
-
-            $severity = 'low'
-            if ($hasHighSeverity) {
-                $severity = 'high'
-            } elseif ($hasMediumSeverity) {
-                $severity = 'medium'
-            } elseif (-not $hasLowSeverity) {
-                $severity = 'info'
-            }
-
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Printer subsystem issues detected, so queue or driver problems can block printing.' -Evidence $summary -Subcategory 'Printing' -Data @{
+        if ($offlineSummary.Count -gt 0) {
+            $offlineSeverity = if ($offlineHasHighSeverity) { 'high' } elseif ($offlineHasMediumSeverity) { 'medium' } else { 'low' }
+            $offlineEvidence = "Offline queues: {0}" -f ($offlineSummary.ToArray() -join ', ')
+            $offlineQueues = @($queueArray | Where-Object { $_.Offline })
+            Add-CategoryIssue -CategoryResult $result -Severity $offlineSeverity -Title 'Printer queues offline, so print jobs cannot reach the device.' -Evidence $offlineEvidence -Subcategory 'Printing' -Data @{
                 Area = 'Printing'
-                Kind = 'PrintHealth'
-                Queues  = $queueEntries.ToArray()
-                Drivers = $driverEntries.ToArray()
+                Kind = 'PrintQueueOutage'
+                Queues = $offlineQueues
+            }
+        }
+
+        if ($stuckJobEntries.Count -gt 0) {
+            $stuckSeverity = if ($stuckHasHighSeverity) { 'high' } elseif ($stuckHasMediumSeverity) { 'medium' } else { 'low' }
+            $stuckEvidence = "Stuck jobs: {0}" -f ($stuckJobSummary.ToArray() -join '; ')
+            Add-CategoryIssue -CategoryResult $result -Severity $stuckSeverity -Title 'Stuck print jobs delaying documents, so users wait hours for output.' -Evidence $stuckEvidence -Subcategory 'Printing' -Data @{
+                Area = 'Printing'
+                Kind = 'PrintJobs'
                 StuckJobs = $stuckJobEntries.ToArray()
+            }
+        }
+
+        if ($driverEntries.Count -gt 0 -and ($offlineSummary.Count -gt 0 -or $stuckJobEntries.Count -gt 0)) {
+            $driverEvidence = "Drivers linked to affected queues: {0}" -f ($driverSummary.ToArray() -join ', ')
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Printer driver packages tied to troubled queues, so driver conflicts may disrupt printing.' -Evidence $driverEvidence -Subcategory 'Printing' -Data @{
+                Area = 'Printing'
+                Kind = 'PrintDrivers'
+                Drivers = $driverEntries.ToArray()
+                Queues = $queueArray
             }
         }
     }
