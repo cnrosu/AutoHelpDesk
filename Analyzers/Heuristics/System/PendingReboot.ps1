@@ -51,6 +51,7 @@ function Invoke-SystemPendingRebootChecks {
     $fileRenameErrors = New-Object System.Collections.Generic.List[string]
     $pendingFileRenames = $false
     $pendingSources = New-Object System.Collections.Generic.List[string]
+    $pendingSourceEvidence = New-Object System.Collections.Generic.List[string]
 
     if ($payload.PSObject.Properties['PendingFileRenames']) {
         $renamePayload = $payload.PendingFileRenames
@@ -113,6 +114,9 @@ function Invoke-SystemPendingRebootChecks {
                 $line = '{0} ({1})' -f $entry.Name, $entry.Path
             }
             $evidenceLines.Add($line) | Out-Null
+            if (-not $pendingSourceEvidence.Contains($line)) {
+                $pendingSourceEvidence.Add($line) | Out-Null
+            }
             $sourceName = $null
             if ($entry.PSObject.Properties['Name'] -and $entry.Name) {
                 $sourceName = [string]$entry.Name
@@ -134,6 +138,10 @@ function Invoke-SystemPendingRebootChecks {
         }
         if (-not $pendingSources.Contains('PendingFileRename')) {
             $pendingSources.Add('PendingFileRename') | Out-Null
+        }
+        $renameDescriptor = 'PendingFileRenameOperations (HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager)'
+        if (-not $pendingSourceEvidence.Contains($renameDescriptor)) {
+            $pendingSourceEvidence.Add($renameDescriptor) | Out-Null
         }
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'File rename operations require a reboot to complete updates or resolve blocked operations.' -Evidence (($evidence | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot'
     }
@@ -160,15 +168,29 @@ function Invoke-SystemPendingRebootChecks {
         if ($tcpMismatch -and -not $pendingSources.Contains('TcpipRename')) {
             $pendingSources.Add('TcpipRename') | Out-Null
         }
+        if ($nameMismatch) {
+            $descriptor = 'Computer rename pending reboot (Active and pending names differ).'
+            if (-not $pendingSourceEvidence.Contains($descriptor)) {
+                $pendingSourceEvidence.Add($descriptor) | Out-Null
+            }
+        }
+        if ($tcpMismatch) {
+            $descriptor = 'TCP/IP hostname pending reboot (Hostname and pending hostname differ).'
+            if (-not $pendingSourceEvidence.Contains($descriptor)) {
+                $pendingSourceEvidence.Add($descriptor) | Out-Null
+            }
+        }
         Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title $title -Evidence (($details | Where-Object { $_ }) -join "`n") -Subcategory 'Pending Reboot'
     }
 
     $sources = $pendingSources.ToArray()
-    if ($sources.Length -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Pending reboot required, so updates remain blocked until the system restarts.' -Evidence ($sources -join ', ') -Subcategory 'Pending Reboot' -Data @{
+    $sourceEvidenceLines = $pendingSourceEvidence.ToArray()
+    if ($sourceEvidenceLines.Count -gt 1) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Pending reboot required, so updates remain blocked until the system restarts.' -Evidence (($sourceEvidenceLines | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot' -Data @{
             Area = 'System/PendingReboot'
             Kind = 'RebootFlags'
             Sources = $sources
+            Evidence = $sourceEvidenceLines
         }
     }
 }
