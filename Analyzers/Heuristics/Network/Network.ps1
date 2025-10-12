@@ -397,9 +397,11 @@ function ConvertTo-NetworkArray {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $items = @()
-        foreach ($item in $Value) { $items += $item }
-        return $items
+        $items = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) {
+            $null = $items.Add($item)
+        }
+        return $items.ToArray()
     }
     return @($Value)
 }

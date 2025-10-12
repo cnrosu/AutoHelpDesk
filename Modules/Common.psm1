@@ -158,9 +158,13 @@ function Ensure-Array {
 
   if ($null -eq $Value) { return @() }
   if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-    $out = @()
-    foreach ($item in $Value) { if ($null -ne $item) { $out += $item } }
-    return $out
+    $items = [System.Collections.Generic.List[object]]::new()
+    foreach ($item in $Value) {
+      if ($null -ne $item) {
+        $null = $items.Add($item)
+      }
+    }
+    return $items.ToArray()
   }
   return @($Value)
 }
