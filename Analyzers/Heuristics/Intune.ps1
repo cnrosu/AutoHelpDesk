@@ -355,13 +355,31 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         $evidence['PushLaunchTask'] = $taskParts -join '; '
     }
 
-    $remediation = 'Re-enable Windows push notifications and repair the PushLaunch scheduled task so Intune can receive sync wake-ups.'
-    $remediationScript = @(
-        'sc config dmwappushservice start= delayed-auto',
-        'sc start dmwappushservice',
-        'schtasks /Change /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch" /Enable',
-        'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
-    ) -join "`n"
+    $taskPath = '\Microsoft\Windows\EnterpriseMgmt\{EnrollmentGUID}\PushLaunch'
+    $hasResolvedTaskPath = $false
+    if ($taskStatus -and $taskStatus.TaskName) {
+        $taskPath = [string]$taskStatus.TaskName
+        if (-not [string]::IsNullOrWhiteSpace($taskPath)) {
+            $hasResolvedTaskPath = $true
+        } else {
+            $taskPath = '\Microsoft\Windows\EnterpriseMgmt\{EnrollmentGUID}\PushLaunch'
+        }
+    }
+
+    $remediation = 'Confirm the PushLaunch task under \Microsoft\Windows\EnterpriseMgmt\{EnrollmentGUID}\, re-enable Windows push notifications, and repair the task so Intune can receive sync wake-ups.'
+
+    $remediationScriptLines = New-Object System.Collections.Generic.List[string]
+    $remediationScriptLines.Add('sc config dmwappushservice start= delayed-auto') | Out-Null
+    $remediationScriptLines.Add('sc start dmwappushservice') | Out-Null
+
+    if (-not $hasResolvedTaskPath) {
+        $remediationScriptLines.Add('REM Replace {EnrollmentGUID} with the GUID returned by: Get-ScheduledTask -TaskName PushLaunch -TaskPath "\Microsoft\Windows\EnterpriseMgmt\"') | Out-Null
+    }
+
+    $remediationScriptLines.Add("schtasks /Change /TN `"$taskPath`" /Enable") | Out-Null
+    $remediationScriptLines.Add("schtasks /Run /TN `"$taskPath`"") | Out-Null
+
+    $remediationScript = $remediationScriptLines -join "`n"
 
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
 
