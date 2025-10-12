@@ -1577,9 +1577,10 @@ function New-AnalyzerHtml {
     $goodContent = Build-GoodSection -Normals $normals
     $issuesContent = Build-IssueSection -Issues $issues
     $failedReports = Get-FailedCollectorReports -Context $Context
-    $failedTitle = "Failed Reports ({0})" -f $failedReports.Count
-    Write-HtmlDebug -Stage 'Composer' -Message 'Failed collector section prepared.' -Data @{ Count = $failedReports.Count }
-    if ($failedReports.Count -eq 0) {
+    $failedCount = $failedReports.Count
+    $failedTitle = if ($failedCount -gt 0) { "Failed Reports ($failedCount)" } else { 'Failed Reports' }
+    Write-HtmlDebug -Stage 'Composer' -Message 'Failed collector section prepared.' -Data @{ Count = $failedCount }
+    if ($failedCount -eq 0) {
         $failedContent = "<div class='report-card'><i>All expected inputs produced output.</i></div>"
     } else {
         $failedContentBuilder = [System.Text.StringBuilder]::new()
@@ -1603,7 +1604,6 @@ function New-AnalyzerHtml {
     $rawCount = if ($Context -and $Context.Artifacts) { ($Context.Artifacts.Keys | Measure-Object).Count } else { 0 }
     $goodCount = $normals.Count
     $issueCount = $issues.Count
-    $failedCount = $failedReports.Count
     $navSections = @(
         @{ Id = 'section-overview'; Label = 'Overview'; Description = 'Score & device summary'; ContentHtml = $summaryContent; PanelHeading = ''; PanelDescription = '' },
         @{ Id = $goodSectionId; Label = 'What Looks Good'; Count = $goodCount; ContentHtml = $goodContent; PanelHeading = '' },
