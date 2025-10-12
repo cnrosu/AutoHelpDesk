@@ -1,0 +1,80 @@
+{
+  "generated_on": "2025-10-12",
+  "timezone": "Australia/Sydney",
+  "policy_summary": {
+    "home_pro": "24 months per feature release",
+    "enterprise_education": "36 months per feature release"
+  },
+  "versions": [
+    {
+      "version": "21H2",
+      "release_date": "2021-10-04",
+      "editions": {
+        "Home_Pro": {
+          "end_of_servicing": "2023-10-10"
+        },
+        "Enterprise_Education": {
+          "end_of_servicing": "2024-10-08"
+        }
+      }
+    },
+    {
+      "version": "22H2",
+      "release_date": "2022-09-20",
+      "editions": {
+        "Home_Pro": {
+          "end_of_servicing": "2024-10-08"
+        },
+        "Enterprise_Education": {
+          "end_of_servicing": "2025-10-14"
+        }
+      }
+    },
+    {
+      "version": "23H2",
+      "release_date": "2023-10-31",
+      "editions": {
+        "Home_Pro": {
+          "end_of_servicing": "2025-11-11"
+        },
+        "Enterprise_Education": {
+          "end_of_servicing": "2026-11-10"
+        }
+      }
+    },
+    {
+      "version": "24H2",
+      "release_date": "2024-10-01",
+      "editions": {
+        "Home_Pro": {
+          "end_of_servicing": "2026-10-13"
+        },
+        "Enterprise_Education": {
+          "end_of_servicing": "2027-10-12"
+        }
+      }
+    }
+  ],
+  "LTSC": [
+    {
+      "edition": "Windows 11 Enterprise LTSC 2024",
+      "version": "24H2",
+      "release_date": "2024-10-01",
+      "mainstream_end": "2029-10-09",
+      "extended_end": null
+    },
+    {
+      "edition": "Windows 11 IoT Enterprise LTSC 2024",
+      "version": "24H2",
+      "release_date": "2024-10-01",
+      "mainstream_end": "2029-10-09",
+      "extended_end": "2034-10-10"
+    }
+  ],
+  "sources": {
+    "release_information": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+    "home_pro_lifecycle": "https://learn.microsoft.com/en-us/lifecycle/products/windows-11-home-and-pro",
+    "enterprise_education_lifecycle": "https://learn.microsoft.com/en-us/lifecycle/products/windows-11-enterprise-and-education",
+    "ltsc_lifecycle": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"
+  }
+}
