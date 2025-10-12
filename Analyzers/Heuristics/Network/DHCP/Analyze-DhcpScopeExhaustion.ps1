@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP scope utilization' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-scope-exhaustion.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-scope-exhaustion.json')
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'DHCP scope exhaustion' -Severity 'warning' -Message "Unable to parse DHCP scope exhaustion collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP unexpected servers' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-unexpected-servers.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-unexpected-servers.json')
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'Unexpected DHCP servers' -Severity 'warning' -Message "Unable to parse DHCP unexpected server collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP lease expiry' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-lease-expiry.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-lease-expiry.json')
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'Expired or near-expiring leases' -Severity 'warning' -Message "Unable to parse DHCP lease expiry collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

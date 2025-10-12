@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP client events' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-client-events.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-client-events.json')
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'DHCP client event failures' -Severity 'warning' -Message "Unable to parse DHCP client event collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))

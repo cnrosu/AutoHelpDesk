@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP stale leases' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-stale-leases.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-stale-leases.json')
 if ($null -eq $payload) { return @() }
 if ($payload.PSObject.Properties['Error']) {
     return @(New-DhcpFinding -Check 'Stale DHCP leases' -Severity 'warning' -Message "Unable to parse DHCP stale lease collector output." -Evidence ([ordered]@{ Error = $payload.Error; File = $payload.File }))
