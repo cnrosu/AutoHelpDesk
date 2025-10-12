@@ -357,6 +357,257 @@ function Get-IntuneTokenFailureSummary {
     return [pscustomobject]$summary
 }
 
+function ConvertTo-IntuneWnsRecord {
+    param($InputObject)
+
+    $records = New-Object System.Collections.Generic.List[pscustomobject]
+
+    if ($null -eq $InputObject) { return $records }
+
+    if ($InputObject -is [System.Collections.IEnumerable] -and -not ($InputObject -is [string])) {
+        foreach ($item in $InputObject) {
+            foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $item)) {
+                $records.Add($record) | Out-Null
+            }
+        }
+
+        return $records
+    }
+
+    if ($InputObject.PSObject.Properties['RawText'] -and $InputObject.RawText) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject ([string]$InputObject.RawText))) {
+            $records.Add($record) | Out-Null
+        }
+
+        return $records
+    }
+
+    if ($InputObject.PSObject.Properties['Output'] -and $InputObject.Output) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $InputObject.Output)) {
+            $records.Add($record) | Out-Null
+        }
+
+        return $records
+    }
+
+    if ($InputObject -is [string]) {
+        $text = [string]$InputObject
+        if (-not $text.Trim()) { return $records }
+
+        $host = $null
+        $port = $null
+        $success = $null
+        $error = $null
+
+        $patterns = @(
+            '(?im)^\s*ComputerName\s*:\s*(?<value>.+?)\s*$',
+            '(?im)^\s*RemoteHost\s*:\s*(?<value>.+?)\s*$',
+            '(?im)^\s*RemoteAddress\s*:\s*(?<value>.+?)\s*$',
+            '(?im)^\s*Destination\s*:\s*(?<value>.+?)\s*$'
+        )
+
+        foreach ($pattern in $patterns) {
+            $match = [regex]::Match($text, $pattern)
+            if ($match.Success) {
+                $value = $match.Groups['value'].Value
+                if ($value) { $host = $value.Trim() }
+                if ($host) { break }
+            }
+        }
+
+        $portMatch = [regex]::Match($text, '(?im)^\s*RemotePort\s*:\s*(?<value>\d+)')
+        if ($portMatch.Success) {
+            $port = [int]$portMatch.Groups['value'].Value
+        }
+
+        $successMatch = [regex]::Match($text, '(?im)^\s*TcpTestSucceeded\s*:\s*(?<value>True|False)')
+        if ($successMatch.Success) {
+            $success = [bool]([string]::Equals($successMatch.Groups['value'].Value, 'True', [System.StringComparison]::OrdinalIgnoreCase))
+        }
+
+        $warningMatch = [regex]::Match($text, '(?im)^\s*WARNING\s*:\s*(?<value>.+)$')
+        if ($warningMatch.Success) {
+            $error = $warningMatch.Groups['value'].Value.Trim()
+        }
+
+        if (-not $error) {
+            $errorMatch = [regex]::Match($text, '(?im)^\s*Error\s*:\s*(?<value>.+)$')
+            if ($errorMatch.Success) { $error = $errorMatch.Groups['value'].Value.Trim() }
+        }
+
+        $records.Add([pscustomobject]@{
+            Host    = $host
+            Port    = $port
+            Success = $success
+            Error   = $error
+            Source  = 'text'
+            Raw     = $text
+        }) | Out-Null
+
+        return $records
+    }
+
+    $host = $null
+    foreach ($property in @('Host','Hostname','ComputerName','RemoteHost','RemoteAddress','Address','Target','Endpoint','Url')) {
+        if ($InputObject.PSObject.Properties[$property] -and $InputObject.$property) {
+            $candidate = [string]$InputObject.$property
+            if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+                if ($property -eq 'Url') {
+                    try {
+                        $uri = [uri]$candidate
+                        if ($uri.Host) { $candidate = $uri.Host }
+                    } catch {
+                    }
+                }
+
+                $host = $candidate.Trim()
+                break
+            }
+        }
+    }
+
+    $port = $null
+    foreach ($property in @('Port','RemotePort','TcpPort')) {
+        if ($InputObject.PSObject.Properties[$property] -and $InputObject.$property -ne $null) {
+            try {
+                $port = [int]$InputObject.$property
+                break
+            } catch {
+            }
+        }
+    }
+
+    $success = $null
+    foreach ($property in @('TcpTestSucceeded','Success','Succeeded','IsReachable','Allowed','Reachable')) {
+        if (-not $InputObject.PSObject.Properties[$property]) { continue }
+        $value = $InputObject.$property
+        if ($null -eq $value) { continue }
+
+        if ($value -is [bool]) {
+            $success = [bool]$value
+        } else {
+            $textValue = [string]$value
+            if ([string]::IsNullOrWhiteSpace($textValue)) { continue }
+            $success = [string]::Equals($textValue.Trim(), 'true', [System.StringComparison]::OrdinalIgnoreCase)
+        }
+
+        break
+    }
+
+    $error = $null
+    foreach ($property in @('Error','ErrorMessage','Failure','FailureMessage','Reason','Status','Message','Details')) {
+        if (-not $InputObject.PSObject.Properties[$property]) { continue }
+        $value = $InputObject.$property
+        if (-not $value) { continue }
+
+        if ($value -is [string]) {
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                $error = $value.Trim()
+                break
+            }
+        } elseif ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+            $combined = ($value | ForEach-Object { $_ } | Where-Object { $_ }) -join ' '
+            if ($combined) {
+                $error = $combined.Trim()
+                break
+            }
+        }
+    }
+
+    if (-not $host -and $InputObject.PSObject.Properties['Records']) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $InputObject.Records)) {
+            $records.Add($record) | Out-Null
+        }
+        return $records
+    }
+
+    if (-not $host -and $InputObject.PSObject.Properties['Tests']) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $InputObject.Tests)) {
+            $records.Add($record) | Out-Null
+        }
+        return $records
+    }
+
+    if (-not $host -and $InputObject.PSObject.Properties['Entries']) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $InputObject.Entries)) {
+            $records.Add($record) | Out-Null
+        }
+        return $records
+    }
+
+    if (-not $host -and $InputObject.PSObject.Properties['Lines']) {
+        foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $InputObject.Lines)) {
+            $records.Add($record) | Out-Null
+        }
+        return $records
+    }
+
+    if (-not $host) { return $records }
+
+    $records.Add([pscustomobject]@{
+        Host    = $host
+        Port    = $port
+        Success = $success
+        Error   = $error
+        Source  = 'object'
+        Raw     = $InputObject
+    }) | Out-Null
+
+    return $records
+}
+
+function Get-IntuneWnsConnectivity {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $result = [ordered]@{
+        Records = New-Object System.Collections.Generic.List[pscustomobject]
+    }
+
+    if (-not $Context) { return [pscustomobject]$result }
+
+    $artifactNames = @(
+        'wns-connectivity',
+        'intune-wns',
+        'intune-push',
+        'push-connectivity',
+        'pushnotifications',
+        'push-notifications',
+        'mdm-push',
+        'wns',
+        'push'
+    )
+
+    foreach ($name in $artifactNames) {
+        try {
+            $artifact = Get-AnalyzerArtifact -Context $Context -Name $name
+            if (-not $artifact) { continue }
+
+            $payload = Get-ArtifactPayload -Artifact $artifact
+            if (-not $payload) { continue }
+
+            $entries = if ($payload -is [System.Collections.IEnumerable] -and -not ($payload -is [string])) {
+                @($payload)
+            } else {
+                @($payload)
+            }
+
+            foreach ($entry in $entries) {
+                foreach ($record in (ConvertTo-IntuneWnsRecord -InputObject $entry)) {
+                    $result.Records.Add($record) | Out-Null
+                }
+            }
+
+            if ($result.Records.Count -gt 0) { break }
+        } catch {
+        }
+    }
+
+    return [pscustomobject]$result
+}
+
 function ConvertTo-ImeLogTimestamp {
     param([string]$Text)
 
