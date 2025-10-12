@@ -705,13 +705,9 @@ function New-IssueCardHtml {
     [pscustomobject]$Entry
   )
 
-  $warningIcon = '⚠️'
   $normalizedSeverity = ConvertTo-NormalizedSeverity $Entry.Severity
   $cardClass = if ($Entry.CssClass) { $Entry.CssClass } else { 'info' }
   $badgeText = if ($Entry.BadgeText) { $Entry.BadgeText } elseif ($Entry.Severity) { $Entry.Severity.ToUpperInvariant() } else { 'ISSUE' }
-  if ($normalizedSeverity -eq 'warning' -and $badgeText -notlike '*⚠*') {
-    $badgeText = "$warningIcon $badgeText"
-  }
   $badgeHtml = Encode-Html $badgeText
   $areaHtml = Encode-Html $Entry.Area
   $resolvedTitle = $null
