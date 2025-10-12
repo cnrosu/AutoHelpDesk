@@ -1318,6 +1318,41 @@ function Get-TruncatedText {
     }
 }
 
+function Get-ArtifactDisplayPath {
+    param(
+        [string]$Path
+    )
+
+    if (-not $Path) { return $Path }
+
+    $normalized = [string]$Path
+    if ([string]::IsNullOrWhiteSpace($normalized)) { return $normalized }
+
+    $normalized = $normalized -replace '/', '\'
+
+    $timestampPattern = [regex]'\\\d{8}[-_]\d{6}\\'
+    $timestampMatch = $timestampPattern.Match($normalized)
+    if ($timestampMatch.Success) {
+        $startIndex = $timestampMatch.Index + $timestampMatch.Length
+        if ($startIndex -lt $normalized.Length) {
+            $relative = $normalized.Substring($startIndex).TrimStart('\')
+            if ($relative) { return $relative }
+        }
+    }
+
+    $diagReportsPattern = [regex]'\\DiagReports\\'
+    $diagMatch = $diagReportsPattern.Match($normalized)
+    if ($diagMatch.Success) {
+        $startIndex = $diagMatch.Index + $diagMatch.Length
+        if ($startIndex -lt $normalized.Length) {
+            $relative = $normalized.Substring($startIndex).TrimStart('\')
+            if ($relative) { return $relative }
+        }
+    }
+
+    return $normalized
+}
+
 function ConvertTo-RawCard {
     param(
         [string]$Key,
@@ -1373,7 +1408,9 @@ function ConvertTo-RawCard {
     if ($collectedAt) { $null = $metaParts.Add("Collected: $(Encode-Html $collectedAt)") }
     if ($path) {
         $encodedPath = Encode-Html $path
-        $null = $metaParts.Add("File: <a class='artifact-link' href='$encodedPath' target='_blank' rel='noopener'>$encodedPath</a>")
+        $displayPath = Get-ArtifactDisplayPath -Path $path
+        $encodedDisplayPath = Encode-Html $displayPath
+        $null = $metaParts.Add("File: <a class='artifact-link' href='$encodedPath' target='_blank' rel='noopener'>$encodedDisplayPath</a>")
     }
 
     $metaHtml = ''
