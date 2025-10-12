@@ -22,6 +22,7 @@ function Invoke-IntuneHeuristics {
     $result = New-CategoryResult -Name 'Intune'
     Invoke-IntuneHeuristic-INTUNE-001 -Context $Context -Result $result
     Invoke-IntuneHeuristic-INTUNE-002 -Context $Context -Result $result
+    Invoke-IntuneHeuristic-INTUNE-003 -Context $Context -Result $result
     return $result
 }
 
@@ -339,4 +340,89 @@ function Invoke-IntuneHeuristic-INTUNE-002 {
     ) -join "`n"
 
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $impactText -Evidence $evidence -Subcategory 'ESP & App Provisioning' -Remediation $remediation -RemediationScript $remediationScript
+}
+
+function Invoke-IntuneHeuristic-INTUNE-003 {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        $Result
+    )
+
+    Write-HeuristicDebug -Source 'Intune/INTUNE-003' -Message 'Evaluating INTUNE-003 signals'
+
+    $connectivity = Get-IntuneWnsConnectivity -Context $Context
+    if (-not $connectivity -or -not $connectivity.Records) { return }
+
+    $records = @($connectivity.Records | Where-Object { $_ })
+    if ($records.Count -eq 0) { return }
+
+    $failures = @($records | Where-Object {
+            if ($_.Success -eq $false) { return $true }
+            if ($_.Success -eq $null -and $_.Error) { return $true }
+            return $false
+        })
+
+    if ($failures.Count -eq 0) {
+        $hosts = @()
+        foreach ($record in $records) {
+            $parts = New-Object System.Collections.Generic.List[string]
+            if ($record.Host) { $parts.Add([string]$record.Host) | Out-Null }
+            if ($record.Port) { $parts.Add(('port {0}' -f $record.Port)) | Out-Null }
+            if ($parts.Count -gt 0) { $hosts += ($parts -join ' ') }
+        }
+
+        if ($hosts.Count -gt 0) {
+            Add-CategoryNormal -CategoryResult $Result -Title ('WNS push connectivity succeeded for {0}.' -f ($hosts -join ', ')) -Subcategory 'Enrollment & Connectivity'
+        }
+
+        return
+    }
+
+    $allHosts = @()
+    foreach ($record in $failures) {
+        if ($record.Host) {
+            if ($record.Port) {
+                $allHosts += ('{0}:{1}' -f $record.Host, $record.Port)
+            } else {
+                $allHosts += [string]$record.Host
+            }
+        }
+    }
+
+    $hostSummary = $null
+    if ($allHosts.Count -gt 0) { $hostSummary = ($allHosts | Select-Object -Unique) -join ', ' }
+
+    $wnsTitle = if ($hostSummary) {
+        'Intune push notifications cannot reach Windows Notification Service endpoint {0}, so devices stay stuck waiting for sync.' -f $hostSummary
+    } else {
+        'Intune push notifications cannot reach Windows Notification Service, so devices stay stuck waiting for sync.'
+    }
+
+    $evidenceLines = New-Object System.Collections.Generic.List[string]
+    foreach ($failure in $failures) {
+        $lineParts = New-Object System.Collections.Generic.List[string]
+        if ($failure.Host) { $lineParts.Add(('Host={0}' -f $failure.Host)) | Out-Null }
+        if ($failure.Port) { $lineParts.Add(('Port={0}' -f $failure.Port)) | Out-Null }
+        if ($failure.Error) { $lineParts.Add(('Error={0}' -f $failure.Error)) | Out-Null }
+        if (-not $failure.Error -and $failure.Success -eq $false) { $lineParts.Add('Error=Connection test failed') | Out-Null }
+        if ($lineParts.Count -gt 0) { $evidenceLines.Add(($lineParts -join '; ')) | Out-Null }
+    }
+
+    if ($evidenceLines.Count -eq 0) {
+        $evidenceLines.Add('WNS push connectivity test reported failures but provided no error text.') | Out-Null
+    }
+
+    $severity = if ($failures.Count -eq $records.Count) { 'high' } else { 'medium' }
+
+    $remediation = 'Allow outbound TCP 443 traffic to *.wns.windows.com through firewalls and proxies so Intune devices receive push notifications promptly.'
+    $remediationScript = @(
+        'Update firewall rules to permit TCP 443 to *.wns.windows.com.',
+        'Add *.wns.windows.com to proxy allow or bypass lists used by the Intune Management Extension.',
+        'Retry an Intune sync after network rules propagate.'
+    ) -join "`n"
+
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $wnsTitle -Evidence ($evidenceLines -join "`n") -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
 }

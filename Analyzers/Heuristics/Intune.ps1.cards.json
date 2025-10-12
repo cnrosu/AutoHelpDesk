@@ -131,6 +131,41 @@
           }
         ]
       }
+    },
+    {
+      "card_id": "Intune.ps1/wnstitle",
+      "title": "$wnsTitle",
+      "severity": "$severity",
+      "area": "Intune.ps1",
+      "category": "Intune.ps1",
+      "subcategory": "Enrollment & Connectivity",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Intune.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Intune.ps1/wnstitle",
+        "tags": []
+      },
+      "explanation": "This card indicates '$wnsTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates '$wnsTitle'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": [
+          {
+            "title": "Potential Issue – Allow Windows Notification Service endpoints",
+            "steps": [
+              "Permit outbound TCP 443 access to *.wns.windows.com through firewalls and proxies.",
+              "Add *.wns.windows.com to proxy bypass or authentication allow lists for the Intune Management Extension service.",
+              "Retry an Intune sync after updating firewall or proxy policy."
+            ],
+            "scripts": []
+          }
+        ]
+      }
     }
   ]
 }
