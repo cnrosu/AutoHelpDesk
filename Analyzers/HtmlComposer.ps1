@@ -1435,16 +1435,6 @@ function ConvertTo-RawCard {
     return $cardBuilder.ToString()
 }
 
-function Build-DebugSection {
-    param($Context)
-
-    if (-not $Context -or -not $Context.Artifacts) {
-        return "<div class='report-card'><i>No debug metadata available.</i></div>"
-    }
-
-    return "<div class='report-card'><i>Artifact inventory is now available in the Artifacts tab.</i></div>"
-}
-
 function Build-RawSection {
     param(
         $Context,
@@ -1669,7 +1659,6 @@ function New-AnalyzerHtml {
         @{ Id = $rawSectionId; Label = 'Artifacts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Artifacts ($rawCount)" }
     )
     $navHtml = Build-ReportNavigation -Sections $navSections
-    $debugHtml = "<details><summary>Debug</summary>$(Build-DebugSection -Context $Context)</details>"
     $tabsScript = @'
 <script>
 (function () {
@@ -2123,7 +2112,7 @@ function New-AnalyzerHtml {
     $tail = "</main>$tabsScript</body></html>"
 
     $htmlBuilder = [System.Text.StringBuilder]::new()
-    foreach ($segment in @($head, $navHtml, $debugHtml, $tail)) {
+    foreach ($segment in @($head, $navHtml, $tail)) {
         if ($segment) { $null = $htmlBuilder.Append($segment) }
     }
 
