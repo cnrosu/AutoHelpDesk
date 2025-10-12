@@ -47,12 +47,12 @@ function Get-WlanProfileNames {
     $names = [System.Collections.Generic.List[string]]::new()
     if ($null -eq $ProfilesRaw) { return $names.ToArray() }
 
-    $lines = @()
+    $lines = [System.Collections.Generic.List[string]]::new()
     if ($ProfilesRaw -is [string]) {
-        $lines = @($ProfilesRaw)
+        [void]$lines.Add([string]$ProfilesRaw)
     } elseif ($ProfilesRaw -is [System.Collections.IEnumerable]) {
         foreach ($line in $ProfilesRaw) {
-            if ($null -ne $line) { $lines += [string]$line }
+            if ($null -ne $line) { [void]$lines.Add([string]$line) }
         }
     }
 
@@ -131,24 +131,24 @@ function ConvertTo-WlanLines {
 
     if ($null -eq $Value) { return @() }
 
-    if ($Value -is [string]) { return @($Value) }
+    if ($Value -is [string]) { return ,([string]$Value) }
 
     if ($Value -is [System.Collections.IEnumerable]) {
-        $lines = @()
+        $lines = [System.Collections.Generic.List[string]]::new()
         foreach ($item in $Value) {
-            if ($null -ne $item) { $lines += [string]$item }
+            if ($null -ne $item) { [void]$lines.Add([string]$item) }
         }
-        return $lines
+        return $lines.ToArray()
     }
 
-    return @([string]$Value)
+    return ,([string]$Value)
 }
 
 function Sanitize-WlanProfileOutput {
     param($Output)
 
     $lines = ConvertTo-WlanLines $Output
-    $sanitized = @()
+    $sanitized = [System.Collections.Generic.List[string]]::new()
     $passphrase = $null
 
     foreach ($line in $lines) {
@@ -156,14 +156,14 @@ function Sanitize-WlanProfileOutput {
         $text = [string]$line
         if ($text -match '^(\s*Key\s+Content\s*:\s*)(.+)$') {
             if (-not $passphrase) { $passphrase = $Matches[2].Trim() }
-            $sanitized += ($Matches[1] + '[REDACTED]')
+            [void]$sanitized.Add($Matches[1] + '[REDACTED]')
         } else {
-            $sanitized += $text
+            [void]$sanitized.Add($text)
         }
     }
 
     return [pscustomobject]@{
-        Lines      = $sanitized
+        Lines      = $sanitized.ToArray()
         Passphrase = $passphrase
     }
 }

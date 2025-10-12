@@ -27,21 +27,21 @@ function ConvertTo-Lan8021xLines {
 
     if ($null -eq $Value) { return @() }
 
-    if ($Value -is [string]) { return @($Value) }
+    if ($Value -is [string]) { return ,([string]$Value) }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        $lines = @()
+        $lines = [System.Collections.Generic.List[string]]::new()
         foreach ($item in $Value) {
-            if ($null -ne $item) { $lines += [string]$item }
+            if ($null -ne $item) { [void]$lines.Add([string]$item) }
         }
-        return $lines
+        return $lines.ToArray()
     }
 
     if ($Value.PSObject -and $Value.PSObject.Properties['Lines']) {
         return ConvertTo-Lan8021xLines -Value $Value.Lines
     }
 
-    return @([string]$Value)
+    return ,([string]$Value)
 }
 
 function Get-Lan8021xInterfacesRaw {
@@ -63,7 +63,7 @@ function Get-Lan8021xDot3Events {
         }
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     foreach ($event in $events) {
         if (-not $event) { continue }
 
@@ -75,16 +75,16 @@ function Get-Lan8021xDot3Events {
         $message = $null
         try { $message = $event.Message } catch { $message = $null }
 
-        $results += [ordered]@{
+        [void]$results.Add([ordered]@{
             timeCreatedUtc = $timeCreatedUtc
             level          = if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null }
             eventId        = if ($event.PSObject.Properties['Id']) { [int]$event.Id } else { $null }
             provider       = if ($event.PSObject.Properties['ProviderName']) { [string]$event.ProviderName } else { $null }
             message        = $message
-        }
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Get-Lan8021xMachineCertificates {
@@ -97,7 +97,7 @@ function Get-Lan8021xMachineCertificates {
         }
     }
 
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     foreach ($cert in $certs) {
         if (-not $cert) { continue }
 
@@ -111,29 +111,29 @@ function Get-Lan8021xMachineCertificates {
             try { $notAfterUtc = $cert.NotAfter.ToUniversalTime().ToString('o') } catch { $notAfterUtc = $null }
         }
 
-        $ekuDetails = @()
+        $ekuDetails = [System.Collections.Generic.List[object]]::new()
         if ($cert.PSObject.Properties['EnhancedKeyUsageList']) {
             foreach ($eku in $cert.EnhancedKeyUsageList) {
                 if (-not $eku) { continue }
-                $ekuDetails += [ordered]@{
+                [void]$ekuDetails.Add([ordered]@{
                     friendlyName = if ($eku.PSObject.Properties['FriendlyName']) { [string]$eku.FriendlyName } else { $null }
                     oid          = if ($eku.PSObject.Properties['Value']) { [string]$eku.Value } else { $null }
-                }
+                })
             }
         }
 
-        $results += [ordered]@{
+        [void]$results.Add([ordered]@{
             subject         = if ($cert.PSObject.Properties['Subject']) { [string]$cert.Subject } else { $null }
             issuer          = if ($cert.PSObject.Properties['Issuer']) { [string]$cert.Issuer } else { $null }
             thumbprint      = if ($cert.PSObject.Properties['Thumbprint']) { [string]$cert.Thumbprint } else { $null }
             notBeforeUtc    = $notBeforeUtc
             notAfterUtc     = $notAfterUtc
             hasPrivateKey   = if ($cert.PSObject.Properties['HasPrivateKey']) { [bool]$cert.HasPrivateKey } else { $null }
-            enhancedKeyUsage = $ekuDetails
-        }
+            enhancedKeyUsage = $ekuDetails.ToArray()
+        })
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-Main {
