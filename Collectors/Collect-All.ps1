@@ -108,7 +108,8 @@ function Invoke-AllCollectors {
     $pool.ApartmentState = 'MTA'
     $pool.Open()
 
-    $tasks = foreach ($info in $collectorInfos) {
+    $tasks = [System.Collections.Generic.List[object]]::new()
+    foreach ($info in $collectorInfos) {
         Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $info.Collector.FullName, $info.AreaName, $info.AreaOutput)
 
         $ps = [powershell]::Create()
@@ -120,12 +121,14 @@ function Invoke-AllCollectors {
             [void]$ps.AddParameter('Verbose')
         }
 
-        [pscustomobject]@{
+        $task = [pscustomobject]@{
             PS     = $ps
             IAsync = $ps.BeginInvoke()
             Path   = $info.Collector.FullName
             Area   = $info.AreaName
         }
+
+        [void]$tasks.Add($task)
     }
 
     $resultsList = [System.Collections.Generic.List[object]]::new()
@@ -133,32 +136,56 @@ function Invoke-AllCollectors {
     $total = $tasks.Count
     $activity = 'Running collector scripts'
 
+    $pendingTasks = [System.Collections.Generic.List[object]]::new()
     foreach ($task in $tasks) {
-        try {
-            $output = $task.PS.EndInvoke($task.IAsync)
-            Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
-            $resultsList.Add([pscustomobject]@{
-                Script  = $task.Path
-                Output  = $output
-                Success = $true
-                Error   = $null
-            })
-        } catch {
-            Write-Verbose ("Collector '{0}' reported an exception." -f $task.Path)
-            Write-Warning ("Collector failed: {0} - {1}" -f $task.Path, $_.Exception.Message)
-            $resultsList.Add([pscustomobject]@{
-                Script  = $task.Path
-                Output  = $null
-                Success = $false
-                Error   = $_.Exception.Message
-            })
-        } finally {
-            $task.PS.Dispose()
-            $completed++
-            $statusMessage = "[{0}/{1}] {2}" -f $completed, $total, $task.Path
-            $percentComplete = if ($total -eq 0) { 100 } else { [int](($completed / $total) * 100) }
-            Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete -CurrentOperation $task.Path
-            Write-Host $statusMessage
+        [void]$pendingTasks.Add($task)
+    }
+
+    while ($pendingTasks.Count -gt 0) {
+        $processedInThisCycle = $false
+
+        foreach ($task in @($pendingTasks)) {
+            if (-not $task.IAsync.IsCompleted) {
+                continue
+            }
+
+            try {
+                $output = $task.PS.EndInvoke($task.IAsync)
+                Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
+                $resultsList.Add([pscustomobject]@{
+                    Script  = $task.Path
+                    Output  = $output
+                    Success = $true
+                    Error   = $null
+                })
+            } catch {
+                Write-Verbose ("Collector '{0}' reported an exception." -f $task.Path)
+                Write-Warning ("Collector failed: {0} - {1}" -f $task.Path, $_.Exception.Message)
+                $resultsList.Add([pscustomobject]@{
+                    Script  = $task.Path
+                    Output  = $null
+                    Success = $false
+                    Error   = $_.Exception.Message
+                })
+            } finally {
+                if ($task.IAsync.AsyncWaitHandle) {
+                    $task.IAsync.AsyncWaitHandle.Dispose()
+                }
+
+                $task.PS.Dispose()
+                $completed++
+                $statusMessage = '{0} of {1} collectors completed' -f $completed, $total
+                $percentComplete = if ($total -eq 0) { 100 } else { [int](($completed / [double]$total) * 100) }
+                $currentOperation = 'Completed {0}' -f (Split-Path -Path $task.Path -Leaf)
+                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete -CurrentOperation $currentOperation
+                Write-Host $statusMessage
+                [void]$pendingTasks.Remove($task)
+                $processedInThisCycle = $true
+            }
+        }
+
+        if (-not $processedInThisCycle) {
+            Start-Sleep -Milliseconds 100
         }
     }
 
