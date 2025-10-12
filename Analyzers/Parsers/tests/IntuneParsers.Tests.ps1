@@ -63,6 +63,13 @@ $healthyService = [pscustomobject]@{
     Status     = 'Running'
 }
 
+$unhealthyService = [pscustomobject]@{
+    Name        = 'dmwappushservice'
+    DisplayName = 'Windows Push Notification Service'
+    StartMode   = 'Disabled'
+    Status      = 'Stopped'
+}
+
 $taskContextZero = New-TestIntuneContext -TaskLines @(
     'Folder: \Microsoft\Windows\PushToInstall',
     'TaskName: \Microsoft\Windows\PushToInstall\PushLaunch',
@@ -98,6 +105,37 @@ $pushIssues = @($category.Issues | Where-Object { $_.Title -like 'Intune quick s
 if ($pushIssues.Count -gt 0) {
     $details = $pushIssues | ForEach-Object { "{0} (Severity={1})" -f $_.Title, $_.Severity }
     $null = $failures.Add('Intune heuristic produced unexpected push notification issues: ' + ($details -join '; '))
+}
+
+$enrollmentGuid = '12345678-90ab-cdef-1234-567890abcdef'
+$brokenContext = New-TestIntuneContext -TaskLines @(
+    "Folder: \\Microsoft\\Windows\\EnterpriseMgmt\\$enrollmentGuid",
+    "TaskName: \\Microsoft\\Windows\\EnterpriseMgmt\\$enrollmentGuid\\PushLaunch",
+    'Status: Disabled',
+    'Scheduled Task State: Disabled',
+    'Last Result: 0 (0x0)'
+) -ServiceEntries @($unhealthyService)
+
+$brokenCategory = Invoke-IntuneHeuristics -Context $brokenContext
+$brokenIssue = @($brokenCategory.Issues | Where-Object { $_.Title -like 'Intune quick sync never wakes*' }) | Select-Object -First 1
+if (-not $brokenIssue) {
+    $null = $failures.Add('Expected an Intune push notification issue for disabled dependencies, but none was created.')
+} else {
+    if ($brokenIssue.Remediation -notmatch '\\EnterpriseMgmt\\') {
+        $null = $failures.Add('Remediation guidance should mention the EnterpriseMgmt PushLaunch path.')
+    }
+
+    if ($brokenIssue.RemediationScript -notmatch '\\EnterpriseMgmt\\') {
+        $null = $failures.Add('Remediation script should reference the EnterpriseMgmt PushLaunch task.')
+    }
+
+    if ($brokenIssue.RemediationScript -match 'PushToInstall') {
+        $null = $failures.Add('Remediation script should no longer reference the legacy PushToInstall path.')
+    }
+
+    if ($brokenIssue.RemediationScript -notmatch [regex]::Escape($enrollmentGuid)) {
+        $null = $failures.Add('Remediation script should include the reported enrollment GUID when available.')
+    }
 }
 
 if ($failures.Count -gt 0) {
