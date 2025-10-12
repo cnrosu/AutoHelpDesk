@@ -2598,6 +2598,9 @@ function Invoke-NetworkHeuristics {
             }
 
             $primaryEvidence = @()
+            $title = $null
+            $remediation = $null
+
             switch ($severity) {
                 'high' {
                     $title = 'Default gateway resolved to an invalid MAC, so users may be routed through a spoofed device.'
@@ -2615,10 +2618,6 @@ function Invoke-NetworkHeuristics {
                         if ($formatted) { $primaryEvidence += $formatted }
                     }
                 }
-                default {
-                    $title = 'We suppress broadcast and multicast ARP entries, so warnings apply only to unicast neighbors with invalid MACs or evidence of flapping.'
-                    $remediation = 'No action needed. Broadcast/multicast ARP entries are expected. Monitor gateway mapping for changes.'
-                }
             }
 
             $evidence = @()
@@ -2626,7 +2625,16 @@ function Invoke-NetworkHeuristics {
             if ($gatewaySummary.Count -gt 0) { $evidence += "Gateway ARP: $($gatewaySummary -join '; ')" }
             if ($suppressedEvidence.Count -gt 0) { $evidence += $suppressedEvidence }
 
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $remediation
+            if ($severity -eq 'info') {
+                $normalTitle = 'ARP Cache Healthy, so broadcast and multicast chatter is suppressed while suspicious unicast neighbors would raise alerts.'
+                if ($evidence.Count -gt 0) {
+                    Add-CategoryNormal -CategoryResult $result -Title $normalTitle -Evidence $evidence -Subcategory 'ARP Cache'
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title $normalTitle -Subcategory 'ARP Cache'
+                }
+            } else {
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $remediation
+            }
 
             $localMacAlerts = @()
             foreach ($mac in $localMacs) {
