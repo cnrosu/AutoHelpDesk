@@ -1014,12 +1014,8 @@ function Get-IntunePushLaunchTaskStatus {
         $normalizedTaskName = $taskName.Trim()
         if (-not $normalizedTaskName) { continue }
 
-        $isPushLaunch = $normalizedTaskName.Equals('\Microsoft\Windows\PushToInstall\PushLaunch', [System.StringComparison]::OrdinalIgnoreCase)
-        if (-not $isPushLaunch) {
-            $isPushLaunch = $normalizedTaskName.EndsWith('\PushLaunch', [System.StringComparison]::OrdinalIgnoreCase)
-        }
-
-        if (-not $isPushLaunch) { continue }
+        $enterprisePushLaunchPattern = '^(?i)\\Microsoft\\Windows\\EnterpriseMgmt\\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}}\\PushLaunch$'
+        if ($normalizedTaskName -notmatch $enterprisePushLaunchPattern) { continue }
 
         $result.Found = $true
         $result.TaskName = $normalizedTaskName

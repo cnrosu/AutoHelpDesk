@@ -345,6 +345,7 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
     if ($taskCollected) {
         $taskParts = [System.Collections.Generic.List[string]]::new()
         $taskParts.Add('Found=' + [string]$taskStatus.Found) | Out-Null
+        if ($taskStatus.TaskName) { $taskParts.Add('TaskName=' + [string]$taskStatus.TaskName) | Out-Null }
         if ($null -ne $taskStatus.Enabled) { $taskParts.Add('Enabled=' + [string]$taskStatus.Enabled) | Out-Null }
         if ($taskStatus.ScheduledTaskState) { $taskParts.Add('TaskState=' + [string]$taskStatus.ScheduledTaskState) | Out-Null }
         if ($taskStatus.Status) { $taskParts.Add('Status=' + [string]$taskStatus.Status) | Out-Null }

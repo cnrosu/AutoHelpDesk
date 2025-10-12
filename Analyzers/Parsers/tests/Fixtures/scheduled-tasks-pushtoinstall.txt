@@ -1,0 +1,5 @@
+Folder: \Microsoft\Windows\PushToInstall
+TaskName: \Microsoft\Windows\PushToInstall\PushLaunch
+Status: Ready
+Last Run Result: 0x0
+Last Run Time: 1/1/2024 12:34:56 PM
