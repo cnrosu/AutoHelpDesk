@@ -5,7 +5,8 @@ function Get-Windows11SupportData {
         return $script:Windows11SupportCache
     }
 
-    $relativePath = Join-Path -Path $PSScriptRoot -ChildPath '..\OperatingSystem\windows11_support.json'
+    $supportMetadataRoot = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'OperatingSystem'
+    $relativePath = Join-Path -Path $supportMetadataRoot -ChildPath '.\windows11_support.json'
     $resolvedPath = $null
     try {
         $resolvedPath = (Resolve-Path -LiteralPath $relativePath -ErrorAction Stop).ProviderPath
