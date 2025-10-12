@@ -14,8 +14,8 @@ function Invoke-IntuneHeuristics {
     })
 
     $result = New-CategoryResult -Name 'Intune'
-    Invoke-IntuneHeuristic-INTUNE-001 -Context $Context -Result $result
-    Invoke-IntuneHeuristic-INTUNE-002 -Context $Context -Result $result
-    Invoke-IntuneHeuristic-INTUNE-003 -Context $Context -Result $result
+    Invoke-IntuneHeuristic-EnrollmentConnectivityHealth -Context $Context -Result $result
+    Invoke-IntuneHeuristic-Win32EspAppHealth -Context $Context -Result $result
+    Invoke-IntuneHeuristic-PushNotificationQuickSync -Context $Context -Result $result
     return $result
 }
