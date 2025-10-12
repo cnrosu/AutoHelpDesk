@@ -94,9 +94,11 @@ function ConvertTo-VpnArray {
     if ($null -eq $Value) { return @() }
     if ($Value -is [string]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [hashtable])) {
-        $items = @()
-        foreach ($item in $Value) { $items += $item }
-        return $items
+        $items = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) {
+            $null = $items.Add($item)
+        }
+        return $items.ToArray()
     }
     return @($Value)
 }
@@ -260,7 +262,7 @@ function Get-VpnRoutes {
     )
 
     $defaultViaVpn = $null
-    $routes = @()
+    $routes = [System.Collections.Generic.List[string]]::new()
 
     if ($Connection.PSObject.Properties['Routes'] -and $Connection.Routes) {
         foreach ($route in (ConvertTo-VpnArray -Value $Connection.Routes)) {
@@ -273,7 +275,7 @@ function Get-VpnRoutes {
             }
 
             if ($prefix) {
-                $routes += $prefix
+                $null = $routes.Add([string]$prefix)
                 if ($prefix -eq '0.0.0.0/0' -or $prefix -eq '::/0') {
                     $defaultViaVpn = $true
                 }
@@ -291,7 +293,7 @@ function Get-VpnRoutes {
 
     return [ordered]@{
         defaultViaVpn  = $defaultViaVpn
-        classlessRoutes = ($routes | Where-Object { $_ })
+        classlessRoutes = ($routes.ToArray() | Where-Object { $_ })
     }
 }
 
@@ -314,7 +316,7 @@ function Get-VpnDnsSuffixes {
 }
 
 function Get-VpnConnectionRecords {
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
 
     $scopes = @(
         @{ Label = 'CurrentUser'; Parameters = @{} },
@@ -368,7 +370,7 @@ function Get-VpnConnectionRecords {
                 }
             }
 
-            $results += $record
+            $null = $results.Add($record)
         }
     }
 
@@ -380,14 +382,14 @@ function Get-VpnConnectionRecords {
                 $unique[$key] = $item
             }
         }
-        return $unique.Values
+        return [object[]]$unique.Values
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Get-VpnNetworkInterfaces {
-    $interfaces = @()
+    $interfaces = [System.Collections.Generic.List[object]]::new()
 
     try {
         $adapters = Get-NetAdapter -ErrorAction Stop
@@ -407,9 +409,9 @@ function Get-VpnNetworkInterfaces {
         $name = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
         $status = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
 
-        $ipv4 = @()
-        $ipv6 = @()
-        $dnsServers = @()
+        $ipv4 = [System.Collections.Generic.List[string]]::new()
+        $ipv6 = [System.Collections.Generic.List[string]]::new()
+        $dnsServers = [System.Collections.Generic.List[string]]::new()
 
         if ($name) {
             try {
@@ -417,17 +419,17 @@ function Get-VpnNetworkInterfaces {
                 if ($config) {
                     foreach ($ipv4Entry in (ConvertTo-VpnArray -Value $config.IPv4Address)) {
                         if ($ipv4Entry -and $ipv4Entry.PSObject.Properties['IPAddress']) {
-                            $ipv4 += [string]$ipv4Entry.IPAddress
+                            $null = $ipv4.Add([string]$ipv4Entry.IPAddress)
                         }
                     }
                     foreach ($ipv6Entry in (ConvertTo-VpnArray -Value $config.IPv6Address)) {
                         if ($ipv6Entry -and $ipv6Entry.PSObject.Properties['IPAddress']) {
-                            $ipv6 += [string]$ipv6Entry.IPAddress
+                            $null = $ipv6.Add([string]$ipv6Entry.IPAddress)
                         }
                     }
                     if ($config.DnsServer -and $config.DnsServer.ServerAddresses) {
                         foreach ($dns in (ConvertTo-VpnArray -Value $config.DnsServer.ServerAddresses)) {
-                            if ($dns) { $dnsServers += [string]$dns }
+                            if ($dns) { $null = $dnsServers.Add([string]$dns) }
                         }
                     }
                 }
@@ -435,21 +437,21 @@ function Get-VpnNetworkInterfaces {
             }
         }
 
-        $interfaces += [ordered]@{
+        $null = $interfaces.Add([ordered]@{
             ifIndex    = $interfaceIndex
             name       = $name
             status     = $status
-            ipv4       = ($ipv4 | Where-Object { $_ })
-            ipv6       = ($ipv6 | Where-Object { $_ })
-            dnsServers = (($dnsServers | Where-Object { $_ }) | Select-Object -Unique)
-        }
+            ipv4       = ($ipv4.ToArray() | Where-Object { $_ })
+            ipv6       = ($ipv6.ToArray() | Where-Object { $_ })
+            dnsServers = (($dnsServers.ToArray() | Where-Object { $_ }) | Select-Object -Unique)
+        })
     }
 
-    return $interfaces
+    return $interfaces.ToArray()
 }
 
 function Get-VpnActiveRoutes {
-    $routes = @()
+    $routes = [System.Collections.Generic.List[object]]::new()
 
     try {
         $netRoutes = Get-NetRoute -ErrorAction Stop | Where-Object { $_.State -eq 'Active' }
@@ -459,17 +461,17 @@ function Get-VpnActiveRoutes {
             $nextHop = if ($route.PSObject.Properties['NextHop']) { [string]$route.NextHop } else { $null }
             $interfaceAlias = if ($route.PSObject.Properties['InterfaceAlias']) { [string]$route.InterfaceAlias } else { $null }
             if ($destination) {
-                $routes += [ordered]@{
+                $null = $routes.Add([ordered]@{
                     destination = $destination
                     nexthop     = $nextHop
                     interface   = $interfaceAlias
-                }
+                })
             }
         }
     } catch {
     }
 
-    return $routes
+    return $routes.ToArray()
 }
 
 function Get-VpnEffectiveDnsServers {
@@ -491,7 +493,7 @@ function Get-VpnEffectiveDnsServers {
 }
 
 function Get-VpnCertificates {
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     $stores = @(
         @{ Name = 'LocalMachine\\My'; Path = 'Cert:\\LocalMachine\\My' },
         @{ Name = 'CurrentUser\\My';  Path = 'Cert:\\CurrentUser\\My' }
@@ -533,7 +535,7 @@ function Get-VpnCertificates {
             } catch {
             }
 
-            $results += [ordered]@{
+            $null = $results.Add([ordered]@{
                 store                   = $store.Name
                 subject                 = [string]$cert.Subject
                 thumbprint              = [string]$cert.Thumbprint
@@ -541,11 +543,11 @@ function Get-VpnCertificates {
                 notAfterUtc             = $notAfter
                 isExpired               = $isExpired
                 intendedForClientAuth   = $ekuClient
-            }
+            })
         }
     }
 
-    return $results
+    return $results.ToArray()
 }
 
 function Sanitize-VpnEventMessage {
@@ -642,7 +644,7 @@ function ConvertTo-VpnEventData {
 }
 
 function Get-VpnEvents {
-    $events = @()
+    $events = [System.Collections.Generic.List[object]]::new()
     $cutoffLocal = (Get-Date).AddDays(-7)
     $cutoffUtc = $cutoffLocal.ToUniversalTime()
 
@@ -715,7 +717,7 @@ function Get-VpnEvents {
 
             $eventData = ConvertTo-VpnEventData -Event $event
 
-            $events += [ordered]@{
+            $null = $events.Add([ordered]@{
                 timeCreatedUtc = if ($timeUtc) { $timeUtc.ToString('o') } else { $null }
                 provider       = $provider
                 level          = if ($event.PSObject.Properties['LevelDisplayName']) { [string]$event.LevelDisplayName } else { $null }
@@ -723,11 +725,11 @@ function Get-VpnEvents {
                 recordId       = $recordId
                 message        = Sanitize-VpnEventMessage -Message $message
                 eventData      = $eventData
-            }
+            })
         }
     }
 
-    return $events
+    return $events.ToArray()
 }
 
 function Invoke-Main {
