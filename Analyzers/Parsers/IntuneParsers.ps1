@@ -774,7 +774,14 @@ function Normalize-IntuneTaskResult {
     $text = ([string]$Value).Trim()
     if (-not $text) { return 'unknown' }
 
-    if ($text -match '(?i)0x0$' -or $text -match '(?i)success') { return 'success' }
+    if ($text -match '(?i)success') { return 'success' }
+
+    $normalized = $text -replace '(?i)\s*\(\s*0x0\s*\)\s*$', ''
+    $normalized = $normalized.Trim()
+
+    if ($normalized -match '^(?i)0x0$' -or $normalized -match '^(?i)0$' -or $text -match '(?i)0x0$') {
+        return 'success'
+    }
 
     return 'failure'
 }
