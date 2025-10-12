@@ -106,7 +106,7 @@ function Invoke-SecurityAutorunChecks {
 
             $evidenceText = $evidenceLines.ToArray() -join "`n"
             if ($noDriveHardened -and $noAutoHardened) {
-                Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Autorun/Autoplay policies hardened (NoDriveTypeAutoRun=0xFF; NoAutoRun=1).' -Evidence $evidenceText -Subcategory 'Autorun Policies' -CheckId 'Security/AutorunPolicies'
+                Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Autorun/Autoplay policies hardened.' -Evidence $evidenceText -Subcategory 'Autorun Policies' -CheckId 'Security/AutorunPolicies'
             } else {
                 $statusParts = [System.Collections.Generic.List[string]]::new()
                 if (-not $noDriveHardened) {
