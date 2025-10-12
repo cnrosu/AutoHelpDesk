@@ -80,51 +80,91 @@ function Invoke-AllCollectors {
     $totalCollectors = $collectors.Count
     Write-Verbose ("Output root resolved to '{0}'" -f $resolvedOutputRoot)
     Write-Verbose ("Discovered {0} collector script(s)." -f $totalCollectors)
-    Write-Verbose "Executing collectors sequentially."
+    Write-Verbose ("Executing collectors with a throttle limit of {0}." -f $ThrottleLimit)
 
-    $resultsList = [System.Collections.Generic.List[object]]::new()
-    $completed = 0
-    $activity = 'Running collector scripts'
-
-    foreach ($collector in $collectors) {
+    $collectorInfos = foreach ($collector in $collectors) {
         $areaName = Split-Path -Path $collector.DirectoryName -Leaf
         if ($areaName -eq 'Collectors') {
             $areaName = 'Misc'
         }
 
         $areaOutput = Join-Path -Path $resolvedOutputRoot -ChildPath $areaName
-        $null = Resolve-CollectorOutputDirectory -RequestedPath $areaOutput
 
-        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $collector.FullName, $areaName, $areaOutput)
+        [pscustomobject]@{
+            Collector  = $collector
+            AreaName   = $areaName
+            AreaOutput = $areaOutput
+        }
+    }
 
+    foreach ($group in $collectorInfos | Group-Object AreaName) {
+        $areaPath = $group.Group[0].AreaOutput
+        if (-not (Test-Path -LiteralPath $areaPath)) {
+            $null = New-Item -ItemType Directory -Path $areaPath -Force
+        }
+    }
+
+    $pool = [runspacefactory]::CreateRunspacePool(1, [math]::Max($ThrottleLimit, 1))
+    $pool.ApartmentState = 'MTA'
+    $pool.Open()
+
+    $tasks = foreach ($info in $collectorInfos) {
+        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $info.Collector.FullName, $info.AreaName, $info.AreaOutput)
+
+        $ps = [powershell]::Create()
+        $ps.RunspacePool = $pool
+
+        [void]$ps.AddCommand($info.Collector.FullName).AddParameter('OutputDirectory', $info.AreaOutput)
+
+        if ($PSBoundParameters.ContainsKey('Verbose') -and $PSBoundParameters['Verbose']) {
+            [void]$ps.AddParameter('Verbose')
+        }
+
+        [pscustomobject]@{
+            PS     = $ps
+            IAsync = $ps.BeginInvoke()
+            Path   = $info.Collector.FullName
+            Area   = $info.AreaName
+        }
+    }
+
+    $resultsList = [System.Collections.Generic.List[object]]::new()
+    $completed = 0
+    $total = $tasks.Count
+    $activity = 'Running collector scripts'
+
+    foreach ($task in $tasks) {
         try {
-            $result = & $collector.FullName -OutputDirectory $areaOutput -ErrorAction Stop
-            Write-Verbose ("Collector '{0}' finished successfully." -f $collector.FullName)
+            $output = $task.PS.EndInvoke($task.IAsync)
+            Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
             $resultsList.Add([pscustomobject]@{
-                Script  = $collector.FullName
-                Output  = $result
+                Script  = $task.Path
+                Output  = $output
                 Success = $true
                 Error   = $null
             })
         } catch {
-            Write-Verbose ("Collector '{0}' reported an exception." -f $collector.FullName)
-            Write-Warning ("Collector failed: {0} - {1}" -f $collector.FullName, $_.Exception.Message)
+            Write-Verbose ("Collector '{0}' reported an exception." -f $task.Path)
+            Write-Warning ("Collector failed: {0} - {1}" -f $task.Path, $_.Exception.Message)
             $resultsList.Add([pscustomobject]@{
-                Script  = $collector.FullName
+                Script  = $task.Path
                 Output  = $null
                 Success = $false
                 Error   = $_.Exception.Message
             })
+        } finally {
+            $task.PS.Dispose()
+            $completed++
+            $statusMessage = "[{0}/{1}] {2}" -f $completed, $total, $task.Path
+            $percentComplete = if ($total -eq 0) { 100 } else { [int](($completed / $total) * 100) }
+            Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete -CurrentOperation $task.Path
+            Write-Host $statusMessage
         }
-
-        $completed++
-        $statusMessage = "[{0}/{1}] {2}" -f $completed, $totalCollectors, $collector.FullName
-        $percentComplete = if ($totalCollectors -eq 0) { 100 } else { [int](($completed / $totalCollectors) * 100) }
-        Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete
-        Write-Host $statusMessage
     }
 
     Write-Progress -Activity $activity -Completed
+    $pool.Close()
+    $pool.Dispose()
 
     $results = $resultsList.ToArray()
 
