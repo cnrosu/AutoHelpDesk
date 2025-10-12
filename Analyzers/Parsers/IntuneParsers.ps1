@@ -1054,3 +1054,220 @@ function Get-IntunePushLaunchTaskStatus {
 
     return [pscustomobject]$result
 }
+
+function Get-IntuneWnsConnectivityStatus {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $result = [ordered]@{
+        Collected       = $false
+        Failures24h     = 0
+        TotalEvents24h  = 0
+        LastFailureUtc  = $null
+        DistinctServers = @()
+        SampleQueries   = @()
+        Errors          = @()
+        Source          = $null
+    }
+
+    if (-not $Context) { return [pscustomobject]$result }
+
+    $artifact = $null
+    try {
+        $artifact = Get-AnalyzerArtifact -Context $Context -Name 'events'
+    } catch {
+        return [pscustomobject]$result
+    }
+
+    if (-not $artifact) { return [pscustomobject]$result }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return [pscustomobject]$result }
+
+    $networkingNode = $null
+    if ($payload.PSObject.Properties['Networking']) { $networkingNode = $payload.Networking }
+    elseif ($payload.PSObject.Properties['networking']) { $networkingNode = $payload.networking }
+
+    $dnsClient = $null
+    if ($networkingNode -and $networkingNode.PSObject.Properties['DnsClient']) {
+        $dnsClient = $networkingNode.DnsClient
+    } elseif ($payload.PSObject.Properties['DnsClient']) {
+        $dnsClient = $payload.DnsClient
+    }
+
+    if (-not $dnsClient) { return [pscustomobject]$result }
+
+    $result.Source = if ($artifact.PSObject.Properties['Path']) { [string]$artifact.Path } else { 'events.json' }
+
+    $errors = [System.Collections.Generic.List[string]]::new()
+    if ($dnsClient.PSObject.Properties['Error'] -and $dnsClient.Error) {
+        $errors.Add([string]$dnsClient.Error) | Out-Null
+    }
+
+    $eventsRaw = $null
+    if ($dnsClient.PSObject.Properties['Events']) { $eventsRaw = $dnsClient.Events }
+    if (-not $eventsRaw) {
+        $result.Collected = $true
+        if ($errors.Count -gt 0) { $result.Errors = $errors.ToArray() }
+        return [pscustomobject]$result
+    }
+
+    $events = @()
+    if ($eventsRaw -is [System.Collections.IEnumerable] -and -not ($eventsRaw -is [string])) {
+        foreach ($item in $eventsRaw) { if ($item) { $events += $item } }
+    } else {
+        $events = @($eventsRaw)
+    }
+
+    $result.Collected = $true
+    $result.TotalEvents24h = 0
+
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $cutoff = $nowUtc.AddHours(-24)
+    $lastFailure = $null
+    $failures = 0
+
+    $servers = [System.Collections.Generic.List[string]]::new()
+    $samples = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($event in $events) {
+        if (-not $event) { continue }
+
+        $timeUtc = $null
+        if ($event.PSObject.Properties['TimeCreated']) {
+            $timeValue = $event.TimeCreated
+            if ($timeValue -is [datetime]) {
+                try {
+                    $timeUtc = $timeValue.ToUniversalTime()
+                } catch {
+                    $timeUtc = $timeValue
+                }
+            } elseif ($timeValue) {
+                $text = [string]$timeValue
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    [datetime]$parsedInvariant = [datetime]::MinValue
+                    if ([datetime]::TryParse($text, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AdjustToUniversal, [ref]$parsedInvariant)) {
+                        $timeUtc = $parsedInvariant.ToUniversalTime()
+                    } else {
+                        [datetime]$parsed = [datetime]::MinValue
+                        if ([datetime]::TryParse($text, [ref]$parsed)) {
+                            $timeUtc = $parsed.ToUniversalTime()
+                        }
+                    }
+                }
+            }
+        }
+
+        if (-not $timeUtc -or $timeUtc -lt $cutoff) { continue }
+
+        $result.TotalEvents24h++
+
+        $eventData = $null
+        if ($event.PSObject.Properties['EventData']) { $eventData = $event.EventData }
+
+        $getEventDataValue = {
+            param($EventData, [string]$Name)
+
+            if (-not $EventData) { return $null }
+
+            if ($EventData -is [System.Collections.IDictionary]) {
+                foreach ($key in $EventData.Keys) {
+                    if ($null -eq $key) { continue }
+                    if ([string]::Equals([string]$key, $Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        return $EventData[$key]
+                    }
+                }
+            }
+
+            try {
+                if ($EventData.PSObject -and $EventData.PSObject.Properties[$Name]) {
+                    return $EventData.$Name
+                }
+            } catch {
+            }
+
+            return $null
+        }
+
+        $queryName = $null
+        foreach ($field in @('QueryName','Name','Query','HostName')) {
+            $value = & $getEventDataValue $eventData $field
+            if ($value) {
+                $queryName = [string]$value
+                break
+            }
+        }
+
+        $serverAddress = $null
+        foreach ($field in @('ServerAddress','Address','IP','IP4','IP6','DnsServerIpAddress')) {
+            $value = & $getEventDataValue $eventData $field
+            if ($value) {
+                $serverAddress = [string]$value
+                break
+            }
+        }
+
+        $messageSnippet = $null
+        if ($event.PSObject.Properties['Message']) {
+            $messageText = [string]$event.Message
+            if ($messageText) {
+                $trimmed = $messageText.Trim()
+                if ($trimmed.Length -gt 200) {
+                    $messageSnippet = $trimmed.Substring(0, 200)
+                } else {
+                    $messageSnippet = $trimmed
+                }
+            }
+        }
+
+        if (-not $queryName -and $messageSnippet) { $queryName = $messageSnippet }
+
+        $normalizedQuery = $null
+        if ($queryName) {
+            $normalizedQuery = $queryName.Trim()
+            if ($normalizedQuery.EndsWith('.')) { $normalizedQuery = $normalizedQuery.TrimEnd('.') }
+        }
+
+        $queryLower = if ($normalizedQuery) { $normalizedQuery.ToLowerInvariant() } else { $null }
+        $isWns = $false
+        if ($queryLower) {
+            if ($queryLower -like '*wns.windows.com*' -or $queryLower -like '*notify.windows.com*') {
+                $isWns = $true
+            }
+        } elseif ($messageSnippet) {
+            $lowerSnippet = $messageSnippet.ToLowerInvariant()
+            if ($lowerSnippet -like '*wns.windows.com*' -or $lowerSnippet -like '*notify.windows.com*') {
+                $isWns = $true
+                if (-not $normalizedQuery) { $normalizedQuery = $messageSnippet }
+            }
+        }
+
+        if (-not $isWns) { continue }
+
+        $failures++
+        if ($timeUtc -and (-not $lastFailure -or $timeUtc -gt $lastFailure)) { $lastFailure = $timeUtc }
+
+        if ($serverAddress) {
+            $serverTrimmed = $serverAddress.Trim()
+            if ($serverTrimmed -and -not $servers.Contains($serverTrimmed)) {
+                $servers.Add($serverTrimmed) | Out-Null
+            }
+        }
+
+        if ($normalizedQuery -and -not $samples.Contains($normalizedQuery) -and $samples.Count -lt 5) {
+            $samples.Add($normalizedQuery) | Out-Null
+        } elseif ($messageSnippet -and -not $samples.Contains($messageSnippet) -and $samples.Count -lt 5) {
+            $samples.Add($messageSnippet) | Out-Null
+        }
+    }
+
+    $result.Failures24h = $failures
+    if ($lastFailure) { $result.LastFailureUtc = $lastFailure.ToString('o') }
+    if ($servers.Count -gt 0) { $result.DistinctServers = $servers.ToArray() }
+    if ($samples.Count -gt 0) { $result.SampleQueries = $samples.ToArray() }
+    if ($errors.Count -gt 0) { $result.Errors = $errors.ToArray() }
+
+    return [pscustomobject]$result
+}
