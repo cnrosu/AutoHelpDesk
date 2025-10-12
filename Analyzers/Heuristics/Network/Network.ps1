@@ -3658,9 +3658,30 @@ function Invoke-NetworkHeuristics {
             if ($interfaces.Count -eq 0) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
             } else {
-                $connectedInterfaces = $interfaces | Where-Object { $_.State -and $_.State -match '(?i)connected' }
+                $connectedInterfaces = $interfaces | Where-Object {
+                    $stateConnected = ($_.State -and $_.State -match '(?i)connected')
+                    $associationDetected = $false
+                    if (-not $associationDetected -and $_.Ssid) { $associationDetected = $true }
+                    if (-not $associationDetected -and $_.Bssid) { $associationDetected = $true }
+                    return $stateConnected -or $associationDetected
+                }
                 if ($connectedInterfaces.Count -eq 0) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Not connected to Wi-Fi, so wireless encryption state is unknown.' -Subcategory 'Security'
+                    $interfaceSummaries = New-Object System.Collections.Generic.List[string]
+                    foreach ($interface in $interfaces) {
+                        $parts = New-Object System.Collections.Generic.List[string]
+                        if ($interface.Name) { $parts.Add(('Name={0}' -f $interface.Name)) | Out-Null }
+                        if ($interface.State) { $parts.Add(('State={0}' -f $interface.State)) | Out-Null }
+                        if ($interface.Ssid) { $parts.Add(('SSID={0}' -f $interface.Ssid)) | Out-Null }
+                        if ($interface.Bssid) { $parts.Add(('BSSID={0}' -f $interface.Bssid)) | Out-Null }
+                        if ($parts.Count -eq 0) { $parts.Add('No interface details reported') | Out-Null }
+                        $interfaceSummaries.Add($parts.ToArray() -join '; ') | Out-Null
+                    }
+                    if ($interfaceSummaries.Count -eq 0) { $interfaceSummaries.Add('No wireless interfaces returned by collector') | Out-Null }
+                    $evidence = [ordered]@{
+                        'netsh wlan show interfaces' = $interfaceSummaries.ToArray() -join ' | '
+                    }
+                    $remediation = 'Reconnect to the intended Wi-Fi network, then re-run wireless diagnostics after confirming "netsh wlan show interfaces" reports the adapter as connected.'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Not connected to Wi-Fi, so wireless encryption state is unknown.' -Evidence $evidence -Subcategory 'Security' -Remediation $remediation
                 } else {
                     $primaryInterface = $connectedInterfaces | Select-Object -First 1
 
