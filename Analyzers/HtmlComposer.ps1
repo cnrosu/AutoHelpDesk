@@ -1445,7 +1445,8 @@ function Build-RawSection {
     }
 
     $cardsBuilder = [System.Text.StringBuilder]::new()
-    $introText = "Showing all $($items.Count) artifact(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
+    $entryCount = $items.Count
+    $introText = "Showing $artifactCount artifact group(s) across $entryCount excerpt(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
     $null = $cardsBuilder.Append("<div class='report-card'><i>$introText</i></div>")
 
     $processed = 0
@@ -1462,7 +1463,7 @@ function Build-RawSection {
         return "<div class='report-card'><i>No artifact excerpts available.</i></div>"
     }
 
-    Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifact section built.' -Data @{ Rendered = $processed }
+    Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifact section built.' -Data @{ Rendered = $processed; Groups = $artifactCount; Entries = $entryCount }
     return $cardsBuilder.ToString()
 }
 
