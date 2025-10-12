@@ -749,33 +749,7 @@ details.report-card[open] > summary {
   color: var(--color-text-note);
 }
 
-.score-ring--good .score-ring__value {
-  stroke: var(--color-state-good-border);
-}
 
-.score-ring--info .score-ring__value {
-  stroke: var(--color-state-info-border);
-}
-
-.score-ring--low .score-ring__value {
-  stroke: var(--color-state-ok-border);
-}
-
-.score-ring--medium .score-ring__value {
-  stroke: var(--color-state-medium-border);
-}
-
-.score-ring--warning .score-ring__value {
-  stroke: var(--color-state-warning-border);
-}
-
-.score-ring--high .score-ring__value {
-  stroke: var(--color-state-bad-border);
-}
-
-.score-ring--critical .score-ring__value {
-  stroke: var(--color-state-critical-border);
-}
 
 @media (max-width: 640px) {
   .score-ring--overall {
