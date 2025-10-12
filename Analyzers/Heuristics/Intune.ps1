@@ -197,9 +197,11 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
 
     $serviceStatus = Get-IntunePushNotificationServiceStatus -Context $Context
     $taskStatus = Get-IntunePushLaunchTaskStatus -Context $Context
+    $wnsStatus = Get-IntuneWnsConnectivityStatus -Context $Context
 
     $serviceCollected = ($serviceStatus -and $serviceStatus.Collected)
     $taskCollected = ($taskStatus -and $taskStatus.Collected)
+    $wnsCollected = ($wnsStatus -and $wnsStatus.Collected)
 
     $debugData = [ordered]@{
         ServiceCollected = $serviceCollected
@@ -211,6 +213,10 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         TaskEnabled      = if ($taskStatus) { $taskStatus.Enabled } else { $null }
         TaskStatus       = if ($taskStatus) { $taskStatus.StatusNormalized } else { $null }
         TaskResult       = if ($taskStatus) { $taskStatus.LastResultNormalized } else { $null }
+        DnsCollected     = $wnsCollected
+        DnsFailures24h   = if ($wnsStatus) { $wnsStatus.Failures24h } else { $null }
+        DnsLastUtc       = if ($wnsStatus) { $wnsStatus.LastFailureUtc } else { $null }
+        DnsEvents24h     = if ($wnsStatus) { $wnsStatus.TotalEvents24h } else { $null }
     }
     Write-HeuristicDebug -Source 'Intune/INTUNE-003' -Message 'Push notification dependency summary' -Data $debugData
 
@@ -252,6 +258,12 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         } else {
             $gapText = $gapBase + '.'
         }
+        $dataGaps.Add($gapText) | Out-Null
+    }
+
+    if ($wnsStatus -and $wnsStatus.Errors -and $wnsStatus.Errors.Count -gt 0) {
+        $gapBase = 'Intune diagnostics were incomplete, so Windows push notification DNS timeout data was unavailable'
+        $gapText = '{0} ({1}).' -f $gapBase, (($wnsStatus.Errors | Where-Object { $_ }) -join '; ')
         $dataGaps.Add($gapText) | Out-Null
     }
 
@@ -310,7 +322,14 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         }
     }
 
-    if (-not $serviceProblem -and -not $taskProblem) {
+    $wnsProblem = $false
+    $wnsFailureThreshold = 3
+    if ($wnsCollected -and $wnsStatus.Failures24h -ge $wnsFailureThreshold) {
+        $reasons.Add('DNS lookups for Windows push notifications (*.wns.windows.com) keep timing out, so the firewall or proxy is blocking WNS traffic') | Out-Null
+        $wnsProblem = $true
+    }
+
+    if (-not $serviceProblem -and -not $taskProblem -and -not $wnsProblem) {
         if ($dataGaps.Count -gt 0) {
             foreach ($gap in $dataGaps) {
                 Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity'
@@ -326,6 +345,11 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         if (-not $serviceStatus.Found -or $serviceStatus.StartModeNormalized -eq 'disabled') { $severity = 'high' }
     } elseif ($taskProblem) {
         if (-not $taskStatus.Found -or $taskStatus.Enabled -eq $false -or $taskStatus.StatusNormalized -eq 'error') { $severity = 'high' }
+    }
+
+    if ($wnsProblem) {
+        if ($serviceProblem -or $taskProblem) { $severity = 'critical' }
+        else { $severity = 'high' }
     }
 
     $reasonText = if ($reasons.Count -gt 0) { $reasons -join ' and ' } else { 'push notification dependencies are misconfigured' }
@@ -355,13 +379,40 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         $evidence['PushLaunchTask'] = $taskParts -join '; '
     }
 
-    $remediation = 'Re-enable Windows push notifications and repair the PushLaunch scheduled task so Intune can receive sync wake-ups.'
-    $remediationScript = @(
-        'sc config dmwappushservice start= delayed-auto',
-        'sc start dmwappushservice',
-        'schtasks /Change /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch" /Enable',
-        'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
-    ) -join "`n"
+    if ($wnsCollected -and $wnsStatus.Failures24h -gt 0) {
+        $wnsParts = [System.Collections.Generic.List[string]]::new()
+        $wnsParts.Add('Failures24h=' + [string]$wnsStatus.Failures24h) | Out-Null
+        if ($wnsStatus.LastFailureUtc) { $wnsParts.Add('LastFailureUtc=' + [string]$wnsStatus.LastFailureUtc) | Out-Null }
+        if ($wnsStatus.SampleQueries -and $wnsStatus.SampleQueries.Count -gt 0) {
+            $wnsParts.Add('SampleQueries=' + (($wnsStatus.SampleQueries | Select-Object -First 3) -join ' | ')) | Out-Null
+        }
+        if ($wnsStatus.DistinctServers -and $wnsStatus.DistinctServers.Count -gt 0) {
+            $wnsParts.Add('DnsServers=' + (($wnsStatus.DistinctServers | Select-Object -First 5) -join ' | ')) | Out-Null
+        }
+        $evidence['WnsDnsFailures'] = $wnsParts -join '; '
+    }
+
+    $remediationParts = [System.Collections.Generic.List[string]]::new()
+    if ($serviceProblem -or $taskProblem) {
+        $remediationParts.Add('Re-enable Windows push notifications and repair the PushLaunch scheduled task so Intune can receive sync wake-ups.') | Out-Null
+    }
+    if ($wnsProblem) {
+        $remediationParts.Add('Allow *.wns.windows.com:443 through firewalls or proxies so Microsoft Intune push notifications can reach the device.') | Out-Null
+    }
+    if ($remediationParts.Count -eq 0) {
+        $remediationParts.Add('Verify Windows push notification dependencies are healthy so Intune can deliver sync wake-ups.') | Out-Null
+    }
+    $remediation = ($remediationParts -join ' ')
+
+    $remediationScript = $null
+    if ($serviceProblem -or $taskProblem) {
+        $remediationScript = @(
+            'sc config dmwappushservice start= delayed-auto',
+            'sc start dmwappushservice',
+            'schtasks /Change /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch" /Enable',
+            'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
+        ) -join "`n"
+    }
 
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
 
