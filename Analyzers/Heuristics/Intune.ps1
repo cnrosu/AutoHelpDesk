@@ -133,7 +133,7 @@ function Invoke-IntuneHeuristic-INTUNE-001 {
 
         if ($dataGaps.Count -gt 0) {
             $gapTitle = 'Intune diagnostics were incomplete, so Azure AD join signals were unavailable.'
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gapTitle -Subcategory 'Enrollment & Connectivity'
+            Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/gaptitle' -Data ([ordered]@{ gapTitle = $gapTitle })
         }
         return
     }
@@ -176,11 +176,39 @@ function Invoke-IntuneHeuristic-INTUNE-001 {
         'Settings > Accounts > Access work or school > Disconnect > Re-add'
     ) -join "`n"
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
+    $issueData = [ordered]@{
+        title                 = $title
+        severity              = $severity
+        reasons               = @($reasons.ToArray())
+        dataGaps              = @($dataGaps.ToArray())
+        tokenFailures         = if ($tokenSummary) {
+            @([ordered]@{
+                Count       = $recentTokenFailures
+                LastError   = $tokenFailureMessage
+                LastTimeUtc = $tokenFailureTime
+            })
+        } else { @() }
+        diagnostics          = [ordered]@{
+            AzureAdJoined        = $evidence.AzureAdJoined
+            PrimaryRefreshToken  = $evidence.PRT
+            TimeSkewSeconds      = $timeSkewSeconds
+            ConditionalAccess    = $evidence.CAResult
+            TokenFailures2h      = $recentTokenFailures
+        }
+        remediationSummary   = $remediation
+        remediationSteps     = @(
+            'Resync device time to eliminate clock skew before Azure AD token requests.'
+            'Disconnect and re-add the work account to refresh the Primary Refresh Token.'
+            'Review conditional access so first-time Intune registration is allowed.'
+        )
+        remediationScriptLines = $remediationScript -split "`n"
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/title' -Severity $severity -Evidence $evidence -Remediation $remediation -RemediationScript $remediationScript -Data $issueData
 
     if ($dataGaps.Count -gt 0) {
         $gapTitle = 'Intune diagnostics were incomplete, so Azure AD join signals were unavailable.'
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gapTitle -Subcategory 'Enrollment & Connectivity'
+        Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/gaptitle' -Data ([ordered]@{ gapTitle = $gapTitle })
     }
 }
 
@@ -313,7 +341,7 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
     if (-not $serviceProblem -and -not $taskProblem) {
         if ($dataGaps.Count -gt 0) {
             foreach ($gap in $dataGaps) {
-                Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity'
+                Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/gaptitle' -Data ([ordered]@{ gapTitle = $gap })
             }
         }
         return
@@ -363,11 +391,41 @@ function Invoke-IntuneHeuristic-INTUNE-003 {
         'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
     ) -join "`n"
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
+    $issueData = [ordered]@{
+        title                 = $title
+        severity              = $severity
+        reasons               = @($reasons.ToArray())
+        dataGaps              = @($dataGaps.ToArray())
+        serviceDiagnostics    = if ($serviceStatus) {
+            [ordered]@{
+                Found      = $serviceStatus.Found
+                StartMode  = $serviceStatus.StartMode
+                Status     = $serviceStatus.Status
+                Errors     = if ($serviceStatus.Errors) { @($serviceStatus.Errors | Where-Object { $_ }) } else { @() }
+            }
+        } else { $null }
+        taskDiagnostics       = if ($taskStatus) {
+            [ordered]@{
+                Found        = $taskStatus.Found
+                Enabled      = $taskStatus.Enabled
+                Status       = $taskStatus.Status
+                LastResult   = $taskStatus.LastResult
+                Errors       = if ($taskStatus.Errors) { @($taskStatus.Errors | Where-Object { $_ }) } else { @() }
+            }
+        } else { $null }
+        remediationSummary   = $remediation
+        remediationSteps     = @(
+            'Ensure dmwappushservice is configured for delayed automatic start and is running.'
+            'Enable and repair the PushLaunch scheduled task so Intune wake-ups succeed.'
+        )
+        remediationScriptLines = $remediationScript -split "`n"
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/title' -Severity $severity -Evidence $evidence -Remediation $remediation -RemediationScript $remediationScript -Data $issueData
 
     if ($dataGaps.Count -gt 0) {
         foreach ($gap in $dataGaps) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity'
+            Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/gaptitle' -Data ([ordered]@{ gapTitle = $gap })
         }
     }
 }
@@ -527,5 +585,36 @@ function Invoke-IntuneHeuristic-INTUNE-002 {
         'Temporarily remove app from ESP required list and redeploy'
     ) -join "`n"
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $impactText -Evidence $evidence -Subcategory 'ESP & App Provisioning' -Remediation $remediation -RemediationScript $remediationScript
+    $issueData = [ordered]@{
+        impactText            = $impactText
+        severity              = $severity
+        problemApps           = @(
+            $problemApps | ForEach-Object {
+                if ($_ ) {
+                    [ordered]@{
+                        Name              = $_.Name
+                        Id                = $_.Id
+                        PendingMinutes    = $_.PendingMinutes
+                        DetectionFalse    = $_.DetectionFalse
+                        ExitZero          = $_.ExitZero
+                        HasMismatch       = $_.HasMismatch
+                        HasContentErrors  = $_.HasContentErrors
+                        TimeoutMentions   = $_.TimeoutMentions
+                        LastExitCode      = $_.LastExitCode
+                        ContentErrorCount = $_.ContentErrorCount
+                    }
+                }
+            } | Where-Object { $_ }
+        )
+        unattributedLines     = @($unattributedLines)
+        evidenceLines         = @($evidenceLines.ToArray())
+        remediationSummary    = $remediation
+        remediationSteps      = @(
+            'Validate the detection script or rules against a healthy reference device.'
+            'Temporarily remove the app from ESP required installs and redeploy after fixes.'
+        )
+        remediationScriptLines = $remediationScript -split "`n"
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -CardId 'Intune.ps1/impacttext' -Severity $severity -Evidence $evidence -Remediation $remediation -RemediationScript $remediationScript -Data $issueData
 }
