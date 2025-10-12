@@ -1848,33 +1848,94 @@ function ConvertTo-WlanInterfaces {
         if (-not $trimmed) { continue }
 
         if ($trimmed -match '^Name\s*:\s*(.+)$') {
-            $current = [ordered]@{ Name = $Matches[1].Trim() }
-            $interfaces.Add([pscustomobject]$current) | Out-Null
+            $rawLines = New-Object System.Collections.Generic.List[string]
+            $rawLines.Add($trimmed) | Out-Null
+            $current = [pscustomobject]([ordered]@{
+                Name     = $Matches[1].Trim()
+                RawLines = $rawLines
+            })
+            $interfaces.Add($current) | Out-Null
             continue
         }
 
         if (-not $current) { continue }
+
+        if ($current.PSObject.Properties['RawLines'] -and $current.RawLines) {
+            $current.RawLines.Add($trimmed) | Out-Null
+        }
+
         if ($trimmed -match '^([^:]+)\s*:\s*(.*)$') {
             $key = $Matches[1].Trim()
             $value = $Matches[2].Trim()
 
             switch -Regex ($key) {
-                '^Description$' { $current['Description'] = $value; continue }
-                '^GUID$'        { $current['Guid'] = $value; continue }
-                '^Physical address$' { $current['Mac'] = $value; continue }
-                '^State$'       { $current['State'] = $value; continue }
-                '^SSID$'        { $current['Ssid'] = $value; continue }
-                '^BSSID$'       { $current['Bssid'] = $value; continue }
-                '^Authentication$' { $current['Authentication'] = $value; continue }
-                '^Cipher$'      { $current['Cipher'] = $value; continue }
-                '^Connection mode$' { $current['ConnectionMode'] = $value; continue }
-                '^Radio type$'  { $current['RadioType'] = $value; continue }
-                '^Profile$'     { $current['Profile'] = $value; continue }
+                '^Description$'        { $current | Add-Member -NotePropertyName 'Description' -NotePropertyValue $value -Force; continue }
+                '^GUID$'               { $current | Add-Member -NotePropertyName 'Guid' -NotePropertyValue $value -Force; continue }
+                '^Physical address$'   { $current | Add-Member -NotePropertyName 'Mac' -NotePropertyValue $value -Force; continue }
+                '^State$'              { $current | Add-Member -NotePropertyName 'State' -NotePropertyValue $value -Force; continue }
+                '^SSID(\s+name)?$'    { $current | Add-Member -NotePropertyName 'Ssid' -NotePropertyValue $value -Force; continue }
+                '^BSSID(\s+\d+)?$'   { $current | Add-Member -NotePropertyName 'Bssid' -NotePropertyValue $value -Force; continue }
+                '^Authentication$'     { $current | Add-Member -NotePropertyName 'Authentication' -NotePropertyValue $value -Force; continue }
+                '^Cipher$'             { $current | Add-Member -NotePropertyName 'Cipher' -NotePropertyValue $value -Force; continue }
+                '^Connection mode$'    { $current | Add-Member -NotePropertyName 'ConnectionMode' -NotePropertyValue $value -Force; continue }
+                '^Radio type$'         { $current | Add-Member -NotePropertyName 'RadioType' -NotePropertyValue $value -Force; continue }
+                '^Profile$'            { $current | Add-Member -NotePropertyName 'Profile' -NotePropertyValue $value -Force; continue }
+            }
+        }
+    }
+
+    foreach ($interface in $interfaces) {
+        if ($interface -and $interface.PSObject.Properties['RawLines'] -and $interface.RawLines -is [System.Collections.IEnumerable]) {
+            try {
+                $interface.RawLines = @($interface.RawLines.ToArray())
+            } catch {
+                $interface.RawLines = @(ConvertTo-NetworkArray $interface.RawLines)
             }
         }
     }
 
     return $interfaces.ToArray()
+}
+
+function Test-WlanInterfaceConnected {
+    param(
+        [Parameter(Mandatory)]
+        $Interface
+    )
+
+    if (-not $Interface) { return $false }
+
+    $stateValues = New-Object System.Collections.Generic.List[string]
+
+    if ($Interface.PSObject.Properties['State'] -and $Interface.State) {
+        $stateValues.Add([string]$Interface.State) | Out-Null
+    }
+
+    if ($Interface.PSObject.Properties['RawLines'] -and $Interface.RawLines) {
+        foreach ($rawLine in (ConvertTo-NetworkArray $Interface.RawLines)) {
+            if (-not $rawLine) { continue }
+            $text = [string]$rawLine
+            if (-not $text) { continue }
+            if ($text -match ':[\s]*(.+)$') {
+                $stateValues.Add($Matches[1].Trim()) | Out-Null
+            }
+        }
+    }
+
+    $connectedPattern = '(?i)\b(connected|verbunden|conectad[oa]|connect[ée]|conness[oa]|collegat[oa]|ligad[oa]|verbonden|anslutet|ansluten|tilsluttet|tilkoblet|yhdistetty|připojeno|połączono|подключен(?:о|а)?|bağland[ıi]|bağl[ıi]|已连接|已連線|已連接|接続済み|연결됨|đã\s*kết\s*nối)\b'
+    foreach ($candidate in $stateValues) {
+        if ($candidate -and $candidate -match $connectedPattern) {
+            return $true
+        }
+    }
+
+    if ($Interface.PSObject.Properties['Ssid'] -and $Interface.Ssid) { return $true }
+    if ($Interface.PSObject.Properties['Bssid'] -and $Interface.Bssid) { return $true }
+    if ($Interface.PSObject.Properties['Profile'] -and $Interface.Profile) { return $true }
+    if ($Interface.PSObject.Properties['Authentication'] -and $Interface.Authentication) { return $true }
+    if ($Interface.PSObject.Properties['Cipher'] -and $Interface.Cipher) { return $true }
+
+    return $false
 }
 
 function ConvertTo-WlanNetworks {
@@ -3658,13 +3719,7 @@ function Invoke-NetworkHeuristics {
             if ($interfaces.Count -eq 0) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
             } else {
-                $connectedInterfaces = $interfaces | Where-Object {
-                    $stateConnected = ($_.State -and $_.State -match '(?i)connected')
-                    $associationDetected = $false
-                    if (-not $associationDetected -and $_.Ssid) { $associationDetected = $true }
-                    if (-not $associationDetected -and $_.Bssid) { $associationDetected = $true }
-                    return $stateConnected -or $associationDetected
-                }
+                $connectedInterfaces = $interfaces | Where-Object { Test-WlanInterfaceConnected -Interface $_ }
                 if ($connectedInterfaces.Count -eq 0) {
                     $interfaceSummaries = New-Object System.Collections.Generic.List[string]
                     foreach ($interface in $interfaces) {
