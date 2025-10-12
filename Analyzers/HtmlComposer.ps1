@@ -1460,43 +1460,62 @@ function Build-RawSection {
         return "<div class='report-card'><i>No artifacts available.</i></div>"
     }
 
-    $items = New-Object System.Collections.Generic.List[pscustomobject]
+    $groupedEntries = New-Object System.Collections.Generic.List[pscustomobject]
+    $entryCount = 0
     foreach ($key in ($Context.Artifacts.Keys | Sort-Object)) {
         $entries = $Context.Artifacts[$key]
         if (-not $entries) { continue }
 
+        $entryList = New-Object System.Collections.Generic.List[object]
         if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
             foreach ($entry in $entries) {
                 if ($entry) {
-                    $items.Add([pscustomobject]@{ Key = $key; Entry = $entry }) | Out-Null
+                    $null = $entryList.Add($entry)
                 }
             }
         } else {
-            $items.Add([pscustomobject]@{ Key = $key; Entry = $entries }) | Out-Null
+            $null = $entryList.Add($entries)
+        }
+
+        if ($entryList.Count -gt 0) {
+            $entryCount += $entryList.Count
+            $groupedEntries.Add([pscustomobject]@{ Key = $key; Entries = $entryList.ToArray() }) | Out-Null
         }
     }
 
-    if ($items.Count -eq 0) {
+    if ($groupedEntries.Count -eq 0) {
         Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifacts resolved but none produced renderable entries.'
         return "<div class='report-card'><i>No artifacts available.</i></div>"
     }
 
     $cardsBuilder = [System.Text.StringBuilder]::new()
-    $entryCount = $items.Count
     $introText = "Showing $artifactCount artifact group(s) across $entryCount excerpt(s); each excerpt is limited to $MaxLines lines or $MaxChars characters."
     $null = $cardsBuilder.Append("<div class='report-card'><i>$introText</i></div>")
 
     $processed = 0
-    foreach ($item in $items) {
-        $card = ConvertTo-RawCard -Key $item.Key -Entry $item.Entry -MaxLines $MaxLines -MaxChars $MaxChars
-        if ($card) {
-            $null = $cardsBuilder.Append($card)
-            $processed++
+    foreach ($group in $groupedEntries) {
+        $categoryBuilder = [System.Text.StringBuilder]::new()
+
+        foreach ($entry in $group.Entries) {
+            $card = ConvertTo-RawCard -Key $group.Key -Entry $entry -MaxLines $MaxLines -MaxChars $MaxChars
+            if ($card) {
+                $null = $categoryBuilder.Append($card)
+                $processed++
+            }
+        }
+
+        if ($categoryBuilder.Length -gt 0) {
+            $encodedKey = Encode-Html $group.Key
+            $null = $cardsBuilder.Append("<div class='artifact-category' data-category='$encodedKey'>")
+            $null = $cardsBuilder.Append("<div class='artifact-category__title'>$encodedKey</div>")
+            $null = $cardsBuilder.Append("<div class='artifact-category__items'>")
+            $null = $cardsBuilder.Append($categoryBuilder.ToString())
+            $null = $cardsBuilder.Append('</div></div>')
         }
     }
 
     if ($processed -eq 0) {
-        Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifacts located but all entries were filtered out.' -Data @{ Candidates = $items.Count }
+        Write-HtmlDebug -Stage 'ArtifactsSection' -Message 'Artifacts located but all entries were filtered out.' -Data @{ Candidates = $entryCount }
         return "<div class='report-card'><i>No artifact excerpts available.</i></div>"
     }
 
