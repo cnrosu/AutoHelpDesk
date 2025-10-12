@@ -711,3 +711,346 @@ function Parse-IntuneImeWin32Status {
         UnattributedContentLines = $unmatchedContent
     }
 }
+
+function Normalize-IntuneServiceStartMode {
+    param($Value)
+
+    if ($null -eq $Value) { return 'unknown' }
+
+    $text = ([string]$Value).Trim()
+    if (-not $text) { return 'unknown' }
+
+    $lower = $text.ToLowerInvariant()
+    if ($lower -match 'disabled') { return 'disabled' }
+    if ($lower -match 'manual') { return 'manual' }
+    if ($lower -match 'auto') {
+        if ($lower -match 'delay') { return 'automatic-delayed' }
+        return 'automatic'
+    }
+
+    return 'other'
+}
+
+function Normalize-IntuneServiceStatus {
+    param($Value)
+
+    if ($null -eq $Value) { return 'unknown' }
+
+    $text = ([string]$Value).Trim()
+    if (-not $text) { return 'unknown' }
+
+    $lower = $text.ToLowerInvariant()
+    if ($lower -match 'running') { return 'running' }
+    if ($lower -match 'stopped') { return 'stopped' }
+    if ($lower -match 'pending') { return 'pending' }
+    if ($lower -match 'paused') { return 'other' }
+
+    return 'other'
+}
+
+function Normalize-IntuneTaskStatus {
+    param($Value)
+
+    if ($null -eq $Value) { return 'unknown' }
+
+    $text = ([string]$Value).Trim()
+    if (-not $text) { return 'unknown' }
+
+    $lower = $text.ToLowerInvariant()
+    if ($lower -match 'ready') { return 'ready' }
+    if ($lower -match 'running') { return 'running' }
+    if ($lower -match 'queued') { return 'queued' }
+    if ($lower -match 'disabled') { return 'disabled' }
+    if ($lower -match 'could not start' -or $lower -match 'failed') { return 'error' }
+
+    return 'other'
+}
+
+function Normalize-IntuneTaskResult {
+    param($Value)
+
+    if ($null -eq $Value) { return 'unknown' }
+
+    $text = ([string]$Value).Trim()
+    if (-not $text) { return 'unknown' }
+
+    if ($text -match '(?i)0x0$' -or $text -match '(?i)success') { return 'success' }
+
+    return 'failure'
+}
+
+function Get-IntunePushNotificationServiceStatus {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $result = [ordered]@{
+        Collected            = $false
+        Found                = $false
+        Name                 = 'dmwappushservice'
+        DisplayName          = $null
+        StartMode            = $null
+        StartModeNormalized  = 'unknown'
+        Status               = $null
+        State                = $null
+        StatusNormalized     = 'unknown'
+        Source               = $null
+        Errors               = [System.Collections.Generic.List[string]]::new()
+        Raw                  = $null
+    }
+
+    if (-not $Context) { return [pscustomobject]$result }
+
+    $serviceName = 'dmwappushservice'
+    $artifactCandidates = @('service-baseline','services')
+
+    foreach ($candidate in $artifactCandidates) {
+        $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidate
+        if (-not $artifact) { continue }
+
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+        if (-not $payload) { continue }
+
+        $servicesNode = $null
+        if ($payload.PSObject.Properties['Services']) { $servicesNode = $payload.Services }
+
+        if ($payload.PSObject.Properties['CollectionErrors']) {
+            foreach ($error in $payload.CollectionErrors) {
+                if ($error) { $result.Errors.Add([string]$error) | Out-Null }
+            }
+        }
+
+        if ($payload.PSObject.Properties['Error']) {
+            $errorText = [string]$payload.Error
+            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+        }
+
+        if (-not $servicesNode) { continue }
+
+        if ($servicesNode.PSObject.Properties['Error'] -and -not $servicesNode.PSObject.Properties['Name']) {
+            $errorText = [string]$servicesNode.Error
+            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+            continue
+        }
+
+        $result.Collected = $true
+        if (-not $result.Source) {
+            if ($artifact.PSObject.Properties['Path'] -and $artifact.Path) { $result.Source = [string]$artifact.Path }
+            else { $result.Source = $candidate }
+        }
+
+        $serviceEntries = @()
+        if ($servicesNode -is [System.Collections.IEnumerable] -and -not ($servicesNode -is [string])) {
+            $serviceEntries = @($servicesNode)
+        } else {
+            $serviceEntries = @($servicesNode)
+        }
+
+        foreach ($entry in $serviceEntries) {
+            if (-not $entry) { continue }
+
+            $name = $null
+            if ($entry.PSObject.Properties['Name'] -and $entry.Name) { $name = [string]$entry.Name }
+            elseif ($entry.PSObject.Properties['ServiceName'] -and $entry.ServiceName) { $name = [string]$entry.ServiceName }
+            if (-not $name) { continue }
+
+            if ($name.Trim().Equals($serviceName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $result.Found = $true
+                $result.Name = $name
+                if ($entry.PSObject.Properties['DisplayName']) { $result.DisplayName = [string]$entry.DisplayName }
+
+                if ($entry.PSObject.Properties['StartMode']) { $result.StartMode = [string]$entry.StartMode }
+                elseif ($entry.PSObject.Properties['StartType']) { $result.StartMode = [string]$entry.StartType }
+                elseif ($entry.PSObject.Properties['NormalizedStartType']) { $result.StartMode = [string]$entry.NormalizedStartType }
+
+                if ($entry.PSObject.Properties['Status']) { $result.Status = [string]$entry.Status }
+                if ($entry.PSObject.Properties['State'] -and -not $result.Status) { $result.Status = [string]$entry.State }
+                if ($entry.PSObject.Properties['State']) { $result.State = [string]$entry.State }
+
+                if ($entry.PSObject.Properties['NormalizedStatus']) { $result.StatusNormalized = Normalize-IntuneServiceStatus -Value $entry.NormalizedStatus }
+                if ($entry.PSObject.Properties['NormalizedStartType']) { $result.StartModeNormalized = Normalize-IntuneServiceStartMode -Value $entry.NormalizedStartType }
+
+                if (-not $result.StartModeNormalized -or $result.StartModeNormalized -eq 'unknown') {
+                    $result.StartModeNormalized = Normalize-IntuneServiceStartMode -Value $result.StartMode
+                }
+
+                if (-not $result.StatusNormalized -or $result.StatusNormalized -eq 'unknown') {
+                    $result.StatusNormalized = Normalize-IntuneServiceStatus -Value $result.Status
+                }
+
+                if ($result.StatusNormalized -eq 'unknown') {
+                    $result.StatusNormalized = Normalize-IntuneServiceStatus -Value $result.State
+                }
+
+                $result.Raw = $entry
+                break
+            }
+        }
+
+        if ($result.Found) { break }
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-IntunePushLaunchTaskStatus {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $result = [ordered]@{
+        Collected            = $false
+        Found                = $false
+        TaskName             = $null
+        Enabled              = $null
+        Status               = $null
+        StatusNormalized     = 'unknown'
+        ScheduledTaskState   = $null
+        LastResult           = $null
+        LastResultNormalized = 'unknown'
+        LastRunTime          = $null
+        NextRunTime          = $null
+        MissedRuns           = $null
+        Source               = $null
+        Errors               = [System.Collections.Generic.List[string]]::new()
+        Raw                  = $null
+    }
+
+    if (-not $Context) { return [pscustomobject]$result }
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'scheduled-tasks'
+    if (-not $artifact) { return [pscustomobject]$result }
+
+    if ($artifact.PSObject.Properties['Path'] -and $artifact.Path) { $result.Source = [string]$artifact.Path }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return [pscustomobject]$result }
+
+    if ($payload.PSObject.Properties['Error']) {
+        $errorText = [string]$payload.Error
+        if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+    }
+
+    if (-not $payload.PSObject.Properties['Tasks']) { return [pscustomobject]$result }
+
+    $tasksNode = $payload.Tasks
+    if ($tasksNode -and $tasksNode.PSObject.Properties['Error'] -and -not $tasksNode.PSObject.Properties['Name']) {
+        $errorText = [string]$tasksNode.Error
+        if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+        if (-not $result.Source -and $tasksNode.PSObject.Properties['Source']) {
+            $result.Source = [string]$tasksNode.Source
+        }
+        return [pscustomobject]$result
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if ($tasksNode -is [System.Collections.IEnumerable] -and -not ($tasksNode -is [string])) {
+        foreach ($line in $tasksNode) {
+            if ($null -ne $line) { $lines.Add([string]$line) | Out-Null }
+        }
+    } elseif ($tasksNode) {
+        $split = [regex]::Split([string]$tasksNode, '\r?\n')
+        foreach ($line in $split) {
+            if ($line -ne $null) { $lines.Add($line) | Out-Null }
+        }
+    }
+
+    if ($lines.Count -eq 0) { return [pscustomobject]$result }
+
+    $result.Collected = $true
+
+    $blocks = [System.Collections.Generic.List[System.Collections.Generic.List[string]]]::new()
+    $current = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($line in $lines) {
+        $trimmed = if ($line) { $line } else { '' }
+        if ([string]::IsNullOrWhiteSpace($trimmed)) {
+            if ($current.Count -gt 0) {
+                $blocks.Add($current) | Out-Null
+                $current = [System.Collections.Generic.List[string]]::new()
+            }
+            continue
+        }
+
+        if ($trimmed.TrimStart().StartsWith('Folder:', [System.StringComparison]::OrdinalIgnoreCase) -and $current.Count -gt 0) {
+            $blocks.Add($current) | Out-Null
+            $current = [System.Collections.Generic.List[string]]::new()
+        }
+
+        $current.Add($trimmed) | Out-Null
+    }
+
+    if ($current.Count -gt 0) { $blocks.Add($current) | Out-Null }
+
+    foreach ($block in $blocks) {
+        if (-not $block -or $block.Count -eq 0) { continue }
+
+        $map = @{}
+        foreach ($entry in $block) {
+            if (-not $entry) { continue }
+            $separatorIndex = $entry.IndexOf(':')
+            if ($separatorIndex -lt 0) { continue }
+
+            $key = $entry.Substring(0, $separatorIndex).Trim()
+            $value = $entry.Substring($separatorIndex + 1).Trim()
+
+            if (-not $key) { continue }
+
+            if ($map.ContainsKey($key)) {
+                if ($value) { $map[$key] = $map[$key] + ' | ' + $value }
+            } else {
+                $map[$key] = $value
+            }
+        }
+
+        $taskName = $null
+        if ($map.ContainsKey('TaskName')) { $taskName = $map['TaskName'] }
+        elseif ($map.ContainsKey('Task Name')) { $taskName = $map['Task Name'] }
+
+        if (-not $taskName) { continue }
+
+        $normalizedTaskName = $taskName.Trim()
+        if (-not $normalizedTaskName) { continue }
+
+        $isPushLaunch = $normalizedTaskName.Equals('\Microsoft\Windows\PushToInstall\PushLaunch', [System.StringComparison]::OrdinalIgnoreCase)
+        if (-not $isPushLaunch) {
+            $isPushLaunch = $normalizedTaskName.EndsWith('\PushLaunch', [System.StringComparison]::OrdinalIgnoreCase)
+        }
+
+        if (-not $isPushLaunch) { continue }
+
+        $result.Found = $true
+        $result.TaskName = $normalizedTaskName
+        $result.Raw = ($block -join "`n")
+
+        if ($map.ContainsKey('Scheduled Task State')) { $result.ScheduledTaskState = $map['Scheduled Task State'] }
+        elseif ($map.ContainsKey('Task State')) { $result.ScheduledTaskState = $map['Task State'] }
+
+        if ($map.ContainsKey('Status')) { $result.Status = $map['Status'] }
+        if ($map.ContainsKey('Last Result')) { $result.LastResult = $map['Last Result'] }
+        elseif ($map.ContainsKey('Last Run Result')) { $result.LastResult = $map['Last Run Result'] }
+        if ($map.ContainsKey('Last Run Time')) { $result.LastRunTime = $map['Last Run Time'] }
+        if ($map.ContainsKey('Next Run Time')) { $result.NextRunTime = $map['Next Run Time'] }
+        if ($map.ContainsKey('Number of Missed Runs')) { $result.MissedRuns = $map['Number of Missed Runs'] }
+
+        $result.StatusNormalized = Normalize-IntuneTaskStatus -Value $result.Status
+        $result.LastResultNormalized = Normalize-IntuneTaskResult -Value $result.LastResult
+
+        if ($result.ScheduledTaskState) {
+            $stateLower = $result.ScheduledTaskState.ToLowerInvariant()
+            if ($stateLower -match 'disabled') { $result.Enabled = $false }
+            elseif ($stateLower -match 'enabled' -or $stateLower -match 'ready' -or $stateLower -match 'running') { $result.Enabled = $true }
+        }
+
+        if ($null -eq $result.Enabled) {
+            if ($result.StatusNormalized -eq 'disabled') { $result.Enabled = $false }
+            elseif ($result.StatusNormalized -eq 'ready' -or $result.StatusNormalized -eq 'running') { $result.Enabled = $true }
+        }
+
+        break
+    }
+
+    return [pscustomobject]$result
+}
