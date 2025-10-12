@@ -4860,6 +4860,56 @@
       }
     },
     {
+      "card_id": "Network/Network/wpa2-personal-passphrase-weak",
+      "title": "WPA2-Personal passphrase needs stronger protections",
+      "severity": "medium",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-personal-passphrase-weak",
+        "tags": []
+      },
+      "explanation": "This Wi-Fi network still uses WPA2-Personal with a weak passphrase, so attackers could guess it and join the network.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This Wi-Fi network still uses WPA2-Personal with a weak passphrase, so attackers could guess it and join the network.",
+        "scenarios": []
+      }
+    },
+    {
+      "card_id": "Network/Network/wpa2-personal-passphrase-strong",
+      "title": "WPA2-Personal passphrase scored strong, but WPA3 is recommended",
+      "severity": "low",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "$subcategory",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/wpa2-personal-passphrase-strong",
+        "tags": []
+      },
+      "explanation": "This Wi-Fi network still uses WPA2-Personal, so even with a strong passphrase it lacks WPA3 protections like SAE hardening.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This Wi-Fi network still uses WPA2-Personal, so even with a strong passphrase it lacks WPA3 protections like SAE hardening.",
+        "scenarios": []
+      }
+    },
+    {
       "card_id": "Network/Network/wpa2-using-tkip-legacy-cipher-enabled",
       "title": "WPA2 using TKIP (legacy cipher enabled)",
       "severity": "critical",
