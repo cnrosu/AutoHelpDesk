@@ -1370,16 +1370,17 @@ function ConvertTo-RawCard {
     }
 
     $trimmedResult = Get-TruncatedText -Text ([string]$evidence).TrimEnd() -MaxLines $MaxLines -MaxChars $MaxChars
-    $metaBuilder = [System.Text.StringBuilder]::new()
-    if ($collectedAt) { $null = $metaBuilder.Append("Collected: $collectedAt") }
+    $metaParts = [System.Collections.Generic.List[string]]::new()
+    if ($collectedAt) { $null = $metaParts.Add("Collected: $(Encode-Html $collectedAt)") }
     if ($path) {
-        if ($metaBuilder.Length -gt 0) { $null = $metaBuilder.Append(' • ') }
-        $null = $metaBuilder.Append("File: $path")
+        $encodedPath = Encode-Html $path
+        $null = $metaParts.Add("File: <a class='artifact-link' href='$encodedPath' target='_blank' rel='noopener'>$encodedPath</a>")
     }
 
     $metaHtml = ''
-    if ($metaBuilder.Length -gt 0) {
-        $metaHtml = "<div class='raw-excerpt__meta'><small class='report-note'>$(Encode-Html ($metaBuilder.ToString()))</small></div>"
+    if ($metaParts.Count -gt 0) {
+        $metaContent = $metaParts -join ' • '
+        $metaHtml = "<div class='raw-excerpt__meta'><small class='report-note'>$metaContent</small></div>"
     }
 
     $summaryContent = "<b>$(Encode-Html $Key)</b>"
