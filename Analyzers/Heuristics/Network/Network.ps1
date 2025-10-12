@@ -3992,7 +3992,13 @@ function Invoke-NetworkHeuristics {
                                 $titleCategory = if ($scoreCategory) { $scoreCategory } else { 'Unknown' }
                                 $title = 'WPA2-Personal passphrase score {0} ({1})' -f $titleScore, $titleCategory
 
-                                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory
+                                $cardId = if ($severity -eq 'high' -or $severity -eq 'medium') {
+                                    'Network/Network/wpa2-personal-passphrase-weak'
+                                } else {
+                                    'Network/Network/wpa2-personal-passphrase-strong'
+                                }
+
+                                Add-CategoryIssue -CategoryResult $result -CardId $cardId -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory
                             } elseif ($passphraseMetricsError) {
                                 $evidence = [ordered]@{
                                     Interface = $interfaceEvidence
