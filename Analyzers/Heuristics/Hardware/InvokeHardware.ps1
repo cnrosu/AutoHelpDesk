@@ -327,9 +327,9 @@ function Get-HardwareInventorySummary {
                 if ((Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'SpecVersion') -and $tpmInfo['SpecVersion']) {
                     $statusParts += ("Spec {0}" -f $tpmInfo['SpecVersion'])
                 }
-                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Ready') { $statusParts += (if ($tpmInfo['Ready']) { 'Ready' } else { 'Not Ready' }) }
-                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Enabled') { $statusParts += (if ($tpmInfo['Enabled']) { 'Enabled' } else { 'Disabled' }) }
-                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Activated') { $statusParts += (if ($tpmInfo['Activated']) { 'Activated' } else { 'Deactivated' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Ready') { $statusParts += $(if ($tpmInfo['Ready']) { 'Ready' } else { 'Not Ready' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Enabled') { $statusParts += $(if ($tpmInfo['Enabled']) { 'Enabled' } else { 'Disabled' }) }
+                if (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Activated') { $statusParts += $(if ($tpmInfo['Activated']) { 'Activated' } else { 'Deactivated' }) }
                 $tpmInfo['Summary'] = ($statusParts -join ', ')
             } elseif ($tpmInfo['Present'] -eq $false) {
                 $tpmInfo['Summary'] = 'No TPM detected'

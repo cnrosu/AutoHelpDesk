@@ -111,8 +111,8 @@ function Get-NormalizedDriverInventory {
 
         $warning = "[Hardware/Drivers] Parsed 0 entries. Available payload props: {0}; Source={1}; TextPreview='{2}'" -f (
             ($available -join ', '),
-            (if ($source) { $source } else { 'None' }),
-            (if ($textPreview) { $textPreview } else { '' })
+            $(if ($source) { $source } else { 'None' }),
+            $(if ($textPreview) { $textPreview } else { '' })
         )
 
         if ($VerboseLogging) {
