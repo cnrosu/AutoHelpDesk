@@ -2716,6 +2716,31 @@
       }
     },
     {
+      "card_id": "Network/Network/arp-cache-healthy",
+      "title": "ARP Cache Healthy, so broadcast and multicast chatter is suppressed while suspicious unicast neighbors would raise alerts.",
+      "severity": "good",
+      "area": "Network/Network",
+      "category": "Network",
+      "subcategory": "ARP Cache",
+      "paths": {
+        "analyzer_file": "Analyzers/Heuristics/Network/Network.ps1",
+        "composer_file": "Analyzers/HtmlComposer.ps1",
+        "collector_files": [],
+        "function": null
+      },
+      "meta": {
+        "check_id": "Network/Network/arp-cache-healthy",
+        "tags": []
+      },
+      "explanation": "This card indicates 'ARP Cache Healthy, so broadcast and multicast chatter is suppressed while suspicious unicast neighbors would raise alerts.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "evidence": "$evidence",
+      "raw_payload": "",
+      "troubleshooting": {
+        "overview": "This card indicates 'ARP Cache Healthy, so broadcast and multicast chatter is suppressed while suspicious unicast neighbors would raise alerts.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+        "scenarios": []
+      }
+    },
+    {
       "card_id": "Network/Network/gateway-mac-address-changed-so-users-could-be-routed-through-an-untrusted-device",
       "title": "Gateway MAC address changed, so users could be routed through an untrusted device.",
       "severity": "high",
