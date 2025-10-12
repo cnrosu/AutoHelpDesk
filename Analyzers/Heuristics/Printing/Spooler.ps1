@@ -9,7 +9,9 @@ function Invoke-PrintingSpoolerChecks {
     if (-not $Spooler) { return }
 
     if ($Spooler.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title "Print Spooler state unavailable, so printing security and reliability risks can't be evaluated." -Evidence $Spooler.Error -Subcategory 'Spooler Service'
+        Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Spooler/print-spooler-state-unavailable-so-printing-security-and-reliability-risks-can-t-be-evaluated' -Evidence $Spooler.Error -Data @{
+            Error = $Spooler.Error
+        }
         return
     }
 
@@ -27,5 +29,10 @@ function Invoke-PrintingSpoolerChecks {
     }
 
     $note = if ($IsWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing will remain offline until the spooler is started.' }
-    Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Print Spooler not running, exposing printing security and reliability risks until resolved.' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service'
+    Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Spooler/print-spooler-not-running-exposing-printing-security-and-reliability-risks-until-resolved' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Data @{
+        Status       = $status
+        StartMode    = $startMode
+        Note         = $note
+        IsWorkstation = $IsWorkstation
+    }
 }

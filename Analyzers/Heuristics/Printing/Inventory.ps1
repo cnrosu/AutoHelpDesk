@@ -31,9 +31,15 @@ function Invoke-PrinterInventoryChecks {
         if ($offline) {
             $offlinePrintersList.Add($name) | Out-Null
             if ($defaultPrinter -and $name -eq $defaultPrinter) {
-                Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Default printer offline, exposing printing security and reliability risks.' -Evidence $name -Subcategory 'Printers'
+                Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Inventory/default-printer-offline-exposing-printing-security-and-reliability-risks' -Evidence $name -Data @{
+                    PrinterName = $name
+                    IsDefault   = $true
+                }
             } else {
-                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title ('Printer offline: {0}, exposing printing security and reliability risks.' -f $name) -Subcategory 'Printers'
+                Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Inventory/printer-offline-0-exposing-printing-security-and-reliability-risks-f-name' -Data @{
+                    PrinterName = $name
+                    IsDefault   = $false
+                }
             }
         }
 
@@ -49,7 +55,12 @@ function Invoke-PrinterInventoryChecks {
                     $jobName = if ($job.DocumentName) { [string]$job.DocumentName } elseif ($job.PSObject.Properties['Id']) { "Job $($job.Id)" } else { 'Print job' }
                     $ageRounded = [math]::Round($job.AgeMinutes, 1)
                     $stuckJobsList.Add(("{0} ({1} min old)" -f $jobName, $ageRounded)) | Out-Null
-                    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ('Stale print job detected on {0}, exposing printing security and reliability risks.' -f $name) -Evidence (("{0} age {1} minutes" -f $jobName, $ageRounded)) -Subcategory 'Queues'
+                    Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Inventory/stale-print-job-detected-on-0-exposing-printing-security-and-reliability-risks-f-name' -Severity $severity -Evidence (("{0} age {1} minutes" -f $jobName, $ageRounded)) -Data @{
+                        PrinterName   = $name
+                        JobName       = $jobName
+                        JobAgeMinutes = $ageRounded
+                        JobSeverity   = $severity
+                    }
                 }
             }
         }
@@ -61,7 +72,9 @@ function Invoke-PrinterInventoryChecks {
     }
 
     if ($wsdPrintersList.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title ('Printers using WSD ports: {0}, exposing printing security and reliability risks.' -f ($wsdPrintersList -join ', ')) -Evidence 'WSD ports are less reliable for enterprise printing; prefer Standard TCP/IP.' -Subcategory 'Printers'
+        Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Inventory/printers-using-wsd-ports-0-exposing-printing-security-and-reliability-risks-f-wsdprinterslist-join' -Evidence 'WSD ports are less reliable for enterprise printing; prefer Standard TCP/IP.' -Data @{
+            PrinterNames = $wsdPrintersList.ToArray()
+        }
     }
 
     return [pscustomobject]@{

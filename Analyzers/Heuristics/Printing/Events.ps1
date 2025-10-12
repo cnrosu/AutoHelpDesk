@@ -13,12 +13,20 @@ function Invoke-PrinterEventChecks {
         if ($admin.ErrorCount -gt 0) {
             $severity = if ($admin.ErrorCount -ge 5) { 'high' } else { 'medium' }
             $driverCrashSummaries = [System.Collections.Generic.List[string]]::new()
+            $driverCrashBreakdown = @{}
             foreach ($entry in $admin.DriverCrashCount.GetEnumerator()) {
                 $null = $driverCrashSummaries.Add(("{0}={1}" -f $entry.Key, $entry.Value))
+                if ($entry.Key) {
+                    $driverCrashBreakdown[$entry.Key] = $entry.Value
+                }
             }
 
             $evidence = "Errors: {0}; Driver crash IDs: {1}" -f $admin.ErrorCount, ($driverCrashSummaries -join ', ')
-            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'PrintService Admin log reporting errors, exposing printing security and reliability risks.' -Evidence $evidence -Subcategory 'Event Logs'
+            Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Events/printservice-admin-log-reporting-errors-exposing-printing-security-and-reliability-risks' -Severity $severity -Evidence $evidence -Data @{
+                ErrorCount        = $admin.ErrorCount
+                DriverCrashIds    = $driverCrashSummaries.ToArray()
+                DriverCrashCounts = $driverCrashBreakdown
+            }
         }
     }
 
@@ -26,7 +34,10 @@ function Invoke-PrinterEventChecks {
         $op = $Events.Operational
         Add-CategoryCheck -CategoryResult $Result -Name 'PrintService/Operational warnings' -Status ([string]$op.WarningCount)
         if ($op.ErrorCount -gt 10) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'PrintService Operational log has frequent errors, exposing printing security and reliability risks.' -Evidence ("Errors: {0}" -f $op.ErrorCount) -Subcategory 'Event Logs'
+            Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/Events/printservice-operational-log-has-frequent-errors-exposing-printing-security-and-reliability-risks' -Evidence ("Errors: {0}" -f $op.ErrorCount) -Data @{
+                ErrorCount   = $op.ErrorCount
+                WarningCount = $op.WarningCount
+            }
         }
     }
 }

@@ -34,7 +34,7 @@ function Invoke-PrintingHeuristics {
         Found = [bool]$printingArtifact
     })
     if (-not $printingArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing artifact not collected, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -CardId 'Printing.ps1/printing-artifact-not-collected-so-printing-security-and-reliability-risks-can-t-be-evaluated'
         return $result
     }
 
@@ -43,14 +43,14 @@ function Invoke-PrintingHeuristics {
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing payload missing, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -CardId 'Printing.ps1/printing-payload-missing-so-printing-security-and-reliability-risks-can-t-be-evaluated'
         return $result
     }
 
     if ($payload.Errors) {
         foreach ($error in $payload.Errors) {
             if ($error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing data collection warning, so printing security and reliability risks may be hidden.' -Evidence $error -Subcategory 'Collection'
+                Add-CategoryIssue -CategoryResult $result -CardId 'Printing.ps1/printing-data-collection-warning-so-printing-security-and-reliability-risks-may-be-hidden' -Evidence $error -Data @{ ErrorMessage = $error }
             }
         }
     }
@@ -297,11 +297,11 @@ function Invoke-PrintingHeuristics {
                 $severity = 'info'
             }
 
-            Add-CategoryIssue -CategoryResult $result -Severity $severity -Title 'Printer subsystem issues detected, so queue or driver problems can block printing.' -Evidence $summary -Subcategory 'Printing' -Data @{
-                Area = 'Printing'
-                Kind = 'PrintHealth'
-                Queues  = $queueEntries.ToArray()
-                Drivers = $driverEntries.ToArray()
+            Add-CategoryIssue -CategoryResult $result -CardId 'Printing.ps1/printer-subsystem-issues-detected-so-queue-or-driver-problems-can-block-printing' -Severity $severity -Evidence $summary -Data @{
+                Area      = 'Printing'
+                Kind      = 'PrintHealth'
+                Queues    = $queueEntries.ToArray()
+                Drivers   = $driverEntries.ToArray()
                 StuckJobs = $stuckJobEntries.ToArray()
             }
         }

@@ -12,8 +12,14 @@ function Invoke-PrinterNetworkTestChecks {
         foreach ($test in (ConvertTo-PrintingArray $testGroup.Tests)) {
             if (-not $test) { continue }
             if ($test.Success -eq $false -or $test.Error) {
-                $evidence = "Host: {0}; Test: {1}; Error: {2}" -f $testGroup.Host, $test.Name, ($test.Error ? $test.Error : 'Connection failure')
-                Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title ('Printer host connectivity test failed ({0}), exposing printing security and reliability risks.' -f $testGroup.Host) -Evidence $evidence -Subcategory 'Network Tests'
+                $errorDetail = if ($test.Error) { $test.Error } else { 'Connection failure' }
+                $evidence = "Host: {0}; Test: {1}; Error: {2}" -f $testGroup.Host, $test.Name, $errorDetail
+                Add-CategoryIssue -CategoryResult $Result -CardId 'Printing/NetworkTests/printer-host-connectivity-test-failed-0' -Evidence $evidence -Data @{
+                    Host      = $testGroup.Host
+                    TestName  = $test.Name
+                    Error     = $errorDetail
+                    Transport = if ($test.PSObject.Properties['Protocol']) { [string]$test.Protocol } else { $null }
+                }
             }
         }
     }
