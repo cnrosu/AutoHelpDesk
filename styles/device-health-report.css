@@ -301,6 +301,18 @@ details.report-card[open] > summary {
   margin-top: 0;
 }
 
+.raw-excerpt__meta .artifact-link {
+  color: var(--color-heading);
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.raw-excerpt__meta .artifact-link:hover,
+.raw-excerpt__meta .artifact-link:focus-visible {
+  color: var(--color-heading);
+  text-decoration: underline;
+}
+
 .report-card__summary-text {
   flex: 1;
   min-width: 0;
