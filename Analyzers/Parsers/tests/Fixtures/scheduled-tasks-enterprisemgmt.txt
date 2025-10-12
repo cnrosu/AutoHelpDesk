@@ -1,0 +1,11 @@
+Folder: \Microsoft\Windows\PushToInstall
+TaskName: \Microsoft\Windows\PushToInstall\PushLaunch
+Status: Ready
+Last Run Result: 0x0
+Last Run Time: 1/1/2024 12:34:56 PM
+
+Folder: \Microsoft\Windows\EnterpriseMgmt\{11111111-2222-3333-4444-555555555555}
+TaskName: \Microsoft\Windows\EnterpriseMgmt\{11111111-2222-3333-4444-555555555555}\PushLaunch
+Status: Ready
+Last Run Result: 0x0
+Last Run Time: 1/2/2024 1:23:45 PM
