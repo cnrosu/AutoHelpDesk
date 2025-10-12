@@ -1726,26 +1726,45 @@ function Invoke-DhcpAnalyzers {
         ScriptCount  = $scriptFiles.Count
     })
 
-    $eligibleAnalyzers = @()
+    $baseArtifactPath = Join-Path -Path $InputFolder -ChildPath 'dhcp-base.json'
+    $resolvedBaseArtifact = $null
+    $hasBaseArtifact = $false
+    if (Test-Path -LiteralPath $baseArtifactPath) {
+        $resolvedBaseArtifact = (Resolve-Path -LiteralPath $baseArtifactPath).ProviderPath
+        $hasBaseArtifact = $true
+    }
+
+    $eligibleAnalyzers = [System.Collections.Generic.List[object]]::new()
     foreach ($script in $scriptFiles) {
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($script.Name)
         if (-not $baseName.StartsWith('Analyze-')) { continue }
         $suffix = $baseName.Substring(8)
         if (-not $suffix) { continue }
 
+        if ($hasBaseArtifact) {
+            $eligibleAnalyzers.Add([pscustomobject]@{
+                Script       = $script
+                ArtifactBase = 'dhcp-base'
+                ArtifactPath = $resolvedBaseArtifact
+                Source       = 'dhcp-base.json'
+            }) | Out-Null
+            continue
+        }
+
         $artifactBase = ConvertTo-KebabCase $suffix
         if (-not $artifactBase) { continue }
 
         $artifactPath = Join-Path -Path $InputFolder -ChildPath ($artifactBase + '.json')
         if (Test-Path -LiteralPath $artifactPath) {
-            $eligibleAnalyzers += [pscustomobject]@{
+            $eligibleAnalyzers.Add([pscustomobject]@{
                 Script       = $script
                 ArtifactBase = $artifactBase
                 ArtifactPath = (Resolve-Path -LiteralPath $artifactPath).ProviderPath
-            }
+                Source       = 'legacy'
+            }) | Out-Null
         } else {
             Write-Host (
-                "DHCP analyzer '{0}' skipped: artifact '{1}.json' not found in '{2}'." -f 
+                "DHCP analyzer '{0}' skipped: artifact '{1}.json' not found in '{2}'." -f
                 $script.Name,
                 $artifactBase,
                 $InputFolder
@@ -1754,14 +1773,26 @@ function Invoke-DhcpAnalyzers {
     }
 
     if ($eligibleAnalyzers.Count -eq 0) {
-        Write-Host ("DHCP analyzers skipped: no eligible artifacts discovered in '{0}'." -f $InputFolder)
+        if ($hasBaseArtifact) {
+            Write-Host ("DHCP analyzers skipped: dhcp-base.json resolved to '{0}' but no analyzers were eligible." -f $resolvedBaseArtifact)
+        } else {
+            Write-Host ("DHCP analyzers skipped: no eligible artifacts discovered in '{0}'." -f $InputFolder)
+        }
         return
     }
 
-    Write-HeuristicDebug -Source 'Network' -Message 'Eligible DHCP analyzers' -Data ([ordered]@{
-        EligibleCount = $eligibleAnalyzers.Count
-        Artifacts     = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
-    })
+    if ($hasBaseArtifact) {
+        Write-HeuristicDebug -Source 'Network' -Message 'Eligible DHCP analyzers' -Data ([ordered]@{
+            EligibleCount    = $eligibleAnalyzers.Count
+            ArtifactStrategy = 'dhcp-base.json'
+            ArtifactPath     = $resolvedBaseArtifact
+        })
+    } else {
+        Write-HeuristicDebug -Source 'Network' -Message 'Eligible DHCP analyzers' -Data ([ordered]@{
+            EligibleCount = $eligibleAnalyzers.Count
+            Artifacts     = ($eligibleAnalyzers | ForEach-Object { $_.ArtifactBase })
+        })
+    }
 
     $findings = New-Object System.Collections.Generic.List[object]
 

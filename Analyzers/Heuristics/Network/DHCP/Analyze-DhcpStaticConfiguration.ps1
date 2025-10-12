@@ -18,7 +18,7 @@ param(
 
 Write-DhcpDebug -Message 'Analyzing DHCP static configuration' -Data ([ordered]@{ InputFolder = $InputFolder })
 
-$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileName 'dhcp-static-configuration.json'
+$payload = Get-DhcpCollectorPayload -InputFolder $InputFolder -FileNames @('dhcp-static-configuration.json')
 $ads = Ensure-Array $payload.AdapterConfigurations
 $firstAdapter = $ads | Select-Object -First 1
 $dhcpEnabled = if ($firstAdapter -and $firstAdapter.PSObject.Properties['DHCPEnabled']) { $firstAdapter.DHCPEnabled } else { 'n/a' }

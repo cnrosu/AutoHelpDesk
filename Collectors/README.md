@@ -41,6 +41,10 @@ Key conventions:
 - The analyzer lowercases base filenames to build lookup keys, so avoid duplicates across folders.
 - When a collector naturally produces multiple logical payloads, prefer splitting them into separate scripts/files instead of deeply nested structures.
 
+## DHCP artifacts
+
+`Collectors/Network/DHCP/Collect-Dhcp.ps1` now writes a single `dhcp-base.json` payload that captures adapter state and key client events once per collection run. DHCP analyzers filter the consolidated payload for their scenarios, so the previous `dhcp-*.json` collector scripts and files have been retired. Automations that depended on the specialized outputs should pivot to `dhcp-base.json` and apply any needed filtering client-side.
+
 ## Adding a new collector
 
 1. Create a new `Collect-<Name>.ps1` script inside the appropriate domain folder.

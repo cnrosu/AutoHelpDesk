@@ -117,20 +117,38 @@ function Get-DhcpCollectorPayload {
     [Parameter(Mandatory)]
     [string]$InputFolder,
 
-    [Parameter(Mandatory)]
-    [string]$FileName
+    [Alias('FileName')]
+    [string[]]$FileNames
   )
 
-  $path = Join-Path -Path $InputFolder -ChildPath $FileName
-  if (-not (Test-Path -Path $path)) { return $null }
+  if (-not $InputFolder) { return $null }
 
-  try {
-    $text = Get-Content -Path $path -Raw -ErrorAction Stop
-    $json = $text | ConvertFrom-Json -ErrorAction Stop
-    return $json.Payload
-  } catch {
-    return [pscustomobject]@{ Error = $_.Exception.Message; File = $path }
+  $candidates = New-Object System.Collections.Generic.List[string]
+  [void]$candidates.Add('dhcp-base.json')
+  if ($FileNames) {
+    foreach ($name in $FileNames) {
+      if ([string]::IsNullOrWhiteSpace($name)) { continue }
+      [void]$candidates.Add($name)
+    }
   }
+
+  $visited = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($candidate in $candidates) {
+    if (-not $visited.Add($candidate)) { continue }
+
+    $path = Join-Path -Path $InputFolder -ChildPath $candidate
+    if (-not (Test-Path -LiteralPath $path)) { continue }
+
+    try {
+      $text = Get-Content -Path $path -Raw -ErrorAction Stop
+      $json = $text | ConvertFrom-Json -ErrorAction Stop
+      return $json.Payload
+    } catch {
+      return [pscustomobject]@{ Error = $_.Exception.Message; File = $path }
+    }
+  }
+
+  return $null
 }
 
 function ConvertFrom-Iso8601 {
