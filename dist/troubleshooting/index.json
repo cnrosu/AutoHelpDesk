@@ -9061,11 +9061,11 @@
       "check_id": "Services/Checks/network-location-awareness-set-to-manual-and-stopped",
       "tags": []
     },
-    "explanation": "This card indicates 'Network Location Awareness set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "explanation": "This card indicates 'Network Location Awareness set to Manual and stopped'. Impact: Windows will not automatically refresh network profiles, so firewall and proxy policies can stay outdated until someone starts the service.",
     "evidence": "$evidence",
     "raw_payload": "",
     "troubleshooting": {
-      "overview": "This card indicates 'Network Location Awareness set to Manual and stopped'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "overview": "This card indicates 'Network Location Awareness set to Manual and stopped'. Impact: Windows will not automatically refresh network profiles, so firewall and proxy policies can stay outdated until someone starts the service.",
       "scenarios": [
         {
           "title": "Potential Issue – Generic misconfiguration",
