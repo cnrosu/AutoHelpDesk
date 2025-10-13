@@ -1831,6 +1831,17 @@ function New-AnalyzerHtml {
           return;
         }
 
+        if (typeof tabset._tabScrollAccumulator !== 'number') {
+          tabset._tabScrollAccumulator = 0;
+        }
+
+        tabset._tabScrollAccumulator += deltaX;
+
+        var SCROLL_THRESHOLD = 120;
+        if (Math.abs(tabset._tabScrollAccumulator) < SCROLL_THRESHOLD) {
+          return;
+        }
+
         event.preventDefault();
 
         var activeTab = getActiveTab(tabs);
@@ -1852,7 +1863,7 @@ function New-AnalyzerHtml {
           currentIndex = 0;
         }
 
-        var direction = deltaX > 0 ? 1 : -1;
+        var direction = tabset._tabScrollAccumulator > 0 ? 1 : -1;
         var targetIndex = (currentIndex + direction + tabs.length) % tabs.length;
         var nextTab = tabs[targetIndex];
 
@@ -1860,6 +1871,8 @@ function New-AnalyzerHtml {
           setActiveTab(tabset, tabs, nextTab, true);
           focusTab(nextTab);
         }
+
+        tabset._tabScrollAccumulator = 0;
       });
     }
 
