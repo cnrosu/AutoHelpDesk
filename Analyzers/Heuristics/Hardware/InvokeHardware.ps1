@@ -1,3 +1,20 @@
+# Ensure supporting hardware heuristic scripts are loaded when this file is dot-sourced.
+$hardwareScriptRoot = Split-Path -Parent $PSCommandPath
+
+@(
+    'Common.ps1'
+    'Normalization.ps1'
+    'Inventory.ps1'
+    'Events.ps1'
+    'Drivers.ps1'
+    'Battery.ps1'
+) | ForEach-Object {
+    $dependencyPath = Join-Path -Path $hardwareScriptRoot -ChildPath $_
+    if (Test-Path -LiteralPath $dependencyPath) {
+        . $dependencyPath
+    }
+}
+
 function Invoke-HardwareHeuristics {
     param(
         [Parameter(Mandatory)]
