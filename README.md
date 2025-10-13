@@ -24,7 +24,7 @@ The toolkit is designed to run entirely from PowerShell—no installers required
 
 ### One-button orchestration (AutoL1)
 
-To generate the report, run `AutoL1/Device-Report.ps1`; it creates a timestamped output folder (defaulting to `Desktop\DiagReports\<timestamp>`), runs the collectors, executes the analyzer, and opens the resulting HTML report. Supply `-InputFolder` to reuse an existing collection.
+To generate the report, run `AutoL1/Device-Report.ps1`; it creates a timestamped output folder (defaulting to `%TEMP%\autohelpdesk\artifacts\<timestamp>`), runs the collectors, executes the analyzer, and opens the resulting HTML report. Supply `-InputFolder` to reuse an existing collection.
 
 ## Repository layout
 

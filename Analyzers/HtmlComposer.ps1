@@ -1350,6 +1350,16 @@ function Get-ArtifactDisplayPath {
         }
     }
 
+    $artifactRootPattern = [regex]'(?i)\\autohelpdesk\\artifacts\\'
+    $artifactMatch = $artifactRootPattern.Match($normalized)
+    if ($artifactMatch.Success) {
+        $startIndex = $artifactMatch.Index + $artifactMatch.Length
+        if ($startIndex -lt $normalized.Length) {
+            $relative = $normalized.Substring($startIndex).TrimStart('\')
+            if ($relative) { return $relative }
+        }
+    }
+
     return $normalized
 }
 
