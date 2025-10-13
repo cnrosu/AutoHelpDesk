@@ -462,7 +462,6 @@ function Get-HardwareInventorySummary {
     if (-not $modelInfo['Available']) { $missingSignals.Add('Model') | Out-Null }
     $tpmAvailable = ($tpmInfo['Available'] -eq $true)
     if (-not $tpmAvailable -and -not (Test-HardwareDictionaryKey -Dictionary $tpmInfo -Key 'Error')) { $missingSignals.Add('TPM') | Out-Null }
-    if (-not $secureBootInfo['Available'] -and -not (Test-HardwareDictionaryKey -Dictionary $secureBootInfo -Key 'Error')) { $missingSignals.Add('Secure Boot') | Out-Null }
     if (-not $biosInfo['Available'] -and -not (Test-HardwareDictionaryKey -Dictionary $biosInfo -Key 'Firmware')) { $missingSignals.Add('Firmware') | Out-Null }
 
     $evidenceLines = New-Object System.Collections.Generic.List[string]
