@@ -70,9 +70,9 @@ function Invoke-StorageWearEvaluation {
             if (-not $hasWearResult -and $missingWearLabels.Count -gt 0) {
                 $evidence = [string]::Join(", ", $missingWearLabels)
                 if ([string]::IsNullOrWhiteSpace($evidence)) {
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
                 } else {
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Evidence ("No wear percentage reported for: {0}" -f $evidence) -Subcategory 'SMART Wear'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART wear counters missing for detected drives, so SSD end-of-life risks may be hidden.' -Evidence ("No wear percentage reported for: {0}" -f $evidence) -Subcategory 'SMART Wear'
                 }
             }
         }
