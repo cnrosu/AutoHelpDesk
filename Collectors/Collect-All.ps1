@@ -45,6 +45,29 @@ function Disable-AnsiOutput {
     }
 }
 
+$script:durationFormatCulture = [System.Globalization.CultureInfo]::InvariantCulture
+
+function Format-CollectorDuration {
+    param(
+        [Parameter(Mandatory)]
+        [TimeSpan]$Duration
+    )
+
+    if ($Duration.TotalSeconds -lt 1) {
+        $milliseconds = [math]::Round($Duration.TotalMilliseconds)
+        return [string]::Format($script:durationFormatCulture, '{0} ms', $milliseconds)
+    }
+
+    if ($Duration.TotalMinutes -lt 1) {
+        $seconds = [math]::Round($Duration.TotalSeconds, 2)
+        return [string]::Format($script:durationFormatCulture, '{0:N2} seconds', $seconds)
+    }
+
+    $minutes = [int][math]::Floor($Duration.TotalMinutes)
+    $secondsComponent = $Duration.Seconds
+    return [string]::Format($script:durationFormatCulture, '{0}m {1:D2}s', $minutes, $secondsComponent)
+}
+
 $ansiSupported = Test-AnsiOutputSupport
 if (-not $ansiSupported) {
     Disable-AnsiOutput
@@ -121,11 +144,15 @@ function Invoke-AllCollectors {
             [void]$ps.AddParameter('Verbose')
         }
 
+        $startTime = Get-Date
+        $asyncResult = $ps.BeginInvoke()
+
         $task = [pscustomobject]@{
-            PS     = $ps
-            IAsync = $ps.BeginInvoke()
-            Path   = $info.Collector.FullName
-            Area   = $info.AreaName
+            PS       = $ps
+            IAsync   = $asyncResult
+            Path     = $info.Collector.FullName
+            Area     = $info.AreaName
+            Started  = $startTime
         }
 
         [void]$tasks.Add($task)
@@ -149,6 +176,10 @@ function Invoke-AllCollectors {
                 continue
             }
 
+            $completedAt = Get-Date
+            $duration = $completedAt - $task.Started
+            $formattedDuration = Format-CollectorDuration -Duration $duration
+
             try {
                 $output = $task.PS.EndInvoke($task.IAsync)
                 Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
@@ -157,6 +188,8 @@ function Invoke-AllCollectors {
                     Output  = $output
                     Success = $true
                     Error   = $null
+                    Duration = $formattedDuration
+                    DurationSeconds = [math]::Round($duration.TotalSeconds, 3)
                 })
             } catch {
                 Write-Verbose ("Collector '{0}' reported an exception." -f $task.Path)
@@ -166,6 +199,8 @@ function Invoke-AllCollectors {
                     Output  = $null
                     Success = $false
                     Error   = $_.Exception.Message
+                    Duration = $formattedDuration
+                    DurationSeconds = [math]::Round($duration.TotalSeconds, 3)
                 })
             } finally {
                 if ($task.IAsync.AsyncWaitHandle) {
@@ -178,7 +213,8 @@ function Invoke-AllCollectors {
                 $percentComplete = if ($total -eq 0) { 100 } else { [int](($completed / [double]$total) * 100) }
                 $currentOperation = 'Completed {0}' -f (Split-Path -Path $task.Path -Leaf)
                 Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete -CurrentOperation $currentOperation
-                Write-Host $statusMessage
+                $collectorName = Split-Path -Path $task.Path -Leaf
+                Write-Host ("Collector '{0}' completed in {1}. {2}" -f $collectorName, $formattedDuration, $statusMessage)
                 [void]$pendingTasks.Remove($task)
                 $processedInThisCycle = $true
             }
