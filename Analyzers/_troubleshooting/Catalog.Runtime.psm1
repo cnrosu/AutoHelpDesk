@@ -8,7 +8,29 @@ $script:CATALOG_LAST_HASH = $null
 
 # region: helpers ------------------------------------------------------------
 function ConvertTo-Sha1Hex {
-  param([Parameter(Mandatory)] [string]$Text)
+  param(
+    [Parameter(Mandatory)]
+    [AllowEmptyString()]
+    [string]$Text
+  )
+
+  if ([string]::IsNullOrEmpty($Text)) {
+    $stack = @()
+    try { $stack = Get-PSCallStack | Select-Object -First 5 } catch { $stack = @() }
+    $stackTrace = if ($stack -and $stack.Count -gt 0) {
+      ($stack | ForEach-Object {
+          $scriptName = if ($_.ScriptName) { $_.ScriptName } else { '(no script)' }
+          $functionName = if ($_.FunctionName) { $_.FunctionName } else { '(no function)' }
+          $lineNumber = if ($_.ScriptLineNumber -and $_.ScriptLineNumber -gt 0) { $_.ScriptLineNumber } else { '?' }
+          "${functionName} @ ${scriptName}:${lineNumber}"
+        }) -join ' | '
+    } else {
+      '(call stack unavailable)'
+    }
+
+    Write-Host "[Catalog] ConvertTo-Sha1Hex received empty Text input. Stack: $stackTrace"
+  }
+
   $sha = [System.Security.Cryptography.SHA1]::Create()
   $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
   ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
