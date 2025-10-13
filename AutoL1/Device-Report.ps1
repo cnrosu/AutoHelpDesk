@@ -9,13 +9,13 @@ USAGE:
     Set-ExecutionPolicy -Scope Process Bypass -Force
     .\Device-Report.ps1
     # or specify an existing folder to analyze:
-    .\Device-Report.ps1 -InputFolder "C:\Users\Me\Desktop\DiagReports\20250924_181518"
+    .\Device-Report.ps1 -InputFolder "C:\Users\Me\AppData\Local\Temp\autohelpdesk\artifacts\20250924_181518"
 
 #>
 
 [CmdletBinding()]
 param(
-  [string]$OutRoot = "$env:USERPROFILE\Desktop\DiagReports",
+  [string]$OutRoot = (Join-Path -Path $env:TEMP -ChildPath 'autohelpdesk\artifacts'),
   [string]$InputFolder # optional: analyze an existing folder without collecting
 )
 
