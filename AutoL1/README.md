@@ -13,7 +13,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
   2. Feeds that folder to `Analyzers/Analyze-Diagnostics.ps1`, which reads every artifact and produces the HTML report.
   3. Opens the generated Device Health HTML report and writes its path to stdout.
 - **Inputs**:
-  - `-OutRoot` (optional): base folder for new collections (defaults to `%USERPROFILE%\Desktop\DiagReports`).
+  - `-OutRoot` (optional): base folder for new collections (defaults to `%TEMP%\autohelpdesk\artifacts`).
   - `-InputFolder` (optional): analyze an existing collection without re-running the collector.
 - **Outputs**: Launches `diagnostics-report.html` in the default browser (and returns its resolved path).
 
@@ -25,7 +25,7 @@ A three-script PowerShell toolchain where a single orchestrator script collects 
 - **Inputs**:
   - `-OutputRoot` (optional): folder that will receive the area subfolders (`Network`, `Security`, etc.).
 - **Outputs**:
-  - Timestamped folder tree created by `Device-Report.ps1` (for example, `DiagReports\<YYYYMMDD_HHMMSS>\Network\network.json`).
+  - Timestamped folder tree created by `Device-Report.ps1` (for example, `autohelpdesk\artifacts\<YYYYMMDD_HHMMSS>\Network\network.json`).
 - **Why JSON artifacts?**: Analyzers can deterministically parse payloads without relying on regex heuristics against raw text files.
 
 ### Collect-SystemDiagnostics.ps1 (Legacy collector)
@@ -67,7 +67,7 @@ Start-Process powershell.exe -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass 
 ./Device-Report.ps1
 ```
 The snippet above assumes you start in the repository root. Adjust the path in `Set-Location` if you have copied the toolkit elsewhere.
-1. Collector creates `Desktop\DiagReports\<timestamp>\` with JSON artifacts grouped by area (`Network`, `Security`, etc.).
+1. Collector creates `%TEMP%\autohelpdesk\artifacts\<timestamp>\` with JSON artifacts grouped by area (`Network`, `Security`, etc.).
 2. Analyzer writes `diagnostics-report.html` into the same folder.
 3. Device-Report opens the Device Health report automatically.
 
