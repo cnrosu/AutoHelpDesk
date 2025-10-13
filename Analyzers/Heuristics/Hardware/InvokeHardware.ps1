@@ -49,6 +49,136 @@ function Test-HardwareDictionaryKey {
     return $false
 }
 
+function Get-BatteryDesignCapacity {
+    [CmdletBinding()]
+    param(
+        # If your OS is not English, "DESIGN CAPACITY" in batteryreport will be localized.
+        # You can provide a custom regex that matches the localized label.
+        [string]$BatteryReportDesignCapacityRegex = '(?im)DESIGN\s+CAPACITY\s*\.*\s*([\d,]+)\s*mWh'
+    )
+
+    function Get-PowerCfgPath {
+        $sysnative = Join-Path $env:WINDIR 'sysnative\powercfg.exe'
+        $system32  = Join-Path $env:WINDIR 'system32\powercfg.exe'
+        if (Test-Path $sysnative) { return $sysnative }
+        if (Test-Path $system32)  { return $system32 }
+        return 'powercfg.exe'
+    }
+
+    $results = @()
+
+    # --- Path 1: root\wmi BatteryStaticData (best: DesignedCapacity mWh, DesignVoltage mV)
+    $static = $null
+    try {
+        $static = Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction Stop
+    } catch {
+        # Try legacy WMI on PS5 if available (PS7 usually lacks Get-WmiObject)
+        if (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) {
+            try { $static = Get-WmiObject -Namespace root\wmi -Class BatteryStaticData -ErrorAction Stop } catch {}
+        }
+    }
+
+    if ($static) {
+        $idx = 0
+        foreach ($b in $static) {
+            $idx++
+            $mWh = $b.DesignedCapacity
+            $mV  = $b.DesignVoltage
+            [double]$mAh = $null
+            if ($mWh -and $mV -and $mV -ne 0) { $mAh = [math]::Round($mWh / ($mV/1000.0), 0) }
+
+            $results += [pscustomobject]@{
+                Index                = $idx
+                Source               = 'root\wmi:BatteryStaticData'
+                DeviceName           = $b.DeviceName
+                DesignedCapacity_mWh = $mWh
+                DesignedCapacity_mAh = $mAh
+                DesignVoltage_mV     = $mV
+                Manufacturer         = $b.ManufacturerName
+                SerialNumber         = $b.SerialNumber
+                ManufactureDate      = $b.ManufactureDate
+                Chemistry            = $b.Chemistry
+                UniqueID             = $b.UniqueID
+            }
+        }
+    }
+
+    # --- Path 2: BatteryFullChargedCapacity (not design, but often present; helpful for sanity check)
+    # Only add if Path 1 gave nothing.
+    if (-not $results) {
+        try {
+            $full = Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction Stop
+        } catch {
+            if (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) {
+                try { $full = Get-WmiObject -Namespace root\wmi -Class BatteryFullChargedCapacity -ErrorAction Stop } catch {}
+            }
+        }
+        if ($full) {
+            $idx = 0
+            foreach ($f in $full) {
+                $idx++
+                $results += [pscustomobject]@{
+                    Index                = $idx
+                    Source               = 'root\wmi:BatteryFullChargedCapacity'
+                    DeviceName           = $null
+                    DesignedCapacity_mWh = $null
+                    DesignedCapacity_mAh = $null
+                    DesignVoltage_mV     = $null
+                    Manufacturer         = $null
+                    SerialNumber         = $null
+                    ManufactureDate      = $null
+                    Chemistry            = $null
+                    UniqueID             = $null
+                    Note                 = "FullChargedCapacity (mWh) available: $($f.FullChargedCapacity). This is NOT design."
+                }
+            }
+        }
+    }
+
+    # --- Path 3: powercfg /batteryreport (HTML parsing; English by default)
+    if (-not $results) {
+        try {
+            $powercfg = Get-PowerCfgPath
+            $tmp = Join-Path $env:TEMP ("batteryreport_{0:yyyyMMdd_HHmmss}.html" -f (Get-Date))
+            & $powercfg /batteryreport /output "$tmp" | Out-Null
+            if (Test-Path $tmp) {
+                $html = Get-Content "$tmp" -Raw -ErrorAction Stop
+                $m = [regex]::Matches($html, $BatteryReportDesignCapacityRegex)
+                if ($m.Count -gt 0) {
+                    $idx = 0
+                    foreach ($mm in $m) {
+                        $idx++
+                        $num = ($mm.Groups[1].Value -replace '[^0-9]').Trim()
+                        [int]$mWh = 0
+                        [void][int]::TryParse($num, [ref]$mWh)
+                        $results += [pscustomobject]@{
+                            Index                = $idx
+                            Source               = "powercfg:/batteryreport $tmp"
+                            DeviceName           = $null
+                            DesignedCapacity_mWh = $mWh
+                            DesignedCapacity_mAh = $null
+                            DesignVoltage_mV     = $null
+                            Manufacturer         = $null
+                            SerialNumber         = $null
+                            ManufactureDate      = $null
+                            Chemistry            = $null
+                            UniqueID             = $null
+                        }
+                    }
+                }
+            }
+        } catch {
+            # ignore; we'll report below if nothing found
+        }
+    }
+
+    if (-not $results) {
+        Write-Warning "No battery design capacity information found. This can happen on desktops/VMs, unsupported ACPI battery drivers, or localized batteryreport labels."
+    }
+
+    $results
+}
+
 function Get-HardwareInventorySummary {
     param(
         [Parameter(Mandatory)]
@@ -633,6 +763,99 @@ function Invoke-HardwareHeuristics {
                 ErrorCount         = $batteryErrors.Count
             })
 
+            $batteryEntryCount = $batteryEntries.Count
+            $designCapacityFetchAttempted = $false
+            $designCapacityResults = @()
+            $designCapacityLookupByUniqueId = @{}
+            $designCapacityLookupBySerial = @{}
+            $designCapacityLookupByDevice = @{}
+            $designCapacityLookupByIndex = @{}
+
+            $resolveDesignCapacity = {
+                param(
+                    [string[]]$UniqueIds = @(),
+                    [string[]]$SerialNumbers = @(),
+                    [string[]]$DeviceNames = @(),
+                    [int]$EntryIndex = -1
+                )
+
+                if (-not $designCapacityFetchAttempted) {
+                    $designCapacityFetchAttempted = $true
+                    try {
+                        $designCapacityResults = @(Get-BatteryDesignCapacity)
+                        Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Queried system design capacity fallback' -Data ([ordered]@{
+                            ResultCount = $designCapacityResults.Count
+                        })
+                    } catch {
+                        Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Failed querying system design capacity fallback' -Data ([ordered]@{
+                            Error = $_.Exception.Message
+                        })
+                        $designCapacityResults = @()
+                    }
+
+                    foreach ($designEntry in $designCapacityResults) {
+                        if (-not $designEntry) { continue }
+
+                        if ($designEntry.PSObject.Properties['UniqueID'] -and $designEntry.UniqueID) {
+                            $uniqueKey = [string]$designEntry.UniqueID
+                            if ($uniqueKey -and $uniqueKey.Trim() -and -not $designCapacityLookupByUniqueId.ContainsKey($uniqueKey.Trim())) {
+                                $designCapacityLookupByUniqueId[$uniqueKey.Trim()] = $designEntry
+                            }
+                        }
+
+                        if ($designEntry.PSObject.Properties['SerialNumber'] -and $designEntry.SerialNumber) {
+                            $serialKey = [string]$designEntry.SerialNumber
+                            if ($serialKey -and $serialKey.Trim() -and -not $designCapacityLookupBySerial.ContainsKey($serialKey.Trim())) {
+                                $designCapacityLookupBySerial[$serialKey.Trim()] = $designEntry
+                            }
+                        }
+
+                        if ($designEntry.PSObject.Properties['DeviceName'] -and $designEntry.DeviceName) {
+                            $deviceKey = [string]$designEntry.DeviceName
+                            if ($deviceKey -and $deviceKey.Trim() -and -not $designCapacityLookupByDevice.ContainsKey($deviceKey.Trim())) {
+                                $designCapacityLookupByDevice[$deviceKey.Trim()] = $designEntry
+                            }
+                        }
+
+                        if ($designEntry.PSObject.Properties['Index'] -and $designEntry.Index) {
+                            $indexKey = [string]$designEntry.Index
+                            if ($indexKey -and $indexKey.Trim() -and -not $designCapacityLookupByIndex.ContainsKey($indexKey.Trim())) {
+                                $designCapacityLookupByIndex[$indexKey.Trim()] = $designEntry
+                            }
+                        }
+                    }
+                }
+
+                foreach ($candidate in $UniqueIds) {
+                    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+                    $lookupKey = $candidate.Trim()
+                    if ($designCapacityLookupByUniqueId.ContainsKey($lookupKey)) { return $designCapacityLookupByUniqueId[$lookupKey] }
+                }
+
+                foreach ($candidate in $SerialNumbers) {
+                    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+                    $lookupKey = $candidate.Trim()
+                    if ($designCapacityLookupBySerial.ContainsKey($lookupKey)) { return $designCapacityLookupBySerial[$lookupKey] }
+                }
+
+                foreach ($candidate in $DeviceNames) {
+                    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+                    $lookupKey = $candidate.Trim()
+                    if ($designCapacityLookupByDevice.ContainsKey($lookupKey)) { return $designCapacityLookupByDevice[$lookupKey] }
+                }
+
+                if ($EntryIndex -gt 0) {
+                    $indexKey = $EntryIndex.ToString().Trim()
+                    if ($designCapacityLookupByIndex.ContainsKey($indexKey)) { return $designCapacityLookupByIndex[$indexKey] }
+                }
+
+                if ($batteryEntryCount -eq 1 -and $designCapacityResults.Count -eq 1) {
+                    return $designCapacityResults[0]
+                }
+
+                return $null
+            }
+
             if ($batteryErrors.Count -gt 0) {
                 $firstError = $batteryErrors | Select-Object -First 1
                 $errorText = if ($firstError -and $firstError.PSObject.Properties['Error'] -and $firstError.Error) { [string]$firstError.Error } else { 'Unknown error' }
@@ -641,8 +864,10 @@ function Invoke-HardwareHeuristics {
                 $issueCount++
             }
 
+            $batteryIndex = 0
             foreach ($battery in $batteryEntries) {
                 if (-not $battery) { continue }
+                $batteryIndex++
 
                 $label = if ($battery.PSObject.Properties['Name'] -and $battery.Name) { [string]$battery.Name } else { 'Primary battery' }
 
@@ -680,6 +905,47 @@ function Invoke-HardwareHeuristics {
                 if ($battery.PSObject.Properties['RemainingCapacitymAh']) {
                     $remainingmAhValue = $battery.RemainingCapacitymAh
                     if ($remainingmAhValue -ne $null -and $remainingmAhValue -ne '') { $remainingmAh = [double]$remainingmAhValue }
+                }
+
+                if ($design -eq $null -or $design -le 0) {
+                    $rawSnapshot = $null
+                    if ($battery.PSObject.Properties['Raw'] -and $battery.Raw) { $rawSnapshot = $battery.Raw }
+
+                    $uniqueCandidates = New-Object System.Collections.Generic.List[string]
+                    $serialCandidates = New-Object System.Collections.Generic.List[string]
+                    $deviceCandidates = New-Object System.Collections.Generic.List[string]
+
+                    if ($battery.PSObject.Properties['InstanceName'] -and $battery.InstanceName) { $uniqueCandidates.Add([string]$battery.InstanceName) | Out-Null }
+                    if ($battery.PSObject.Properties['SerialNumber'] -and $battery.SerialNumber) { $serialCandidates.Add([string]$battery.SerialNumber) | Out-Null }
+                    if ($battery.PSObject.Properties['Name'] -and $battery.Name) { $deviceCandidates.Add([string]$battery.Name) | Out-Null }
+
+                    if ($rawSnapshot) {
+                        foreach ($propName in @('Static_UniqueID', 'UniqueID', 'Status_UniqueID')) {
+                            if ($rawSnapshot.PSObject.Properties[$propName] -and $rawSnapshot.$propName) { $uniqueCandidates.Add([string]$rawSnapshot.$propName) | Out-Null }
+                        }
+
+                        foreach ($propName in @('Static_SerialNumber', 'SerialNumber', 'Status_SerialNumber')) {
+                            if ($rawSnapshot.PSObject.Properties[$propName] -and $rawSnapshot.$propName) { $serialCandidates.Add([string]$rawSnapshot.$propName) | Out-Null }
+                        }
+
+                        foreach ($propName in @('Static_DeviceName', 'DeviceName', 'Full_DeviceName', 'Status_DeviceName')) {
+                            if ($rawSnapshot.PSObject.Properties[$propName] -and $rawSnapshot.$propName) { $deviceCandidates.Add([string]$rawSnapshot.$propName) | Out-Null }
+                        }
+                    }
+
+                    $resolvedDesignEntry = & $resolveDesignCapacity -UniqueIds ($uniqueCandidates.ToArray()) -SerialNumbers ($serialCandidates.ToArray()) -DeviceNames ($deviceCandidates.ToArray()) -EntryIndex $batteryIndex
+                    if ($resolvedDesignEntry -and $resolvedDesignEntry.PSObject.Properties['DesignedCapacity_mWh'] -and $resolvedDesignEntry.DesignedCapacity_mWh) {
+                        $design = [double]$resolvedDesignEntry.DesignedCapacity_mWh
+                        if (($designmAh -eq $null -or $designmAh -le 0) -and $resolvedDesignEntry.PSObject.Properties['DesignedCapacity_mAh'] -and $resolvedDesignEntry.DesignedCapacity_mAh) {
+                            $designmAh = [double]$resolvedDesignEntry.DesignedCapacity_mAh
+                        }
+
+                        Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Filled design capacity from Get-BatteryDesignCapacity' -Data ([ordered]@{
+                            BatteryLabel         = $label
+                            DesignedCapacity_mWh = $design
+                            FallbackSource       = if ($resolvedDesignEntry.PSObject.Properties['Source'] -and $resolvedDesignEntry.Source) { [string]$resolvedDesignEntry.Source } else { 'Unknown' }
+                        })
+                    }
                 }
 
                 $cycleCount = $null
