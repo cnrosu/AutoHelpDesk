@@ -944,6 +944,116 @@ function Invoke-HardwareHeuristics {
         $bluetoothServiceError = 'Bluetooth service snapshot missing from driver collector payload.'
     }
 
+    $hasThunderboltDeviceSnapshot = $false
+    $thunderboltDevicesPayload = $null
+    $thunderboltDeviceRecords = @()
+    $thunderboltDeviceError = $null
+    $thunderboltDeviceSource = 'Get-PnpDevice -PresentOnly (Thunderbolt filter)'
+    if ($payload.PSObject.Properties['ThunderboltDevices']) {
+        $thunderboltDevicesPayload = $payload.ThunderboltDevices
+        if ($thunderboltDevicesPayload) {
+            $hasThunderboltDeviceSnapshot = $true
+            if ($thunderboltDevicesPayload.PSObject.Properties['Source'] -and $thunderboltDevicesPayload.Source) {
+                $thunderboltDeviceSource = [string]$thunderboltDevicesPayload.Source
+            }
+            if ($thunderboltDevicesPayload.PSObject.Properties['Error'] -and $thunderboltDevicesPayload.Error) {
+                $thunderboltDeviceError = [string]$thunderboltDevicesPayload.Error
+            } elseif ($thunderboltDevicesPayload.PSObject.Properties['Items'] -and $thunderboltDevicesPayload.Items) {
+                $thunderboltDeviceRecords = @($thunderboltDevicesPayload.Items | Where-Object { $_ })
+            }
+        }
+    }
+
+    $hasThunderboltServiceSnapshot = $false
+    $thunderboltServicePayload = $null
+    $thunderboltServiceStatus = $null
+    $thunderboltServiceExists = $null
+    $thunderboltServiceError = $null
+    $thunderboltServiceSource = 'Get-Service'
+    if ($payload.PSObject.Properties['ThunderboltService']) {
+        $thunderboltServicePayload = $payload.ThunderboltService
+        if ($thunderboltServicePayload) {
+            $hasThunderboltServiceSnapshot = $true
+            if ($thunderboltServicePayload.PSObject.Properties['Source'] -and $thunderboltServicePayload.Source) {
+                $thunderboltServiceSource = [string]$thunderboltServicePayload.Source
+            }
+            if ($thunderboltServicePayload.PSObject.Properties['Error'] -and $thunderboltServicePayload.Error) {
+                $thunderboltServiceError = [string]$thunderboltServicePayload.Error
+            }
+            if ($thunderboltServicePayload.PSObject.Properties['Status'] -and $thunderboltServicePayload.Status) {
+                $thunderboltServiceStatus = ([string]$thunderboltServicePayload.Status).Trim()
+            }
+            if ($thunderboltServicePayload.PSObject.Properties['Exists']) {
+                try { $thunderboltServiceExists = [bool]$thunderboltServicePayload.Exists } catch { $thunderboltServiceExists = $null }
+            }
+        }
+    }
+
+    $thunderboltQueriedNames = @()
+    if ($thunderboltServicePayload -and $thunderboltServicePayload.PSObject.Properties['QueriedNames'] -and $thunderboltServicePayload.QueriedNames) {
+        $thunderboltQueriedNames = @($thunderboltServicePayload.QueriedNames | Where-Object { $_ })
+    }
+
+    $thunderboltServiceName = $null
+    if ($thunderboltServicePayload -and $thunderboltServicePayload.PSObject.Properties['Name'] -and $thunderboltServicePayload.Name) {
+        $thunderboltServiceName = [string]$thunderboltServicePayload.Name
+    }
+
+    $hasDisplayLinkDeviceSnapshot = $false
+    $displayLinkDevicesPayload = $null
+    $displayLinkDeviceRecords = @()
+    $displayLinkDeviceError = $null
+    $displayLinkDeviceSource = 'Get-PnpDevice -PresentOnly (DisplayLink filter)'
+    if ($payload.PSObject.Properties['DisplayLinkDevices']) {
+        $displayLinkDevicesPayload = $payload.DisplayLinkDevices
+        if ($displayLinkDevicesPayload) {
+            $hasDisplayLinkDeviceSnapshot = $true
+            if ($displayLinkDevicesPayload.PSObject.Properties['Source'] -and $displayLinkDevicesPayload.Source) {
+                $displayLinkDeviceSource = [string]$displayLinkDevicesPayload.Source
+            }
+            if ($displayLinkDevicesPayload.PSObject.Properties['Error'] -and $displayLinkDevicesPayload.Error) {
+                $displayLinkDeviceError = [string]$displayLinkDevicesPayload.Error
+            } elseif ($displayLinkDevicesPayload.PSObject.Properties['Items'] -and $displayLinkDevicesPayload.Items) {
+                $displayLinkDeviceRecords = @($displayLinkDevicesPayload.Items | Where-Object { $_ })
+            }
+        }
+    }
+
+    $hasDisplayLinkServiceSnapshot = $false
+    $displayLinkServicePayload = $null
+    $displayLinkServiceStatus = $null
+    $displayLinkServiceExists = $null
+    $displayLinkServiceError = $null
+    $displayLinkServiceSource = 'Get-Service'
+    if ($payload.PSObject.Properties['DisplayLinkService']) {
+        $displayLinkServicePayload = $payload.DisplayLinkService
+        if ($displayLinkServicePayload) {
+            $hasDisplayLinkServiceSnapshot = $true
+            if ($displayLinkServicePayload.PSObject.Properties['Source'] -and $displayLinkServicePayload.Source) {
+                $displayLinkServiceSource = [string]$displayLinkServicePayload.Source
+            }
+            if ($displayLinkServicePayload.PSObject.Properties['Error'] -and $displayLinkServicePayload.Error) {
+                $displayLinkServiceError = [string]$displayLinkServicePayload.Error
+            }
+            if ($displayLinkServicePayload.PSObject.Properties['Status'] -and $displayLinkServicePayload.Status) {
+                $displayLinkServiceStatus = ([string]$displayLinkServicePayload.Status).Trim()
+            }
+            if ($displayLinkServicePayload.PSObject.Properties['Exists']) {
+                try { $displayLinkServiceExists = [bool]$displayLinkServicePayload.Exists } catch { $displayLinkServiceExists = $null }
+            }
+        }
+    }
+
+    $displayLinkQueriedNames = @()
+    if ($displayLinkServicePayload -and $displayLinkServicePayload.PSObject.Properties['QueriedNames'] -and $displayLinkServicePayload.QueriedNames) {
+        $displayLinkQueriedNames = @($displayLinkServicePayload.QueriedNames | Where-Object { $_ })
+    }
+
+    $displayLinkServiceName = $null
+    if ($displayLinkServicePayload -and $displayLinkServicePayload.PSObject.Properties['Name'] -and $displayLinkServicePayload.Name) {
+        $displayLinkServiceName = [string]$displayLinkServicePayload.Name
+    }
+
     $failureEventMap = Get-DriverFailureEventMap -Context $Context
     Write-HeuristicDebug -Source 'Hardware' -Message 'Loaded driver failure event map' -Data ([ordered]@{
         HasEvents = ($failureEventMap -and ($failureEventMap.Count -gt 0))
@@ -1158,6 +1268,180 @@ function Invoke-HardwareHeuristics {
             $issueCount++
         } else {
             Add-CategoryNormal -CategoryResult $result -Title 'Bluetooth adapter detected and appears to be working normally.' -Subcategory 'Bluetooth'
+        }
+    }
+
+    $thunderboltDetected = (
+        ($thunderboltDeviceRecords.Count -gt 0) -or
+        ($thunderboltServiceExists -eq $true) -or
+        ($thunderboltServiceStatus)
+    )
+
+    Write-HeuristicDebug -Source 'Hardware/Thunderbolt' -Message 'Thunderbolt snapshot summary' -Data ([ordered]@{
+        DeviceSnapshotPresent  = $hasThunderboltDeviceSnapshot
+        DeviceRecordCount      = $thunderboltDeviceRecords.Count
+        DeviceErrorPresent     = [bool]$thunderboltDeviceError
+        ServiceSnapshotPresent = $hasThunderboltServiceSnapshot
+        ServiceStatus          = $thunderboltServiceStatus
+        ServiceExists          = $thunderboltServiceExists
+        ServiceErrorPresent    = [bool]$thunderboltServiceError
+    })
+
+    if ($thunderboltDeviceError) {
+        $title = 'Thunderbolt device query failed, so technicians cannot confirm dock readiness automatically.'
+        $evidence = "{0}: {1}" -f $thunderboltDeviceSource, $thunderboltDeviceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Thunderbolt'
+        $issueCount++
+    }
+
+    if ($thunderboltServiceError) {
+        $title = 'Thunderbolt service snapshot failed, so the team cannot verify dock support status.'
+        $evidence = "{0}: {1}" -f $thunderboltServiceSource, $thunderboltServiceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Thunderbolt'
+        $issueCount++
+    }
+
+    if ($thunderboltDetected) {
+        $serviceLabel = if ($thunderboltServiceName) { $thunderboltServiceName } elseif ($thunderboltQueriedNames.Count -gt 0) { $thunderboltQueriedNames[0] } else { 'ThunderboltService' }
+        $serviceDisplay = if ($thunderboltServiceExists -eq $false) { 'Not Found' } elseif ($thunderboltServiceStatus) { $thunderboltServiceStatus } else { 'Unknown' }
+        $serviceRunning = $thunderboltServiceStatus -eq 'Running'
+
+        $controllersWithIssues = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($controller in $thunderboltDeviceRecords) {
+            if (-not $controller) { continue }
+            $statusValue = if ($controller.PSObject.Properties['Status'] -and $controller.Status) { [string]$controller.Status } else { 'Unknown' }
+            $problemIndicator = $null
+            if ($controller.PSObject.Properties['ProblemCode']) { $problemIndicator = $controller.ProblemCode }
+            $problemText = if ($problemIndicator -ne $null -and $problemIndicator -ne '' -and ([string]$problemIndicator).Trim() -notin @('0','0x0')) { [string]$problemIndicator } else { $null }
+            $hasIssue = $false
+            if ($statusValue -and $statusValue -notin @('OK','Unknown')) { $hasIssue = $true }
+            if ($problemText) { $hasIssue = $true }
+            if ($hasIssue) { $controllersWithIssues.Add($controller) | Out-Null }
+        }
+
+        $evidenceLines = New-Object System.Collections.Generic.List[string]
+        $evidenceLines.Add("{0} status: {1}" -f $serviceLabel, $serviceDisplay) | Out-Null
+        if ($thunderboltQueriedNames.Count -gt 1) {
+            $evidenceLines.Add("Service name candidates: {0}" -f ($thunderboltQueriedNames -join ', ')) | Out-Null
+        }
+        $evidenceLines.Add("Thunderbolt controllers detected: $($thunderboltDeviceRecords.Count)") | Out-Null
+
+        foreach ($controller in $thunderboltDeviceRecords) {
+            $name = if ($controller.PSObject.Properties['FriendlyName'] -and $controller.FriendlyName) { [string]$controller.FriendlyName }
+                elseif ($controller.PSObject.Properties['InstanceId'] -and $controller.InstanceId) { [string]$controller.InstanceId }
+                else { 'Unknown device' }
+            $statusValue = if ($controller.PSObject.Properties['Status'] -and $controller.Status) { [string]$controller.Status } else { 'Unknown' }
+            $problemIndicator = $null
+            if ($controller.PSObject.Properties['ProblemCode']) { $problemIndicator = $controller.ProblemCode }
+            $problemText = if ($problemIndicator -ne $null -and $problemIndicator -ne '' -and ([string]$problemIndicator).Trim() -notin @('0','0x0')) { [string]$problemIndicator } else { $null }
+            $suffix = if ($problemText) { " (ProblemCode: $problemText)" } else { '' }
+            $evidenceLines.Add("- $name — Status: $statusValue$suffix") | Out-Null
+        }
+
+        $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
+
+        if ($thunderboltDeviceRecords.Count -eq 0 -and ($thunderboltServiceExists -eq $true -or $thunderboltServiceStatus)) {
+            $title = 'Thunderbolt software detected but no controllers enumerated, so docks may not initialize.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Thunderbolt'
+            $issueCount++
+        } elseif ($controllersWithIssues.Count -gt 0) {
+            $title = 'Thunderbolt controller reports errors, so connected docks may disconnect or fail to power displays.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Thunderbolt'
+            $issueCount++
+        } elseif (($thunderboltServiceExists -eq $true -or $thunderboltServiceStatus) -and -not $serviceRunning) {
+            $title = 'Thunderbolt service is not running, so connected docks may not be recognized.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Thunderbolt'
+            $issueCount++
+        } elseif ($thunderboltDeviceRecords.Count -gt 0) {
+            Add-CategoryNormal -CategoryResult $result -Title 'Thunderbolt controller detected and appears to be working normally.' -Subcategory 'Thunderbolt'
+        }
+    }
+
+    $displayLinkDetected = (
+        ($displayLinkDeviceRecords.Count -gt 0) -or
+        ($displayLinkServiceExists -eq $true) -or
+        ($displayLinkServiceStatus)
+    )
+
+    Write-HeuristicDebug -Source 'Hardware/DisplayLink' -Message 'DisplayLink snapshot summary' -Data ([ordered]@{
+        DeviceSnapshotPresent  = $hasDisplayLinkDeviceSnapshot
+        DeviceRecordCount      = $displayLinkDeviceRecords.Count
+        DeviceErrorPresent     = [bool]$displayLinkDeviceError
+        ServiceSnapshotPresent = $hasDisplayLinkServiceSnapshot
+        ServiceStatus          = $displayLinkServiceStatus
+        ServiceExists          = $displayLinkServiceExists
+        ServiceErrorPresent    = [bool]$displayLinkServiceError
+    })
+
+    if ($displayLinkDeviceError) {
+        $title = 'DisplayLink device query failed, so technicians cannot confirm USB display readiness automatically.'
+        $evidence = "{0}: {1}" -f $displayLinkDeviceSource, $displayLinkDeviceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'DisplayLink'
+        $issueCount++
+    }
+
+    if ($displayLinkServiceError) {
+        $title = 'DisplayLink service snapshot failed, so USB display startup state is unknown.'
+        $evidence = "{0}: {1}" -f $displayLinkServiceSource, $displayLinkServiceError
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'DisplayLink'
+        $issueCount++
+    }
+
+    if ($displayLinkDetected) {
+        $serviceLabel = if ($displayLinkServiceName) { $displayLinkServiceName } elseif ($displayLinkQueriedNames.Count -gt 0) { $displayLinkQueriedNames[0] } else { 'DisplayLinkManager' }
+        $serviceDisplay = if ($displayLinkServiceExists -eq $false) { 'Not Found' } elseif ($displayLinkServiceStatus) { $displayLinkServiceStatus } else { 'Unknown' }
+        $serviceRunning = $displayLinkServiceStatus -eq 'Running'
+
+        $adaptersWithIssues = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($adapter in $displayLinkDeviceRecords) {
+            if (-not $adapter) { continue }
+            $statusValue = if ($adapter.PSObject.Properties['Status'] -and $adapter.Status) { [string]$adapter.Status } else { 'Unknown' }
+            $problemIndicator = $null
+            if ($adapter.PSObject.Properties['ProblemCode']) { $problemIndicator = $adapter.ProblemCode }
+            $problemText = if ($problemIndicator -ne $null -and $problemIndicator -ne '' -and ([string]$problemIndicator).Trim() -notin @('0','0x0')) { [string]$problemIndicator } else { $null }
+            $hasIssue = $false
+            if ($statusValue -and $statusValue -notin @('OK','Unknown')) { $hasIssue = $true }
+            if ($problemText) { $hasIssue = $true }
+            if ($hasIssue) { $adaptersWithIssues.Add($adapter) | Out-Null }
+        }
+
+        $evidenceLines = New-Object System.Collections.Generic.List[string]
+        $evidenceLines.Add("{0} status: {1}" -f $serviceLabel, $serviceDisplay) | Out-Null
+        if ($displayLinkQueriedNames.Count -gt 1) {
+            $evidenceLines.Add("Service name candidates: {0}" -f ($displayLinkQueriedNames -join ', ')) | Out-Null
+        }
+        $evidenceLines.Add("DisplayLink adapters detected: $($displayLinkDeviceRecords.Count)") | Out-Null
+
+        foreach ($adapter in $displayLinkDeviceRecords) {
+            $name = if ($adapter.PSObject.Properties['FriendlyName'] -and $adapter.FriendlyName) { [string]$adapter.FriendlyName }
+                elseif ($adapter.PSObject.Properties['InstanceId'] -and $adapter.InstanceId) { [string]$adapter.InstanceId }
+                else { 'Unknown device' }
+            $statusValue = if ($adapter.PSObject.Properties['Status'] -and $adapter.Status) { [string]$adapter.Status } else { 'Unknown' }
+            $problemIndicator = $null
+            if ($adapter.PSObject.Properties['ProblemCode']) { $problemIndicator = $adapter.ProblemCode }
+            $problemText = if ($problemIndicator -ne $null -and $problemIndicator -ne '' -and ([string]$problemIndicator).Trim() -notin @('0','0x0')) { [string]$problemIndicator } else { $null }
+            $suffix = if ($problemText) { " (ProblemCode: $problemText)" } else { '' }
+            $evidenceLines.Add("- $name — Status: $statusValue$suffix") | Out-Null
+        }
+
+        $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
+
+        if ($displayLinkDeviceRecords.Count -gt 0) {
+            if ($adaptersWithIssues.Count -gt 0) {
+                $title = 'DisplayLink adapter reports errors, so USB-connected displays may stay blank.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'DisplayLink'
+                $issueCount++
+            } elseif (($displayLinkServiceExists -eq $true -or $displayLinkServiceStatus) -and -not $serviceRunning) {
+                $title = 'DisplayLink service is not running, so USB-connected displays may not appear.'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'DisplayLink'
+                $issueCount++
+            } else {
+                Add-CategoryNormal -CategoryResult $result -Title 'DisplayLink adapter detected and appears to be working normally.' -Subcategory 'DisplayLink'
+            }
+        } elseif (($displayLinkServiceExists -eq $true -or $displayLinkServiceStatus) -and -not $serviceRunning) {
+            $title = 'DisplayLink software installed but service stopped, so future USB display sessions may fail.'
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'DisplayLink'
+            $issueCount++
         }
     }
 
