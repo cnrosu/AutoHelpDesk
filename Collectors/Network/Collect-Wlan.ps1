@@ -79,51 +79,151 @@ function Get-WlanProfileDetail {
     return Invoke-CollectorNativeCommand -FilePath 'netsh.exe' -ArgumentList 'wlan','show','profile',$nameArg,'key=clear' -SourceLabel 'netsh wlan show profile'
 }
 
+$script:WlanProfileXmlExportState = $null
+
+function Initialize-WlanProfileXmlExport {
+    if ($script:WlanProfileXmlExportState -and $script:WlanProfileXmlExportState.Initialized) { return }
+
+    $state = [ordered]@{
+        Initialized = $true
+        Folder      = $null
+        ExportError = $null
+        Profiles    = @{}
+        Errors      = [System.Collections.Generic.List[string]]::new()
+    }
+
+    $tempFolder = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid().ToString())
+    try {
+        $null = New-Item -Path $tempFolder -ItemType Directory -Force -ErrorAction Stop
+    } catch {
+        $state.ExportError = $_.Exception.Message
+        [void]$state.Errors.Add($state.ExportError)
+        $script:WlanProfileXmlExportState = $state
+        return
+    }
+
+    $state.Folder = $tempFolder
+
+    $folderArg = ('folder="{0}"' -f $tempFolder)
+    $argumentList = @('wlan','export','profile',$folderArg,'key=clear')
+    $exportResult = Invoke-CollectorNativeCommand -FilePath 'netsh.exe' -ArgumentList $argumentList -SourceLabel 'netsh wlan export profile'
+
+    if ($exportResult -is [pscustomobject] -and $exportResult.PSObject.Properties['Error'] -and $exportResult.Error) {
+        $state.ExportError = $exportResult.Error
+        [void]$state.Errors.Add($state.ExportError)
+        $script:WlanProfileXmlExportState = $state
+        return
+    }
+
+    try {
+        $files = Get-ChildItem -Path $tempFolder -Filter '*.xml' -File -ErrorAction Stop
+        if (-not $files -or $files.Count -eq 0) {
+            $state.ExportError = 'Profile export did not create an XML file.'
+            [void]$state.Errors.Add($state.ExportError)
+            $script:WlanProfileXmlExportState = $state
+            return
+        }
+
+        foreach ($file in $files) {
+            if (-not $file) { continue }
+
+            $xmlContent = $null
+            try {
+                $xmlContent = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop
+            } catch {
+                $profileKey = $file.BaseName.ToLowerInvariant()
+                if (-not $state.Profiles.ContainsKey($profileKey)) {
+                    $state.Profiles[$profileKey] = [pscustomobject]@{ Xml = $null; Error = $_.Exception.Message }
+                }
+                [void]$state.Errors.Add($_.Exception.Message)
+                continue
+            }
+
+            $profileName = $null
+            try {
+                $xmlDoc = [xml]$xmlContent
+                if ($xmlDoc -and $xmlDoc.WLANProfile -and $xmlDoc.WLANProfile.name) {
+                    $profileName = [string]$xmlDoc.WLANProfile.name
+                }
+            } catch {
+                $profileKey = $file.BaseName.ToLowerInvariant()
+                if (-not $state.Profiles.ContainsKey($profileKey)) {
+                    $state.Profiles[$profileKey] = [pscustomobject]@{ Xml = $null; Error = $_.Exception.Message }
+                }
+                [void]$state.Errors.Add($_.Exception.Message)
+                continue
+            }
+
+            if ($profileName) {
+                $profileKey = $profileName.Trim().ToLowerInvariant()
+                if (-not $state.Profiles.ContainsKey($profileKey)) {
+                    $state.Profiles[$profileKey] = [pscustomobject]@{ Xml = $xmlContent; Error = $null }
+                }
+            }
+        }
+    } catch {
+        $state.ExportError = $_.Exception.Message
+        [void]$state.Errors.Add($_.Exception.Message)
+    }
+
+    $script:WlanProfileXmlExportState = $state
+}
+
 function Get-WlanProfileXml {
     param(
         [Parameter(Mandatory)]
         [string]$Name
     )
 
-    $tempFolder = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid().ToString())
-    try {
-        $null = New-Item -Path $tempFolder -ItemType Directory -Force -ErrorAction Stop
-    } catch {
-        return [pscustomobject]@{ Xml = $null; Error = $_.Exception.Message }
+    Initialize-WlanProfileXmlExport
+
+    $state = $script:WlanProfileXmlExportState
+    if (-not $state) {
+        return [pscustomobject]@{ Xml = $null; Error = 'Profile export state was not initialized.' }
     }
 
-    $nameArg = ('name="{0}"' -f $Name)
-    $folderArg = ('folder="{0}"' -f $tempFolder)
-    $exportResult = Invoke-CollectorNativeCommand -FilePath 'netsh.exe' -ArgumentList 'wlan','export','profile',$nameArg,$folderArg,'key=clear' -SourceLabel 'netsh wlan export profile'
+    if ($state.ExportError) {
+        return [pscustomobject]@{ Xml = $null; Error = $state.ExportError }
+    }
 
-    $xmlContent = $null
-    $errorMessage = $null
+    $profileKey = $Name.Trim().ToLowerInvariant()
+    if ($state.Profiles.ContainsKey($profileKey)) {
+        return $state.Profiles[$profileKey]
+    }
 
-    if ($exportResult -is [pscustomobject] -and $exportResult.PSObject.Properties['Error'] -and $exportResult.Error) {
-        $errorMessage = $exportResult.Error
-    } else {
+    $errorMessage = 'Profile export did not create an XML file for profile "{0}".' -f $Name
+    if ($state.Errors -and $state.Errors.Count -gt 0) {
         try {
-            $files = Get-ChildItem -Path $tempFolder -Filter '*.xml' -File -ErrorAction Stop | Sort-Object LastWriteTime -Descending
-            $file = $files | Select-Object -First 1
-            if ($file) {
-                $xmlContent = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop
-            } else {
-                $errorMessage = 'Profile export did not create an XML file.'
+            $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+            $unique = [System.Collections.Generic.List[string]]::new()
+            foreach ($entry in $state.Errors) {
+                if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+                if ($seen.Add($entry)) {
+                    [void]$unique.Add($entry)
+                }
+            }
+            if ($unique.Count -gt 0) {
+                $errorMessage = '{0} Additional errors: {1}' -f $errorMessage, ($unique.ToArray() -join '; ')
             }
         } catch {
-            $errorMessage = $_.Exception.Message
         }
     }
 
-    try {
-        Remove-Item -Path $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
-    } catch {
-    }
-
     return [pscustomobject]@{
-        Xml   = $xmlContent
+        Xml   = $null
         Error = $errorMessage
     }
+}
+
+function Dispose-WlanProfileXmlExport {
+    if ($script:WlanProfileXmlExportState -and $script:WlanProfileXmlExportState.Folder) {
+        try {
+            Remove-Item -Path $script:WlanProfileXmlExportState.Folder -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+
+    $script:WlanProfileXmlExportState = $null
 }
 
 function ConvertTo-WlanLines {
@@ -219,81 +319,85 @@ function Invoke-Main {
         return
     }
 
-    $interfaces = Get-WlanInterfacesRaw
-    $networks = Get-WlanNetworksRaw
-    $profilesSummary = Get-WlanProfilesRaw
-    $profileNames = Get-WlanProfileNames -ProfilesRaw $profilesSummary
+    try {
+        $interfaces = Get-WlanInterfacesRaw
+        $networks = Get-WlanNetworksRaw
+        $profilesSummary = Get-WlanProfilesRaw
+        $profileNames = Get-WlanProfileNames -ProfilesRaw $profilesSummary
 
-    $details = [System.Collections.Generic.List[object]]::new()
-    foreach ($profileName in $profileNames) {
-        $detail = [ordered]@{ Name = $profileName }
+        $details = [System.Collections.Generic.List[object]]::new()
+        foreach ($profileName in $profileNames) {
+            $detail = [ordered]@{ Name = $profileName }
 
-        $passphrase = $null
+            $passphrase = $null
 
-        $profileOutput = Get-WlanProfileDetail -Name $profileName
-        if ($profileOutput) {
-            $sanitizedOutput = Sanitize-WlanProfileOutput -Output $profileOutput
-            if ($sanitizedOutput -and $sanitizedOutput.Lines) {
-                $detail['ShowProfile'] = $sanitizedOutput.Lines
-            }
-            if (-not $passphrase -and $sanitizedOutput.Passphrase) {
-                $passphrase = $sanitizedOutput.Passphrase
-            }
-        }
-
-        $xmlInfo = Get-WlanProfileXml -Name $profileName
-        if ($xmlInfo.Xml) {
-            $sanitizedXml = Sanitize-WlanProfileXml -Xml $xmlInfo.Xml
-            if ($sanitizedXml -and $sanitizedXml.Text) {
-                $detail['Xml'] = $sanitizedXml.Text
-            }
-            if (-not $passphrase -and $sanitizedXml.Passphrase) {
-                $passphrase = $sanitizedXml.Passphrase
-            }
-        }
-        if ($xmlInfo.Error) { $detail['XmlError'] = $xmlInfo.Error }
-
-        if ($passphrase) {
-            try {
-                $strength = Test-PasswordStrength -Password $passphrase
-                if ($strength) {
-                    $metrics = [ordered]@{
-                        Score              = $strength.Score
-                        Category           = $strength.Category
-                        Length             = $strength.Length
-                        AlphabetSizeUsed   = $strength.AlphabetSizeUsed
-                        EstimatedBits      = $strength.EstimatedBits
-                        EstimatedGuesses   = $strength.EstimatedGuesses
-                        CrackTimeOnline    = Format-WlanStrengthValue -Value $strength.CrackTimeOnline_s
-                        CrackTimeOffline   = Format-WlanStrengthValue -Value $strength.CrackTimeOffline_s
-                        Warnings           = $strength.Warnings
-                        Suggestions        = $strength.Suggestions
-                        Signals            = $strength.Signals
-                        BaselineBits       = $strength.BaselineBits
-                        PenaltyBits        = $strength.PenaltyBits
-                        Notes              = $strength.Notes
-                    }
-                    $detail['PassphraseMetrics'] = $metrics
+            $profileOutput = Get-WlanProfileDetail -Name $profileName
+            if ($profileOutput) {
+                $sanitizedOutput = Sanitize-WlanProfileOutput -Output $profileOutput
+                if ($sanitizedOutput -and $sanitizedOutput.Lines) {
+                    $detail['ShowProfile'] = $sanitizedOutput.Lines
                 }
-            } catch {
-                $detail['PassphraseMetricsError'] = $_.Exception.Message
+                if (-not $passphrase -and $sanitizedOutput.Passphrase) {
+                    $passphrase = $sanitizedOutput.Passphrase
+                }
+            }
+
+            $xmlInfo = Get-WlanProfileXml -Name $profileName
+            if ($xmlInfo.Xml) {
+                $sanitizedXml = Sanitize-WlanProfileXml -Xml $xmlInfo.Xml
+                if ($sanitizedXml -and $sanitizedXml.Text) {
+                    $detail['Xml'] = $sanitizedXml.Text
+                }
+                if (-not $passphrase -and $sanitizedXml.Passphrase) {
+                    $passphrase = $sanitizedXml.Passphrase
+                }
+            }
+            if ($xmlInfo.Error) { $detail['XmlError'] = $xmlInfo.Error }
+
+            if ($passphrase) {
+                try {
+                    $strength = Test-PasswordStrength -Password $passphrase
+                    if ($strength) {
+                        $metrics = [ordered]@{
+                            Score              = $strength.Score
+                            Category           = $strength.Category
+                            Length             = $strength.Length
+                            AlphabetSizeUsed   = $strength.AlphabetSizeUsed
+                            EstimatedBits      = $strength.EstimatedBits
+                            EstimatedGuesses   = $strength.EstimatedGuesses
+                            CrackTimeOnline    = Format-WlanStrengthValue -Value $strength.CrackTimeOnline_s
+                            CrackTimeOffline   = Format-WlanStrengthValue -Value $strength.CrackTimeOffline_s
+                            Warnings           = $strength.Warnings
+                            Suggestions        = $strength.Suggestions
+                            Signals            = $strength.Signals
+                            BaselineBits       = $strength.BaselineBits
+                            PenaltyBits        = $strength.PenaltyBits
+                            Notes              = $strength.Notes
+                        }
+                        $detail['PassphraseMetrics'] = $metrics
+                    }
+                } catch {
+                    $detail['PassphraseMetricsError'] = $_.Exception.Message
+                }
+            }
+            $details.Add([pscustomobject]$detail) | Out-Null
+        }
+
+        $payload = [ordered]@{
+            Interfaces = $interfaces
+            Networks   = $networks
+            Profiles   = [ordered]@{
+                Summary = $profilesSummary
+                Details = $details.ToArray()
             }
         }
-        $details.Add([pscustomobject]$detail) | Out-Null
-    }
 
-    $payload = [ordered]@{
-        Interfaces = $interfaces
-        Networks   = $networks
-        Profiles   = [ordered]@{
-            Summary = $profilesSummary
-            Details = $details.ToArray()
-        }
+        $result = New-CollectorMetadata -Payload $payload
+        $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'wlan.json' -Data $result -Depth 6
+        Write-Output $outputPath
+    } finally {
+        Dispose-WlanProfileXmlExport
     }
-
-    $result = New-CollectorMetadata -Payload $payload
-    $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'wlan.json' -Data $result -Depth 6
-    Write-Output $outputPath
 }
 
 Invoke-Main
