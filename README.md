@@ -141,7 +141,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 
 ### Services
 - **Service Inventory** – Reports collection errors, raises medium issues when automatic services are stopped, and records normals when automatic services are running.
-- **Windows Search Service** – Raises medium/high issues when Windows Search is stopped or disabled and records normals when running.
+- **Windows Search Indexing** – Flags critical outages when the WSearch service is offline, highlights catalog corruption, disk pressure, backlog/throttling, and policy exclusions, and documents informational states such as large or per-user catalogs.
 - **DNS Client Service** – Flags critical issues when the DNS client service is missing or stopped and records normals when it is running.
 - **Network Location Awareness** – Raises high issues when NLA is missing or stopped, medium issues when it is manual on workstations, and records normals when it is running.
 - **Workstation Service** – Raises high issues when LanmanWorkstation is missing or stopped and records normals when it is running.

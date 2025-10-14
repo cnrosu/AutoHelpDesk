@@ -12124,5 +12124,365 @@
         }
       ]
     }
+  },
+  {
+    "card_id": "System/WindowsSearch/indexing-stopped",
+    "title": "Windows Search indexing is stopped, so Start menu and Outlook searches will miss results.",
+    "severity": "critical",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/indexing-stopped",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search indexing is stopped, so Start menu and Outlook searches will miss results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search indexing is stopped, so Start menu and Outlook searches will miss results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/error-burst",
+    "title": "Windows Search index is throwing repeated errors, so catalog corruption or resets are likely.",
+    "severity": "critical",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/error-burst",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search index is throwing repeated errors, so catalog corruption or resets are likely.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search index is throwing repeated errors, so catalog corruption or resets are likely.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/index-path-invalid",
+    "title": "Windows Search index path is offline, so the catalog cannot load or answer queries.",
+    "severity": "critical",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/index-path-invalid",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search index path is offline, so the catalog cannot load or answer queries.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search index path is offline, so the catalog cannot load or answer queries.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/catalog-disk-pressure",
+    "title": "Windows Search catalog is large and the system drive is nearly full, so indexing failures and crashes are imminent.",
+    "severity": "critical",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/catalog-disk-pressure",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search catalog is large and the system drive is nearly full, so indexing failures and crashes are imminent.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search catalog is large and the system drive is nearly full, so indexing failures and crashes are imminent.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/indexer-paused",
+    "title": "Windows Search indexing appears paused, so new files are not being added to results.",
+    "severity": "warning",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/indexer-paused",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search indexing appears paused, so new files are not being added to results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search indexing appears paused, so new files are not being added to results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/crawl-backlog",
+    "title": "Windows Search has a large indexing backlog, so users will see stale search results.",
+    "severity": "warning",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/crawl-backlog",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search has a large indexing backlog, so users will see stale search results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search has a large indexing backlog, so users will see stale search results.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/user-folders-policy",
+    "title": "User profile folders are excluded from indexing, so Documents/Desktop searches miss files.",
+    "severity": "warning",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/user-folders-policy",
+      "tags": []
+    },
+    "explanation": "This card indicates 'User profile folders are excluded from indexing, so Documents/Desktop searches miss files.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'User profile folders are excluded from indexing, so Documents/Desktop searches miss files.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/catalog-large",
+    "title": "Windows Search catalog is very large, so it consumes significant disk space.",
+    "severity": "info",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/catalog-large",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Windows Search catalog is very large, so it consumes significant disk space.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Windows Search catalog is very large, so it consumes significant disk space.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/per-user-catalog",
+    "title": "Per-user Windows Search catalogs are enabled, so disk usage will grow for each profile.",
+    "severity": "info",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/per-user-catalog",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Per-user Windows Search catalogs are enabled, so disk usage will grow for each profile.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Per-user Windows Search catalogs are enabled, so disk usage will grow for each profile.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
+  },
+  {
+    "card_id": "System/WindowsSearch/battery-throttling",
+    "title": "Battery Saver is throttling Windows Search, so slower indexing is expected on battery.",
+    "severity": "info",
+    "area": "System/WindowsSearch",
+    "category": "System",
+    "subcategory": "Windows Search Indexing",
+    "paths": {
+      "analyzer_file": "Analyzers/Heuristics/System/WindowsSearch.ps1",
+      "composer_file": "Analyzers/HtmlComposer.ps1",
+      "collector_files": [
+        "Collectors/Search/Collect-WindowsSearch.ps1",
+        "Collectors/Search/Get-WindowsSearchSnapshot.ps1"
+      ],
+      "function": "Invoke-SystemWindowsSearchChecks"
+    },
+    "meta": {
+      "check_id": "System/WindowsSearch/battery-throttling",
+      "tags": []
+    },
+    "explanation": "This card indicates 'Battery Saver is throttling Windows Search, so slower indexing is expected on battery.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+    "evidence": "$evidence",
+    "raw_payload": "",
+    "troubleshooting": {
+      "overview": "This card indicates 'Battery Saver is throttling Windows Search, so slower indexing is expected on battery.'. Investigate configuration, service state, permissions, and recent changes impacting this area.",
+      "scenarios": [
+        {
+          "title": "Potential Issue – Generic misconfiguration",
+          "steps": [
+            "Use Evidence to target failing component; review services, logs, and policies."
+          ],
+          "scripts": []
+        }
+      ]
+    }
   }
 ]
