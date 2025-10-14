@@ -1,26 +1,3 @@
-function Normalize-PnpProblem {
-    param(
-        [string[]]$Values
-    )
-
-    if (-not $Values) { return 'unknown' }
-
-    foreach ($value in $Values) {
-        if (-not $value) { continue }
-        $lower = $value.Trim().ToLowerInvariant()
-        if (-not $lower) { continue }
-
-        if ($lower -match '0x00000028' -or $lower -match '\\bcode\\s*28\\b' -or $lower -match 'cm_prob_failed_install' -or $lower -match 'dn_driver_not_installed' -or $lower -match 'driver\\s+not\\s+install') {
-            return 'missing-driver'
-        }
-        if ($lower -match 'cm_prob|problem|error') {
-            return 'problem'
-        }
-    }
-
-    return 'none'
-}
-
 function Normalize-DriverStatus {
     param([string]$Value)
 
