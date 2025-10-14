@@ -37,7 +37,13 @@ function Test-DnsResolution {
 
 function Trace-NetworkPath {
     param([string]$Target = 'outlook.office365.com')
-    return Invoke-CollectorNativeCommand -FilePath 'tracert.exe' -ArgumentList $Target -ErrorMetadata @{ Target = $Target }
+
+    # Default tracert waits up to four seconds for each of thirty hops, which can
+    # easily push the collector past the two minute mark when the route contains
+    # unresponsive hops. Clamp both the hop count and wait time to keep the
+    # diagnostic under ~15 seconds while still surfacing useful path details.
+    $arguments = @('-d', '-h', '15', '-w', '750', $Target)
+    return Invoke-CollectorNativeCommand -FilePath 'tracert.exe' -ArgumentList $arguments -ErrorMetadata @{ Target = $Target }
 }
 
 function Test-Latency {
