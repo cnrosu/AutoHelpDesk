@@ -10,40 +10,129 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
+function Invoke-Parallel {
+    param(
+        [Parameter(Mandatory)]
+        [ScriptBlock]$ScriptBlock,
+
+        [Parameter(Mandatory)]
+        [object[]]$InputObjects,
+
+        [int]$ThrottleLimit = [Math]::Min([Environment]::ProcessorCount, [Math]::Max(1, $InputObjects.Count))
+    )
+
+    if ($InputObjects.Count -eq 0) {
+        return @()
+    }
+
+    if ($InputObjects.Count -le 1 -or $ThrottleLimit -le 1) {
+        $sequentialResults = [System.Collections.Generic.List[object]]::new()
+        foreach ($inputObject in $InputObjects) {
+            $result = & $ScriptBlock $inputObject
+            if ($null -ne $result) {
+                if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
+                    foreach ($item in $result) {
+                        $null = $sequentialResults.Add($item)
+                    }
+                } else {
+                    $null = $sequentialResults.Add($result)
+                }
+            }
+        }
+
+        return $sequentialResults.ToArray()
+    }
+
+    $runspacePool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $ThrottleLimit)
+    $runspacePool.ApartmentState = 'MTA'
+    $runspacePool.Open()
+
+    $jobs = foreach ($inputObject in $InputObjects) {
+        $psInstance = [System.Management.Automation.PowerShell]::Create()
+        $psInstance.RunspacePool = $runspacePool
+        $null = $psInstance.AddScript($ScriptBlock.ToString(), $true).AddArgument($inputObject)
+        [PSCustomObject]@{
+            PowerShell = $psInstance
+            Handle     = $psInstance.BeginInvoke()
+        }
+    }
+
+    $outputs = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($job in $jobs) {
+        try {
+            $result = $job.PowerShell.EndInvoke($job.Handle)
+            if ($null -ne $result) {
+                if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
+                    foreach ($item in $result) {
+                        $null = $outputs.Add($item)
+                    }
+                } else {
+                    $null = $outputs.Add($result)
+                }
+            }
+        } finally {
+            $job.PowerShell.Dispose()
+        }
+    }
+
+    $runspacePool.Close()
+    $runspacePool.Dispose()
+
+    return $outputs.ToArray()
+}
+
 function Test-DnsResolution {
     param(
         [string[]]$Names = @('www.microsoft.com','outlook.office365.com','autodiscover.outlook.com')
     )
 
-    $results = [System.Collections.Generic.List[pscustomobject]]::new()
-    foreach ($name in $Names) {
+    if (-not $Names -or $Names.Count -eq 0) {
+        return @()
+    }
+
+    $queries = Invoke-Parallel -InputObjects $Names -ScriptBlock {
+        param($Name)
+
         try {
-            $records = Resolve-DnsName -Name $name -ErrorAction Stop
-            $null = $results.Add([PSCustomObject]@{
-                Name    = $name
+            $records = Resolve-DnsName -Name $Name -ErrorAction Stop
+            return [PSCustomObject]@{
+                Name    = $Name
                 Success = $true
                 Records = $records | Select-Object Name, Type, IPAddress
-            })
+            }
         } catch {
-            $null = $results.Add([PSCustomObject]@{
-                Name    = $name
+            return [PSCustomObject]@{
+                Name    = $Name
                 Success = $false
                 Error   = $_.Exception.Message
-            })
+            }
         }
     }
-    return $results.ToArray()
+
+    return foreach ($name in $Names) {
+        $queries | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+    }
 }
 
 function Trace-NetworkPath {
-    param([string]$Target = 'outlook.office365.com')
-    return Invoke-CollectorNativeCommand -FilePath 'tracert.exe' -ArgumentList $Target -ErrorMetadata @{ Target = $Target }
+    param(
+        [string]$Target = 'outlook.office365.com',
+        [int]$MaxHops = 20,
+        [int]$TimeoutMilliseconds = 750
+    )
+
+    $effectiveMaxHops = if ($MaxHops -gt 0) { $MaxHops } else { 20 }
+    $effectiveTimeout = if ($TimeoutMilliseconds -gt 0) { $TimeoutMilliseconds } else { 750 }
+    $arguments = @('-d', '-h', $effectiveMaxHops, '-w', $effectiveTimeout, $Target)
+
+    return Invoke-CollectorNativeCommand -FilePath 'tracert.exe' -ArgumentList $arguments -ErrorMetadata @{ Target = $Target }
 }
 
 function Test-Latency {
     param([string]$Target = '8.8.8.8')
 
-    $attempts = 4
+    $attempts = 3
     $summary = [ordered]@{
         Target            = $Target
         Attempts          = $attempts
@@ -149,23 +238,31 @@ function Resolve-AutodiscoverRecords {
         [string[]]$Domains = @('autodiscover', 'enterpriseenrollment', 'enterpriseregistration')
     )
 
-    $results = [System.Collections.Generic.List[pscustomobject]]::new()
-    foreach ($domain in $Domains) {
+    if (-not $Domains -or $Domains.Count -eq 0) {
+        return @()
+    }
+
+    $queries = Invoke-Parallel -InputObjects $Domains -ScriptBlock {
+        param($Domain)
+
+        $query = "$Domain.outlook.com"
         try {
-            $records = Resolve-DnsName -Type CNAME -Name "$domain.outlook.com" -ErrorAction Stop
-            $null = $results.Add([PSCustomObject]@{
-                Query   = "$domain.outlook.com"
+            $records = Resolve-DnsName -Type CNAME -Name $query -ErrorAction Stop
+            return [PSCustomObject]@{
+                Query   = $query
                 Records = $records | Select-Object Name, Type, NameHost
-            })
+            }
         } catch {
-            $null = $results.Add([PSCustomObject]@{
-                Query = "$domain.outlook.com"
+            return [PSCustomObject]@{
+                Query = $query
                 Error = $_.Exception.Message
-            })
+            }
         }
     }
 
-    return $results.ToArray()
+    return foreach ($domain in $Domains) {
+        $queries | Where-Object { $_.Query -eq "$domain.outlook.com" } | Select-Object -First 1
+    }
 }
 
 function Get-DnsClientServerInventory {
