@@ -36,19 +36,25 @@ function Get-KernelDmaProtection {
             }
         }
 
-        $tempPath = [IO.Path]::ChangeExtension([IO.Path]::GetTempFileName(), '.txt')
-        $nfoPath = [IO.Path]::ChangeExtension($tempPath, '.nfo')
+        $timestamp = Get-Date
+        $reportName = "msinfo_systemsummary_{0:yyyyMMdd_HHmmssfff}.txt" -f $timestamp
+        $reportPath = Join-Path -Path $env:TEMP -ChildPath $reportName
+        $arguments = "/report `"$reportPath`" /categories +systemsummary"
 
-        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-        $startInfo.FileName = $msinfo
-        $startInfo.Arguments = "/nfo `"$nfoPath`" /report `"$tempPath`" /categories +systemsummary"
-        $startInfo.UseShellExecute = $false
+        try {
+            $process = Start-Process -FilePath $msinfo -ArgumentList $arguments -WindowStyle Hidden -PassThru -ErrorAction Stop
+        } catch {
+            return [pscustomobject]@{
+                Succeeded = $false
+                Path      = $reportPath
+                Error     = "Failed to start msinfo32.exe: $($_.Exception.Message)"
+            }
+        }
 
-        $process = [System.Diagnostics.Process]::Start($startInfo)
         if (-not $process) {
             return [pscustomobject]@{
                 Succeeded = $false
-                Path      = $null
+                Path      = $reportPath
                 Error     = 'Failed to start msinfo32.exe'
             }
         }
@@ -57,23 +63,32 @@ function Get-KernelDmaProtection {
             try { $process.Kill() | Out-Null } catch { }
             return [pscustomobject]@{
                 Succeeded = $false
-                Path      = $tempPath
+                Path      = $reportPath
                 Error     = "msinfo32 timed out after $TimeoutSeconds s"
             }
         }
 
-        if (-not (Test-Path -LiteralPath $tempPath)) {
+        if (-not (Test-Path -LiteralPath $reportPath)) {
             return [pscustomobject]@{
                 Succeeded = $false
-                Path      = $tempPath
+                Path      = $reportPath
                 Error     = 'msinfo32 did not produce a report'
             }
         }
 
-        $text = Get-Content -LiteralPath $tempPath -Raw -ErrorAction SilentlyContinue
+        try {
+            $text = Get-Content -LiteralPath $reportPath -Raw -ErrorAction Stop
+        } catch {
+            return [pscustomobject]@{
+                Succeeded = $false
+                Path      = $reportPath
+                Error     = "Failed to read msinfo32 report: $($_.Exception.Message)"
+            }
+        }
+
         [pscustomobject]@{
             Succeeded = [bool]$text
-            Path      = $tempPath
+            Path      = $reportPath
             Text      = $text
             Error     = $(if ($text) { $null } else { 'Empty report' })
         }
@@ -92,10 +107,31 @@ function Get-KernelDmaProtection {
         $options = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline
         foreach ($key in $CandidateKeys) {
             if ([string]::IsNullOrWhiteSpace($key)) { continue }
-            $pattern = "^(?:\s*)$([regex]::Escape($key))\s*:\s*(.+?)\s*$"
+            $escapedKey = [regex]::Escape($key)
+            $pattern = "^\s*$escapedKey\s*(?::\s*(?<colon>.+?)|\s+(?<space>.+?))\s*$"
             $match = [regex]::Match($Text, $pattern, $options)
             if ($match.Success) {
-                return $match.Groups[1].Value.Trim()
+                if ($match.Groups['colon'].Success) { return $match.Groups['colon'].Value.Trim() }
+                if ($match.Groups['space'].Success) { return $match.Groups['space'].Value.Trim() }
+            }
+
+            $linePattern = "^\s*$escapedKey(?<rest>.*)$"
+            $lines = $Text -split "`r?`n"
+            foreach ($line in $lines) {
+                $lineMatch = [regex]::Match($line, $linePattern, $options)
+                if (-not $lineMatch.Success) { continue }
+
+                $rest = $lineMatch.Groups['rest'].Value
+                if ([string]::IsNullOrEmpty($rest)) { continue }
+
+                $rest = $rest.Trim()
+                if ($rest.StartsWith(':')) {
+                    $rest = $rest.Substring(1).Trim()
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($rest)) {
+                    return $rest
+                }
             }
         }
 
