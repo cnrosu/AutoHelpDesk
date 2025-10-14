@@ -324,19 +324,6 @@ function Get-SeverityIndex {
   return $script:SeverityOrder.IndexOf($normalized)
 }
 
-function Get-MaxSeverity {
-  param([string]$First,[string]$Second)
-
-  if (-not $First) { return $Second }
-  if (-not $Second) { return $First }
-
-  $firstIndex = Get-SeverityIndex $First
-  $secondIndex = Get-SeverityIndex $Second
-
-  if ($firstIndex -ge $secondIndex) { return $First }
-  return $Second
-}
-
 function ConvertTo-EscalatedSeverity {
   param(
     [string]$Severity,
@@ -572,42 +559,6 @@ function Convert-DiskBlock {
   }
 }
 
-function Parse-DiskList {
-  param([string]$Text)
-
-  $results = @()
-  if (-not $Text) { return $results }
-
-  $lines = $script:RegexNewLine.Split($Text)
-  $current = @()
-
-  foreach ($line in $lines) {
-    if ([string]::IsNullOrWhiteSpace($line)) {
-      if ($current.Count -gt 0) {
-        $blockText = ($current -join "`n").Trim()
-        $current = @()
-        if ($blockText) {
-          $parsed = Convert-DiskBlock $blockText
-          if ($parsed) { $results += $parsed }
-        }
-      }
-      continue
-    }
-
-    $current += $line
-  }
-
-  if ($current.Count -gt 0) {
-    $blockText = ($current -join "`n").Trim()
-    if ($blockText) {
-      $parsed = Convert-DiskBlock $blockText
-      if ($parsed) { $results += $parsed }
-    }
-  }
-
-  return ,$results
-}
-
 function Normalize-ServiceStatus {
   param([string]$Status)
 
@@ -645,42 +596,6 @@ function Normalize-ServiceStartType {
   return 'other'
 }
 
-function Parse-ServiceSnapshot {
-  param([string]$Text)
-
-  $map = @{}
-  if (-not $Text) { return $map }
-
-  $lines = $script:RegexNewLine.Split($Text)
-  foreach ($line in $lines) {
-    if (-not $line) { continue }
-    $trimmed = $line.Trim()
-    if (-not $trimmed) { continue }
-    if ($trimmed -match '^(?i)Name\s+Status\s+StartType') { continue }
-    if ($trimmed -match '^(?i)-{2,}\s') { continue }
-
-    $parts = $line -split "`t"
-    if ($parts.Count -lt 3) { continue }
-
-    $name = $parts[0].Trim()
-    if (-not $name) { continue }
-
-    $status = $parts[1].Trim()
-    $startType = $parts[2].Trim()
-    $displayName = if ($parts.Count -ge 4) { $parts[3].Trim() } else { '' }
-
-    $map[$name] = [pscustomobject]@{
-      Name        = $name
-      Status      = $status
-      StartType   = $startType
-      DisplayName = $displayName
-      RawLine     = $line.Trim()
-    }
-  }
-
-  return $map
-}
-
 function Encode-Html([string]$s){
   if ($null -eq $s) { return "" }
   try {
@@ -688,38 +603,6 @@ function Encode-Html([string]$s){
   } catch {
     try { return [System.Net.WebUtility]::HtmlEncode([string]$s) } catch { return [string]$s }
   }
-}
-
-function New-ReportSection {
-  param(
-    [string]$Title,
-    [string]$ContentHtml,
-    [switch]$Open,
-    [string]$Id
-  )
-
-  $openAttr = if ($Open.IsPresent) { ' open' } else { '' }
-  $titleValue = if ($null -ne $Title) { $Title } else { '' }
-  $titleHtml = Encode-Html $titleValue
-  $bodyHtml = if ($null -ne $ContentHtml) { $ContentHtml } else { '' }
-
-  $idAttr = ''
-  if ($PSBoundParameters.ContainsKey('Id') -and -not [string]::IsNullOrWhiteSpace($Id)) {
-    $trimmedId = $Id.Trim()
-    if ($trimmedId) {
-      $safeId = [regex]::Replace($trimmedId.ToLowerInvariant(), '[^a-z0-9\-_]+', '-')
-      $safeId = [regex]::Replace($safeId, '^-+|-+$', '')
-      if (-not $safeId) {
-        $safeId = [regex]::Replace($trimmedId, '\\s+', '-')
-      }
-
-      if ($safeId) {
-        $idAttr = " id='$safeId'"
-      }
-    }
-  }
-
-  return "<details$idAttr class='report-section'$openAttr><summary>$titleHtml</summary><div class='report-section__content'>$bodyHtml</div></details>"
 }
 
 function New-IssueCardHtml {
@@ -928,20 +811,3 @@ function New-GoodCardHtml {
   return $cardBuilder.ToString()
 }
 
-function Get-CategoryFromArea {
-  param([string]$a)
-
-  if (-not $a) { return 'General' }
-  $p = $a.Split('/')[0]
-  switch -regex ($p) {
-    '^OS|^System|^Startup|^Backup|^Firmware|^BitLocker' { 'System'; break }
-    '^Storage|^SMART|^Disks|^Volumes|^Hardware' { 'Hardware'; break }
-    '^Network|^DNS|^Proxy' { 'Network'; break }
-    '^Security|^Firewall|^RDP|^SMB|^Browser|^OfficeHardening' { 'Security'; break }
-    '^Services' { 'Services'; break }
-    '^Office|^Outlook' { 'Office'; break }
-    '^AD|^GPO|^Kerberos|^SecureChannel' { 'Active Directory'; break }
-    '^Printing|^Spooler' { 'Printing'; break }
-    default { 'General' }
-  }
-}
