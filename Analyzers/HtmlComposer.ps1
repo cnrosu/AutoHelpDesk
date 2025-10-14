@@ -262,7 +262,13 @@ function Initialize-TroubleshootingIndex {
                 if ($c.meta -and $c.meta.check_id -and -not $script:TshootIndex.ContainsKey($c.meta.check_id)) {
                     $script:TshootIndex[$c.meta.check_id] = $c
                 }
-                $k2 = "{0}|{1}" -f ($c.area ?? ''), ($c.title ?? '')
+                $areaKey = $null
+                if ($c.PSObject.Properties['area']) { $areaKey = $c.area }
+                if ($null -eq $areaKey) { $areaKey = '' }
+                $titleKey = $null
+                if ($c.PSObject.Properties['title']) { $titleKey = $c.title }
+                if ($null -eq $titleKey) { $titleKey = '' }
+                $k2 = "{0}|{1}" -f $areaKey, $titleKey
                 if (-not $script:TshootIndex.ContainsKey($k2)) { $script:TshootIndex[$k2] = $c }
             }
         } catch {
@@ -279,7 +285,9 @@ function Get-TroubleshootingForCard {
     param([string]$CheckId, [string]$Area, [string]$Title)
     Initialize-TroubleshootingIndex
     if ($CheckId -and $script:TshootIndex.ContainsKey($CheckId)) { return $script:TshootIndex[$CheckId] }
-    $k2 = "{0}|{1}" -f ($Area ?? ''), ($Title ?? '')
+    $areaKey = if ($null -ne $Area) { $Area } else { '' }
+    $titleKey = if ($null -ne $Title) { $Title } else { '' }
+    $k2 = "{0}|{1}" -f $areaKey, $titleKey
     if ($script:TshootIndex.ContainsKey($k2)) { return $script:TshootIndex[$k2] }
     return $null
 }
@@ -1204,11 +1212,23 @@ function Build-IssueSection {
     }
 
     $severityOrder = @{ critical = 0; high = 1; medium = 2; low = 3; warning = 4; info = 5 }
-    $sorted = $Issues | Sort-Object -Stable -Property @(
-        @{ Expression = { if ($severityOrder.ContainsKey($_.Severity)) { $severityOrder[$_.Severity] } else { [int]::MaxValue } } },
-        @{ Expression = { $_.Area } },
-        @{ Expression = { $_.Message } }
-    )
+    $indexedIssues = for ($i = 0; $i -lt $Issues.Count; $i++) {
+        $issue = $Issues[$i]
+        $severityKey = if ($issue -and $severityOrder.ContainsKey($issue.Severity)) { $severityOrder[$issue.Severity] } else { [int]::MaxValue }
+        $areaKey = ''
+        if ($issue -and $issue.PSObject.Properties['Area']) { $areaKey = [string]$issue.Area }
+        $messageKey = ''
+        if ($issue -and $issue.PSObject.Properties['Message']) { $messageKey = [string]$issue.Message }
+        [pscustomobject]@{
+            Issue         = $issue
+            SeverityKey   = $severityKey
+            AreaKey       = $areaKey
+            MessageKey    = $messageKey
+            OriginalIndex = $i
+        }
+    }
+    $sortedEntries = $indexedIssues | Sort-Object -Property SeverityKey, AreaKey, MessageKey, OriginalIndex
+    $sorted = foreach ($entry in $sortedEntries) { $entry.Issue }
 
     $categoryOrder = @('Services','Office','Network','System','Hardware','Security','Active Directory','Printing','Events','General')
     $categorized = [ordered]@{}
