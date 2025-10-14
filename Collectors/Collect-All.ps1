@@ -16,6 +16,14 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'CollectorCommon.ps1')
 
+$repoRoot = Split-Path -Path $PSScriptRoot -Parent
+$concurrencyModulePath = Join-Path -Path $repoRoot -ChildPath 'Modules/Concurrency.psm1'
+if (-not (Test-Path -LiteralPath $concurrencyModulePath)) {
+    throw "Concurrency module not found at '$concurrencyModulePath'."
+}
+
+Import-Module $concurrencyModulePath -Force -Verbose:$false
+
 function Test-AnsiOutputSupport {
     try {
         if ($PSVersionTable -and $PSVersionTable.PSVersion -and $PSVersionTable.PSVersion.Major -lt 6) {
@@ -127,107 +135,109 @@ function Invoke-AllCollectors {
         }
     }
 
-    $pool = [runspacefactory]::CreateRunspacePool(1, [math]::Max($ThrottleLimit, 1))
-    $pool.ApartmentState = 'MTA'
-    $pool.Open()
+    $parallelism = [math]::Max($ThrottleLimit, 1)
+    $activity = 'Running collector scripts'
 
-    $tasks = [System.Collections.Generic.List[object]]::new()
-    foreach ($info in $collectorInfos) {
-        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $info.Collector.FullName, $info.AreaName, $info.AreaOutput)
-
-        $ps = [powershell]::Create()
-        $ps.RunspacePool = $pool
-
-        [void]$ps.AddCommand($info.Collector.FullName).AddParameter('OutputDirectory', $info.AreaOutput)
-
-        if ($PSBoundParameters.ContainsKey('Verbose') -and $PSBoundParameters['Verbose']) {
-            [void]$ps.AddParameter('Verbose')
-        }
-
-        $startTime = Get-Date
-        $asyncResult = $ps.BeginInvoke()
-
-        $task = [pscustomobject]@{
-            PS       = $ps
-            IAsync   = $asyncResult
-            Path     = $info.Collector.FullName
-            Area     = $info.AreaName
-            Started  = $startTime
-        }
-
-        [void]$tasks.Add($task)
-    }
+    $durationFormatCultureValue = $script:durationFormatCulture
+    $formatCollectorDurationFunction = ${function:Format-CollectorDuration}
+    $forwardVerbose = $PSBoundParameters.ContainsKey('Verbose') -and [bool]$PSBoundParameters['Verbose']
 
     $resultsList = [System.Collections.Generic.List[object]]::new()
     $completed = 0
-    $total = $tasks.Count
-    $activity = 'Running collector scripts'
+    $total = $collectorInfos.Count
 
-    $pendingTasks = [System.Collections.Generic.List[object]]::new()
-    foreach ($task in $tasks) {
-        [void]$pendingTasks.Add($task)
-    }
+    Invoke-Parallel -InputObject $collectorInfos -DegreeOfParallelism $parallelism -ProgressActivity $activity -ScriptBlock {
+        param($info, $index, $cancellationToken)
 
-    while ($pendingTasks.Count -gt 0) {
-        $processedInThisCycle = $false
+        if (-not $script:durationFormatCulture) {
+            $script:durationFormatCulture = $using:durationFormatCultureValue
+        }
 
-        foreach ($task in @($pendingTasks)) {
-            if (-not $task.IAsync.IsCompleted) {
-                continue
-            }
+        $collectorPath = $info.Collector.FullName
+        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $collectorPath, $info.AreaName, $info.AreaOutput)
 
-            $completedAt = Get-Date
-            $duration = $completedAt - $task.Started
-            $formattedDuration = Format-CollectorDuration -Duration $duration
+        $arguments = @{ OutputDirectory = $info.AreaOutput }
+        if ($using:forwardVerbose) {
+            $arguments['Verbose'] = $true
+        }
 
-            try {
-                $output = $task.PS.EndInvoke($task.IAsync)
-                Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
-                $resultsList.Add([pscustomobject]@{
-                    Script  = $task.Path
-                    Output  = $output
-                    Success = $true
-                    Error   = $null
-                    Duration = $formattedDuration
-                    DurationSeconds = [math]::Round($duration.TotalSeconds, 3)
-                })
-            } catch {
-                Write-Verbose ("Collector '{0}' reported an exception." -f $task.Path)
-                Write-Warning ("Collector failed: {0} - {1}" -f $task.Path, $_.Exception.Message)
-                $resultsList.Add([pscustomobject]@{
-                    Script  = $task.Path
-                    Output  = $null
-                    Success = $false
-                    Error   = $_.Exception.Message
-                    Duration = $formattedDuration
-                    DurationSeconds = [math]::Round($duration.TotalSeconds, 3)
-                })
-            } finally {
-                if ($task.IAsync.AsyncWaitHandle) {
-                    $task.IAsync.AsyncWaitHandle.Dispose()
-                }
+        $start = Get-Date
+        $errorRecord = $null
+        $errorMessage = $null
+        $output = $null
+        $success = $false
 
-                $task.PS.Dispose()
-                $completed++
-                $statusMessage = '{0} of {1} collectors completed' -f $completed, $total
-                $percentComplete = if ($total -eq 0) { 100 } else { [int](($completed / [double]$total) * 100) }
-                $currentOperation = 'Completed {0}' -f (Split-Path -Path $task.Path -Leaf)
-                Write-Progress -Activity $activity -Status $statusMessage -PercentComplete $percentComplete -CurrentOperation $currentOperation
-                $collectorName = Split-Path -Path $task.Path -Leaf
-                Write-Host ("Collector '{0}' completed in {1}. {2}" -f $collectorName, $formattedDuration, $statusMessage)
-                [void]$pendingTasks.Remove($task)
-                $processedInThisCycle = $true
+        try {
+            $output = & $collectorPath @arguments
+            $success = $true
+        } catch {
+            $errorRecord = $_
+            if ($_.Exception -and $_.Exception.Message) {
+                $errorMessage = $_.Exception.Message
+            } else {
+                $errorMessage = $_ | Out-String
             }
         }
 
-        if (-not $processedInThisCycle) {
-            Start-Sleep -Milliseconds 100
+        $end = Get-Date
+        $duration = $end - $start
+        $durationText = & $using:formatCollectorDurationFunction -Duration $duration
+
+        [pscustomobject]@{
+            Script          = $collectorPath
+            Area            = $info.AreaName
+            Output          = $output
+            Success         = $success
+            Error           = $errorMessage
+            ErrorRecord     = $errorRecord
+            Duration        = $durationText
+            DurationSeconds = [math]::Round($duration.TotalSeconds, 3)
         }
+    } | ForEach-Object {
+        $parallelResult = $_
+        if (-not $parallelResult) {
+            return
+        }
+
+        $collectorData = $parallelResult.Result
+        if (-not $collectorData) {
+            $itemInfo = $parallelResult.Item
+            $collectorPath = if ($itemInfo -and $itemInfo.Collector) { $itemInfo.Collector.FullName } else { $null }
+            $errorMessage = if ($parallelResult.ErrorRecord) { $parallelResult.ErrorRecord.Exception.Message } else { 'Unknown error' }
+            $durationText = if ($parallelResult.DurationMs) {
+                & ${function:Format-CollectorDuration} -Duration ([TimeSpan]::FromMilliseconds($parallelResult.DurationMs))
+            } else {
+                'N/A'
+            }
+
+            $collectorData = [pscustomobject]@{
+                Script          = $collectorPath
+                Area            = if ($itemInfo) { $itemInfo.AreaName } else { $null }
+                Output          = $null
+                Success         = $false
+                Error           = $errorMessage
+                ErrorRecord     = $parallelResult.ErrorRecord
+                Duration        = $durationText
+                DurationSeconds = if ($parallelResult.DurationMs) { [math]::Round($parallelResult.DurationMs / 1000, 3) } else { $null }
+            }
+        }
+
+        $resultsList.Add($collectorData) | Out-Null
+        $completed++
+        $statusMessage = '{0} of {1} collectors completed' -f $completed, $total
+        $collectorName = if ($collectorData.Script) { Split-Path -Path $collectorData.Script -Leaf } else { 'Unknown collector' }
+
+        if ($collectorData.Success) {
+            Write-Verbose ("Collector '{0}' finished successfully." -f $collectorData.Script)
+        } else {
+            Write-Verbose ("Collector '{0}' reported an exception." -f $collectorData.Script)
+            Write-Warning ("Collector failed: {0} - {1}" -f $collectorData.Script, $collectorData.Error)
+        }
+
+        Write-Host ("Collector '{0}' completed in {1}. {2}" -f $collectorName, $collectorData.Duration, $statusMessage)
     }
 
     Write-Progress -Activity $activity -Completed
-    $pool.Close()
-    $pool.Dispose()
 
     $results = $resultsList.ToArray()
 
