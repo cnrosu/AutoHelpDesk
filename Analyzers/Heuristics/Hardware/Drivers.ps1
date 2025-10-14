@@ -319,7 +319,7 @@ function Invoke-HardwareDriverChecks {
         $evidenceLines.Add("USB Bluetooth radios detected: $($radioCandidates.Count)") | Out-Null
 
         foreach ($radio in $radioCandidates) {
-            $name = if ($radio.FriendlyName) { [string]$radio.FriendlyName } elseif ($radio.InstanceId) { [string]$radio.InstanceId } else { 'Unknown device' }
+            $name = $radio | Get-DeviceDisplayName
             $statusText = if ($radio.Status) { [string]$radio.Status } else { 'Unknown' }
             $evidenceLines.Add("- $name — Status: $statusText") | Out-Null
         }

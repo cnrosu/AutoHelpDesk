@@ -27,6 +27,68 @@ $script:RegexKeyValueLine = [System.Text.RegularExpressions.Regex]::new(
   [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
+function Get-DeviceDisplayName {
+  <#
+    .SYNOPSIS
+      Returns a clean, human-readable device name from common PnP/WMI/CIM objects.
+
+    .DESCRIPTION
+      Chooses the best-available property in priority order and trims noise.
+      Works with objects from Win32_PnPEntity, Get-PnpDevice, MSFT_NetAdapter, etc.
+
+    .PARAMETER InputObject
+      The device object. Supports pipeline.
+
+    .PARAMETER Fallback
+      Text to use if no meaningful name can be derived (default: 'Unknown device').
+
+    .EXAMPLE
+      Get-PnpDevice | Get-DeviceDisplayName
+  #>
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory, ValueFromPipeline)]
+    [psobject]$InputObject,
+    [string]$Fallback = 'Unknown device'
+  )
+
+  process {
+    $candidates = @(
+      'FriendlyName', 'Name', 'ProductName', 'DeviceName',
+      'Description', 'Caption', 'DisplayName'
+    )
+
+    $value = $null
+    foreach ($prop in $candidates) {
+      if ($InputObject.PSObject.Properties[$prop] -and
+          ($InputObject.$prop -is [string]) -and
+          ($InputObject.$prop.Trim()).Length -gt 0) {
+        $value = $InputObject.$prop.Trim()
+        break
+      }
+    }
+
+    if (-not $value) {
+      foreach ($prop in @('InstanceId','PNPDeviceID','DeviceID','HardwareID')) {
+        if ($InputObject.PSObject.Properties[$prop] -and
+            ($InputObject.$prop -is [string]) -and
+            ($InputObject.$prop.Trim()).Length -gt 0) {
+          $value = $InputObject.$prop.Trim()
+          break
+        }
+      }
+    }
+
+    if ($value) {
+      $value = ($value -replace '\s+', ' ').Trim()
+      $value = $value -replace '\s*\(TM\)|\(R\)|\(C\)', ''
+      $value = $value.Trim()
+    }
+
+    if ([string]::IsNullOrWhiteSpace($value)) { $Fallback } else { $value }
+  }
+}
+
 function Join-PathSafe {
   param(
     [Parameter(Mandatory=$true)]
