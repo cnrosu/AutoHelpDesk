@@ -273,6 +273,80 @@ function Invoke-Main {
                         PenaltyBits        = $strength.PenaltyBits
                         Notes              = $strength.Notes
                     }
+
+                    $scoreNormalized = $null
+                    if ($strength.PSObject.Properties['Score']) {
+                        try {
+                            $scoreNormalized = [int]([math]::Round([double]$strength.Score * 25))
+                        } catch {
+                            $scoreNormalized = $null
+                        }
+                    }
+
+                    $hasLower  = ($passphrase -cmatch '[a-z]')
+                    $hasUpper  = ($passphrase -cmatch '[A-Z]')
+                    $hasDigit  = ($passphrase -match '\d')
+                    $hasSpace  = ($passphrase -match '\s')
+                    $hasSymbol = ($passphrase -match '[^A-Za-z0-9\s]')
+
+                    $classLabels = [System.Collections.Generic.List[string]]::new()
+                    if ($hasLower)  { [void]$classLabels.Add('lowercase letters') }
+                    if ($hasUpper)  { [void]$classLabels.Add('uppercase letters') }
+                    if ($hasDigit)  { [void]$classLabels.Add('numbers') }
+                    if ($hasSymbol) { [void]$classLabels.Add('symbols') }
+                    if ($hasSpace)  { [void]$classLabels.Add('spaces') }
+
+                    $joinClasses = {
+                        param([string[]]$Parts)
+                        if (-not $Parts -or $Parts.Count -eq 0) { return $null }
+                        if ($Parts.Count -eq 1) { return $Parts[0] }
+                        if ($Parts.Count -eq 2) { return '{0} and {1}' -f $Parts[0], $Parts[1] }
+                        $initial = $Parts[0..($Parts.Count - 2)] -join ', '
+                        return '{0}, and {1}' -f $initial, $Parts[-1]
+                    }
+
+                    $primaryLetterDescription = $null
+                    if ($hasLower -and $hasUpper) {
+                        $primaryLetterDescription = 'uppercase and lowercase letters'
+                    } elseif ($hasLower -or $hasUpper) {
+                        $primaryLetterDescription = 'letters (single case)'
+                    }
+
+                    $partsForDescription = @()
+                    if ($primaryLetterDescription) { $partsForDescription += $primaryLetterDescription }
+                    if ($hasDigit)  { $partsForDescription += 'numbers' }
+                    if ($hasSymbol) { $partsForDescription += 'symbols' }
+                    if ($hasSpace)  { $partsForDescription += 'spaces' }
+
+                    if (-not $primaryLetterDescription -and $classLabels.Count -gt 0 -and $partsForDescription.Count -eq 0) {
+                        $partsForDescription = $classLabels.ToArray()
+                    }
+
+                    $classesDescription = $null
+                    if ($partsForDescription.Count -gt 0) {
+                        $classesDescription = & $joinClasses $partsForDescription
+                    }
+                    if (-not $classesDescription) {
+                        $classesDescription = 'unknown character set'
+                    }
+
+                    $metrics['ScoreNormalized'] = $scoreNormalized
+                    $metrics['CharacterClasses'] = $classLabels.ToArray()
+                    $metrics['CharacterClassesCount'] = $classLabels.Count
+                    $metrics['CharacterClassesDescription'] = $classesDescription
+                    $metrics['CommonPassword'] = ($strength.Signals -contains 'Blocklisted')
+                    $metrics['EntropyBits'] = $strength.EstimatedBits
+
+                    $hasProfileSubstring = $false
+                    if ($profileName -and $passphrase) {
+                        try {
+                            $hasProfileSubstring = $passphrase.ToLowerInvariant().Contains($profileName.ToLowerInvariant())
+                        } catch {
+                            $hasProfileSubstring = $false
+                        }
+                    }
+                    $metrics['HasSSIDSubstring'] = $hasProfileSubstring
+
                     $detail['PassphraseMetrics'] = $metrics
                 }
             } catch {
