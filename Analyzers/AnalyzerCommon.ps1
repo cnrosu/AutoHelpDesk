@@ -256,8 +256,7 @@ function Add-CategoryIssue {
     if (-not $CategoryResult) { throw 'CategoryResult is required.' }
 
     if (-not (Get-Variable -Name CATALOG_INDEX -Scope Script -ErrorAction SilentlyContinue)) {
-        Initialize-Catalog -PreferMerged -WriteArtifacts:$false | Out-Null
-        # Optional: Start-CatalogWatcher | Out-Null  # dev-only hot reload
+        Initialize-Catalog | Out-Null
     }
 
     $TitleTpl = $null
