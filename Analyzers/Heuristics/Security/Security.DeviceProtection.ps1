@@ -73,25 +73,74 @@ function Invoke-SecurityKernelDmaChecks {
         Write-HeuristicDebug -Source 'Security' -Message 'Evaluating Kernel DMA payload' -Data ([ordered]@{
             HasPayload = [bool]$payload
         })
-        $registryValues = $null
-        if ($payload -and $payload.Registry -and $payload.Registry.Values) {
-            $registryValues = $payload.Registry.Values
+        $statusValue = $null
+        $sourceValue = $null
+        $registry = $null
+        $msInfo = $null
+        $notes = @()
+
+        if ($payload) {
+            if ($payload.PSObject.Properties['KernelDmaProtection']) { $statusValue = $payload.KernelDmaProtection }
+            if ($payload.PSObject.Properties['Source']) { $sourceValue = $payload.Source }
+            if ($payload.PSObject.Properties['Registry']) { $registry = $payload.Registry }
+            if ($payload.PSObject.Properties['MsInfo']) { $msInfo = $payload.MsInfo }
+            if ($payload.PSObject.Properties['Notes'] -and $payload.Notes) {
+                $notes = ConvertTo-List $payload.Notes
+            }
         }
+
         $allowValue = $null
-        if ($registryValues -and $registryValues.PSObject.Properties['AllowDmaUnderLock']) {
-            $allowValue = ConvertTo-NullableInt $registryValues.AllowDmaUnderLock
+        if ($registry -and $registry.PSObject.Properties['AllowDmaUnderLock']) {
+            $allowValue = ConvertTo-NullableInt $registry.AllowDmaUnderLock
         }
+
         $evidenceLines = [System.Collections.Generic.List[string]]::new()
-        if ($payload.DeviceGuard) {
-            $dg = $payload.DeviceGuard
-            if ($dg.Status) { $evidenceLines.Add("DeviceGuard.Status: $($dg.Status)") }
-            if ($dg.Message) { $evidenceLines.Add("DeviceGuard.Message: $($dg.Message)") }
+        if ($statusValue) { $evidenceLines.Add("KernelDmaProtection.Status: $statusValue") }
+        if ($sourceValue) { $evidenceLines.Add("KernelDmaProtection.Source: $sourceValue") }
+        if ($registry -and $registry.PSObject.Properties['DeviceEnumerationPolicy'] -and $null -ne $registry.DeviceEnumerationPolicy) {
+            $evidenceLines.Add("Registry.DeviceEnumerationPolicy: $($registry.DeviceEnumerationPolicy)") | Out-Null
         }
-        if ($payload.Registry -and $payload.Registry.Status) { $evidenceLines.Add("Registry.Status: $($payload.Registry.Status)") }
-        if ($payload.Registry -and $payload.Registry.Message) { $evidenceLines.Add("Registry.Message: $($payload.Registry.Message)") }
-        if ($payload.MsInfo -and $payload.MsInfo.Status) { $evidenceLines.Add("MsInfo.Status: $($payload.MsInfo.Status)") }
-        if ($payload.MsInfo -and $payload.MsInfo.Message) { $evidenceLines.Add("MsInfo.Message: $($payload.MsInfo.Message)") }
+        if ($registry -and $registry.PSObject.Properties['AllowDmaUnderLock'] -and $null -ne $registry.AllowDmaUnderLock) {
+            $evidenceLines.Add("Registry.AllowDmaUnderLock: $($registry.AllowDmaUnderLock)") | Out-Null
+        }
+        if ($msInfo -and $msInfo.PSObject.Properties['KernelDmaProtection'] -and $msInfo.KernelDmaProtection) {
+            $evidenceLines.Add("MsInfo.KernelDmaProtection: $($msInfo.KernelDmaProtection)") | Out-Null
+        }
+        if ($msInfo -and $msInfo.PSObject.Properties['DmaRemapping'] -and $msInfo.DmaRemapping) {
+            $evidenceLines.Add("MsInfo.DmaRemapping: $($msInfo.DmaRemapping)") | Out-Null
+        }
+        if ($msInfo -and $msInfo.PSObject.Properties['SecureBoot'] -and $msInfo.SecureBoot) {
+            $evidenceLines.Add("MsInfo.SecureBoot: $($msInfo.SecureBoot)") | Out-Null
+        }
+        if ($payload -and $payload.PSObject.Properties['OS'] -and $payload.OS) {
+            $osInfo = $payload.OS
+            $osParts = [System.Collections.Generic.List[string]]::new()
+            if ($osInfo.PSObject.Properties['Version'] -and $osInfo.Version) { $osParts.Add("Version=$($osInfo.Version)") | Out-Null }
+            if ($osInfo.PSObject.Properties['Build'] -and $null -ne $osInfo.Build) { $osParts.Add("Build=$($osInfo.Build)") | Out-Null }
+            if ($osParts.Count -gt 0) { $evidenceLines.Add("OS: $($osParts -join ', ')") | Out-Null }
+        }
+        foreach ($note in $notes) {
+            if (-not [string]::IsNullOrWhiteSpace($note)) {
+                $evidenceLines.Add("Note: $note") | Out-Null
+            }
+        }
+
         $dmaEvidence = ($evidenceLines.ToArray() | Where-Object { $_ }) -join "`n"
+
+        switch ($statusValue) {
+            'On' {
+                Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Kernel DMA protection enforced' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                return
+            }
+            'Off' {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection disabled, so DMA attacks via peripherals remain possible while locked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                return
+            }
+            'NotSupported' {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection not supported on this OS, leaving locked devices exposed to DMA attacks from peripherals.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                return
+            }
+        }
 
         if ($allowValue -eq 0) {
             Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Kernel DMA protection enforced' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
