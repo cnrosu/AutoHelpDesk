@@ -379,14 +379,6 @@ function Get-DriverEvidence {
     return ($lines.ToArray() -join "`n")
 }
 
-function Get-PnpDeviceLabel {
-    param($Entry)
-
-    $label = Get-DriverPropertyValue -Entry $Entry -Names @('Device Description','Friendly Name','Name','Instance ID','InstanceID')
-    if ($label) { return $label }
-    return 'Unknown device'
-}
-
 function Get-PnpDeviceEvidence {
     param($Entry)
 
