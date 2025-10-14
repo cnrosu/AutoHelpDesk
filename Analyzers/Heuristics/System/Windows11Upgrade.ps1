@@ -492,7 +492,10 @@ function Invoke-SystemWindows11UpgradeChecks {
     $secureBootStatus = 'Unknown'
     $secureBootDetailParts = [System.Collections.Generic.List[string]]::new()
 
-    $sb = $firm?.SecureBoot
+    $sb = $null
+    if ($firm -and $firm.PSObject.Properties['SecureBoot']) {
+        $sb = $firm.SecureBoot
+    }
     $sbConfirm = $null
     $sbWmi = $null
     $sbReg = $null
@@ -835,7 +838,8 @@ function Invoke-SystemWindows11UpgradeChecks {
             $style = if ($disk.PSObject.Properties['PartitionStyle']) { [string]$disk.PartitionStyle } else { $null }
             if ($style) {
                 if ($style -match '^(?i)gpt$') { $gptCount++ }
-                $diskSummaries.Add(("Disk {0}: {1}" -f ($number ?? '?'), $style)) | Out-Null
+                $diskNumber = if ($null -ne $number) { $number } else { '?' }
+                $diskSummaries.Add(("Disk {0}: {1}" -f $diskNumber, $style)) | Out-Null
             }
         }
         if ($diskSummaries.Count -gt 0) { $partitionDetails = $diskSummaries.ToArray() -join '; ' }
