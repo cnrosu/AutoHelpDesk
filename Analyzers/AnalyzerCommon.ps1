@@ -10,6 +10,9 @@ if (-not (Get-Module | Where-Object { $_.Path -eq $catalogRuntimePath })) {
     }
 }
 
+$script:MsinfoCacheAvailabilityChecked = $false
+$script:MsinfoCacheAvailable = $false
+
 <#!
 .SYNOPSIS
     Shared helper functions for analyzer modules.
@@ -29,15 +32,58 @@ function New-AnalyzerContext {
     $artifactMap = @{}
 
     $files = Get-ChildItem -Path $resolved -File -Recurse -ErrorAction SilentlyContinue
+
+    if (-not $script:MsinfoCacheAvailabilityChecked) {
+        $script:MsinfoCacheAvailabilityChecked = $true
+        $requiredCommands = @('Test-AhdCacheItem', 'Get-AhdCacheValue', 'Set-AhdCacheValue')
+        $script:MsinfoCacheAvailable = $true
+        foreach ($commandName in $requiredCommands) {
+            if (-not (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
+                $script:MsinfoCacheAvailable = $false
+                break
+            }
+        }
+    }
+
+    $cacheAvailable = $script:MsinfoCacheAvailable
+
     foreach ($file in $files) {
         $data = $null
+        $cacheKey = $null
+        $cacheHit = $false
+        $shouldCache = $false
+
         if ($file.Extension -ieq '.json') {
-            $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
-            if ($content) {
-                try {
-                    $data = $content | ConvertFrom-Json -ErrorAction Stop
-                } catch {
-                    $data = [pscustomobject]@{ Error = $_.Exception.Message }
+            if ($cacheAvailable -and ($file.Name -ieq 'msinfo32.json' -or $file.Name -ieq 'msinfo.json')) {
+                $lastWriteToken = '{0:x16}' -f $file.LastWriteTimeUtc.ToFileTimeUtc()
+                $lengthToken = '{0:x16}' -f $file.Length
+                $pathToken = $file.FullName.ToLowerInvariant()
+                $cacheKey = "msinfo::${pathToken}::${lastWriteToken}::${lengthToken}"
+
+                if (Test-AhdCacheItem -Key $cacheKey) {
+                    $data = Get-AhdCacheValue -Key $cacheKey
+                    $cacheHit = $true
+                } else {
+                    $shouldCache = $true
+                }
+            }
+
+            if (-not $cacheHit) {
+                $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
+                if ($content) {
+                    try {
+                        $data = $content | ConvertFrom-Json -ErrorAction Stop
+                    } catch {
+                        $data = [pscustomobject]@{ Error = $_.Exception.Message }
+                    }
+                }
+
+                if ($shouldCache -and $cacheKey) {
+                    try {
+                        Set-AhdCacheValue -Key $cacheKey -Value $data
+                    } catch {
+                        # Ignore cache persistence failures and continue with parsed data.
+                    }
                 }
             }
         }
