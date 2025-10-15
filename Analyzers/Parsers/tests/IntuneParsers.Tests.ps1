@@ -29,15 +29,50 @@ function New-TestIntuneContext {
     }
 
     if ($ServiceEntries) {
+        $rows = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($entry in $ServiceEntries) {
+            if (-not $entry) { continue }
+
+            $rowData = [ordered]@{
+                'Service Name' = if ($entry.PSObject.Properties['Name']) { [string]$entry.Name } else { $null }
+                ServiceName    = if ($entry.PSObject.Properties['Name']) { [string]$entry.Name } else { $null }
+                'Display Name' = if ($entry.PSObject.Properties['DisplayName']) { [string]$entry.DisplayName } else { $null }
+                DisplayName    = if ($entry.PSObject.Properties['DisplayName']) { [string]$entry.DisplayName } else { $null }
+                Status         = if ($entry.PSObject.Properties['Status']) { [string]$entry.Status } else { $null }
+                State          = if ($entry.PSObject.Properties['Status']) { [string]$entry.Status } else { $null }
+                'Startup Type' = if ($entry.PSObject.Properties['StartMode']) { [string]$entry.StartMode } else { $null }
+                StartupType    = if ($entry.PSObject.Properties['StartMode']) { [string]$entry.StartMode } else { $null }
+                StartMode      = if ($entry.PSObject.Properties['StartMode']) { [string]$entry.StartMode } else { $null }
+            }
+
+            $rows.Add([pscustomobject]$rowData) | Out-Null
+        }
+
+        $sectionName = 'Software Environment\Services'
+        $section = [pscustomobject]@{
+            Name     = $sectionName
+            Keys     = @('Service Name','Display Name','Status','Startup Type')
+            Rows     = $rows.ToArray()
+            RowCount = $rows.Count
+        }
+
+        $index = [ordered]@{}
+        $fullKey = ConvertTo-MsinfoSectionKey -Name $sectionName
+        if ($fullKey) { $index[$fullKey] = @($sectionName) }
+        $shortKey = ConvertTo-MsinfoSectionKey -Name 'Services'
+        if ($shortKey) { $index[$shortKey] = @($sectionName) }
+
         $serviceArtifact = [pscustomobject]@{
-            Path = 'services.json'
+            Path = 'msinfo32.json'
             Data = [pscustomobject]@{
                 Payload = [pscustomobject]@{
-                    Services = $ServiceEntries
+                    Source   = 'msinfo32'
+                    Sections = [ordered]@{ $sectionName = $section }
+                    Index    = $index
                 }
             }
         }
-        $artifacts['services'] = $serviceArtifact
+        $artifacts['msinfo32'] = $serviceArtifact
     }
 
     return [pscustomobject]@{

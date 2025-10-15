@@ -8,20 +8,27 @@ function Invoke-SystemStartupChecks {
 
     Write-HeuristicDebug -Source 'System/Startup' -Message 'Starting startup checks'
 
-    $startupArtifact = Get-AnalyzerArtifact -Context $Context -Name 'startup'
-    Write-HeuristicDebug -Source 'System/Startup' -Message 'Resolved startup artifact' -Data ([ordered]@{
-        Found = [bool]$startupArtifact
-    })
-    if (-not $startupArtifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program artifact missing, so excess or missing autoruns that slow logins or indicate incomplete data cannot be assessed.' -Subcategory 'Startup Programs'
-        return
+    $payload = Get-MsinfoStartupPayload -Context $Context
+    if (-not $payload) {
+        $startupArtifact = Get-AnalyzerArtifact -Context $Context -Name 'startup'
+        Write-HeuristicDebug -Source 'System/Startup' -Message 'Resolved legacy startup artifact' -Data ([ordered]@{
+            Found = [bool]$startupArtifact
+        })
+        if ($startupArtifact) {
+            $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $startupArtifact)
+        }
+    } else {
+        Write-HeuristicDebug -Source 'System/Startup' -Message 'Loaded msinfo startup payload' -Data ([ordered]@{
+            Source      = 'msinfo32'
+            EntryCount  = if ($payload.StartupCommands) { (@($payload.StartupCommands | Where-Object { $_ })).Count } else { 0 }
+            SectionName = if ($payload.PSObject.Properties['SectionName']) { [string]$payload.SectionName } else { $null }
+        })
     }
 
-    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $startupArtifact)
-    Write-HeuristicDebug -Source 'System/Startup' -Message 'Evaluating startup payload' -Data ([ordered]@{
-        HasPayload = [bool]$payload
-    })
-    if (-not $payload) { return }
+    if (-not $payload) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory unavailable, so excess or missing autoruns that slow logins or indicate incomplete data cannot be assessed.' -Subcategory 'Startup Programs'
+        return
+    }
 
     if ($payload -and $payload.StartupCommands) {
         $entries = $payload.StartupCommands

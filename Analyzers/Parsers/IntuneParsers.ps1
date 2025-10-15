@@ -812,49 +812,19 @@ function Get-IntunePushNotificationServiceStatus {
     $serviceName = 'dmwappushservice'
     $artifactCandidates = @('service-baseline','services')
 
-    foreach ($candidate in $artifactCandidates) {
-        $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidate
-        if (-not $artifact) { continue }
+    $processServiceEntries = {
+        param($servicesNode, $sourceLabel)
 
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
-        if (-not $payload) { continue }
+        if (-not $servicesNode) { return }
 
-        $servicesNode = $null
-        if ($payload.PSObject.Properties['Services']) { $servicesNode = $payload.Services }
-
-        if ($payload.PSObject.Properties['CollectionErrors']) {
-            foreach ($error in $payload.CollectionErrors) {
-                if ($error) { $result.Errors.Add([string]$error) | Out-Null }
-            }
-        }
-
-        if ($payload.PSObject.Properties['Error']) {
-            $errorText = [string]$payload.Error
-            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
-        }
-
-        if (-not $servicesNode) { continue }
-
-        if ($servicesNode.PSObject.Properties['Error'] -and -not $servicesNode.PSObject.Properties['Name']) {
-            $errorText = [string]$servicesNode.Error
-            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
-            continue
-        }
-
-        $result.Collected = $true
-        if (-not $result.Source) {
-            if ($artifact.PSObject.Properties['Path'] -and $artifact.Path) { $result.Source = [string]$artifact.Path }
-            else { $result.Source = $candidate }
-        }
-
-        $serviceEntries = @()
+        $entries = @()
         if ($servicesNode -is [System.Collections.IEnumerable] -and -not ($servicesNode -is [string])) {
-            $serviceEntries = @($servicesNode)
+            $entries = @($servicesNode)
         } else {
-            $serviceEntries = @($servicesNode)
+            $entries = @($servicesNode)
         }
 
-        foreach ($entry in $serviceEntries) {
+        foreach ($entry in $entries) {
             if (-not $entry) { continue }
 
             $name = $null
@@ -891,9 +861,63 @@ function Get-IntunePushNotificationServiceStatus {
                 }
 
                 $result.Raw = $entry
+
+                if (-not $result.Source -and $sourceLabel) { $result.Source = $sourceLabel }
+
                 break
             }
         }
+    }
+
+    $msinfoServices = Get-MsinfoServicesPayload -Context $Context
+    if ($msinfoServices) {
+        if ($msinfoServices.CollectionErrors) {
+            foreach ($err in $msinfoServices.CollectionErrors) { if ($err) { $result.Errors.Add([string]$err) | Out-Null } }
+        }
+
+        $result.Collected = $true
+        if (-not $result.Source) { $result.Source = 'msinfo32.json' }
+
+        & $processServiceEntries $msinfoServices.Services 'msinfo32.json'
+        if ($result.Found) { return [pscustomobject]$result }
+    }
+
+    foreach ($candidate in $artifactCandidates) {
+        $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidate
+        if (-not $artifact) { continue }
+
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+        if (-not $payload) { continue }
+
+        $servicesNode = $null
+        if ($payload.PSObject.Properties['Services']) { $servicesNode = $payload.Services }
+
+        if ($payload.PSObject.Properties['CollectionErrors']) {
+            foreach ($error in $payload.CollectionErrors) {
+                if ($error) { $result.Errors.Add([string]$error) | Out-Null }
+            }
+        }
+
+        if ($payload.PSObject.Properties['Error']) {
+            $errorText = [string]$payload.Error
+            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+        }
+
+        if (-not $servicesNode) { continue }
+
+        if ($servicesNode.PSObject.Properties['Error'] -and -not $servicesNode.PSObject.Properties['Name']) {
+            $errorText = [string]$servicesNode.Error
+            if ($errorText) { $result.Errors.Add($errorText) | Out-Null }
+            continue
+        }
+
+        $result.Collected = $true
+        if (-not $result.Source) {
+            if ($artifact.PSObject.Properties['Path'] -and $artifact.Path) { $result.Source = [string]$artifact.Path }
+            else { $result.Source = $candidate }
+        }
+
+        & $processServiceEntries $servicesNode $result.Source
 
         if ($result.Found) { break }
     }
