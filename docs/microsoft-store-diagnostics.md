@@ -100,11 +100,9 @@ Azure AD-joined devices often have the **Windows Time** service stopped; that is
    inspection is mandatory, ensure the device trusts the inspection root
    certificate.
 
-## 5. Use built-in diagnostics and troubleshooters
+## 5. Run built-in diagnostics
 
-1. Launch the **Windows Store Apps** troubleshooter (Settings > System >
-   Troubleshoot > Other troubleshooters, or open [Troubleshoot settings](ms-settings:troubleshoot)).
-   Record any fixes it applies.
+1. Windows 11 and current Windows 10 builds do not ship a dedicated Microsoft Store troubleshooter, so skip any legacy guidance that references one.
 2. Run the hidden Microsoft Store diagnostic tool:
 
    ```powershell
