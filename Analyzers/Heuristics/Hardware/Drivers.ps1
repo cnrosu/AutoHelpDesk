@@ -343,13 +343,13 @@ function Invoke-HardwareDriverChecks {
         $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
 
         if ($radioCandidates.Count -eq 0) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth' -Remediation 'Install or enable the Bluetooth radio, restart the Bluetooth Support Service, or [Run Bluetooth troubleshooter](ms-msdt:?id=BluetoothDiagnostic) to let Windows repair the stack.'
             $issueCount++
         } elseif ($radiosOk.Count -eq 0 -or $radiosWithIssues.Count -gt 0) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth' -Remediation 'Update or reinstall the Bluetooth drivers, restart the Bluetooth Support Service, or [Run Bluetooth troubleshooter](ms-msdt:?id=BluetoothDiagnostic) to let Windows repair the stack.'
             $issueCount++
         } elseif (-not $serviceRunning) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Bluetooth adapter detected but support service is not running, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth' -Remediation 'Start the Bluetooth Support Service, confirm the adapter stays running, or [Run Bluetooth troubleshooter](ms-msdt:?id=BluetoothDiagnostic) to let Windows repair the stack.'
             $issueCount++
         } else {
             Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Bluetooth adapter detected and appears to be working normally.' -Subcategory 'Bluetooth'

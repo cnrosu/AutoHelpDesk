@@ -667,6 +667,71 @@ function Encode-Html([string]$s){
   }
 }
 
+function Test-IsSafeRemediationLink {
+  param([string]$Uri)
+
+  if ([string]::IsNullOrWhiteSpace($Uri)) { return $false }
+
+  $candidate = $Uri.Trim()
+  if (-not $candidate) { return $false }
+
+  $allowedSchemes = @('http', 'https', 'ms-msdt', 'ms-settings', 'control')
+  $parsed = $null
+  if ([System.Uri]::TryCreate($candidate, [System.UriKind]::Absolute, [ref]$parsed)) {
+    $scheme = $parsed.Scheme
+    if ($scheme) {
+      $normalizedScheme = $scheme.ToLowerInvariant()
+      return $allowedSchemes -contains $normalizedScheme
+    }
+  }
+
+  if ($candidate -match '^(?i)ms-msdt:') { return $true }
+
+  return $false
+}
+
+function ConvertTo-RemediationHtml {
+  param([string]$Text)
+
+  if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+
+  $builder = [System.Text.StringBuilder]::new()
+  $cursor = 0
+  $pattern = '\\[([^\\]]+)\\]\\(([^\\)]+)\\)'
+  foreach ($match in [regex]::Matches($Text, $pattern)) {
+    if (-not $match) { continue }
+
+    if ($match.Index -gt $cursor) {
+      $segment = $Text.Substring($cursor, $match.Index - $cursor)
+      [void]$builder.Append((Encode-Html $segment))
+    }
+
+    $linkText = $match.Groups[1].Value
+    $linkTarget = $match.Groups[2].Value
+    if (Test-IsSafeRemediationLink -Uri $linkTarget) {
+      $encodedTarget = Encode-Html $linkTarget.Trim()
+      $encodedText = Encode-Html $linkText
+      [void]$builder.Append("<a class='report-link' href='$encodedTarget'>$encodedText</a>")
+    } else {
+      [void]$builder.Append((Encode-Html $match.Value))
+    }
+
+    $cursor = $match.Index + $match.Length
+  }
+
+  if ($cursor -lt $Text.Length) {
+    $remaining = $Text.Substring($cursor)
+    [void]$builder.Append((Encode-Html $remaining))
+  }
+
+  $result = $builder.ToString()
+  if (-not [string]::IsNullOrEmpty($result)) {
+    $result = [regex]::Replace($result, '\\r?\\n', '<br>')
+  }
+
+  return $result
+}
+
 function New-IssueCardHtml {
   param(
     [pscustomobject]$Entry
@@ -807,8 +872,7 @@ function New-IssueCardHtml {
     [void]$remediationBuilder.Append("<details class='report-remediation'><summary class='report-remediation__summary'>Remediation</summary><div class='report-remediation__body'>")
 
     if ($hasRemediation) {
-      $remediationHtml = Encode-Html $Entry.Remediation
-      $remediationHtml = [regex]::Replace($remediationHtml, '\\r?\\n', '<br>')
+      $remediationHtml = ConvertTo-RemediationHtml -Text $Entry.Remediation
       [void]$remediationBuilder.Append("<p class='report-remediation__text'>$remediationHtml</p>")
     }
 
