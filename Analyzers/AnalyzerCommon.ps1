@@ -57,8 +57,9 @@ function New-AnalyzerContext {
 
     $jsonFiles = @($files | Where-Object { $_.Extension -ieq '.json' })
     if ($jsonFiles.Count -gt 0) {
-        $paths = $jsonFiles | ForEach-Object { $_.FullName }
-        Write-HeuristicDebug -Source 'Context' -Message ("Discovered artifacts ({0}): {1}" -f $paths.Count, ($paths -join ', '))
+        $artifactCount = $jsonFiles.Count
+        $suffix = if ($artifactCount -eq 1) { '' } else { 's' }
+        Write-HeuristicDebug -Source 'Context' -Message ("Discovered {0} artifact{1}." -f $artifactCount, $suffix)
     } else {
         Write-HeuristicDebug -Source 'Context' -Message 'Discovered artifacts (0): (none)'
     }
