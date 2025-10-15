@@ -1830,28 +1830,21 @@ function Invoke-NetworkHeuristics {
 
                                 $title = $null
                                 $remediation = $null
-                                $cardId = $null
 
                                 if ($isWeak) {
                                     $title = if ($ssid) { 'Wi-Fi password is WEAK for "{0}" ({1} bits entropy, {2} chars, {3}), so attackers can guess the PSK and join the network.' -f $ssid, $entropyDisplay, $lengthDisplay, $classesDescription } else { 'Wi-Fi password is WEAK ({0} bits entropy, {1} chars, {2}), so attackers can guess the PSK and join the network.' -f $entropyDisplay, $lengthDisplay, $classesDescription }
                                     $remediation = 'Use 16–20 chars with upper/lower/numbers/symbols or 4–5 random words. Avoid SSID/device names. Update security from {0} to WPA3-SAE if supported (else WPA2-PSK AES/CCMP), rotate the passphrase, disable WPS.' -f $currentSecurityDisplay
-                                    $cardId = 'Network/Network/wpa2-personal-passphrase-weak'
                                 } elseif ($isStrong) {
                                     $severity = 'low'
                                     $title = if ($ssid) { 'Wi-Fi password is STRONG for "{0}" — modern encryption resists brute-force attacks.' -f $ssid } else { 'Wi-Fi password is STRONG — modern encryption resists brute-force attacks.' }
                                     $remediation = 'No action required. Consider WPA3-SAE where available.'
-                                    $cardId = 'Network/Network/wpa2-personal-passphrase-strong'
                                 } else {
                                     $severity = 'medium'
                                     $title = if ($ssid) { 'Wi-Fi password could be stronger for "{0}" ({1} bits, {2} chars, {3}), so determined attackers might eventually guess the PSK.' -f $ssid, $entropyDisplay, $lengthDisplay, $classesDescription } else { 'Wi-Fi password could be stronger ({0} bits, {1} chars, {2}), so determined attackers might eventually guess the PSK.' -f $entropyDisplay, $lengthDisplay, $classesDescription }
                                     $remediation = 'Increase to 16–20 chars or use 4–5 random words; ensure AES/CCMP (or WPA3-SAE). Currently {0}; rotate the PSK and disable WPS.' -f $currentSecurityDisplay
                                 }
 
-                                if ($cardId) {
-                                    Add-CategoryIssue -CategoryResult $result -CardId $cardId -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
-                                } else {
-                                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
-                                }
+                                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
                             } elseif ($passphraseMetricsError) {
                                 $evidence = [ordered]@{
                                     Interface = $interfaceEvidence

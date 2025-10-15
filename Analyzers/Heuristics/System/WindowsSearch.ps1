@@ -77,7 +77,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Start-Service WSearch or reboot the device to restore indexing.',
             'Review Microsoft-Windows-Search/Operational errors and rebuild the index if the service fails to stay running.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/indexing-stopped' -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     $errorThreshold = 10
@@ -92,7 +92,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Use Settings → Search → Searching Windows → Advanced indexing options → Advanced → Rebuild to repair the catalog.',
             'Confirm the index location resides on a healthy, online drive with sufficient space.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/error-burst' -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($snapshot.Index -and $snapshot.Index.PSObject.Properties['PathExists'] -and $snapshot.Index.PathExists -eq $false) {
@@ -103,7 +103,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Move the Windows Search index back to a healthy local drive (Advanced indexing options → Advanced → Index location).',
             'Restore connectivity to the catalog drive before restarting the WSearch service.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/index-path-invalid' -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($sizeBytes -ne $null -and $sizeBytes -gt $criticalCatalogThresholdBytes -and $driveFreePct -ne $null -and $driveFreePct -lt 5) {
@@ -114,7 +114,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Free disk space on the system volume hosting the Windows Search index.',
             'Relocate the index to a drive with ample capacity and rebuild after the move.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/catalog-disk-pressure' -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     $pauseReason = if ($snapshot.PSObject.Properties['PauseReason']) { $snapshot.PauseReason } else { $null }
@@ -129,7 +129,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Disable Battery Saver or connected standby throttling and leave the device on AC power.',
             'Avoid heavy I/O workloads so the indexer can resume crawling.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/indexer-paused' -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     $urlsToCrawl = 0
@@ -151,7 +151,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Exclude noisy developer folders or temp data that constantly changes.',
             'Rebuild the index if the backlog never clears.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/crawl-backlog' -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($snapshot.Policy -and $snapshot.Policy.PSObject.Properties['PreventIndexingUserFolders'] -and $snapshot.Policy.PreventIndexingUserFolders -eq 1) {
@@ -162,7 +162,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Review the PreventIndexingUserFolders policy in Group Policy or Intune.',
             'Allow Documents, Desktop, and Pictures to be indexed when users rely on Windows Search.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/user-folders-policy' -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($sizeBytes -ne $null -and $sizeBytes -gt $largeCatalogThresholdBytes) {
@@ -173,7 +173,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Trim noisy folders (build outputs, node_modules, .git) from the index scope.',
             'Compact or rebuild the index during maintenance windows to reclaim space.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/catalog-large' -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($snapshot.PSObject.Properties['EnablePerUserCatalog'] -and $snapshot.EnablePerUserCatalog -eq 1) {
@@ -181,7 +181,7 @@ function Invoke-SystemWindowsSearchChecks {
         $evidence = 'EnablePerUserCatalog registry value is 1.'
         $data = @{ EnablePerUserCatalog = 1 }
         $remediation = 'No action typically required; monitor disk usage when many profiles share the device.'
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/per-user-catalog' -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 
     if ($batterySaver) {
@@ -189,6 +189,6 @@ function Invoke-SystemWindowsSearchChecks {
         $evidence = 'Battery Saver registry flag indicates throttling is active.'
         $data = @{ BatterySaver = $true }
         $remediation = 'Connect the device to AC power or disable Battery Saver to restore full indexing speed.'
-        Add-CategoryIssue -CategoryResult $Result -CardId 'System/WindowsSearch/battery-throttling' -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Data $data -Remediation $remediation
     }
 }
