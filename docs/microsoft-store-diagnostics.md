@@ -100,12 +100,9 @@ Azure AD-joined devices often have the **Windows Time** service stopped; that is
    inspection is mandatory, ensure the device trusts the inspection root
    certificate.
 
-## 5. Use built-in diagnostics and troubleshooters
+## 5. Run built-in diagnostics
 
-1. Launch the **Windows Store Apps** troubleshooter (Settings > System >
-   Troubleshoot > Other troubleshooters, or open [Troubleshoot settings](ms-settings:troubleshoot)).
-   Record any fixes it applies.
-2. Run the hidden Microsoft Store diagnostic tool:
+1. Run the hidden Microsoft Store diagnostic tool:
 
    ```powershell
    & "$Env:SystemRoot\System32\StoreDiag.exe" /report "$Env:USERPROFILE\Desktop\StoreDiagReport"
@@ -114,7 +111,7 @@ Azure AD-joined devices often have the **Windows Time** service stopped; that is
    Review the generated HTML report for store cache, licensing, or service
    warnings. It also validates background intelligent transfer service (BITS)
    jobs.
-3. Flush the Store cache with `wsreset.exe`. A successful run opens the Store
+2. Flush the Store cache with `wsreset.exe`. A successful run opens the Store
    automatically; if it exits immediately with an error, the cache folder has
    permission problems.
 
