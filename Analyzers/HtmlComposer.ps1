@@ -246,52 +246,6 @@ function New-CodeBlockHtml {
 "@
 }
 
-# --- Load troubleshooting metadata and resolve templates ---
-
-$script:TshootIndex = $null
-
-function Initialize-TroubleshootingIndex {
-    param([string]$JsonPath = "$PSScriptRoot\..\dist\troubleshooting\index.json")
-    if ($script:TshootIndex -ne $null) { return }
-    if (Test-Path $JsonPath) {
-        try {
-            $script:TshootIndex = @{}
-            $cards = Get-Content -Path $JsonPath -Raw | ConvertFrom-Json
-            foreach ($c in $cards) {
-                if ($c.card_id) { $script:TshootIndex[$c.card_id] = $c }
-                if ($c.meta -and $c.meta.check_id -and -not $script:TshootIndex.ContainsKey($c.meta.check_id)) {
-                    $script:TshootIndex[$c.meta.check_id] = $c
-                }
-                $areaKey = $null
-                if ($c.PSObject.Properties['area']) { $areaKey = $c.area }
-                if ($null -eq $areaKey) { $areaKey = '' }
-                $titleKey = $null
-                if ($c.PSObject.Properties['title']) { $titleKey = $c.title }
-                if ($null -eq $titleKey) { $titleKey = '' }
-                $k2 = "{0}|{1}" -f $areaKey, $titleKey
-                if (-not $script:TshootIndex.ContainsKey($k2)) { $script:TshootIndex[$k2] = $c }
-            }
-        } catch {
-            Write-Warning "Failed to parse troubleshooting index: $($_.Exception.Message)"
-            $script:TshootIndex = @{}
-        }
-    } else {
-        Write-Verbose "Troubleshooting index not found at $JsonPath"
-        $script:TshootIndex = @{}
-    }
-}
-
-function Get-TroubleshootingForCard {
-    param([string]$CheckId, [string]$Area, [string]$Title)
-    Initialize-TroubleshootingIndex
-    if ($CheckId -and $script:TshootIndex.ContainsKey($CheckId)) { return $script:TshootIndex[$CheckId] }
-    $areaKey = if ($null -ne $Area) { $Area } else { '' }
-    $titleKey = if ($null -ne $Title) { $Title } else { '' }
-    $k2 = "{0}|{1}" -f $areaKey, $titleKey
-    if ($script:TshootIndex.ContainsKey($k2)) { return $script:TshootIndex[$k2] }
-    return $null
-}
-
 function Resolve-Template {
   param([string]$Template, [hashtable]$Data)
   if ([string]::IsNullOrWhiteSpace($Template)) { return "" }
