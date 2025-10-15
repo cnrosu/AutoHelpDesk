@@ -10,7 +10,11 @@ function Invoke-ServiceCheckWindowsSearch {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'WSearch'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search service missing' -Evidence 'Service entry not found; search and Outlook indexing will fail.' -Subcategory 'Windows Search Service'
+        if ($IsServer) {
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search not installed on this server, so interactive sessions cannot index or search local data.' -Evidence 'Service entry not found; install the Search Service feature if this server requires indexing.' -Subcategory 'Windows Search Service'
+        } else {
+            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search service missing, so local search and Outlook indexing will fail.' -Evidence 'Service entry not found; reinstall the feature to restore indexing.' -Subcategory 'Windows Search Service'
+        }
         return
     }
 
@@ -22,16 +26,20 @@ function Invoke-ServiceCheckWindowsSearch {
     $title = "Windows Search service not running (Status: {0}; StartType: {1})." -f $service.Status, $service.StartMode
     if ($service.StartModeNormalized -eq 'manual') {
         if ($IsWorkstation) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search set to Manual and stopped' -Evidence $title -Subcategory 'Windows Search Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search is set to Manual and stopped, so local search and Outlook indexing are paused.' -Evidence $title -Subcategory 'Windows Search Service'
         } elseif ($IsServer) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search manual start and currently stopped' -Evidence $title -Subcategory 'Windows Search Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search uses manual start on this server and is stopped, so sessions will not index content until it starts.' -Evidence $title -Subcategory 'Windows Search Service'
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search manual start and currently stopped' -Evidence $title -Subcategory 'Windows Search Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search is set to Manual and stopped, so local search and Outlook indexing are paused.' -Evidence $title -Subcategory 'Windows Search Service'
         }
     } elseif ($service.StartModeNormalized -eq 'disabled') {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search disabled' -Evidence $title -Subcategory 'Windows Search Service'
+        if ($IsServer) {
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search disabled on this server, so users cannot search or index local data.' -Evidence $title -Subcategory 'Windows Search Service'
+        } else {
+            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search disabled, so local search and Outlook indexing will fail.' -Evidence $title -Subcategory 'Windows Search Service'
+        }
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search not running' -Evidence $title -Subcategory 'Windows Search Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Windows Search not running despite automatic startup, so indexing is broken until the service restarts.' -Evidence $title -Subcategory 'Windows Search Service'
     }
 }
 
