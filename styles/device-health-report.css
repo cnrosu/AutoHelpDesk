@@ -401,6 +401,17 @@ details.report-card[open] > summary {
   line-height: 1.55;
 }
 
+.report-remediation__text .report-link {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.report-remediation__text .report-link:hover,
+.report-remediation__text .report-link:focus {
+  text-decoration: none;
+}
+
 .report-remediation__code {
   display: flex;
   flex-direction: column;
