@@ -103,7 +103,8 @@ Azure AD-joined devices often have the **Windows Time** service stopped; that is
 ## 5. Use built-in diagnostics and troubleshooters
 
 1. Launch the **Windows Store Apps** troubleshooter (Settings > System >
-   Troubleshoot > Other troubleshooters). Record any fixes it applies.
+   Troubleshoot > Other troubleshooters, or open [Troubleshoot settings](ms-settings:troubleshoot)).
+   Record any fixes it applies.
 2. Run the hidden Microsoft Store diagnostic tool:
 
    ```powershell
