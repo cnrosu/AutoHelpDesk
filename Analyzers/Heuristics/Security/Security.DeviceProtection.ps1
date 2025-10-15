@@ -64,10 +64,50 @@ function Invoke-SecurityKernelDmaChecks {
         $CategoryResult
     )
 
+    function ConvertTo-KernelDmaStatus {
+        param([string]$Value)
+
+        if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+        switch -Regex ($Value.Trim()) {
+            '^(?i)on$'          { return 'On' }
+            '^(?i)off$'         { return 'Off' }
+            '(?i)not\s*support' { return 'NotSupported' }
+            default             { return $null }
+        }
+    }
+
     $kernelDmaArtifact = Get-AnalyzerArtifact -Context $Context -Name 'kerneldma'
     Write-HeuristicDebug -Source 'Security' -Message 'Resolved Kernel DMA artifact' -Data ([ordered]@{
         Found = [bool]$kernelDmaArtifact
     })
+
+    $msinfoPayload = Get-MsinfoArtifactPayload -Context $Context
+    $msinfoSystemSummary = $null
+    $msinfoKernelDmaValue = $null
+    if ($msinfoPayload) {
+        $msinfoSystemSummary = Get-MsinfoSectionTable -Payload $msinfoPayload -Names @('system summary')
+        if ($msinfoSystemSummary -and $msinfoSystemSummary.Rows) {
+            foreach ($row in $msinfoSystemSummary.Rows) {
+                if (-not $row) { continue }
+
+                $itemName = Get-MsinfoRowValue -Row $row -Names @('Item', 'Name')
+                if (-not $itemName) { continue }
+
+                if ($itemName.Trim().Equals('Kernel DMA Protection', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $msinfoKernelDmaValue = Get-MsinfoRowValue -Row $row -Names @('Value')
+                    break
+                }
+            }
+        }
+    }
+
+    Write-HeuristicDebug -Source 'Security' -Message 'Evaluated msinfo32 system summary for Kernel DMA' -Data ([ordered]@{
+        PayloadFound = [bool]$msinfoPayload
+        SummaryFound = [bool]$msinfoSystemSummary
+        KernelDmaValue = if ($msinfoKernelDmaValue) { $msinfoKernelDmaValue } else { $null }
+    })
+
     if ($kernelDmaArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $kernelDmaArtifact)
         Write-HeuristicDebug -Source 'Security' -Message 'Evaluating Kernel DMA payload' -Data ([ordered]@{
@@ -94,6 +134,14 @@ function Invoke-SecurityKernelDmaChecks {
             $allowValue = ConvertTo-NullableInt $registry.AllowDmaUnderLock
         }
 
+        $msinfoStatus = ConvertTo-KernelDmaStatus -Value $msinfoKernelDmaValue
+        if ($msinfoStatus) {
+            if (-not $statusValue -or $statusValue -eq 'Unknown' -or $statusValue -eq 'Inconclusive') {
+                $statusValue = $msinfoStatus
+                if (-not $sourceValue) { $sourceValue = 'msinfo32:SystemSummary' }
+            }
+        }
+
         $evidenceLines = [System.Collections.Generic.List[string]]::new()
         if ($statusValue) { $evidenceLines.Add("KernelDmaProtection.Status: $statusValue") }
         if ($sourceValue) { $evidenceLines.Add("KernelDmaProtection.Source: $sourceValue") }
@@ -111,6 +159,9 @@ function Invoke-SecurityKernelDmaChecks {
         }
         if ($msInfo -and $msInfo.PSObject.Properties['SecureBoot'] -and $msInfo.SecureBoot) {
             $evidenceLines.Add("MsInfo.SecureBoot: $($msInfo.SecureBoot)") | Out-Null
+        }
+        if ($msinfoKernelDmaValue) {
+            $evidenceLines.Add("Msinfo.SystemSummary.KernelDmaProtection: $msinfoKernelDmaValue") | Out-Null
         }
         if ($payload -and $payload.PSObject.Properties['OS'] -and $payload.OS) {
             $osInfo = $payload.OS
@@ -150,6 +201,33 @@ function Invoke-SecurityKernelDmaChecks {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
         }
     } else {
+        $msinfoStatus = ConvertTo-KernelDmaStatus -Value $msinfoKernelDmaValue
+        if ($msinfoStatus) {
+            $evidenceLines = [System.Collections.Generic.List[string]]::new()
+            $evidenceLines.Add("KernelDmaProtection.Status: $msinfoStatus") | Out-Null
+            $evidenceLines.Add('KernelDmaProtection.Source: msinfo32:SystemSummary') | Out-Null
+            if ($msinfoKernelDmaValue) {
+                $evidenceLines.Add("Msinfo.SystemSummary.KernelDmaProtection: $msinfoKernelDmaValue") | Out-Null
+            }
+
+            $dmaEvidence = ($evidenceLines.ToArray() | Where-Object { $_ }) -join "`n"
+
+            switch ($msinfoStatus) {
+                'On' {
+                    Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Kernel DMA protection enforced' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                    return
+                }
+                'Off' {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection disabled, so DMA attacks via peripherals remain possible while locked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                    return
+                }
+                'NotSupported' {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection not supported on this OS, leaving locked devices exposed to DMA attacks from peripherals.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                    return
+                }
+            }
+        }
+
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Subcategory 'Kernel DMA'
     }
 }
