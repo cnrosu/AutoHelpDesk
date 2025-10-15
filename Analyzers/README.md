@@ -54,15 +54,18 @@ Each category has its own `Invoke-<Category>Heuristics` function under `Analyzer
 
 Available modules:
 
-- `System.ps1`
-- `Security.ps1`
-- `Network.ps1`
 - `AD.ps1`
-- `Office.ps1`
-- `Storage.ps1`
+- `Cloud.ps1`
 - `Events.ps1`
-- `Services.ps1`
+- `Hardware.ps1`
+- `Intune.ps1`
+- `Network.ps1`
+- `Office.ps1`
 - `Printing.ps1`
+- `Security.ps1`
+- `Services.ps1`
+- `Storage.ps1`
+- `System.ps1`
 
 Refer to the repository root `README.md` for a full catalogue of heuristic behaviors.
 

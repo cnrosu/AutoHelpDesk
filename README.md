@@ -82,6 +82,9 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Startup Programs** – Highlights medium issues when more than ten non-Microsoft autoruns are enabled, low issues when six to ten are present, records normals for healthy counts, and emits informational findings when Autoruns output is empty or unrecognized.
 - **Microsoft Store** – Marks the Store as not applicable on SKUs without the package, raises medium/high issues when required services are disabled or Store endpoints fail reachability checks, and records normals that document service state and endpoint results when everything succeeds.
 
+### Cloud
+- **OneDrive Sync Health** – Warns when the OneDrive collector or payload is missing so cloud file sync status is unknown, raises issues when the sync client is not installed, stopped, or lacks signed-in accounts, highlights Known Folder Backup policies that block redirection, and records normals when OneDrive is installed, running, and backing up key folders.
+
 ### Network & Connectivity
 - **Collection** – Emits informational issues when base network, DNS, or adapter inventories are missing so connectivity gaps are transparent.
 - **IP Configuration** – Raises high-severity issues for missing IPv4 configuration or APIPA addresses that would break network access.

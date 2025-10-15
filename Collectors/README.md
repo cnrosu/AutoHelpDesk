@@ -45,6 +45,10 @@ Key conventions:
 
 `Collectors/Network/DHCP/Collect-Dhcp.ps1` now writes a single `dhcp-base.json` payload that captures adapter state and key client events once per collection run. DHCP analyzers filter the consolidated payload for their scenarios, so the previous `dhcp-*.json` collector scripts and files have been retired. Automations that depended on the specialized outputs should pivot to `dhcp-base.json` and apply any needed filtering client-side.
 
+## OneDrive collector
+
+`Collectors/Cloud/Collect-OneDrive.ps1` gathers per-user OneDrive install details, auto-start sources, running process state, signed-in accounts, and Known Folder Backup policy data before emitting `cloud-onedrive.json`. Run it in the signed-in user context so the script can read HKCU configuration and live process state. The payload records error text when OneDrive is not installed or cannot be queried, helping technicians understand why cloud sync status might be unknown.
+
 ## Adding a new collector
 
 1. Create a new `Collect-<Name>.ps1` script inside the appropriate domain folder.
