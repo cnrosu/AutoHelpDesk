@@ -113,12 +113,61 @@ function Invoke-ServicesHeuristics {
     $selectionReason = $null
     $candidateDiagnostics = New-Object System.Collections.Generic.List[pscustomobject]
 
-    foreach ($candidateInfo in $artifactCandidates) {
-        $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidateInfo.Key
-        $entries = Get-ServicesArtifactEntries -Artifact $artifact
+    $msinfoServices = Get-MsinfoServicesPayload -Context $Context
+    if ($msinfoServices -and $msinfoServices.PSObject.Properties['Services'] -and $msinfoServices.Services) {
+        $servicesArray = if ($msinfoServices.Services -is [System.Collections.IEnumerable] -and -not ($msinfoServices.Services -is [string])) {
+            @($msinfoServices.Services | Where-Object { $_ })
+        } else {
+            @($msinfoServices.Services)
+        }
 
-        if ($entries.Count -eq 0) {
-            Write-HeuristicDebug -Source 'Services' -Message 'Services artifact candidate not found' -Data ([ordered]@{
+        if ($servicesArray.Count -gt 0) {
+            $selectedPayload = $msinfoServices
+            $selectedServicesNode = $servicesArray
+            $selectionReason = 'msinfo32 services snapshot'
+            $selectedCandidate = [pscustomobject]@{ Key = 'msinfo32'; Preferred = $true; Reason = 'msinfo32 services snapshot' }
+            $selectedArtifact = [pscustomobject]@{
+                Path = 'msinfo32.json'
+                Data = [pscustomobject]@{ Payload = $msinfoServices }
+            }
+            if ($msinfoServices.CollectionErrors -and $msinfoServices.CollectionErrors.Count -gt 0) {
+                foreach ($err in $msinfoServices.CollectionErrors) {
+                    if ($err) {
+                        $candidateDiagnostics.Add([pscustomobject]@{
+                            Candidate = 'msinfo32'
+                            Path      = 'msinfo32.json'
+                            Status    = 'warning'
+                            Message   = [string]$err
+                        }) | Out-Null
+                    }
+                }
+            }
+        }
+    }
+
+    if (-not $selectedArtifact) {
+        if ($msinfoServices -and (-not $msinfoServices.Services -or $msinfoServices.Services.Count -eq 0)) {
+            $candidateDiagnostics.Add([pscustomobject]@{
+                Candidate = 'msinfo32'
+                Path      = 'msinfo32.json'
+                Status    = 'empty'
+                Message   = 'Services section empty in msinfo32 payload'
+            }) | Out-Null
+        } elseif (-not $msinfoServices) {
+            $candidateDiagnostics.Add([pscustomobject]@{
+                Candidate = 'msinfo32'
+                Path      = 'msinfo32.json'
+                Status    = 'missing'
+                Message   = 'msinfo32 artifact missing'
+            }) | Out-Null
+        }
+
+        foreach ($candidateInfo in $artifactCandidates) {
+            $artifact = Get-AnalyzerArtifact -Context $Context -Name $candidateInfo.Key
+            $entries = Get-ServicesArtifactEntries -Artifact $artifact
+
+            if ($entries.Count -eq 0) {
+                Write-HeuristicDebug -Source 'Services' -Message 'Services artifact candidate not found' -Data ([ordered]@{
                 Candidate = $candidateInfo.Key
             })
             $candidateDiagnostics.Add([pscustomobject]@{
@@ -253,6 +302,7 @@ function Invoke-ServicesHeuristics {
         }
 
         if ($selectedArtifact) { break }
+    }
     }
 
     Write-HeuristicDebug -Source 'Services' -Message 'Resolved services artifact' -Data ([ordered]@{

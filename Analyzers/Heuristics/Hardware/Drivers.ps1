@@ -10,12 +10,16 @@ function Invoke-HardwareDriverChecks {
 
     $issueCount = 0
 
+    $msinfoDrivers = Get-MsinfoDriverEntries -Context $Context
+    $msinfoDriverCount = if ($msinfoDrivers) { (@($msinfoDrivers | Where-Object { $_ })).Count } else { 0 }
+
     $driversArtifact = Get-AnalyzerArtifact -Context $Context -Name 'drivers'
     Write-HeuristicDebug -Source 'Hardware' -Message 'Resolved driver artifact' -Data ([ordered]@{
-        Found = [bool]$driversArtifact
+        Found          = [bool]$driversArtifact
+        MsinfoDrivers  = $msinfoDriverCount
     })
 
-    if (-not $driversArtifact) {
+    if (-not $driversArtifact -and $msinfoDriverCount -eq 0) {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Driver inventory artifact missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
         $issueCount++
         return [pscustomobject]@{ Completed = $false; IssueCount = $issueCount }
@@ -26,10 +30,22 @@ function Invoke-HardwareDriverChecks {
         HasPayload = [bool]$payload
     })
 
-    if (-not $payload) {
+    if (-not $payload -and $msinfoDriverCount -eq 0) {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Driver inventory payload missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
         $issueCount++
         return [pscustomobject]@{ Completed = $false; IssueCount = $issueCount }
+    }
+
+    if ($msinfoDriverCount -gt 0) {
+        if (-not $payload) { $payload = [pscustomobject][ordered]@{} }
+        elseif (-not ($payload -is [pscustomobject])) { $payload = [pscustomobject]$payload }
+
+        if ($payload.PSObject.Properties['DriverQuery']) {
+            $payload | Add-Member -NotePropertyName 'LegacyDriverQuery' -NotePropertyValue $payload.DriverQuery -Force
+        }
+
+        $payload | Add-Member -NotePropertyName 'DriverQuery' -NotePropertyValue $msinfoDrivers -Force
+        $payload | Add-Member -NotePropertyName 'MsinfoDrivers' -NotePropertyValue $msinfoDrivers -Force
     }
 
     if ($payload.DriverQuery -and $payload.DriverQuery.PSObject.Properties['Error'] -and $payload.DriverQuery.Error) {
