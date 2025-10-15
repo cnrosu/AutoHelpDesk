@@ -73,6 +73,90 @@ if (-not $ansiSupported) {
     Disable-AnsiOutput
 }
 
+# Prioritize collectors from slowest to fastest based on observed run durations.
+$collectorExecutionOrder = @(
+    'Collect-MsInfo.ps1',
+    'Collect-DNS.ps1',
+    'Collect-Wlan.ps1',
+    'Collect-ScheduledTasks.ps1',
+    'Collect-Firewall.ps1',
+    'Collect-System.ps1',
+    'Collect-BatteryReport.ps1',
+    'Collect-VpnBaseline.ps1',
+    'Collect-MicrosoftStoreFunctional.ps1',
+    'Collect-Printing.ps1',
+    'Collect-Uptime.ps1',
+    'Collect-SystemRestore.ps1',
+    'Collect-Software.ps1',
+    'Collect-Storage.ps1',
+    'Collect-Drivers.ps1',
+    'Collect-Events.ps1',
+    'Collect-Power.ps1',
+    'Collect-PendingReboot.ps1',
+    'Collect-Performance.ps1',
+    'Collect-ServiceBaseline.ps1',
+    'Collect-KernelDMA.ps1',
+    'Collect-Hotfixes.ps1',
+    'Collect-Identity.ps1',
+    'Collect-Firmware.ps1',
+    'Collect-SMB.ps1',
+    'Collect-LAPS.ps1',
+    'Collect-WDAC.ps1',
+    'Collect-VBSHVCI.ps1',
+    'Collect-Defender.ps1',
+    'Collect-UAC.ps1',
+    'Collect-TPM.ps1',
+    'Collect-MeasuredBoot.ps1',
+    'Collect-OutlookConnectivity.ps1',
+    'Collect-SmartScreen.ps1',
+    'Collect-LocalAdmins.ps1',
+    'Collect-RDP.ps1',
+    'Collect-PowerShellLogging.ps1',
+    'Collect-ASR.ps1',
+    'Collect-LSA.ps1',
+    'Collect-LDAP.ps1',
+    'Collect-ExploitProtection.ps1',
+    'Collect-NetworkAdapters.ps1',
+    'Collect-FirmwareSecurity.ps1',
+    'Collect-OneDrive.ps1',
+    'Collect-AutodiscoverDiagnostics.ps1',
+    'Collect-BitLocker.ps1',
+    'Collect-StorageSnapshot.ps1',
+    'Collect-WindowsSearch.ps1',
+    'Collect-Autorun.ps1',
+    'Collect-Network.ps1',
+    'Collect-OutlookCaches.ps1',
+    'Collect-Dhcp.ps1',
+    'Collect-OfficePolicies.ps1',
+    'Collect-Lan8021x.ps1',
+    'Collect-IPv6Routing.ps1',
+    'Collect-Lldp.ps1',
+    'Collect-NetworkShares.ps1',
+    'Collect-Proxy.ps1',
+    'Collect-ADHealth.ps1'
+)
+
+$collectorPriorityMap = @{}
+$priorityValue = 1000
+foreach ($collectorName in $collectorExecutionOrder) {
+    $collectorPriorityMap[$collectorName] = $priorityValue
+    $priorityValue -= 10
+}
+
+function Get-CollectorPriority {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo]$Collector
+    )
+
+    $name = $Collector.Name
+    if ($collectorPriorityMap.ContainsKey($name)) {
+        return [int]$collectorPriorityMap[$name]
+    }
+
+    return 0
+}
+
 function Get-CollectorScripts {
     param([string]$Root)
     Get-ChildItem -Path $Root -Filter 'Collect-*.ps1' -Recurse |
@@ -117,8 +201,14 @@ function Invoke-AllCollectors {
             Collector  = $collector
             AreaName   = $areaName
             AreaOutput = $areaOutput
+            Priority   = Get-CollectorPriority -Collector $collector
         }
     }
+
+    $collectorInfos = $collectorInfos |
+        Sort-Object -Property @{ Expression = { $_.Priority }; Descending = $true },
+            @{ Expression = { $_.Collector.DirectoryName } },
+            @{ Expression = { $_.Collector.Name } }
 
     foreach ($group in $collectorInfos | Group-Object AreaName) {
         $areaPath = $group.Group[0].AreaOutput
