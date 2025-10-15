@@ -1285,7 +1285,7 @@ function Invoke-NetworkHeuristics {
             if ($upAdapters.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters.Name -join ', ')) -Subcategory 'Network Adapters'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters' -Remediation 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.'
             }
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
