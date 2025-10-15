@@ -1,15 +1,3 @@
-$catalogRuntimePath = Join-Path -Path $PSScriptRoot -ChildPath '_troubleshooting/Catalog.Runtime.psm1'
-
-if (-not (Get-Module | Where-Object { $_.Path -eq $catalogRuntimePath })) {
-    try {
-        Import-Module -Name $catalogRuntimePath -Scope Global -ErrorAction Stop | Out-Null
-    } catch {
-        # Fallback for hosts where Import-Module fails (for example, when executed under
-        # constrained language mode). Dot-source to ensure the catalog helpers are available.
-        . $catalogRuntimePath
-    }
-}
-
 $script:MsinfoCacheAvailabilityChecked = $false
 $script:MsinfoCacheAvailable = $false
 
@@ -264,81 +252,51 @@ function New-CategoryResult {
 }
 
 function Add-CategoryIssue {
-    [CmdletBinding(DefaultParameterSetName='ByCardId')]
     param(
-        [Parameter(Mandatory, ParameterSetName='ByCardId')]
-        [Parameter(Mandatory, ParameterSetName='ByFields')]
+        [Parameter(Mandatory)]
         $CategoryResult,
 
-        [Parameter(Mandatory, ParameterSetName='ByCardId')]
-        [Parameter(ParameterSetName='ByFields')]
-        [string]$CardId,
-
-        [Parameter(ParameterSetName='ByFields')]
-        [string]$Category,
-
-        [Parameter(ParameterSetName='ByFields')]
-        [string]$Subcategory,
-
-        [Parameter(ParameterSetName='ByCardId')]
-        [Parameter(Mandatory, ParameterSetName='ByFields')]
+        [Parameter(Mandatory)]
         [string]$Title,
 
-        [Parameter()][ValidateSet('critical','high','medium','low','warning','info')]
+        [ValidateSet('critical','high','medium','low','warning','info')]
         [string]$Severity,
 
-        [Parameter()][string]$Area,
+        [string]$Category,
 
-        [Parameter()][object]$Evidence,
+        [string]$Subcategory,
 
-        [Parameter()][object]$Data,
+        [string]$Area,
 
-        [Parameter()][string]$CheckId,
+        [object]$Evidence,
 
-        [Parameter()][string]$Remediation,
+        [object]$Data,
 
-        [Parameter()][string]$RemediationScript
+        [string]$CheckId,
+
+        [string]$Remediation,
+
+        [string]$RemediationScript,
+
+        [string]$Explanation
     )
 
     if (-not $CategoryResult) { throw 'CategoryResult is required.' }
 
-    if (-not (Get-Variable -Name CATALOG_INDEX -Scope Script -ErrorAction SilentlyContinue)) {
-        Initialize-Catalog | Out-Null
-    }
-
-    $TitleTpl = $null
-    $CatalogCard = $null
-
-    if ($PSCmdlet.ParameterSetName -eq 'ByCardId') {
-        $CatalogCard = Get-CatalogCardById -CardId $CardId
-        if (-not $CatalogCard) { throw "Unknown card_id '$CardId'." }
-
-        $Category    = $CatalogCard.category
-        $Subcategory = $CatalogCard.subcategory
-        if (-not $Area) { $Area = if ($CatalogCard.area) { $CatalogCard.area } else { $CatalogCard.category } }
-        $TitleTpl    = $CatalogCard.title
-        if (-not $Severity) { $Severity = $CatalogCard.severity }
-        if (-not $CheckId -and $CatalogCard.meta -and $CatalogCard.meta.check_id) { $CheckId = $CatalogCard.meta.check_id }
-    } else {
-        if (-not $Category -and $CategoryResult.PSObject.Properties['Name']) {
-            $Category = [string]$CategoryResult.Name
-        }
-
-        if (-not $Area -and $Category) { $Area = $Category }
-
-        $maybe = $script:CATALOG.cards | Where-Object {
-            $_.title -eq $Title -and $_.category -eq $Category -and $_.subcategory -eq $Subcategory
-        } | Select-Object -First 1
-        if ($maybe) { Write-Warning "Card exists in catalog; prefer -CardId '$($maybe.card_id)' with -Data." }
+    if (-not $Category -and $CategoryResult.PSObject.Properties['Name']) {
+        $Category = [string]$CategoryResult.Name
     }
 
     if (-not $Area -and $Category) { $Area = $Category }
 
-    if (Get-Command ConvertTo-AnalyzerDataDictionary -ErrorAction SilentlyContinue) {
-        $Data = if ($Data) { ConvertTo-AnalyzerDataDictionary -InputObject $Data } else { $null }
+    $dataSpecified = $PSBoundParameters.ContainsKey('Data')
+    if ($dataSpecified -and (Get-Command ConvertTo-AnalyzerDataDictionary -ErrorAction SilentlyContinue)) {
+        if ($null -ne $Data) {
+            $Data = ConvertTo-AnalyzerDataDictionary -InputObject $Data
+        } else {
+            $Data = $null
+        }
     }
-
-    if ($TitleTpl -and -not $Title) { $Title = $TitleTpl }
 
     if (-not $Severity) { $Severity = 'info' }
 
@@ -355,15 +313,17 @@ function Add-CategoryIssue {
         }
     }
 
+    $payloadMeta = [ordered]@{}
+    if (-not [string]::IsNullOrWhiteSpace($CheckId)) { $payloadMeta['check_id'] = $CheckId }
+    if (-not [string]::IsNullOrWhiteSpace($Area)) { $payloadMeta['area'] = $Area }
+    if (-not [string]::IsNullOrWhiteSpace($Category)) { $payloadMeta['category'] = $Category }
+    if (-not [string]::IsNullOrWhiteSpace($Subcategory)) { $payloadMeta['subcategory'] = $Subcategory }
+
     $payload = @{
         schemaVersion = '1.1'
         flags = @{ hasEvidence = [bool]$Evidence; hasData = [bool]$Data }
         data  = $Data
-        meta  = @{ card_id = if ($CatalogCard) { $CatalogCard.card_id } else { $CardId }; template = @{ title = $TitleTpl } }
-    }
-
-    if ($CatalogCard -and $CatalogCard.explanation) {
-        $payload.meta['explanation'] = $CatalogCard.explanation
+        meta  = $payloadMeta
     }
 
     $entry = [ordered]@{
@@ -375,7 +335,7 @@ function Add-CategoryIssue {
 
     if ($Area) { $entry['Area'] = $Area }
 
-    if ($PSBoundParameters.ContainsKey('Data') -or $null -ne $Data) {
+    if ($dataSpecified -or $null -ne $Data) {
         $entry['Data'] = $Data
     }
 
@@ -386,8 +346,8 @@ function Add-CategoryIssue {
 
     if (-not [string]::IsNullOrWhiteSpace($CheckId)) { $entry['CheckId'] = $CheckId }
 
-    if ($CatalogCard -and $CatalogCard.explanation) {
-        $entry['Explanation'] = $CatalogCard.explanation
+    if ($PSBoundParameters.ContainsKey('Explanation') -and -not [string]::IsNullOrWhiteSpace($Explanation)) {
+        $entry['Explanation'] = $Explanation.Trim()
     }
 
     if ($PSBoundParameters.ContainsKey('Remediation') -and -not [string]::IsNullOrWhiteSpace($Remediation)) {
