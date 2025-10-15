@@ -18,10 +18,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Write-Verbose ("Starting analysis for input folder '{0}'." -f $InputFolder)
 
-$commonModulePath = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Modules/Common.psm1'
+$modulesRoot = Split-Path $PSScriptRoot -Parent
+
+$commonModulePath = Join-Path -Path $modulesRoot -ChildPath 'Modules/Common.psm1'
 if (Test-Path -Path $commonModulePath) {
     Import-Module $commonModulePath -Force -Verbose:$false
     Write-Verbose ("Imported common module from '{0}'." -f $commonModulePath)
+}
+
+$memoryCacheModulePath = Join-Path -Path $modulesRoot -ChildPath 'Modules/MemoryCache.psm1'
+if (Test-Path -Path $memoryCacheModulePath) {
+    Import-Module $memoryCacheModulePath -Force -Verbose:$false
+    Write-Verbose ("Imported memory cache module from '{0}'." -f $memoryCacheModulePath)
 }
 
 . (Join-Path -Path $PSScriptRoot -ChildPath 'AnalyzerCommon.ps1')
