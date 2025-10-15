@@ -675,7 +675,7 @@ function Test-IsSafeRemediationLink {
   $candidate = $Uri.Trim()
   if (-not $candidate) { return $false }
 
-  $allowedSchemes = @('http', 'https', 'ms-msdt', 'ms-settings', 'control')
+  $allowedSchemes = @('http', 'https', 'ms-settings', 'control')
   $parsed = $null
   if ([System.Uri]::TryCreate($candidate, [System.UriKind]::Absolute, [ref]$parsed)) {
     $scheme = $parsed.Scheme
@@ -684,8 +684,6 @@ function Test-IsSafeRemediationLink {
       return $allowedSchemes -contains $normalizedScheme
     }
   }
-
-  if ($candidate -match '^(?i)ms-msdt:') { return $true }
 
   return $false
 }
