@@ -133,8 +133,6 @@ function Invoke-AllCollectors {
 
     $tasks = [System.Collections.Generic.List[object]]::new()
     foreach ($info in $collectorInfos) {
-        Write-Verbose ("Starting collector '{0}' for area '{1}' with output '{2}'." -f $info.Collector.FullName, $info.AreaName, $info.AreaOutput)
-
         $ps = [powershell]::Create()
         $ps.RunspacePool = $pool
 
