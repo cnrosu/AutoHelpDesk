@@ -54,7 +54,7 @@ function Invoke-OneDriveHeuristic {
     $installPath = if ($state.PSObject.Properties['InstallPath'] -and $state.InstallPath) { [string]$state.InstallPath } else { 'n/a' }
     $installVersion = if ($state.PSObject.Properties['Version'] -and $state.Version) { [string]$state.Version } else { 'n/a' }
     $installEvidence = "Source=$installSource; Path=$installPath; Version=$installVersion"
-    Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive is installed, so the sync client is available on this device.' -Evidence $installEvidence -Subcategory 'OneDrive' -Remediation 'No action needed.'
+    Add-CategoryNormal -CategoryResult $Result -Title 'OneDrive is installed, so the sync client is available on this device.' -Evidence $installEvidence -Subcategory 'OneDrive'
 
     if (-not $state.AutoStartEnabled) {
         $autoEvidence = if ($notesEvidence) { "Auto-start sources missing. Notes: $notesEvidence" } else { 'Auto-start sources missing (RunKey/ScheduledTask/StartupFolder).' }
@@ -78,7 +78,7 @@ function Invoke-OneDriveHeuristic {
         if ($missingFolders.Count -gt 0) {
             Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title 'OneDrive account folders are missing, so affected profiles cannot sync files.' -Evidence ($accountSummaries -join '; ') -Subcategory 'OneDrive' -Remediation 'If a OneDrive folder path is missing on disk, re-run OneDrive setup or unlink and relink the account.'
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive accounts detected, so sync folders are configured for this user.' -Evidence ($accountSummaries -join '; ') -Subcategory 'OneDrive' -Remediation 'No action needed.'
+            Add-CategoryNormal -CategoryResult $Result -Title 'OneDrive accounts detected, so sync folders are configured for this user.' -Evidence ($accountSummaries -join '; ') -Subcategory 'OneDrive'
         }
     } else {
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'No OneDrive accounts are signed in, so user files will not sync to the cloud.' -Evidence 'No Business or Personal OneDrive account keys found under HKCU.' -Subcategory 'OneDrive' -Remediation 'Open OneDrive and sign in with your work or personal account. For work, confirm the device and user are licensed and personal sync is not blocked by policy.'
@@ -100,7 +100,7 @@ function Invoke-OneDriveHeuristic {
         $policySummary = "SilentOptIn=$policySilentOptIn; SilentOptInDesktop=$policySilentDesktop; BlockOptIn=$policyBlockOptIn; DisablePersonalSync=$policyDisablePersonal"
 
         if ($redirected.Count -gt 0) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title ("Known Folder Backup is enabled for {0}, so key folders sync to OneDrive." -f ($redirected -join ', ')) -Evidence ("Redirected={0}. Policy: {1}" -f ($redirected -join ', '), $policySummary) -Subcategory 'OneDrive' -Remediation 'No action needed.'
+            Add-CategoryNormal -CategoryResult $Result -Title ("Known Folder Backup is enabled for {0}, so key folders sync to OneDrive." -f ($redirected -join ', ')) -Evidence ("Redirected={0}. Policy: {1}" -f ($redirected -join ', '), $policySummary) -Subcategory 'OneDrive'
         } else {
             if ($policy.KFMBlockOptIn -eq 1) {
                 Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Known Folder Backup is blocked by policy, so Desktop, Documents, and Pictures stay local.' -Evidence ("Policy: {0}" -f $policySummary) -Subcategory 'OneDrive' -Remediation 'This is expected when the organization blocks KFM. Update policy if redirection should be allowed.'
