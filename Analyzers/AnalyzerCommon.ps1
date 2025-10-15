@@ -536,8 +536,43 @@ function Get-MsinfoSectionTable {
     $sections = $Payload.Sections
     if (-not $sections) { return $null }
 
+    if ($sections -and -not ($sections -is [System.Collections.IDictionary])) {
+        $supportsContainsKey = $false
+        try {
+            if ($sections.PSObject -and $sections.PSObject.Methods['ContainsKey']) { $supportsContainsKey = $true }
+        } catch {
+            $supportsContainsKey = $false
+        }
+
+        if (-not $supportsContainsKey) {
+            $convertedSections = New-Object System.Collections.Specialized.OrderedDictionary
+            foreach ($prop in $sections.PSObject.Properties) {
+                if (-not $prop -or -not $prop.Name) { continue }
+                $convertedSections[$prop.Name] = $prop.Value
+            }
+            $sections = $convertedSections
+        }
+    }
+
     $index = $null
     if ($Payload.PSObject.Properties['Index']) { $index = $Payload.Index }
+    if ($index -and -not ($index -is [System.Collections.IDictionary])) {
+        $supportsContainsKey = $false
+        try {
+            if ($index.PSObject -and $index.PSObject.Methods['ContainsKey']) { $supportsContainsKey = $true }
+        } catch {
+            $supportsContainsKey = $false
+        }
+
+        if (-not $supportsContainsKey) {
+            $convertedIndex = New-Object System.Collections.Specialized.OrderedDictionary
+            foreach ($prop in $index.PSObject.Properties) {
+                if (-not $prop -or -not $prop.Name) { continue }
+                $convertedIndex[$prop.Name] = $prop.Value
+            }
+            $index = $convertedIndex
+        }
+    }
 
     $candidateKeys = New-Object System.Collections.Generic.List[string]
     foreach ($name in $Names) {
