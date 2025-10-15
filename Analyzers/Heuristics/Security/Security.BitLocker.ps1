@@ -187,9 +187,9 @@ function Invoke-SecurityBitLockerChecks {
         } elseif ($payload -and $payload.Volumes -and $payload.Volumes.Error) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'BitLocker query failed, so the encryption state and data exposure risk are unknown.' -Evidence $payload.Volumes.Error -Subcategory 'BitLocker'
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker data missing expected structure, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker artifact not collected, so the encryption state and data exposure risk are unknown.' -Subcategory 'BitLocker'
     }
 }

@@ -202,7 +202,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     }
 
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId
         return
     }
 
@@ -213,7 +213,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     })
 
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data missing, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $errorCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile data missing, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $errorCheckId
         return
     }
 
@@ -230,7 +230,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     }
 
     if ($payloadError) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.' -Evidence $payloadError -Subcategory $subcategory -CheckId $errorCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile query failed, so firewall enforcement is unknown until the error is resolved.' -Evidence $payloadError -Subcategory $subcategory -CheckId $errorCheckId
         return
     }
 
@@ -240,7 +240,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     })
 
     if ($profileEntries.Count -eq 0) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data empty, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $unparsedCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile data empty, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $unparsedCheckId
         return
     }
 
@@ -318,7 +318,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
 
     if ($recognizedProfiles.Count -eq 0) {
         $unparsedEvidence = if ($unparsedEntries.Count -gt 0) { $unparsedEntries.ToArray() } else { $profilesRaw }
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall profile data could not be parsed, so firewall enforcement is unknown.' -Evidence $unparsedEvidence -Subcategory $subcategory -CheckId $unparsedCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile data could not be parsed, so firewall enforcement is unknown.' -Evidence $unparsedEvidence -Subcategory $subcategory -CheckId $unparsedCheckId
         return
     }
 
