@@ -697,7 +697,7 @@ function ConvertTo-RemediationHtml {
 
   $builder = [System.Text.StringBuilder]::new()
   $cursor = 0
-  $pattern = '\\[([^\\]]+)\\]\\(([^\\)]+)\\)'
+  $pattern = '\[([^\]]+)\]\(([^)]+)\)'
   foreach ($match in [regex]::Matches($Text, $pattern)) {
     if (-not $match) { continue }
 
