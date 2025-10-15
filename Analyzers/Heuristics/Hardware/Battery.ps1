@@ -299,7 +299,7 @@ function Invoke-HardwareBatteryChecks {
         $firstError = $batteryErrors | Select-Object -First 1
         $errorText = if ($firstError -and $firstError.PSObject.Properties['Error'] -and $firstError.Error) { [string]$firstError.Error } else { 'Unknown error' }
         $source = if ($firstError -and $firstError.PSObject.Properties['Source'] -and $firstError.Source) { [string]$firstError.Source } else { 'root\wmi battery classes' }
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Battery health query reported an error, so health data may be incomplete.' -Evidence ("{0}: {1}" -f $source, $errorText) -Subcategory 'Battery'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Battery health query reported an error, so health data may be incomplete.' -Evidence ("{0}: {1}" -f $source, $errorText) -Subcategory 'Battery'
         $issueCount++
     }
 

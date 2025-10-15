@@ -226,13 +226,13 @@ function Invoke-NetworkVpnAnalysis {
 
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'vpn-baseline'
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $category -Severity 'info' -Title 'VPN baseline artifact missing; VPN health unknown.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $category -Severity 'warning' -Title 'VPN baseline artifact missing; VPN health unknown.' -Subcategory 'Collection'
         return $category
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $category -Severity 'info' -Title 'VPN baseline payload unavailable or corrupted.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $category -Severity 'warning' -Title 'VPN baseline payload unavailable or corrupted.' -Subcategory 'Collection'
         return $category
     }
 
@@ -244,7 +244,7 @@ function Invoke-NetworkVpnAnalysis {
     if ($connections.Count -eq 0) {
         $summary = Get-VpnServiceStateSummary -Services $services
         $extra = [ordered]@{ detectedProfiles = 0; serviceStates = $summary }
-        Add-CategoryIssue -CategoryResult $category -Severity 'info' -Title 'No VPN profiles detected; remote access will fail on managed devices.' -Evidence $extra -Subcategory 'Profiles'
+        Add-CategoryIssue -CategoryResult $category -Severity 'warning' -Title 'No VPN profiles detected; remote access will fail on managed devices.' -Evidence $extra -Subcategory 'Profiles'
         return $category
     }
 

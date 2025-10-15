@@ -13,7 +13,7 @@ function Invoke-SystemPendingRebootChecks {
         Found = [bool]$artifact
     })
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Pending reboot inventory missing, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot inventory missing, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
         return
     }
 
@@ -22,7 +22,7 @@ function Invoke-SystemPendingRebootChecks {
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Pending reboot data unavailable, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot data unavailable, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
         return
     }
 
@@ -98,7 +98,7 @@ function Invoke-SystemPendingRebootChecks {
     }
 
     if ($fileRenameErrors.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to enumerate pending file rename operations, so a reboot requirement may be hidden and updates could remain blocked.' -Evidence (($fileRenameErrors | Select-Object -First 5) -join "`n") -Subcategory 'Pending Reboot'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to enumerate pending file rename operations, so a reboot requirement may be hidden and updates could remain blocked.' -Evidence (($fileRenameErrors | Select-Object -First 5) -join "`n") -Subcategory 'Pending Reboot'
     }
 
     if (($presentIndicators.Count -eq 0) -and -not $pendingFileRenames -and -not $nameMismatch -and -not $tcpMismatch) {

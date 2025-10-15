@@ -772,7 +772,7 @@ function Invoke-NetworkHeuristics {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Data (& $createConnectivityData $connectivityContext)
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Data (& $createConnectivityData $connectivityContext)
     }
 
     if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
@@ -893,7 +893,7 @@ function Invoke-NetworkHeuristics {
         })
 
         if ($neighborCount -eq 0) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
         } else {
             $neighborMap = @{}
             foreach ($neighbor in $lldpNeighbors) {
@@ -967,7 +967,7 @@ function Invoke-NetworkHeuristics {
                         if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel -and -not $evidence.Contains('ExpectedPort')) { $evidence['ExpectedLabel'] = [string]$expected.ExpectedLabel }
                         if ($expected.PSObject.Properties['Source'] -and $expected.Source) { $evidence['InventorySource'] = [string]$expected.Source }
 
-                        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory
+                        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory
                         continue
                     }
 
@@ -1046,11 +1046,11 @@ function Invoke-NetworkHeuristics {
                     }
                 }
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
@@ -1117,7 +1117,7 @@ function Invoke-NetworkHeuristics {
 
             foreach ($entry in $entries) {
                 if ($entry -and $entry.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.' -Evidence $entry.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.' -Evidence $entry.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
                     continue
                 }
 
@@ -1186,7 +1186,7 @@ function Invoke-NetworkHeuristics {
             $policies = ConvertTo-NetworkArray $payload.ClientPolicies
             foreach ($policy in $policies) {
                 if ($policy -and $policy.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.' -Evidence $policy.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.' -Evidence $policy.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
                     continue
                 }
 
@@ -1205,7 +1205,7 @@ function Invoke-NetworkHeuristics {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'DNS diagnostics not collected, so latency and name resolution issues may be missed.' -Subcategory 'DNS Resolution' -Data (& $createConnectivityData $connectivityContext)
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS diagnostics not collected, so latency and name resolution issues may be missed.' -Subcategory 'DNS Resolution' -Data (& $createConnectivityData $connectivityContext)
     }
 
     $outlookArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
@@ -1279,7 +1279,7 @@ function Invoke-NetworkHeuristics {
     if ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
         $adapters = ConvertTo-NetworkArray $adapterPayload.Adapters
         if ($adapters.Count -eq 1 -and ($adapters[0] -is [pscustomobject]) -and $adapters[0].PSObject.Properties['Error'] -and $adapters[0].Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
         } elseif ($adapters.Count -gt 0) {
             $upAdapters = $adapters | Where-Object { $_ -and $_.Status -eq 'Up' }
             if ($upAdapters.Count -gt 0) {
@@ -1288,10 +1288,10 @@ function Invoke-NetworkHeuristics {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
     }
 
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
@@ -1339,9 +1339,9 @@ function Invoke-NetworkHeuristics {
         })
 
         if (-not $lanPayload) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wired 802.1X diagnostics returned no payload, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
         } elseif ($lanPayload.PSObject.Properties['Error'] -and $lanPayload.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.' -Evidence $lanPayload.Error -Subcategory $wiredSubcategory
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wired 802.1X diagnostics unavailable, so port authentication posture is unknown.' -Evidence $lanPayload.Error -Subcategory $wiredSubcategory
         } else {
             $netshData = if ($lanPayload.PSObject.Properties['Netsh']) { $lanPayload.Netsh } else { $null }
             $interfaces = @()
@@ -1374,9 +1374,9 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($interfaceError) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.' -Evidence $interfaceError -Subcategory $wiredSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.' -Evidence $interfaceError -Subcategory $wiredSubcategory
             } elseif ($interfaces.Count -eq 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'No wired interfaces reported by netsh, so 802.1X status is unknown.' -Subcategory $wiredSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'No wired interfaces reported by netsh, so 802.1X status is unknown.' -Subcategory $wiredSubcategory
             } else {
                 foreach ($interface in $interfaces) {
                     if (-not $interface) { continue }
@@ -1457,7 +1457,7 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($certError) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Machine certificate inventory failed, so 802.1X certificate health is unknown.' -Evidence $certError -Subcategory $wiredSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Machine certificate inventory failed, so 802.1X certificate health is unknown.' -Evidence $certError -Subcategory $wiredSubcategory
             } else {
                 $nowUtc = (Get-Date).ToUniversalTime()
                 $validCerts = @()
@@ -1507,7 +1507,7 @@ function Invoke-NetworkHeuristics {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wired 802.1X diagnostics not collected, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wired 802.1X diagnostics not collected, so port authentication posture is unknown.' -Subcategory $wiredSubcategory
     }
 
     $wlanArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wlan'
@@ -1520,7 +1520,7 @@ function Invoke-NetworkHeuristics {
             HasPayload = [bool]$wlanPayload
         })
         if ($wlanPayload -and $wlanPayload.Error) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.' -Evidence $wlanPayload.Error -Subcategory 'Security'
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wireless diagnostics unavailable, so Wi-Fi security posture is unknown.' -Evidence $wlanPayload.Error -Subcategory 'Security'
         } else {
             $interfaces = @()
             $profiles = @()
@@ -1537,7 +1537,7 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($interfaces.Count -eq 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wireless interface inventory empty, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
             } else {
                 $connectedInterfaces = $interfaces | Where-Object { Test-WlanInterfaceConnected -Interface $_ }
                 if ($connectedInterfaces.Count -eq 0) {
@@ -1556,7 +1556,7 @@ function Invoke-NetworkHeuristics {
                         'netsh wlan show interfaces' = $interfaceSummaries.ToArray() -join ' | '
                     }
                     $remediation = 'Reconnect to the intended Wi-Fi network, then re-run wireless diagnostics after confirming "netsh wlan show interfaces" reports the adapter as connected.'
-                    Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Not connected to Wi-Fi, so wireless encryption state is unknown.' -Evidence $evidence -Subcategory 'Security' -Remediation $remediation
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Not connected to Wi-Fi, so wireless encryption state is unknown.' -Evidence $evidence -Subcategory 'Security' -Remediation $remediation
                 } else {
                     $primaryInterface = $connectedInterfaces | Select-Object -First 1
 
@@ -1879,7 +1879,7 @@ function Invoke-NetworkHeuristics {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
     }
 
     $dhcpFolderPath = if ($dhcpFolder) { $dhcpFolder } else { $null }

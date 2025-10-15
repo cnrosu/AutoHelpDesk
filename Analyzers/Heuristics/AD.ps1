@@ -36,7 +36,7 @@ function Invoke-ADHeuristics {
     $domainStatusInfo = Resolve-AdDomainStatus -Context $Context -AdPayload $adPayload
     if (-not $domainStatusInfo.Available) {
         Write-HeuristicDebug -Source 'AD' -Message 'Domain status unavailable; reporting collection issue'
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'AD health data unavailable, so Active Directory reachability is unknown.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'AD health data unavailable, so Active Directory reachability is unknown.' -Subcategory 'Collection'
         return $result
     }
 

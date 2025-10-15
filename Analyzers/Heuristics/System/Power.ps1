@@ -26,6 +26,6 @@ function Invoke-SystemPowerChecks {
             Add-CategoryNormal -CategoryResult $Result -Title 'Fast Startup disabled' -Subcategory 'Power Configuration'
         }
     } elseif ($payload -and $payload.FastStartup -and $payload.FastStartup.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to read Fast Startup configuration, leaving hybrid shutdown risks unchecked.' -Evidence $payload.FastStartup.Error -Subcategory 'Power Configuration'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to read Fast Startup configuration, leaving hybrid shutdown risks unchecked.' -Evidence $payload.FastStartup.Error -Subcategory 'Power Configuration'
     }
 }

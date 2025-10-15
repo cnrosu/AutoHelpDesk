@@ -65,7 +65,7 @@ function Invoke-StorageDiskHealthEvaluation {
                 Hostname = $env:COMPUTERNAME
                 Errors   = $errorDetails
             }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Disk health unavailable, so failing disks may go unnoticed.' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health' -Data $issueData
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Disk health unavailable, so failing disks may go unnoticed.' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health' -Data $issueData
         }
     }
 }

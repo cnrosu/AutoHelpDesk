@@ -53,11 +53,11 @@ function Invoke-StorageHeuristics {
     }
 
     if (-not $storageArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage inventory artifact missing, so storage health and wear cannot be evaluated.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Storage inventory artifact missing, so storage health and wear cannot be evaluated.' -Subcategory 'Collection'
     }
 
     if (-not $snapshotArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Storage snapshot artifact missing, so SMART status cannot be evaluated.' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Storage snapshot artifact missing, so SMART status cannot be evaluated.' -Subcategory 'Collection'
     }
 
     return $result

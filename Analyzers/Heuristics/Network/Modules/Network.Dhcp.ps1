@@ -169,7 +169,7 @@ function Invoke-DhcpAnalyzers {
         try {
             $result = & $analyzer.Script.FullName -InputFolder $InputFolder -CategoryResult $CategoryResult -Context $Context
         } catch {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title ("DHCP analyzer failed: {0}" -f $analyzer.Script.Name) -Evidence $_.Exception.Message -Subcategory 'DHCP'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title ("DHCP analyzer failed: {0}" -f $analyzer.Script.Name) -Evidence $_.Exception.Message -Subcategory 'DHCP'
             continue
         }
 

@@ -35,7 +35,7 @@ function Invoke-SystemPerformanceChecks {
 
     if ($payload -and $payload.TopCpuProcesses) {
         if (($payload.TopCpuProcesses | Where-Object { $_.Error }).Count -gt 0) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to enumerate running processes' -Subcategory 'Performance'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to enumerate running processes' -Subcategory 'Performance'
         } else {
             $topProcess = $payload.TopCpuProcesses | Select-Object -First 1
             if ($topProcess -and $topProcess.CPU -gt 0) {

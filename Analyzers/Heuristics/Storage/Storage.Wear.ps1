@@ -11,9 +11,9 @@ function Invoke-StorageWearEvaluation {
         if ($wearNode -is [pscustomobject] -and $wearNode.PSObject.Properties['Error']) {
             $errorMessage = [string]$wearNode.Error
             if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Evidence $errorMessage -Subcategory 'SMART Wear'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Evidence $errorMessage -Subcategory 'SMART Wear'
             } else {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART wear data unavailable, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
             }
         } else {
             $wearEntries = ConvertTo-StorageArray $wearNode
@@ -24,7 +24,7 @@ function Invoke-StorageWearEvaluation {
 
                 if ($entry.PSObject.Properties['Error'] -and -not [string]::IsNullOrWhiteSpace([string]$entry.Error)) {
                     $label = Get-StorageWearLabel -Entry $entry
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title ("Unable to query SMART wear for {0}, so SSD end-of-life risks may be hidden." -f $label) -Evidence $entry.Error -Subcategory 'SMART Wear'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title ("Unable to query SMART wear for {0}, so SSD end-of-life risks may be hidden." -f $label) -Evidence $entry.Error -Subcategory 'SMART Wear'
                     continue
                 }
 
@@ -77,6 +77,6 @@ function Invoke-StorageWearEvaluation {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART wear data not collected, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART wear data not collected, so SSD end-of-life risks may be hidden.' -Subcategory 'SMART Wear'
     }
 }

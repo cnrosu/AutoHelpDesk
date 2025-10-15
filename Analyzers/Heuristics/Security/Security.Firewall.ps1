@@ -925,9 +925,9 @@ function Invoke-SecurityFirewallChecks {
         }
 
         if ($ruleErrors.Count -gt 0) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.' -Evidence ($ruleErrors.ToArray()) -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/RuleErrors'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.' -Evidence ($ruleErrors.ToArray()) -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/RuleErrors'
         }
     } elseif ($firewallArtifact) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Firewall rule inventory missing, so port exposure checks could not run.' -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/MissingRules'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall rule inventory missing, so port exposure checks could not run.' -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/MissingRules'
     }
 }

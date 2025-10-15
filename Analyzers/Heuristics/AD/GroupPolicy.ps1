@@ -62,7 +62,7 @@ function Add-AdGroupPolicyEventLogFindings {
 
     $groupPolicyLog = $EventsPayload.GroupPolicy
     if ($groupPolicyLog.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to read Group Policy event log, so device policy failures may be hidden.' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to read Group Policy event log, so device policy failures may be hidden.' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy'
         return
     }
 
