@@ -50,7 +50,7 @@ function Invoke-PrintingHeuristics {
     if ($payload.Errors) {
         foreach ($error in $payload.Errors) {
             if ($error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Printing data collection warning, so printing security and reliability risks may be hidden.' -Evidence $error -Subcategory 'Collection'
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Printing data collection warning, so printing security and reliability risks may be hidden.' -Evidence $error -Subcategory 'Collection'
             }
         }
     }
