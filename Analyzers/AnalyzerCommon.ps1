@@ -80,7 +80,7 @@ function Write-HeuristicDebug {
         [hashtable]$Data
     )
 
-    $formatted = "DBG [{0}] {1}" -f $Source, $Message
+    $formatted = "[{0}] {1}" -f $Source, $Message
 
     if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
         $detailEntries = $Data.GetEnumerator() | Sort-Object Name
