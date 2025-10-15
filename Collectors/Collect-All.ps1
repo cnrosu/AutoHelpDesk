@@ -182,7 +182,6 @@ function Invoke-AllCollectors {
 
             try {
                 $output = $task.PS.EndInvoke($task.IAsync)
-                Write-Verbose ("Collector '{0}' finished successfully." -f $task.Path)
                 $resultsList.Add([pscustomobject]@{
                     Script  = $task.Path
                     Output  = $output
