@@ -33,6 +33,6 @@ function Invoke-OutlookConnectivityHeuristic {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Outlook data file inventory not collected, so oversized OST files may be missed.' -Subcategory 'Outlook Data Files'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Outlook data file inventory not collected, so oversized OST files may be missed.' -Subcategory 'Outlook Data Files'
     }
 }

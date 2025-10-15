@@ -43,7 +43,7 @@ function Invoke-SecurityDefenderChecks {
         } elseif ($payload -and $payload.Status -and $payload.Status.Error) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Unable to query Defender status, leaving antivirus protection gaps unverified.' -Evidence $payload.Status.Error -Subcategory 'Microsoft Defender'
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Defender artifact missing expected structure, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Defender artifact missing expected structure, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
         }
 
         if ($payload -and $payload.PSObject.Properties['Preferences']) {
@@ -143,6 +143,6 @@ function Invoke-SecurityDefenderChecks {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Defender artifact not collected, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Defender artifact not collected, leaving antivirus protection gaps unverified.' -Subcategory 'Microsoft Defender'
     }
 }

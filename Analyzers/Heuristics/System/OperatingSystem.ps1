@@ -270,7 +270,7 @@ function Invoke-SystemOperatingSystemChecks {
         Found = [bool]$systemArtifact
     })
     if (-not $systemArtifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System inventory artifact missing' -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System inventory artifact missing' -Subcategory 'Collection'
         return
     }
 
@@ -376,9 +376,9 @@ function Invoke-SystemOperatingSystemChecks {
             Add-CategoryCheck -CategoryResult $Result -Name 'Last boot time' -Status ([string]$os.LastBootUpTime)
         }
     } elseif ($payload -and $payload.OperatingSystem -and $payload.OperatingSystem.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to read OS inventory' -Evidence ($payload.OperatingSystem.Error) -Subcategory 'Operating System'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to read OS inventory' -Evidence ($payload.OperatingSystem.Error) -Subcategory 'Operating System'
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Operating system inventory not available' -Subcategory 'Operating System'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Operating system inventory not available' -Subcategory 'Operating System'
     }
 
     if ($payload -and $payload.ComputerSystem -and -not $payload.ComputerSystem.Error) {
@@ -388,7 +388,7 @@ function Invoke-SystemOperatingSystemChecks {
             Add-CategoryCheck -CategoryResult $Result -Name 'Physical memory (GB)' -Status ([string]$gb)
         }
     } elseif ($payload -and $payload.ComputerSystem -and $payload.ComputerSystem.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Unable to query computer system details' -Evidence $payload.ComputerSystem.Error -Subcategory 'Hardware Inventory'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to query computer system details' -Evidence $payload.ComputerSystem.Error -Subcategory 'Hardware Inventory'
     }
 
     if ($payload -and $payload.SystemInfoText -and -not ($payload.SystemInfoText.Error)) {

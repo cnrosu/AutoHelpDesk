@@ -26,7 +26,7 @@ function Invoke-SystemStartupChecks {
     }
 
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory unavailable, so excess or missing autoruns that slow logins or indicate incomplete data cannot be assessed.' -Subcategory 'Startup Programs'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Startup program inventory unavailable, so excess or missing autoruns that slow logins or indicate incomplete data cannot be assessed.' -Subcategory 'Startup Programs'
         return
     }
 
@@ -40,7 +40,7 @@ function Invoke-SystemStartupChecks {
         $errorEntries = @($entries | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error })
         if ($errorEntries.Count -gt 0) {
             $message = "Unable to enumerate all startup items ({0})." -f ($errorEntries[0].Error)
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory incomplete, so excess or missing autoruns that slow logins or indicate incomplete data may be overlooked.' -Evidence $message -Subcategory 'Startup Programs'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Startup program inventory incomplete, so excess or missing autoruns that slow logins or indicate incomplete data may be overlooked.' -Evidence $message -Subcategory 'Startup Programs'
         }
 
         $validEntries = @($entries | Where-Object { -not ($_.PSObject.Properties['Error'] -and $_.Error) })
@@ -80,6 +80,6 @@ function Invoke-SystemStartupChecks {
             Add-CategoryNormal -CategoryResult $Result -Title 'No startup entries detected' -Subcategory 'Startup Programs'
         }
     } elseif ($payload -and $payload.StartupCommands -eq $null) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Startup program inventory empty, so missing autoruns that slow logins or indicate incomplete data cannot be reviewed.' -Subcategory 'Startup Programs'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Startup program inventory empty, so missing autoruns that slow logins or indicate incomplete data cannot be reviewed.' -Subcategory 'Startup Programs'
     }
 }

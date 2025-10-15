@@ -128,9 +128,9 @@ function Invoke-SecurityAutorunChecks {
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidenceText -Subcategory 'Autorun Policies' -CheckId 'Security/AutorunPolicies'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Autorun policy artifact missing expected structure, so removable media autorun defenses are unknown.' -Subcategory 'Autorun Policies'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Autorun policy artifact missing expected structure, so removable media autorun defenses are unknown.' -Subcategory 'Autorun Policies'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Autorun policy artifact not collected, so removable media autorun defenses are unknown.' -Subcategory 'Autorun Policies'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Autorun policy artifact not collected, so removable media autorun defenses are unknown.' -Subcategory 'Autorun Policies'
     }
 }

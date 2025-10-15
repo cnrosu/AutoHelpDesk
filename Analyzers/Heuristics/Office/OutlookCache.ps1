@@ -33,6 +33,6 @@ function Invoke-OutlookCacheHeuristic {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Outlook cache inventory not collected, so oversized cache files may be missed.' -Subcategory 'Outlook Cache'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Outlook cache inventory not collected, so oversized cache files may be missed.' -Subcategory 'Outlook Cache'
     }
 }

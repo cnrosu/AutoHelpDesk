@@ -14,13 +14,13 @@ function Invoke-SystemWindowsSearchChecks {
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Windows Search snapshot missing, so indexing health is unknown.' -Evidence 'windows-search.json payload was empty or malformed.' -Subcategory 'Windows Search Indexing'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search snapshot missing, so indexing health is unknown.' -Evidence 'windows-search.json payload was empty or malformed.' -Subcategory 'Windows Search Indexing'
         return
     }
 
     if ($payload.PSObject.Properties['Error'] -and $payload.Error) {
         $evidence = "Collector reported error: {0}" -f $payload.Error
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Windows Search snapshot failed to collect, so indexing health is unknown.' -Evidence $evidence -Subcategory 'Windows Search Indexing'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search snapshot failed to collect, so indexing health is unknown.' -Evidence $evidence -Subcategory 'Windows Search Indexing'
         return
     }
 

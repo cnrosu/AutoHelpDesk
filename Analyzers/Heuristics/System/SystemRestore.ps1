@@ -17,7 +17,7 @@ function Invoke-SystemRestoreChecks {
     $subcategory = 'System Restore'
 
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore inventory missing, so recovery status cannot be verified when troubleshooting rollbacks.' -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore inventory missing, so recovery status cannot be verified when troubleshooting rollbacks.' -Subcategory $subcategory
         return
     }
 
@@ -27,7 +27,7 @@ function Invoke-SystemRestoreChecks {
     })
 
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore data unavailable, so recovery status cannot be verified when troubleshooting rollbacks.' -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore data unavailable, so recovery status cannot be verified when troubleshooting rollbacks.' -Subcategory $subcategory
         return
     }
 
@@ -47,7 +47,7 @@ function Invoke-SystemRestoreChecks {
     }
 
     if ($configError) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore registry configuration unavailable, so protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence ("${configSource}: $configError") -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore registry configuration unavailable, so protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence ("${configSource}: $configError") -Subcategory $subcategory
     }
 
     $driveConfigs = @()
@@ -75,7 +75,7 @@ function Invoke-SystemRestoreChecks {
     }
 
     if ($driveErrors.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore drive settings unavailable, so per-volume protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence (($driveErrors | Select-Object -First 5) -join "`n") -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore drive settings unavailable, so per-volume protection status cannot be confirmed before troubleshooting rollbacks.' -Evidence (($driveErrors | Select-Object -First 5) -join "`n") -Subcategory $subcategory
     }
 
     $restorePoints = @()
@@ -108,7 +108,7 @@ function Invoke-SystemRestoreChecks {
     }
 
     if ($restorePointError) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore points could not be enumerated, so available rollbacks may be hidden during troubleshooting.' -Evidence ("${restorePointSource}: $restorePointError") -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore points could not be enumerated, so available rollbacks may be hidden during troubleshooting.' -Evidence ("${restorePointSource}: $restorePointError") -Subcategory $subcategory
     }
 
     $globalDisabled = $false
@@ -263,6 +263,6 @@ function Invoke-SystemRestoreChecks {
     }
 
     if (-not $config -and -not $driveConfigured -and $restorePointCount -eq 0 -and -not $restorePointError) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'System Restore status could not be determined, so rollbacks might be unavailable when recovering from issues.' -Subcategory $subcategory
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System Restore status could not be determined, so rollbacks might be unavailable when recovering from issues.' -Subcategory $subcategory
     }
 }

@@ -140,7 +140,7 @@ function Invoke-SystemWindows11UpgradeChecks {
     Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved system artifact' -Data ([ordered]@{ Found = [bool]$systemArtifact })
 
     if (-not $systemArtifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Windows 11 readiness data missing, so upgrade blockers may be hidden.' -Subcategory 'Windows 11 Upgrade'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows 11 readiness data missing, so upgrade blockers may be hidden.' -Subcategory 'Windows 11 Upgrade'
         return
     }
 

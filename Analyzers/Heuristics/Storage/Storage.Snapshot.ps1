@@ -11,7 +11,7 @@ function Invoke-StorageSnapshotEvaluation {
     if ($smartData -is [pscustomobject] -and $smartData.PSObject.Properties['Error']) {
         $errorDetail = $smartData.Error
         if (-not [string]::IsNullOrWhiteSpace($errorDetail)) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'SMART status unavailable, so imminent drive failure may be missed.' -Evidence $errorDetail -Subcategory 'SMART'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMART status unavailable, so imminent drive failure may be missed.' -Evidence $errorDetail -Subcategory 'SMART'
         }
         return
     }

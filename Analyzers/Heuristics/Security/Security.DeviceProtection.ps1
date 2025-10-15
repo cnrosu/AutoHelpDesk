@@ -302,7 +302,7 @@ function Invoke-SecurityWdacChecks {
         if ($payload -and $payload.SmartAppControl) {
             $entry = $payload.SmartAppControl
             if ($entry.Error) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
             } elseif ($entry.Values) {
                 foreach ($prop in $entry.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
@@ -329,9 +329,9 @@ function Invoke-SecurityWdacChecks {
         } elseif ($EvaluationContext.IsWindows11) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($smartAppState -ne $null) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control'
     }
 }

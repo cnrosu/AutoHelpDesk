@@ -24,7 +24,7 @@ function Invoke-ServiceCheckWindowsSearch {
         if ($IsWorkstation) {
             Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search set to Manual and stopped' -Evidence $title -Subcategory 'Windows Search Service'
         } elseif ($IsServer) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Windows Search manual start and currently stopped' -Evidence $title -Subcategory 'Windows Search Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows Search manual start and currently stopped' -Evidence $title -Subcategory 'Windows Search Service'
         } else {
             Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Windows Search manual start and currently stopped' -Evidence $title -Subcategory 'Windows Search Service'
         }
@@ -120,7 +120,7 @@ function Invoke-ServiceCheckPrintSpooler {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'Spooler'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Print Spooler service missing' -Evidence 'Service entry not found; printing features unavailable.' -Subcategory 'Print Spooler Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler service missing' -Evidence 'Service entry not found; printing features unavailable.' -Subcategory 'Print Spooler Service'
         return
     }
 
@@ -136,7 +136,7 @@ function Invoke-ServiceCheckPrintSpooler {
 
     $note = if ($IsWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing functionality will be unavailable while stopped.' }
     $evidence = "Status: {0}; StartType: {1}; Note: {2}" -f $service.Status, $service.StartMode, $note
-    Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Print Spooler not running' -Evidence $evidence -Subcategory 'Print Spooler Service'
+    Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler not running' -Evidence $evidence -Subcategory 'Print Spooler Service'
 }
 
 function Invoke-ServiceCheckRpc {
@@ -215,7 +215,7 @@ function Invoke-ServiceCheckWinHttpAutoProxy {
         if ($ProxyInfo.HasSystemProxy) {
             Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'WinHTTP Auto Proxy disabled while a proxy is configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'WinHTTP Auto Proxy disabled' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'WinHTTP Auto Proxy disabled' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
         }
     } else {
         Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy service in unexpected state' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
@@ -254,7 +254,7 @@ function Invoke-ServiceCheckBits {
             $manualWorkstationEvidence = 'BITS service stopped; configured for manual start on workstation.'
             Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $manualWorkstationTitle -Evidence $manualWorkstationEvidence -Subcategory 'BITS Service'
         } elseif ($service.StatusNormalized -ne 'running') {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'BITS manual start and currently stopped' -Evidence $evidence -Subcategory 'BITS Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'BITS manual start and currently stopped' -Evidence $evidence -Subcategory 'BITS Service'
         }
     }
 }
@@ -286,7 +286,7 @@ function Invoke-ServiceCheckOfficeClickToRun {
         if ($IsWorkstation) {
             Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Office Click-to-Run not set to automatic on workstation' -Evidence $evidence -Subcategory 'Office Click-to-Run'
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Office Click-to-Run manual/disabled on server' -Evidence $evidence -Subcategory 'Office Click-to-Run'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Office Click-to-Run manual/disabled on server' -Evidence $evidence -Subcategory 'Office Click-to-Run'
         }
     }
 }

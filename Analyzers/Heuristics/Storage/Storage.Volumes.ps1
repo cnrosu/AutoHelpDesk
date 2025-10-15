@@ -251,7 +251,7 @@ function Invoke-StorageVolumeEvaluation {
                 Hostname = $env:COMPUTERNAME
                 Errors   = $errorDetails
             }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space' -Data $issueData
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Volume inventory unavailable, so storage depletion risks may be hidden.' -Evidence ($errorDetails -join "`n") -Subcategory 'Free Space' -Data $issueData
         }
     }
 }

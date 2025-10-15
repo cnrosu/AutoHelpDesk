@@ -34,7 +34,7 @@ function Invoke-PrintingHeuristics {
         Found = [bool]$printingArtifact
     })
     if (-not $printingArtifact) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing artifact not collected, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title "Printing artifact not collected, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
         return $result
     }
 
@@ -43,7 +43,7 @@ function Invoke-PrintingHeuristics {
         HasPayload = [bool]$payload
     })
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title "Printing payload missing, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title "Printing payload missing, so printing security and reliability risks can't be evaluated." -Subcategory 'Collection'
         return $result
     }
 

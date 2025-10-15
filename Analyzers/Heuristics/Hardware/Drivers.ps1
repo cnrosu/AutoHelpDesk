@@ -20,7 +20,7 @@ function Invoke-HardwareDriverChecks {
     })
 
     if (-not $driversArtifact -and $msinfoDriverCount -eq 0) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Driver inventory artifact missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title "Driver inventory artifact missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
         $issueCount++
         return [pscustomobject]@{ Completed = $false; IssueCount = $issueCount }
     }
@@ -31,7 +31,7 @@ function Invoke-HardwareDriverChecks {
     })
 
     if (-not $payload -and $msinfoDriverCount -eq 0) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Driver inventory payload missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title "Driver inventory payload missing, so Device Manager issues can't be evaluated." -Subcategory 'Collection'
         $issueCount++
         return [pscustomobject]@{ Completed = $false; IssueCount = $issueCount }
     }
@@ -51,7 +51,7 @@ function Invoke-HardwareDriverChecks {
     if ($payload.DriverQuery -and $payload.DriverQuery.PSObject.Properties['Error'] -and $payload.DriverQuery.Error) {
         $source = if ($payload.DriverQuery.PSObject.Properties['Source']) { [string]$payload.DriverQuery.Source } else { 'driverquery.exe' }
         $evidence = if ($payload.DriverQuery.Error) { [string]$payload.DriverQuery.Error } else { 'Unknown error' }
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Driver inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title "Driver inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
         $issueCount++
         return [pscustomobject]@{ Completed = $false; IssueCount = $issueCount }
     }
@@ -59,7 +59,7 @@ function Invoke-HardwareDriverChecks {
     if ($payload.PnpProblems -and $payload.PnpProblems.PSObject.Properties['Error'] -and $payload.PnpProblems.Error) {
         $source = if ($payload.PnpProblems.PSObject.Properties['Source']) { [string]$payload.PnpProblems.Source } else { 'pnputil.exe' }
         $evidence = if ($payload.PnpProblems.Error) { [string]$payload.PnpProblems.Error } else { 'Unknown error' }
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title "Problem device inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title "Problem device inventory command failed, so Device Manager issues may be hidden." -Evidence ("{0}: {1}" -f $source, $evidence) -Subcategory 'Collection'
         $issueCount++
     }
 

@@ -18,13 +18,13 @@ function Invoke-OneDriveHeuristic {
     })
 
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive collector missing, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'OneDrive collector missing, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
         return
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive payload missing, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'OneDrive payload missing, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
         return
     }
 
@@ -34,12 +34,12 @@ function Invoke-OneDriveHeuristic {
     })
 
     if (-not $state) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive state unavailable, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'OneDrive state unavailable, so cloud file sync health is unknown.' -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
         return
     }
 
     if ($state.PSObject.Properties['Error']) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'OneDrive state collection failed, so cloud file sync health is unknown.' -Evidence $state.Error -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'OneDrive state collection failed, so cloud file sync health is unknown.' -Evidence $state.Error -Subcategory 'OneDrive' -Remediation 'Re-run collectors with OneDrive signed in to capture sync health signals.'
         return
     }
 
