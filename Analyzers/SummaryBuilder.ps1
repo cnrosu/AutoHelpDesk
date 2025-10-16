@@ -455,38 +455,33 @@ function Get-AnalyzerSummary {
         MdmEnrollment   = $null
     }
 
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    if ($systemArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-        if ($payload) {
-            if ($payload.SystemInfoText) {
-                $systemInfoText = $payload.SystemInfoText
-                if ($systemInfoText -isnot [string]) {
-                    if ($systemInfoText -is [System.Collections.IEnumerable]) {
-                        $systemInfoText = ($systemInfoText -join "`n")
-                    } else {
-                        $systemInfoText = [string]$systemInfoText
-                    }
-                }
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    if ($msinfoIdentity) {
+        if ($msinfoIdentity.DeviceName) {
+            $summary.DeviceName = $msinfoIdentity.DeviceName
+        }
 
-                if ($systemInfoText) {
-                    $summary.DeviceName = Parse-HostNameFromSystemInfo -SystemInfoText $systemInfoText
-                }
-            }
+        if ($msinfoIdentity.OSName) {
+            $summary.OperatingSystem = $msinfoIdentity.OSName
+            $summary.IsWindowsServer = Test-IsWindowsServer -Caption $msinfoIdentity.OSName
+        }
 
-            if ($payload.OperatingSystem -and -not $payload.OperatingSystem.Error) {
-                $os = $payload.OperatingSystem
-                $summary.OperatingSystem = $os.Caption
-                $summary.OSVersion = $os.Version
-                $summary.OSBuild = $os.BuildNumber
-                $summary.IsWindowsServer = Test-IsWindowsServer -Caption $os.Caption
-            }
+        if ($msinfoIdentity.OSVersion) {
+            $summary.OSVersion = $msinfoIdentity.OSVersion
+        } elseif ($msinfoIdentity.OSVersionRaw) {
+            $summary.OSVersion = $msinfoIdentity.OSVersionRaw
+        }
 
-            if ($payload.ComputerSystem -and -not $payload.ComputerSystem.Error) {
-                $cs = $payload.ComputerSystem
-                if ($cs.Domain) { $summary.Domain = $cs.Domain }
-                if ($null -ne $cs.PartOfDomain) { $summary.IsDomainJoined = [bool]$cs.PartOfDomain }
-            }
+        if ($msinfoIdentity.OSBuild) {
+            $summary.OSBuild = $msinfoIdentity.OSBuild
+        }
+
+        if ($msinfoIdentity.Domain) {
+            $summary.Domain = $msinfoIdentity.Domain
+        }
+
+        if ($null -ne $msinfoIdentity.PartOfDomain) {
+            $summary.IsDomainJoined = [bool]$msinfoIdentity.PartOfDomain
         }
     }
 

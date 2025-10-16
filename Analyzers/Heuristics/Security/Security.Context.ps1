@@ -8,21 +8,30 @@ function New-SecurityEvaluationContext {
     $isWindows11 = $false
     $systemPayload = $null
 
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    Write-HeuristicDebug -Source 'Security' -Message 'Resolved system artifact' -Data ([ordered]@{
-        Found = [bool]$systemArtifact
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    Write-HeuristicDebug -Source 'Security' -Message 'Resolved msinfo system identity' -Data ([ordered]@{
+        Found = [bool]$msinfoIdentity
     })
-    if ($systemArtifact) {
-        $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-        Write-HeuristicDebug -Source 'Security' -Message 'Evaluating system payload for OS details' -Data ([ordered]@{
-            HasPayload = [bool]$systemPayload
-        })
-        if ($systemPayload -and $systemPayload.OperatingSystem -and -not $systemPayload.OperatingSystem.Error) {
-            $operatingSystem = $systemPayload.OperatingSystem
-            if ($operatingSystem.Caption -and $operatingSystem.Caption -match 'Windows\s*11') {
-                $isWindows11 = $true
-            }
+    if ($msinfoIdentity) {
+        $caption = $msinfoIdentity.OSName
+        $version = if ($msinfoIdentity.OSVersion) { $msinfoIdentity.OSVersion } else { $msinfoIdentity.OSVersionRaw }
+        $build = $msinfoIdentity.OSBuild
+        $architecture = $msinfoIdentity.OSArchitecture
+        $displayVersion = $msinfoIdentity.DisplayVersion
+
+        $operatingSystem = [pscustomobject]@{
+            Caption        = $caption
+            Version        = $version
+            BuildNumber    = $build
+            OSArchitecture = $architecture
+            DisplayVersion = $displayVersion
         }
+
+        if ($caption -and $caption -match 'Windows\s*11') {
+            $isWindows11 = $true
+        }
+
+        $systemPayload = [pscustomobject]@{ OperatingSystem = $operatingSystem }
     }
 
     $securityServicesRunning = @()

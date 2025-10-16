@@ -10,17 +10,14 @@ function Resolve-AdDomainStatus {
     }
 
     if (-not $domainStatus) {
-        Write-HeuristicDebug -Source 'AD' -Message 'Falling back to system artifact for domain status'
-        $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-        if ($systemArtifact) {
-            $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-            if ($systemPayload -and $systemPayload.ComputerSystem -and -not $systemPayload.ComputerSystem.Error) {
-                $domainStatus = [pscustomobject]@{
-                    DomainJoined = $systemPayload.ComputerSystem.PartOfDomain
-                    Domain       = $systemPayload.ComputerSystem.Domain
-                    Forest       = $null
-                    DomainRole   = if ($systemPayload.ComputerSystem.PSObject.Properties['DomainRole']) { $systemPayload.ComputerSystem.DomainRole } else { $null }
-                }
+        Write-HeuristicDebug -Source 'AD' -Message 'Falling back to msinfo32 summary for domain status'
+        $msinfoDomain = Get-MsinfoDomainContext -Context $Context
+        if ($msinfoDomain) {
+            $domainStatus = [pscustomobject]@{
+                DomainJoined = $msinfoDomain.PartOfDomain
+                Domain       = $msinfoDomain.Domain
+                Forest       = $null
+                DomainRole   = $msinfoDomain.DomainRole
             }
         }
     }

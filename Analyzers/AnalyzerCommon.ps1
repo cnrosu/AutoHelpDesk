@@ -688,6 +688,411 @@ function Get-MsinfoRowValue {
     return $null
 }
 
+function ConvertTo-MsinfoRowObject {
+    param(
+        [Parameter(Mandatory)]
+        $Row
+    )
+
+    if (-not $Row) { return $null }
+
+    if ($Row -is [pscustomobject] -or $Row -is [hashtable] -or $Row -is [System.Collections.IDictionary]) {
+        $ordered = [ordered]@{}
+
+        if ($Row -is [System.Collections.IDictionary]) {
+            foreach ($key in $Row.Keys) {
+                if ([string]::IsNullOrWhiteSpace($key)) { continue }
+                $value = $Row[$key]
+                if ($value -is [string]) { $value = $value.Trim() }
+                $ordered[$key] = $value
+            }
+        } else {
+            foreach ($prop in $Row.PSObject.Properties) {
+                if (-not $prop -or -not $prop.Name) { continue }
+                $name = [string]$prop.Name
+                if (-not $name) { continue }
+                $value = $prop.Value
+                if ($value -is [string]) { $value = $value.Trim() }
+                $ordered[$name] = $value
+            }
+        }
+
+        return [pscustomobject]$ordered
+    }
+
+    return [pscustomobject]@{ Value = $Row }
+}
+
+function Get-MsinfoSectionRows {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        [Parameter(Mandatory)]
+        [string[]]$Names
+    )
+
+    $msinfoPayload = Get-MsinfoArtifactPayload -Context $Context
+    if (-not $msinfoPayload) { return $null }
+
+    $table = Get-MsinfoSectionTable -Payload $msinfoPayload -Names $Names
+    if (-not $table -or -not $table.Rows -or $table.RowCount -eq 0) { return $null }
+
+    $rows = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($row in $table.Rows) {
+        if (-not $row) { continue }
+        $converted = ConvertTo-MsinfoRowObject -Row $row
+        if ($converted) { $rows.Add($converted) | Out-Null }
+    }
+
+    if ($rows.Count -eq 0) { return $null }
+
+    return [pscustomobject]@{
+        Source      = 'msinfo32'
+        SectionName = $table.Name
+        Rows        = $rows.ToArray()
+        RowCount    = $rows.Count
+    }
+}
+
+function Get-MsinfoSystemSummarySection {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $section = Get-MsinfoSectionRows -Context $Context -Names @('system summary')
+    if (-not $section) { return $null }
+
+    $ordered = New-Object System.Collections.Specialized.OrderedDictionary
+    $lookup = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $rowLookup = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($row in $section.Rows) {
+        if (-not $row) { continue }
+        $key = Get-MsinfoRowValue -Row $row -Names @('Item', 'Name')
+        if (-not $key) { continue }
+        $value = Get-MsinfoRowValue -Row $row -Names @('Value')
+        if (-not $ordered.Contains($key)) { $ordered.Add($key, $value) }
+        $lookup[$key] = $value
+        $rowLookup[$key] = $row
+    }
+
+    $section | Add-Member -NotePropertyName 'Values' -NotePropertyValue $ordered -Force
+    $section | Add-Member -NotePropertyName 'Lookup' -NotePropertyValue $lookup -Force
+    $section | Add-Member -NotePropertyName 'RowsByKey' -NotePropertyValue $rowLookup -Force
+
+    return $section
+}
+
+function Get-MsinfoSystemSummaryValue {
+    param(
+        [Parameter(Mandatory)]
+        $Summary,
+
+        [Parameter(Mandatory)]
+        [string[]]$Names
+    )
+
+    if (-not $Summary) { return $null }
+    $lookup = $Summary.Lookup
+    if (-not $lookup) { return $null }
+
+    foreach ($name in $Names) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($lookup.ContainsKey($name)) {
+            $value = $lookup[$name]
+            if ($value -is [string]) { return $value.Trim() }
+            return $value
+        }
+    }
+
+    return $null
+}
+
+function ConvertTo-MsinfoByteCount {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+    $text = $Value.Trim()
+    if (-not $text) { return $null }
+
+    $number = $null
+    $unit = $null
+
+    $pattern = '^(?<number>[0-9,\.]+)\s*(?<unit>[A-Za-z]+)' 
+    $match = [regex]::Match($text, $pattern)
+    if ($match.Success) {
+        $numberText = $match.Groups['number'].Value.Replace(',', '')
+        if (-not [string]::IsNullOrWhiteSpace($numberText)) {
+            try {
+                $number = [double]::Parse($numberText, [System.Globalization.CultureInfo]::InvariantCulture)
+            } catch {
+                $number = $null
+            }
+        }
+        $unit = $match.Groups['unit'].Value.ToLowerInvariant()
+    } elseif ($text -match '^(?<digits>\d+)$') {
+        $digits = $matches['digits']
+        if ($digits) {
+            try { return [uint64]$digits } catch { return $null }
+        }
+    }
+
+    if ($null -eq $number -or -not $unit) { return $null }
+
+    $multiplier = switch -regex ($unit) {
+        '^(b|byte|bytes)$'       { 1 }
+        '^(kb|kilobyte|kilobytes)$' { 1KB }
+        '^(mb|megabyte|megabytes)$' { 1MB }
+        '^(gb|gigabyte|gigabytes)$' { 1GB }
+        '^(tb|terabyte|terabytes)$' { 1TB }
+        default { $null }
+    }
+
+    if ($null -eq $multiplier) { return $null }
+
+    try {
+        return [uint64]([math]::Round($number * $multiplier))
+    } catch {
+        return $null
+    }
+}
+
+function ConvertTo-MsinfoDomainRoleInfo {
+    param([string]$Label)
+
+    if ([string]::IsNullOrWhiteSpace($Label)) {
+        return [pscustomobject]@{ Role = $null; PartOfDomain = $null }
+    }
+
+    $normalized = $Label.ToLowerInvariant()
+    switch ($normalized) {
+        { $_ -match 'stand-?alone workstation' } { return [pscustomobject]@{ Role = 0; PartOfDomain = $false } }
+        { $_ -match 'member workstation' }       { return [pscustomobject]@{ Role = 1; PartOfDomain = $true } }
+        { $_ -match 'stand-?alone server' }      { return [pscustomobject]@{ Role = 2; PartOfDomain = $false } }
+        { $_ -match 'member server' }            { return [pscustomobject]@{ Role = 3; PartOfDomain = $true } }
+        { $_ -match 'backup domain controller' } { return [pscustomobject]@{ Role = 4; PartOfDomain = $true } }
+        { $_ -match 'primary domain controller' }{ return [pscustomobject]@{ Role = 5; PartOfDomain = $true } }
+    }
+
+    return [pscustomobject]@{ Role = $null; PartOfDomain = $null }
+}
+
+function Get-MsinfoDomainContext {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+
+        $Summary
+    )
+
+    $summaryToUse = $Summary
+    if (-not $summaryToUse) {
+        $summaryToUse = Get-MsinfoSystemSummarySection -Context $Context
+    }
+
+    if (-not $summaryToUse) { return $null }
+
+    $domain = Get-MsinfoSystemSummaryValue -Summary $summaryToUse -Names @('Domain')
+    $workgroup = Get-MsinfoSystemSummaryValue -Summary $summaryToUse -Names @('Workgroup')
+    $domainRoleLabel = Get-MsinfoSystemSummaryValue -Summary $summaryToUse -Names @('Domain Role')
+    $roleInfo = ConvertTo-MsinfoDomainRoleInfo -Label $domainRoleLabel
+
+    $partOfDomain = $roleInfo.PartOfDomain
+    if ($partOfDomain -eq $null -and $domain) {
+        $domainTrim = $domain.Trim()
+        if ($domainTrim) {
+            if ($domainTrim.Equals('workgroup', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $partOfDomain = $false
+            } elseif ($domainTrim.Equals('local', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $partOfDomain = $false
+            } elseif ($domainTrim -match '(?i)workgroup') {
+                $partOfDomain = $false
+            } else {
+                $partOfDomain = $true
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Domain          = if ($domain) { $domain } else { $null }
+        Workgroup       = if ($workgroup) { $workgroup } else { $null }
+        DomainRole      = $roleInfo.Role
+        DomainRoleLabel = $domainRoleLabel
+        PartOfDomain    = $partOfDomain
+    }
+}
+
+function Get-MsinfoSecuritySummary {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $summary = Get-MsinfoSystemSummarySection -Context $Context
+    if (-not $summary) { return $null }
+
+    $valueFor = {
+        param([string[]]$Names)
+        return Get-MsinfoSystemSummaryValue -Summary $summary -Names $Names
+    }
+
+    $result = [ordered]@{
+        Source                               = 'msinfo32'
+        SectionName                          = $summary.SectionName
+        SecureBootState                      = & $valueFor @('Secure Boot State')
+        KernelDmaProtection                  = & $valueFor @('Kernel DMA Protection')
+        VirtualizationBasedSecurity          = & $valueFor @('Virtualization-based security', 'Virtualization-based Security')
+        VirtualizationBasedSecurityServices  = & $valueFor @('Virtualization-based Security Services Running', 'Virtualization-based security Services Running')
+        VirtualizationBasedSecurityConfigured = & $valueFor @('Virtualization-based Security Services Configured')
+        VirtualizationBasedSecurityRequired  = & $valueFor @('Virtualization-based Security Required Security Properties')
+        VirtualizationBasedSecurityAvailable = & $valueFor @('Virtualization-based Security Available Security Properties')
+        DeviceGuardSecurityServicesRunning   = & $valueFor @('Device Guard Security Services Running')
+        DeviceGuardSecurityServicesConfigured = & $valueFor @('Device Guard Security Services Configured')
+        DeviceGuardRequiredSecurityProperties = & $valueFor @('Device Guard Required Security Properties')
+        DeviceGuardAvailableSecurityProperties = & $valueFor @('Device Guard Available Security Properties')
+        DeviceGuardCodeIntegrityPolicy       = & $valueFor @('Device Guard Code Integrity Policy')
+        DeviceGuardUserModeCodeIntegrityPolicy = & $valueFor @('Device Guard User Mode Code Integrity Policy')
+        WindowsDefenderApplicationControlPolicy = & $valueFor @('Windows Defender Application Control policy', 'Windows Defender Application Control Policy')
+        WindowsDefenderApplicationControlUserModePolicy = & $valueFor @('Windows Defender Application Control user mode policy', 'Windows Defender Application Control User Mode Policy')
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-MsinfoStorageDisksSection {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    return Get-MsinfoSectionRows -Context $Context -Names @('components\storage\disks', 'storage\disks', 'disks')
+}
+
+function Get-MsinfoStorageDrivesSection {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    return Get-MsinfoSectionRows -Context $Context -Names @('components\storage\drives', 'storage\drives', 'drives')
+}
+
+function Get-MsinfoNetworkAdapterSection {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    return Get-MsinfoSectionRows -Context $Context -Names @('components\network\adapter', 'network\adapter', 'adapter')
+}
+
+function Get-MsinfoPrinterSection {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    return Get-MsinfoSectionRows -Context $Context -Names @('components\printer', 'printer', 'printers')
+}
+
+function Get-MsinfoProcessors {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $section = Get-MsinfoSectionRows -Context $Context -Names @('components\processor', 'processor', 'processors')
+    if (-not $section) { return $null }
+
+    return $section.Rows
+}
+
+function ConvertTo-MsinfoVersionInfo {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return [pscustomobject]@{ Version = $null; Build = $null }
+    }
+
+    $text = $Value.Trim()
+    $version = $null
+    $build = $null
+
+    $versionMatch = [regex]::Match($text, '^(?<version>\d+(?:\.\d+){1,3})')
+    if ($versionMatch.Success) { $version = $versionMatch.Groups['version'].Value }
+
+    $buildMatch = [regex]::Match($text, '(?i)build\s*(?<build>\d+)')
+    if ($buildMatch.Success) { $build = $buildMatch.Groups['build'].Value }
+
+    if (-not $build) {
+        $secondaryMatch = [regex]::Match($text, '(?<build>\d{4,})$')
+        if ($secondaryMatch.Success) { $build = $secondaryMatch.Groups['build'].Value }
+    }
+
+    return [pscustomobject]@{ Version = $version; Build = $build }
+}
+
+function Get-MsinfoSystemIdentity {
+    param(
+        [Parameter(Mandatory)]
+        $Context
+    )
+
+    $summary = Get-MsinfoSystemSummarySection -Context $Context
+    if (-not $summary) { return $null }
+
+    $domainContext = Get-MsinfoDomainContext -Context $Context -Summary $summary
+
+    $deviceName = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('System Name', 'Host Name', 'Computer Name')
+    $osName = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('OS Name', 'Operating System')
+    $versionValue = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('Version', 'OS Version')
+    $displayVersion = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('Display Version')
+    $architecture = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('System Type', 'OS Architecture')
+    $manufacturer = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('System Manufacturer', 'Manufacturer')
+    $model = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('System Model', 'Model')
+    $systemSku = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('System SKU Number', 'System SKU')
+    $biosVersion = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('BIOS Version/Date', 'BIOS Version')
+    $biosMode = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('BIOS Mode')
+    $installDate = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('Original Install Date', 'Install Date')
+    $totalPhysicalMemory = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('Total Physical Memory', 'TotalPhysicalMemory')
+    $installedPhysicalMemory = Get-MsinfoSystemSummaryValue -Summary $summary -Names @('Installed Physical Memory (RAM)', 'InstalledPhysicalMemory')
+
+    $versionInfo = ConvertTo-MsinfoVersionInfo -Value $versionValue
+
+    $totalPhysicalBytes = ConvertTo-MsinfoByteCount -Value $totalPhysicalMemory
+    $installedPhysicalBytes = ConvertTo-MsinfoByteCount -Value $installedPhysicalMemory
+
+    return [pscustomobject]@{
+        Source                    = 'msinfo32'
+        Summary                   = $summary
+        DeviceName                = $deviceName
+        OSName                    = $osName
+        OSVersionRaw              = $versionValue
+        OSVersion                 = $versionInfo.Version
+        OSBuild                   = $versionInfo.Build
+        DisplayVersion            = $displayVersion
+        OSArchitecture            = $architecture
+        Manufacturer              = $manufacturer
+        Model                     = $model
+        SystemSku                 = $systemSku
+        BiosVersion               = $biosVersion
+        BiosMode                  = $biosMode
+        InstallDate               = $installDate
+        TotalPhysicalMemory       = $totalPhysicalMemory
+        TotalPhysicalMemoryBytes  = $totalPhysicalBytes
+        InstalledPhysicalMemory   = $installedPhysicalMemory
+        InstalledPhysicalMemoryBytes = $installedPhysicalBytes
+        Domain                    = if ($domainContext) { $domainContext.Domain } else { $null }
+        Workgroup                 = if ($domainContext) { $domainContext.Workgroup } else { $null }
+        DomainRole                = if ($domainContext) { $domainContext.DomainRole } else { $null }
+        DomainRoleLabel           = if ($domainContext) { $domainContext.DomainRoleLabel } else { $null }
+        PartOfDomain              = if ($domainContext) { $domainContext.PartOfDomain } else { $null }
+    }
+}
+
 function Get-MsinfoServicesPayload {
     param(
         [Parameter(Mandatory)]

@@ -1,24 +1,3 @@
-function Get-HardwareSystemInfoValue {
-    param(
-        [string[]]$Lines,
-        [string]$Label
-    )
-
-    if (-not $Lines -or -not $Label) { return $null }
-
-    $pattern = '^(?i)\s*{0}\s*:\s*(?<value>.+)$' -f [regex]::Escape($Label)
-    foreach ($line in $Lines) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $match = [regex]::Match($line, $pattern)
-        if ($match.Success) {
-            $value = $match.Groups['value'].Value.Trim()
-            if ($value) { return $value }
-        }
-    }
-
-    return $null
-}
-
 function Test-HardwareDictionaryKey {
     param(
         $Dictionary,
@@ -55,14 +34,18 @@ function Get-HardwareInventorySummary {
         $Context
     )
 
-    $systemArtifact   = Get-AnalyzerArtifact -Context $Context -Name 'system'
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    $msinfoSummary = $null
+    if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['Summary']) {
+        $msinfoSummary = $msinfoIdentity.Summary
+    } else {
+        $msinfoSummary = Get-MsinfoSystemSummarySection -Context $Context
+    }
+
+    $processorRows = Get-MsinfoProcessors -Context $Context
+
     $firmwareArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firmware'
     $tpmArtifact      = Get-AnalyzerArtifact -Context $Context -Name 'tpm'
-
-    $systemPayload = $null
-    if ($systemArtifact) {
-        $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-    }
 
     $firmwarePayload = $null
     if ($firmwareArtifact) {
@@ -74,139 +57,145 @@ function Get-HardwareInventorySummary {
         $tpmPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $tpmArtifact)
     }
 
-    if (-not $systemPayload -and -not $firmwarePayload -and -not $tpmPayload) {
+    $hasMsinfo = $false
+    if ($msinfoIdentity) { $hasMsinfo = $true }
+    elseif ($msinfoSummary) { $hasMsinfo = $true }
+    elseif ($processorRows) { $hasMsinfo = $true }
+
+    if (-not $hasMsinfo -and -not $firmwarePayload -and -not $tpmPayload) {
         return $null
     }
 
-    $systemInfoLines = @()
-    if ($systemPayload -and $systemPayload.SystemInfoText) {
-        $systemInfo = $systemPayload.SystemInfoText
-        if ($systemInfo -is [System.Collections.IEnumerable] -and -not ($systemInfo -is [string])) {
-            $systemInfo = ($systemInfo | ForEach-Object { [string]$_ }) -join "`n"
-        }
-        $systemInfoText = [string]$systemInfo
-        if ($systemInfoText) {
-            $systemInfoLines = $systemInfoText -split "\r?\n"
-        }
-    }
+    $title = 'Hardware inventory summary'
+    $evidence = $null
 
     $cpuEntries = New-Object System.Collections.Generic.List[pscustomobject]
     $cpuSummaryParts = New-Object System.Collections.Generic.List[string]
     $cpuAvailable = $false
-    if ($systemPayload -and $systemPayload.Processors) {
-        $processors = @($systemPayload.Processors | Where-Object { $_ })
-        foreach ($processor in $processors) {
+
+    $parseNumber = {
+        param($text)
+        if (-not $text) { return $null }
+        $match = [regex]::Match([string]$text, '\d+')
+        if ($match.Success) {
+            try { return [int]$match.Value } catch { return $null }
+        }
+        return $null
+    }
+
+    if ($processorRows) {
+        foreach ($row in $processorRows) {
+            if (-not $row) { continue }
+
             $entry = [ordered]@{}
-            if ($processor.PSObject.Properties['Name'] -and $processor.Name) {
-                $entry['Name'] = [string]$processor.Name
-            }
-            if ($processor.PSObject.Properties['Manufacturer'] -and $processor.Manufacturer) {
-                $entry['Manufacturer'] = [string]$processor.Manufacturer
-            }
-            if ($processor.PSObject.Properties['NumberOfCores'] -and $processor.NumberOfCores -ne $null -and $processor.NumberOfCores -ne '') {
-                $entry['Cores'] = [int]$processor.NumberOfCores
-            }
-            if ($processor.PSObject.Properties['NumberOfLogicalProcessors'] -and $processor.NumberOfLogicalProcessors -ne $null -and $processor.NumberOfLogicalProcessors -ne '') {
-                $entry['LogicalProcessors'] = [int]$processor.NumberOfLogicalProcessors
-            }
-            if ($processor.PSObject.Properties['MaxClockSpeed'] -and $processor.MaxClockSpeed -ne $null -and $processor.MaxClockSpeed -ne '') {
-                $entry['MaxClockMHz'] = [int]$processor.MaxClockSpeed
-            }
-            if ($processor.PSObject.Properties['SocketDesignation'] -and $processor.SocketDesignation) {
-                $entry['Socket'] = [string]$processor.SocketDesignation
-            }
+            $name = Get-MsinfoRowValue -Row $row -Names @('Name', 'ProcessorName', 'Processor')
+            if ($name) { $entry['Name'] = $name }
+            $manufacturer = Get-MsinfoRowValue -Row $row -Names @('Manufacturer')
+            if ($manufacturer) { $entry['Manufacturer'] = $manufacturer }
+            $coresValue = Get-MsinfoRowValue -Row $row -Names @('NumberOfCores', 'Number Of Cores')
+            $cores = & $parseNumber $coresValue
+            if ($cores -ne $null) { $entry['Cores'] = $cores }
+            $logicalValue = Get-MsinfoRowValue -Row $row -Names @('NumberOfLogicalProcessors', 'Number Of Logical Processors')
+            $logical = & $parseNumber $logicalValue
+            if ($logical -ne $null) { $entry['LogicalProcessors'] = $logical }
+            $clockValue = Get-MsinfoRowValue -Row $row -Names @('MaxClockSpeed', 'Maximum Clock Speed', 'CurrentClockSpeed')
+            $clock = & $parseNumber $clockValue
+            if ($clock -ne $null) { $entry['MaxClockMHz'] = $clock }
+            $socket = Get-MsinfoRowValue -Row $row -Names @('SocketDesignation', 'Socket Designation', 'Socket')
+            if ($socket) { $entry['Socket'] = $socket }
 
             if ($entry.Count -gt 0) {
                 $cpuEntries.Add([pscustomobject]$entry) | Out-Null
             }
         }
+    }
 
-        if ($cpuEntries.Count -gt 0) {
-            $cpuAvailable = $true
-            $grouped = $cpuEntries | Group-Object -Property Name
-            foreach ($group in $grouped) {
-                $label = if ($group.Name) { $group.Name } else { 'Processor' }
-                if ($group.Count -gt 1) {
-                    $cpuSummaryParts.Add(("{0} ×{1}" -f $label, $group.Count)) | Out-Null
-                } else {
-                    $cpuSummaryParts.Add($label) | Out-Null
-                }
+    if ($cpuEntries.Count -gt 0) {
+        $cpuAvailable = $true
+        $grouped = $cpuEntries | Group-Object -Property Name
+        foreach ($group in $grouped) {
+            $label = if ($group.Name) { $group.Name } else { 'Processor' }
+            if ($group.Count -gt 1) {
+                $cpuSummaryParts.Add(("{0} ×{1}" -f $label, $group.Count)) | Out-Null
+            } else {
+                $cpuSummaryParts.Add($label) | Out-Null
             }
         }
     }
 
-    $cpuSummary = if ($cpuSummaryParts.Count -gt 0) { $cpuSummaryParts.ToArray() -join '; ' } else { $null }
+    $cpuSummary = $null
+    if ($cpuSummaryParts.Count -gt 0) {
+        $cpuSummary = $cpuSummaryParts.ToArray() -join '; '
+    } elseif ($msinfoSummary) {
+        $processorSummary = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('Processor')
+        if ($processorSummary) {
+            $cpuSummary = $processorSummary
+            $cpuAvailable = $true
+        }
+    }
+
     $cpuInfo = [ordered]@{
         Available  = $cpuAvailable
         Summary    = $cpuSummary
         Processors = $cpuEntries.ToArray()
     }
 
-    $computerSystem = $null
-    if ($systemPayload -and $systemPayload.ComputerSystem -and -not ($systemPayload.ComputerSystem.Error)) {
-        $computerSystem = $systemPayload.ComputerSystem
-    }
-
     $memoryBytes = $null
-    if ($computerSystem -and $computerSystem.PSObject.Properties['TotalPhysicalMemory'] -and $computerSystem.TotalPhysicalMemory -ne $null -and $computerSystem.TotalPhysicalMemory -ne '') {
-        try {
-            $memoryBytes = [uint64]$computerSystem.TotalPhysicalMemory
-        } catch {
-            $memoryBytes = $null
-        }
+    if ($msinfoIdentity -and $msinfoIdentity.TotalPhysicalMemoryBytes -ne $null) {
+        $memoryBytes = $msinfoIdentity.TotalPhysicalMemoryBytes
+    } elseif ($msinfoIdentity -and $msinfoIdentity.InstalledPhysicalMemoryBytes -ne $null) {
+        $memoryBytes = $msinfoIdentity.InstalledPhysicalMemoryBytes
     }
 
-    $memoryInfo = [ordered]@{
-        Available = ($memoryBytes -ne $null)
-    }
+    $memoryInfo = [ordered]@{ Available = ($memoryBytes -ne $null) }
     if ($memoryBytes -ne $null) {
         $totalGb = [math]::Round(($memoryBytes / 1GB), 2)
         $memoryInfo['TotalBytes'] = $memoryBytes
         $memoryInfo['TotalGB'] = $totalGb
         $memoryInfo['Summary'] = ("{0:N2} GB" -f $totalGb)
+    } elseif ($msinfoIdentity -and $msinfoIdentity.InstalledPhysicalMemory) {
+        $memoryInfo['Summary'] = $msinfoIdentity.InstalledPhysicalMemory
+        $memoryInfo['Available'] = $true
     }
 
-    $modelInfo = [ordered]@{
-        Available = $false
+    $modelInfo = [ordered]@{ Available = $false }
+    if ($msinfoIdentity) {
+        if ($msinfoIdentity.Manufacturer) { $modelInfo['Manufacturer'] = $msinfoIdentity.Manufacturer }
+        if ($msinfoIdentity.Model) { $modelInfo['Model'] = $msinfoIdentity.Model }
+        if ($msinfoIdentity.Domain) { $modelInfo['Domain'] = $msinfoIdentity.Domain }
+        if ($msinfoIdentity.PartOfDomain -ne $null) { $modelInfo['PartOfDomain'] = [bool]$msinfoIdentity.PartOfDomain }
+        if ($msinfoIdentity.DomainRole -ne $null) { $modelInfo['DomainRole'] = $msinfoIdentity.DomainRole }
+        if ($msinfoIdentity.SystemSku) { $modelInfo['Sku'] = $msinfoIdentity.SystemSku }
     }
-    if ($computerSystem) {
-        $manufacturer = if ($computerSystem.PSObject.Properties['Manufacturer']) { [string]$computerSystem.Manufacturer } else { $null }
-        $model = if ($computerSystem.PSObject.Properties['Model']) { [string]$computerSystem.Model } else { $null }
-        $domain = if ($computerSystem.PSObject.Properties['Domain']) { [string]$computerSystem.Domain } else { $null }
-        $partOfDomain = $null
-        if ($computerSystem.PSObject.Properties['PartOfDomain']) {
-            try { $partOfDomain = [bool]$computerSystem.PartOfDomain } catch { $partOfDomain = $null }
-        }
-        $domainRole = $null
-        if ($computerSystem.PSObject.Properties['DomainRole']) {
-            try { $domainRole = [int]$computerSystem.DomainRole } catch { $domainRole = $null }
-        }
-        $logicalProcessors = $null
-        if ($computerSystem.PSObject.Properties['NumberOfLogicalProcessors'] -and $computerSystem.NumberOfLogicalProcessors -ne $null -and $computerSystem.NumberOfLogicalProcessors -ne '') {
-            try { $logicalProcessors = [int]$computerSystem.NumberOfLogicalProcessors } catch { $logicalProcessors = $null }
-        }
-        $physicalProcessors = $null
-        if ($computerSystem.PSObject.Properties['NumberOfProcessors'] -and $computerSystem.NumberOfProcessors -ne $null -and $computerSystem.NumberOfProcessors -ne '') {
-            try { $physicalProcessors = [int]$computerSystem.NumberOfProcessors } catch { $physicalProcessors = $null }
-        }
 
-        if ($manufacturer) { $modelInfo['Manufacturer'] = $manufacturer }
-        if ($model) { $modelInfo['Model'] = $model }
-        if ($domain) { $modelInfo['Domain'] = $domain }
-        if ($partOfDomain -ne $null) { $modelInfo['PartOfDomain'] = $partOfDomain }
-        if ($domainRole -ne $null) { $modelInfo['DomainRole'] = $domainRole }
-        if ($logicalProcessors -ne $null) { $modelInfo['LogicalProcessors'] = $logicalProcessors }
-        if ($physicalProcessors -ne $null) { $modelInfo['PhysicalProcessors'] = $physicalProcessors }
-
-        $sku = Get-HardwareSystemInfoValue -Lines $systemInfoLines -Label 'System SKU Number'
-        if ($sku) { $modelInfo['Sku'] = $sku }
-        $systemType = Get-HardwareSystemInfoValue -Lines $systemInfoLines -Label 'System Type'
+    if ($msinfoSummary) {
+        $systemType = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('System Type')
         if ($systemType) { $modelInfo['SystemType'] = $systemType }
+    }
 
-        if ($manufacturer -or $model) {
-            $modelInfo['Available'] = $true
-            $modelInfo['Summary'] = if ($manufacturer -and $model) { "{0} {1}" -f $manufacturer, $model } elseif ($manufacturer) { $manufacturer } else { $model }
+    if ($cpuEntries.Count -gt 0) {
+        $logicalTotal = 0
+        $logicalFound = $false
+        foreach ($entry in $cpuEntries) {
+            if ($entry.PSObject.Properties['LogicalProcessors'] -and $entry.LogicalProcessors -ne $null) {
+                $logicalTotal += [int]$entry.LogicalProcessors
+                $logicalFound = $true
+            }
         }
+        if ($logicalFound) { $modelInfo['LogicalProcessors'] = $logicalTotal }
+        $modelInfo['PhysicalProcessors'] = $cpuEntries.Count
+    }
+
+    if ($modelInfo.PSObject.Properties['Manufacturer'] -and $modelInfo.PSObject.Properties['Model']) {
+        $modelInfo['Summary'] = "{0} {1}" -f $modelInfo.Manufacturer, $modelInfo.Model
+    } elseif ($modelInfo.PSObject.Properties['Manufacturer']) {
+        $modelInfo['Summary'] = $modelInfo.Manufacturer
+    } elseif ($modelInfo.PSObject.Properties['Model']) {
+        $modelInfo['Summary'] = $modelInfo.Model
+    }
+
+    if ($modelInfo.Summary -or $modelInfo.Manufacturer -or $modelInfo.Model -or $modelInfo.Domain -or $modelInfo.SystemType) {
+        $modelInfo['Available'] = $true
     }
 
     $tpmInfo = [ordered]@{
