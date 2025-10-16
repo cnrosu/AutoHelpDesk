@@ -80,7 +80,6 @@ $collectorExecutionOrder = @(
     'Collect-Wlan.ps1',
     'Collect-ScheduledTasks.ps1',
     'Collect-Firewall.ps1',
-    'Collect-System.ps1',
     'Collect-BatteryReport.ps1',
     'Collect-VpnBaseline.ps1',
     'Collect-MicrosoftStoreFunctional.ps1',

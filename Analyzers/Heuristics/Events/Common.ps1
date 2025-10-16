@@ -323,37 +323,9 @@ function Get-EventsCurrentDeviceName {
 
     if (-not $Context) { return $null }
 
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    if (-not $systemArtifact) { return $null }
-
-    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-    if (-not $payload) { return $null }
-
-    $systemInfo = $null
-    if ($payload.PSObject.Properties['SystemInfoText']) {
-        $systemInfo = $payload.SystemInfoText
-    }
-
-    if ($systemInfo -is [pscustomobject] -and $systemInfo.PSObject.Properties['Error']) {
-        return $null
-    }
-
-    if ($systemInfo) {
-        if ($systemInfo -isnot [string]) {
-            if ($systemInfo -is [System.Collections.IEnumerable] -and -not ($systemInfo -is [string])) {
-                $systemInfo = ($systemInfo -join "`n")
-            } else {
-                $systemInfo = [string]$systemInfo
-            }
-        }
-
-        if ($systemInfo) {
-            foreach ($line in [regex]::Split($systemInfo, '\\r?\\n')) {
-                if ($line -match '^\s*Host\s+Name\s*:\s*(.+)$') {
-                    return $matches[1].Trim()
-                }
-            }
-        }
+    $identity = Get-MsinfoSystemIdentity -Context $Context
+    if ($identity -and $identity.DeviceName) {
+        return [string]$identity.DeviceName
     }
 
     return $null
