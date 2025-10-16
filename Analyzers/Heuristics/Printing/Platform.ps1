@@ -2,14 +2,11 @@ function Get-PrintingPlatformInfo {
     param($Context)
 
     $isWindowsServer = $null
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    if ($systemArtifact) {
-        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-        if ($payload -and $payload.OperatingSystem -and -not $payload.OperatingSystem.Error) {
-            $caption = [string]$payload.OperatingSystem.Caption
-            if ($caption) {
-                $isWindowsServer = ($caption -match '(?i)windows\s+server')
-            }
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['OSName']) {
+        $caption = [string]$msinfoIdentity.OSName
+        if ($caption) {
+            $isWindowsServer = ($caption -match '(?i)windows\s+server')
         }
     }
 

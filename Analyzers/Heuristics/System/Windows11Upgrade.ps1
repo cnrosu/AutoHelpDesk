@@ -136,16 +136,22 @@ function Invoke-SystemWindows11UpgradeChecks {
 
     Write-HeuristicDebug -Source 'System/Win11' -Message 'Starting Windows 11 upgrade readiness evaluation'
 
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved system artifact' -Data ([ordered]@{ Found = [bool]$systemArtifact })
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved msinfo system identity' -Data ([ordered]@{ Found = [bool]$msinfoIdentity })
 
-    if (-not $systemArtifact) {
+    if (-not $msinfoIdentity) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Windows 11 readiness data missing, so upgrade blockers may be hidden.' -Subcategory 'Windows 11 Upgrade'
         return
     }
 
-    $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-    Write-HeuristicDebug -Source 'System/Win11' -Message 'Resolved system payload' -Data ([ordered]@{ HasPayload = [bool]$systemPayload })
+    $msinfoSummary = $null
+    if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['Summary']) {
+        $msinfoSummary = $msinfoIdentity.Summary
+    } else {
+        $msinfoSummary = Get-MsinfoSystemSummarySection -Context $Context
+    }
+
+    $msinfoSecurity = Get-MsinfoSecuritySummary -Context $Context
 
     $firmwareArtifact = Get-AnalyzerArtifact -Context $Context -Name 'firmware'
     $firmwarePayload = $null
@@ -193,32 +199,56 @@ function Invoke-SystemWindows11UpgradeChecks {
     $severityRank = @{ critical = 5; high = 4; medium = 3; low = 2; info = 1 }
     $highestSeverity = $null
 
-    $os = $null
-    $computerSystem = $null
-    $processors = @()
+    $os = [pscustomobject]@{
+        Caption        = $msinfoIdentity.OSName
+        Version        = if ($msinfoIdentity.OSVersion) { $msinfoIdentity.OSVersion } else { $msinfoIdentity.OSVersionRaw }
+        DisplayVersion = $msinfoIdentity.DisplayVersion
+        BuildNumber    = $msinfoIdentity.OSBuild
+        OSArchitecture = $msinfoIdentity.OSArchitecture
+    }
+
+    $processorEntries = New-Object System.Collections.Generic.List[pscustomobject]
+    $processorRows = Get-MsinfoProcessors -Context $Context
+    if ($processorRows) {
+        foreach ($row in $processorRows) {
+            if (-not $row) { continue }
+            $name = Get-MsinfoRowValue -Row $row -Names @('Name', 'Processor')
+            if ($name) {
+                $processorEntries.Add([pscustomobject]@{ Name = $name }) | Out-Null
+            }
+        }
+    }
+    if ($processorEntries.Count -eq 0 -and $msinfoSummary) {
+        $processorName = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('Processor')
+        if ($processorName) {
+            $processorEntries.Add([pscustomobject]@{ Name = $processorName }) | Out-Null
+        }
+    }
+    $processors = ConvertTo-Windows11Array $processorEntries
     $alreadyWindows11 = $false
-    if ($systemPayload) {
-        if ($systemPayload.PSObject.Properties['OperatingSystem'] -and -not $systemPayload.OperatingSystem.Error) {
-            $os = $systemPayload.OperatingSystem
-        }
-        if ($systemPayload.PSObject.Properties['ComputerSystem'] -and -not $systemPayload.ComputerSystem.Error) {
-            $computerSystem = $systemPayload.ComputerSystem
-        }
-        if ($systemPayload.PSObject.Properties['Processors']) {
-            $processors = ConvertTo-Windows11Array $systemPayload.Processors
+    if ($os.Caption -and $os.Caption -match 'Windows\s*11') { $alreadyWindows11 = $true }
+
+    $systemDrive = 'C'
+    if ($msinfoSummary) {
+        $systemDriveValue = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('System Drive', 'SystemDrive', 'Boot Device')
+        if ($systemDriveValue) {
+            $driveText = [string]$systemDriveValue
+            if ($driveText) {
+                $normalizedDrive = $driveText.Trim()
+                if ($normalizedDrive -match '([A-Za-z]):') {
+                    $systemDrive = $matches[1].ToUpperInvariant()
+                } elseif ($normalizedDrive -match '^[A-Za-z]$') {
+                    $systemDrive = $normalizedDrive.ToUpperInvariant()
+                }
+            }
         }
     }
 
-    $systemInfoLines = Get-SystemInfoLines -Payload $systemPayload
-
-    $systemDrive = 'C'
-    if ($os -and $os.PSObject.Properties['SystemDrive'] -and $os.SystemDrive) {
-        $driveText = [string]$os.SystemDrive
-        if (-not [string]::IsNullOrWhiteSpace($driveText)) {
-            $normalizedDrive = $driveText.Trim()
-            $normalizedDrive = $normalizedDrive.TrimEnd(':')
-            if ($normalizedDrive) { $systemDrive = $normalizedDrive }
-        }
+    $totalMemory = $null
+    if ($msinfoIdentity.TotalPhysicalMemoryBytes -ne $null) {
+        $totalMemory = [double]$msinfoIdentity.TotalPhysicalMemoryBytes
+    } elseif ($msinfoIdentity.InstalledPhysicalMemoryBytes -ne $null) {
+        $totalMemory = [double]$msinfoIdentity.InstalledPhysicalMemoryBytes
     }
 
     $updateSeverity = {
@@ -456,9 +486,16 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     if ($null -eq $firmwareMet) {
-        $biosMode = Get-SystemInfoValue -Lines $systemInfoLines -Label 'BIOS Mode'
+        $biosMode = $null
+        if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['BiosMode']) {
+            $biosMode = [string]$msinfoIdentity.BiosMode
+        }
+        if (-not $biosMode -and $msinfoSummary) {
+            $biosMode = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('BIOS Mode')
+        }
+
         if ($biosMode) {
-            $firmwareDetailParts.Add("BIOS Mode (systeminfo): $biosMode") | Out-Null
+            $firmwareDetailParts.Add("BIOS Mode (msinfo32): $biosMode") | Out-Null
             if ($biosMode -match '(?i)uefi') {
                 $firmwareMet = $true
                 $firmwareStatus = 'Pass'
@@ -539,9 +576,16 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     if ($null -eq $secureBootMet) {
-        $secureBootState = Get-SystemInfoValue -Lines $systemInfoLines -Label 'Secure Boot State'
+        $secureBootState = $null
+        if ($msinfoSecurity -and $msinfoSecurity.PSObject.Properties['SecureBootState']) {
+            $secureBootState = [string]$msinfoSecurity.SecureBootState
+        }
+        if (-not $secureBootState -and $msinfoSummary) {
+            $secureBootState = Get-MsinfoSystemSummaryValue -Summary $msinfoSummary -Names @('Secure Boot State')
+        }
+
         if ($secureBootState) {
-            $secureBootDetailParts.Add("Secure Boot State (systeminfo): $secureBootState") | Out-Null
+            $secureBootDetailParts.Add("Secure Boot State (msinfo32): $secureBootState") | Out-Null
             if ($secureBootState -match '^(?i)(on|enabled|active)$') {
                 $secureBootMet = $true
                 $secureBootStatus = 'Pass'
@@ -678,19 +722,16 @@ function Invoke-SystemWindows11UpgradeChecks {
     $ramMet = $null
     $ramStatus = 'Unknown'
     $ramDetails = 'Installed memory not reported.'
-    if ($computerSystem -and $computerSystem.PSObject.Properties['TotalPhysicalMemory']) {
-        $totalMemory = [double]$computerSystem.TotalPhysicalMemory
-        if ($totalMemory -gt 0) {
-            $ramGb = [math]::Round($totalMemory / 1GB, 2)
-            if ($ramGb -ge 4) {
-                $ramMet = $true
-                $ramStatus = 'Pass'
-            } else {
-                $ramMet = $false
-                $ramStatus = 'Fail'
-            }
-            $ramDetails = "Installed RAM: $ramGb GB"
+    if ($totalMemory -ne $null -and $totalMemory -gt 0) {
+        $ramGb = [math]::Round($totalMemory / 1GB, 2)
+        if ($ramGb -ge 4) {
+            $ramMet = $true
+            $ramStatus = 'Pass'
+        } else {
+            $ramMet = $false
+            $ramStatus = 'Fail'
         }
+        $ramDetails = "Installed RAM: $ramGb GB"
     }
     Add-CategoryCheck -CategoryResult $Result -Name 'Windows 11: Installed RAM' -Status $ramStatus -Details $ramDetails
     if ($ramMet -eq $false) {

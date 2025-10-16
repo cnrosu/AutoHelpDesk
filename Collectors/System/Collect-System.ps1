@@ -1,73 +1,29 @@
 <#!
 .SYNOPSIS
-    Collects core system inventory information including OS details and hardware metadata.
+    Legacy system inventory collector (deprecated in favor of msinfo32).
+.DESCRIPTION
+    This collector previously queried WMI and systeminfo.exe to assemble
+    operating system and hardware metadata. That work now lives in
+    Collect-MsInfo.ps1, so this script simply emits a compatibility artifact
+    pointing analyzers at msinfo32.json.
 #>
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\\output')
+    [string]$OutputDirectory = (Join-Path -Path (Split-Path -Parent $PSCommandPath) -ChildPath '..\output')
 )
 
-. (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
-
-function Get-SystemInfoText {
-    try {
-        $output = systeminfo.exe 2>$null
-        return $output
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'systeminfo.exe'
-            Error  = $_.Exception.Message
-        }
-    }
-}
-
-function Get-OperatingSystemInventory {
-    $os = Get-CollectorOperatingSystem
-
-    if (Test-CollectorResultHasError -Value $os) {
-        return $os
-    }
-
-    if (-not $os) { return $null }
-
-    return $os | Select-Object Caption, Version, BuildNumber, OSArchitecture, SystemDrive, InstallDate, LastBootUpTime, RegisteredUser, SerialNumber
-}
-
-function Get-ComputerSystemInventory {
-    $system = Get-CollectorComputerSystem
-
-    if (Test-CollectorResultHasError -Value $system) {
-        return $system
-    }
-
-    if (-not $system) { return $null }
-
-    return $system | Select-Object Manufacturer, Model, Domain, PartOfDomain, DomainRole, TotalPhysicalMemory, NumberOfLogicalProcessors, NumberOfProcessors
-}
-
-function Get-ProcessorInventory {
-    try {
-        return Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop |
-            Select-Object Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed, SocketDesignation
-    } catch {
-        return [PSCustomObject]@{
-            Source = 'Win32_Processor'
-            Error  = $_.Exception.Message
-        }
-    }
-}
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\CollectorCommon.ps1')
 
 function Invoke-Main {
     $payload = [ordered]@{
-        SystemInfoText = Get-SystemInfoText
-        OperatingSystem = Get-OperatingSystemInventory
-        ComputerSystem  = Get-ComputerSystemInventory
-        Processors      = Get-ProcessorInventory
+        Source  = 'msinfo32'
+        Message = 'System metadata now lives in msinfo32.json.'
+        Deprecated = $true
     }
 
     $result = New-CollectorMetadata -Payload $payload
-    $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'system.json' -Data $result -Depth 6
+    $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'system.json' -Data $result -Depth 3
     Write-Output $outputPath
 }
 

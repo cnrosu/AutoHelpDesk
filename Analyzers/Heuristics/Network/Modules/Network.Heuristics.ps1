@@ -79,19 +79,14 @@ function Invoke-NetworkHeuristics {
         }
     }
 
-    $computerSystem = $null
-    $systemArtifact = Get-AnalyzerArtifact -Context $Context -Name 'system'
-    Write-HeuristicDebug -Source 'Network' -Message 'Resolved system artifact' -Data ([ordered]@{
-        Found = [bool]$systemArtifact
+    $devicePartOfDomain = $null
+    $msinfoIdentity = Get-MsinfoSystemIdentity -Context $Context
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved msinfo identity' -Data ([ordered]@{
+        Found        = [bool]$msinfoIdentity
+        PartOfDomain = if ($msinfoIdentity) { $msinfoIdentity.PartOfDomain } else { $null }
     })
-    if ($systemArtifact) {
-        $systemPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $systemArtifact)
-        Write-HeuristicDebug -Source 'Network' -Message 'Evaluating system payload for network context' -Data ([ordered]@{
-            HasPayload = [bool]$systemPayload
-        })
-        if ($systemPayload -and $systemPayload.ComputerSystem -and -not $systemPayload.ComputerSystem.Error) {
-            $computerSystem = $systemPayload.ComputerSystem
-        }
+    if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['PartOfDomain']) {
+        $devicePartOfDomain = $msinfoIdentity.PartOfDomain
     }
 
     $adapterPayload = $null
@@ -1174,7 +1169,7 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($publicServers.Count -gt 0) {
-                $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'high' } else { 'medium' }
+                $severity = if ($devicePartOfDomain -eq $true) { 'high' } else { 'medium' }
                 $unique = ($publicServers | Select-Object -Unique)
                 Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Public DNS servers detected: {0}, risking resolution failures on domain devices.' -f ($unique -join ', ')) -Evidence 'Prioritize internal DNS for domain services.' -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
             } elseif (-not $loopbackOnly) {
@@ -1198,7 +1193,7 @@ function Invoke-NetworkHeuristics {
 
                 if ($policy.PSObject.Properties['RegisterThisConnectionsAddress']) {
                     $register = $policy.RegisterThisConnectionsAddress
-                    if ($register -eq $false -and $computerSystem -and $computerSystem.PartOfDomain -eq $true) {
+                    if ($register -eq $false -and $devicePartOfDomain -eq $true) {
                         Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("DNS registration disabled on {0}, so name resolution may fail on domain devices." -f $alias) -Evidence 'RegisterThisConnectionsAddress = False' -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
                     }
                 }
@@ -1257,11 +1252,11 @@ function Invoke-NetworkHeuristics {
                     if ($targets -match 'autodiscover\.outlook\.com') {
                         Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover healthy for {0}" -f $domain) -Evidence $targetText -Subcategory 'Autodiscover DNS'
                     } else {
-                        $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'medium' } else { 'low' }
+                        $severity = if ($devicePartOfDomain -eq $true) { 'medium' } else { 'low' }
                         Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online." -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                     }
                 } elseif ($autoRecord.Success -eq $false) {
-                    $severity = if ($computerSystem -and $computerSystem.PartOfDomain -eq $true) { 'high' } else { 'medium' }
+                    $severity = if ($devicePartOfDomain -eq $true) { 'high' } else { 'medium' }
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
                     Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}, so mail setup may fail." -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                 }
