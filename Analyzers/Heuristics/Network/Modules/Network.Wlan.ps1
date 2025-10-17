@@ -175,6 +175,7 @@ function ConvertTo-WlanProfileInfo {
         PassphraseMetricsError  = $null
         EapConfigPresent        = $false
         XmlError                = $null
+        PmfSetting              = $null
     }
 
     $xmlText = $null
@@ -205,6 +206,20 @@ function ConvertTo-WlanProfileInfo {
                         }
                     }
                 }
+                if ($security.mfp) {
+                    try {
+                        $info.PmfSetting = [string]$security.mfp
+                    } catch {
+                        $info.PmfSetting = [string]$security.mfp.InnerText
+                    }
+                }
+            }
+
+            if (-not $info.PmfSetting) {
+                $mfpNode = $profileNode.SelectSingleNode("//*[local-name()='mfp']")
+                if ($mfpNode -and $mfpNode.InnerText) {
+                    $info.PmfSetting = [string]$mfpNode.InnerText
+                }
             }
 
             $eapNode = $xml.SelectSingleNode("//*[local-name()='EAPConfig']")
@@ -231,7 +246,12 @@ function ConvertTo-WlanProfileInfo {
             $info.EncryptionFallback = $Matches[1].Trim()
             continue
         }
-        
+
+        if (-not $info.PmfSetting -and $trimmed -match '^(PMF|802\.11w).*:\s*(.+)$') {
+            $info.PmfSetting = $Matches[2].Trim()
+            continue
+        }
+
         if ($info.UseOneX -eq $null -and $trimmed -match '^Security key\s*:\s*(.+)$') {
             $keyType = $Matches[1].Trim()
             if ($keyType -match '802\.1X|EAP') { $info.UseOneX = $true }

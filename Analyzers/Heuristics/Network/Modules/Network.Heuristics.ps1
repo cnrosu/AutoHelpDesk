@@ -1,3 +1,113 @@
+function Resolve-WifiPmfStatusFromText {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+
+    $normalized = $Text.Trim()
+    if (-not $normalized) { return $null }
+
+    if ($normalized -match '(?i)require|mandatory') { return 'Required' }
+    if ($normalized -match '(?i)disable|not\s+enabled|none') { return 'Disabled' }
+    if ($normalized -match '(?i)optional|capable|support') { return 'Optional' }
+
+    return $null
+}
+
+function Get-WifiPmfStatus {
+    param(
+        $Interface,
+        $ProfileInfo
+    )
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($ProfileInfo -and $ProfileInfo.PSObject -and $ProfileInfo.PSObject.Properties['PmfSetting'] -and $ProfileInfo.PmfSetting) {
+        $candidates.Add([string]$ProfileInfo.PmfSetting) | Out-Null
+    }
+
+    if ($Interface -and $Interface.PSObject -and $Interface.PSObject.Properties['RawLines'] -and $Interface.RawLines) {
+        foreach ($line in (ConvertTo-NetworkArray $Interface.RawLines)) {
+            if (-not $line) { continue }
+            $text = [string]$line
+            if ($text -match '(?i)(pmf|802\.11w|management frame protection)') {
+                $candidates.Add($text) | Out-Null
+            }
+        }
+    }
+
+    if ($ProfileInfo -and $ProfileInfo.PSObject -and $ProfileInfo.PSObject.Properties['ShowProfile'] -and $ProfileInfo.ShowProfile) {
+        foreach ($line in (ConvertTo-NetworkArray $ProfileInfo.ShowProfile)) {
+            if (-not $line) { continue }
+            $text = [string]$line
+            if ($text -match '(?i)(pmf|802\.11w|management frame protection)') {
+                $candidates.Add($text) | Out-Null
+            }
+        }
+    }
+
+    $resolved = $null
+    foreach ($candidate in $candidates) {
+        $status = Resolve-WifiPmfStatusFromText -Text $candidate
+        if (-not $status) { continue }
+        if ($status -eq 'Disabled') { return 'Disabled' }
+        if ($status -eq 'Required') { return 'Required' }
+        if (-not $resolved) { $resolved = $status }
+    }
+
+    return ($resolved ? $resolved : 'Unknown')
+}
+
+function Get-WifiWpsStatus {
+    param(
+        $Interface,
+        $ProfileInfo
+    )
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($Interface -and $Interface.PSObject -and $Interface.PSObject.Properties['RawLines'] -and $Interface.RawLines) {
+        foreach ($line in (ConvertTo-NetworkArray $Interface.RawLines)) {
+            if (-not $line) { continue }
+            $text = [string]$line
+            if ($text -match '(?i)\bWPS\b') {
+                $candidates.Add($text) | Out-Null
+            }
+        }
+    }
+
+    if ($ProfileInfo -and $ProfileInfo.PSObject) {
+        foreach ($property in @('ShowProfile','Xml')) {
+            if ($ProfileInfo.PSObject.Properties[$property] -and $ProfileInfo.$property) {
+                foreach ($line in (ConvertTo-NetworkArray $ProfileInfo.$property)) {
+                    if (-not $line) { continue }
+                    $text = [string]$line
+                    if ($text -match '(?i)\bWPS\b') {
+                        $candidates.Add($text) | Out-Null
+                    }
+                }
+            }
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -match '(?i)(disable|off|not\s+configured)') { return 'Off' }
+        if ($candidate -match '(?i)(enable|pin|push)') { return 'On' }
+    }
+
+    return 'Unknown'
+}
+
+function Get-WifiSeverityWorsen {
+    param([string]$Severity)
+
+    switch -Regex ($Severity) {
+        '^(?i)low$'     { return 'Medium' }
+        '^(?i)medium$'  { return 'High' }
+        '^(?i)high$'    { return 'Critical' }
+        default         { return ($Severity ? $Severity : 'Critical') }
+    }
+}
+
 function Invoke-NetworkHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -1694,210 +1804,344 @@ function Invoke-NetworkHeuristics {
                         $apEvidence = ('netsh wlan show networks mode=bssid → Authentication={0}' -f ($apAuthValues -join ', '))
                     }
 
-                    $handledBasic = $false
+                    $pmfStatus = Get-WifiPmfStatus -Interface $primaryInterface -ProfileInfo $profileInfo
+                    $wpsStatus = Get-WifiWpsStatus -Interface $primaryInterface -ProfileInfo $profileInfo
+
+                    $cipherTokens = New-Object System.Collections.Generic.List[string]
+                    foreach ($candidate in $cipherCandidates) {
+                        if (-not $candidate) { continue }
+                        $token = Normalize-WlanAuthToken $candidate
+                        if ($token) { $cipherTokens.Add($token) | Out-Null }
+                    }
+                    $hasCcmp = ($cipherTokens | Where-Object { $_ -match 'CCMP' -or $_ -match 'AES' -or $_ -match 'GCMP' }).Count -gt 0
+                    $hasGcmp = ($cipherTokens | Where-Object { $_ -match 'GCMP' }).Count -gt 0
+
+                    $isWpa3Personal = ($securityCategory -eq 'WPA3Personal' -or $securityCategory -eq 'WPA3PersonalTransition')
+                    $isWpa3Enterprise = ($securityCategory -eq 'WPA3Enterprise' -or $securityCategory -eq 'WPA3EnterpriseTransition' -or $securityCategory -eq 'WPA3Enterprise192')
+                    $isEnterpriseSecurity = ($securityCategory -eq 'WPA2Enterprise' -or $isWpa3Enterprise)
+                    $isPersonalPsk = $securityCategory -in 'WPA2Personal','WPA2PersonalTransition','WPA3Personal','WPA3PersonalTransition'
+
+                    $transitionDetected = $false
+                    if ($securityCategory -eq 'WPA3PersonalTransition' -or $securityCategory -eq 'WPA3EnterpriseTransition') { $transitionDetected = $true }
+                    if (-not $transitionDetected -and $apSupportsWpa3 -and $apSupportsWpa2) { $transitionDetected = $true }
+
+                    $encryptionGroup = 'WPA2-PSK'
+                    $encryptionDisplay = if ($currentEncryptionMethod -ne 'unknown security') { $currentEncryptionMethod } else { 'WPA2-Personal' }
+                    $encryptionRationale = 'Shared PSK controls access'
+
                     if ($securityCategory -eq 'Open') {
-                        $handledBasic = $true
-                        $evidence = [ordered]@{
-                            Interface = $interfaceEvidence
+                        $encryptionGroup = 'Open/WEP/TKIP'
+                        $encryptionDisplay = 'Open Network'
+                        $encryptionRationale = 'No encryption in use'
+                    } elseif ($securityCategory -eq 'WEP' -or $securityCategory -eq 'WPAPersonal' -or $tkipAllowed) {
+                        $encryptionGroup = 'Open/WEP/TKIP'
+                        $encryptionDisplay = 'WEP/TKIP'
+                        $encryptionRationale = 'Legacy WEP/TKIP permitted'
+                    } elseif ($isEnterpriseSecurity -and -not $isWpa3Enterprise) {
+                        $encryptionGroup = 'WPA2-Enterprise'
+                        $encryptionDisplay = 'WPA2-Enterprise'
+                        $encryptionRationale = '802.1X/EAP controls access'
+                    } elseif ($isWpa3Enterprise) {
+                        $encryptionGroup = 'WPA3-Enterprise'
+                        $encryptionDisplay = if ($securityCategory -eq 'WPA3Enterprise192') { 'WPA3-Enterprise (Suite-B 192)' } else { 'WPA3-Enterprise' }
+                        $encryptionRationale = '802.1X with WPA3 crypto suites'
+                    } elseif ($isWpa3Personal) {
+                        $encryptionGroup = 'WPA3-Personal'
+                        $encryptionDisplay = if ($pmfStatus -eq 'Required') { 'WPA3-Personal (SAE, PMF required)' } else { 'WPA3-Personal (SAE)' }
+                        $encryptionRationale = 'SAE resists offline guessing'
+                    } else {
+                        $encryptionGroup = 'WPA2-PSK'
+                        if ($hasGcmp) {
+                            $encryptionDisplay = 'WPA2-Personal (GCMP)'
+                        } elseif ($hasCcmp) {
+                            $encryptionDisplay = 'WPA2-Personal (CCMP)'
+                        } else {
+                            $encryptionDisplay = 'WPA2-Personal'
                         }
-                        if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
-                        $title = if ($ssid) { 'Open Wi-Fi network "{0}": no encryption, so attackers can intercept traffic.' -f $ssid } else { 'Open Wi-Fi network: no encryption, so attackers can intercept traffic.' }
-                        $remediation = 'Enable WPA3-SAE if supported, otherwise WPA2-PSK (AES/CCMP). Set a strong passphrase and reconnect clients.'
-                        if ($currentEncryptionMethod -ne 'unknown security') {
-                            $remediation = '{0} Current security: {1}.' -f $remediation, $currentEncryptionMethod
-                        }
-                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
-                    } elseif ($securityCategory -eq 'WEP') {
-                        $handledBasic = $true
-                        $evidence = [ordered]@{
-                            Interface = $interfaceEvidence
-                        }
-                        if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
-                        $title = if ($ssid) { 'WEP/TKIP in use on "{0}": obsolete encryption lets attackers break in quickly.' -f $ssid } else { 'WEP/TKIP in use: obsolete encryption lets attackers break in quickly.' }
-                        $remediation = 'Change security from {0} to WPA3-SAE (preferred) or WPA2-PSK with AES/CCMP only. Then rotate the passphrase and disable WPS.' -f $currentSecurityDisplay
-                        Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
+                        $encryptionRationale = 'Shared PSK controls access'
                     }
 
-                    if (-not $handledBasic) {
-                        if ($tkipAllowed) {
-                            $tkipEvidence = [ordered]@{
-                                Interface = $interfaceEvidence
-                            }
-                            if ($profileEvidenceText) { $tkipEvidence['Profile'] = $profileEvidenceText }
-                            $title = if ($ssid) { 'WEP/TKIP in use on "{0}": obsolete encryption lets attackers break in quickly.' -f $ssid } else { 'WEP/TKIP in use: obsolete encryption lets attackers break in quickly.' }
-                            $remediation = 'Change security from {0} to WPA3-SAE (preferred) or WPA2-PSK with AES/CCMP only. Then rotate the passphrase and disable WPS.' -f $currentSecurityDisplay
-                            Add-CategoryIssue -CategoryResult $result -Severity 'critical' -Title $title -Evidence $tkipEvidence -Subcategory $subcategory -Remediation $remediation
+                    $encryptionScore = switch ($encryptionGroup) {
+                        'Open/WEP/TKIP'   { 4 }
+                        'WPA2-PSK'        { 2 }
+                        'WPA2-Enterprise' { 3 }
+                        'WPA3-Personal'   { 3 }
+                        'WPA3-Enterprise' { 4 }
+                        default           { 2 }
+                    }
+
+                    $encryptionModifiers = New-Object System.Collections.Generic.List[string]
+                    if ($transitionDetected) {
+                        $encryptionScore = [math]::Max(1, $encryptionScore - 1)
+                        $encryptionModifiers.Add('Transition mode allows WPA2 clients') | Out-Null
+                    }
+                    if ($pmfStatus -eq 'Optional' -or $pmfStatus -eq 'Disabled') {
+                        $encryptionScore = [math]::Max(1, $encryptionScore - 1)
+                        $encryptionModifiers.Add('PMF not enforced') | Out-Null
+                    }
+                    $wpsPenaltyApplies = ($encryptionGroup -in @('WPA2-PSK','WPA3-Personal'))
+                    if ($wpsPenaltyApplies -and $wpsStatus -eq 'On') {
+                        $encryptionScore = [math]::Max(1, $encryptionScore - 1)
+                        $encryptionModifiers.Add('WPS enabled') | Out-Null
+                    }
+
+                    $entropyBits = 0.0
+                    $entropyKnown = $false
+                    $lengthValue = $null
+                    $classesUsed = @()
+                    $classesDescription = 'unknown character mix'
+                    $patternReasons = New-Object System.Collections.Generic.List[string]
+                    $patternPenaltyApplied = $false
+                    $passphraseScore = 1
+                    $passphraseRatingLabel = 'Weak'
+                    $passphraseMetricsNote = $null
+
+                    if ($isEnterpriseSecurity) {
+                        $passphraseScore = 4
+                        $passphraseRatingLabel = 'Very Strong'
+                        $passphraseMetricsNote = '802.1X credentials'
+                    } elseif ($encryptionGroup -eq 'Open/WEP/TKIP') {
+                        $passphraseScore = 1
+                        $passphraseRatingLabel = 'Weak'
+                        $passphraseMetricsNote = 'No encryption'
+                    } elseif ($passphraseMetrics) {
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['EntropyBits']) {
+                            try { $entropyBits = [double]$passphraseMetrics.EntropyBits; $entropyKnown = $true } catch { $entropyBits = 0.0 }
+                        } elseif ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['EstimatedBits']) {
+                            try { $entropyBits = [double]$passphraseMetrics.EstimatedBits; $entropyKnown = $true } catch { $entropyBits = 0.0 }
                         }
 
-                        $isWpa3Personal = ($securityCategory -eq 'WPA3Personal' -or $securityCategory -eq 'WPA3PersonalTransition')
-                        $isWpa3Enterprise = ($securityCategory -eq 'WPA3Enterprise' -or $securityCategory -eq 'WPA3EnterpriseTransition' -or $securityCategory -eq 'WPA3Enterprise192')
-
-                        if ($isWpa3Personal) {
-                            $evidence = [ordered]@{
-                                Interface = $interfaceEvidence
-                            }
-                            if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
-                            if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
-                            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WPA3-Personal active (SAE)' -Evidence $evidence -Subcategory $subcategory
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Length']) {
+                            try { $lengthValue = [int]$passphraseMetrics.Length } catch { $lengthValue = $null }
                         }
 
-                        if ($isWpa3Enterprise -or $securityCategory -eq 'WPA2Enterprise') {
-                            $evidence = [ordered]@{
-                                Interface = $interfaceEvidence
-                            }
-                            if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
-                            if ($profileInfo -and $profileInfo.EapConfigPresent) { $evidence['EAP'] = 'Profile shows 802.1X/EAP configuration' }
-                            if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
-                            $title = if ($ssid) { 'Enterprise Wi-Fi on "{0}": PSK complexity not applicable because 802.1X controls access.' -f $ssid } else { 'Enterprise Wi-Fi: PSK complexity not applicable because 802.1X controls access.' }
-                            $remediation = 'Ensure certificate/credential policy is enforced, TLS modern ciphers, and disable legacy EAP types.'
-                            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CharacterClasses']) {
+                            $classesUsed = ConvertTo-NetworkArray $passphraseMetrics.CharacterClasses
+                        }
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CharacterClassesDescription'] -and $passphraseMetrics.CharacterClassesDescription) {
+                            $classesDescription = [string]$passphraseMetrics.CharacterClassesDescription
+                        } elseif ($classesUsed.Count -gt 0) {
+                            $classesDescription = $classesUsed -join ', '
                         }
 
-                        $isPersonalPsk = $securityCategory -in 'WPA2Personal','WPA2PersonalTransition','WPA3Personal','WPA3PersonalTransition'
+                        $entropyScore = if ($entropyBits -ge 96) { 4 } elseif ($entropyBits -ge 72) { 3 } elseif ($entropyBits -ge 60) { 2 } else { 1 }
+                        $passphraseScore = $entropyScore
+                        $passphraseRatingLabel = @('Weak','Average','Strong','Very Strong')[$passphraseScore - 1]
 
-                        if ($isPersonalPsk) {
-                            $profileLabel = if ($profileName) { $profileName } elseif ($ssid) { $ssid } else { 'Wi-Fi profile' }
+                        $scoreSignals = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Signals']) { ConvertTo-NetworkArray $passphraseMetrics.Signals } else { @() }
 
-                            if ($passphraseMetrics) {
-                                $scoreNormalized = $null
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['ScoreNormalized']) {
-                                    try { $scoreNormalized = [double]$passphraseMetrics.ScoreNormalized } catch { $scoreNormalized = $null }
-                                } elseif ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Score']) {
-                                    try { $scoreNormalized = [double]$passphraseMetrics.Score * 25 } catch { $scoreNormalized = $null }
-                                }
+                        $commonPassword = $false
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CommonPassword']) {
+                            $commonPassword = ConvertTo-NetworkBoolean -Value $passphraseMetrics.CommonPassword
+                        } elseif ($scoreSignals -contains 'Blocklisted') {
+                            $commonPassword = $true
+                        }
+                        if ($commonPassword) { $patternReasons.Add('Common/compromised password detected') | Out-Null }
 
-                                $entropyBits = $null
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['EntropyBits']) {
-                                    try { $entropyBits = [double]$passphraseMetrics.EntropyBits } catch { $entropyBits = $null }
-                                } elseif ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['EstimatedBits']) {
-                                    try { $entropyBits = [double]$passphraseMetrics.EstimatedBits } catch { $entropyBits = $null }
-                                }
+                        $hasSsidSubstring = $false
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['HasSSIDSubstring']) {
+                            $hasSsidSubstring = ConvertTo-NetworkBoolean -Value $passphraseMetrics.HasSSIDSubstring
+                        }
+                        if ($hasSsidSubstring) { $patternReasons.Add('Contains SSID/profile naming') | Out-Null }
 
-                                $lengthValue = $null
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Length']) {
-                                    try { $lengthValue = [int]$passphraseMetrics.Length } catch { $lengthValue = $null }
-                                }
-
-                                $classesCount = $null
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CharacterClassesCount']) {
-                                    try { $classesCount = [int]$passphraseMetrics.CharacterClassesCount } catch { $classesCount = $null }
-                                }
-                                $classesDescription = $null
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CharacterClassesDescription']) {
-                                    $classesDescription = [string]$passphraseMetrics.CharacterClassesDescription
-                                }
-                                if (-not $classesDescription) { $classesDescription = 'unknown character mix' }
-
-                                $scoreCategory = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Category'] -and $passphraseMetrics.Category) { [string]$passphraseMetrics.Category } else { 'Unknown' }
-                                $scoreSignals = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Signals']) { ConvertTo-NetworkArray $passphraseMetrics.Signals } else { @() }
-                                $warningsArray = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Warnings']) { ConvertTo-NetworkArray $passphraseMetrics.Warnings } else { @() }
-                                $suggestionsArray = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Suggestions']) { ConvertTo-NetworkArray $passphraseMetrics.Suggestions } else { @() }
-
-                                $commonPassword = $false
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CommonPassword']) {
-                                    $commonPassword = ConvertTo-NetworkBoolean -Value $passphraseMetrics.CommonPassword
-                                } elseif ($scoreSignals -contains 'Blocklisted') {
-                                    $commonPassword = $true
-                                }
-
-                                $hasSsidSubstring = $false
-                                if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['HasSSIDSubstring']) {
-                                    $hasSsidSubstring = ConvertTo-NetworkBoolean -Value $passphraseMetrics.HasSSIDSubstring
-                                }
-                                if (-not $hasSsidSubstring -and $ssid) {
-                                    try {
-                                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Notes']) {
-                                            $hasSsidSubstring = $passphraseMetrics.Notes -match [regex]::Escape($ssid)
-                                        }
-                                    } catch {
-                                        $hasSsidSubstring = $false
-                                    }
-                                }
-
-                                $entropyDisplay = if ($entropyBits -ne $null) { [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.#}' -f $entropyBits) } else { 'n/a' }
-                                $lengthDisplay = if ($lengthValue -ne $null) { [string]$lengthValue } else { 'n/a' }
-
-                                $metricsParts = New-Object System.Collections.Generic.List[string]
-                                if ($scoreNormalized -ne $null) { $metricsParts.Add(('Score {0} ({1})' -f $scoreNormalized, $scoreCategory)) | Out-Null }
-                                elseif ($scoreCategory) { $metricsParts.Add(('Score category {0}' -f $scoreCategory)) | Out-Null }
-                                if ($lengthValue -ne $null) { $metricsParts.Add(('Length {0}' -f $lengthValue)) | Out-Null }
-                                if ($entropyBits -ne $null) { $metricsParts.Add(('Entropy bits {0}' -f $entropyDisplay)) | Out-Null }
-                                if ($passphraseMetrics.PSObject.Properties['EstimatedGuesses'] -and $passphraseMetrics.EstimatedGuesses) {
-                                    $metricsParts.Add(('Est. guesses {0}' -f $passphraseMetrics.EstimatedGuesses)) | Out-Null
-                                }
-                                if ($passphraseMetrics.PSObject.Properties['CrackTimeOnline'] -and $passphraseMetrics.CrackTimeOnline) {
-                                    $metricsParts.Add(('Online crack time {0}' -f $passphraseMetrics.CrackTimeOnline)) | Out-Null
-                                }
-                                if ($passphraseMetrics.PSObject.Properties['CrackTimeOffline'] -and $passphraseMetrics.CrackTimeOffline) {
-                                    $metricsParts.Add(('Offline crack time {0}' -f $passphraseMetrics.CrackTimeOffline)) | Out-Null
-                                }
-                                if ($scoreSignals.Count -gt 0) {
-                                    $metricsParts.Add(('Signals: {0}' -f ($scoreSignals -join ', '))) | Out-Null
-                                }
-
-                                $evidence = [ordered]@{
-                                    Interface         = $interfaceEvidence
-                                    PassphraseMetrics = ('Derived from netsh wlan profile "{0}" → {1}' -f $profileLabel, ($metricsParts.ToArray() -join '; '))
-                                }
-                                if ($warningsArray.Count -gt 0) { $evidence['Warnings'] = $warningsArray -join '; ' }
-                                if ($suggestionsArray.Count -gt 0) { $evidence['Suggestions'] = $suggestionsArray -join '; ' }
-
-                                $severity = 'medium'
-                                $isWeak = $false
-                                if ($lengthValue -ne $null -and $lengthValue -lt 8) { $isWeak = $true; $severity = 'critical' }
-                                if ($commonPassword) { $isWeak = $true; $severity = 'critical' }
-                                if (-not $isWeak) {
-                                    if ($scoreNormalized -ne $null -and $scoreNormalized -lt 25) { $isWeak = $true; if ($severity -ne 'critical') { $severity = 'high' } }
-                                    if ($entropyBits -ne $null -and $entropyBits -lt 28) { $isWeak = $true; if ($severity -ne 'critical') { $severity = 'high' } }
-                                    if ($hasSsidSubstring) { $isWeak = $true; if ($severity -ne 'critical') { $severity = 'high' } }
-                                }
-
-                                $modernCipher = $false
-                                if ($cipherText) {
-                                    $modernCipher = ($cipherText -match 'CCMP' -or $cipherText -match 'GCMP' -or $cipherText -match 'AES')
-                                }
-                                if (-not $modernCipher -and $authenticationText) {
-                                    $modernCipher = ($authenticationText -match 'SAE')
-                                }
-
-                                $isStrong = $false
-                                if (-not $isWeak) {
-                                    if ((($scoreNormalized -ne $null -and $scoreNormalized -ge 60) -or ($entropyBits -ne $null -and $entropyBits -ge 60)) -and ($lengthValue -ne $null -and $lengthValue -ge 12) -and ($classesCount -ne $null -and $classesCount -ge 3) -and $modernCipher) {
-                                        $isStrong = $true
-                                    }
-                                }
-
-                                $title = $null
-                                $remediation = $null
-
-                                if ($isWeak) {
-                                    $title = if ($ssid) { 'Wi-Fi password is WEAK for "{0}" ({1} bits entropy, {2} chars, {3}), so attackers can guess the PSK and join the network.' -f $ssid, $entropyDisplay, $lengthDisplay, $classesDescription } else { 'Wi-Fi password is WEAK ({0} bits entropy, {1} chars, {2}), so attackers can guess the PSK and join the network.' -f $entropyDisplay, $lengthDisplay, $classesDescription }
-                                    $remediation = 'Use 16–20 chars with upper/lower/numbers/symbols or 4–5 random words. Avoid SSID/device names. Update security from {0} to WPA3-SAE if supported (else WPA2-PSK AES/CCMP), rotate the passphrase, disable WPS.' -f $currentSecurityDisplay
-                                } elseif ($isStrong) {
-                                    $severity = 'low'
-                                    $title = if ($ssid) { 'Wi-Fi password is STRONG for "{0}" — modern encryption resists brute-force attacks.' -f $ssid } else { 'Wi-Fi password is STRONG — modern encryption resists brute-force attacks.' }
-                                    $remediation = 'No action required. Consider WPA3-SAE where available.'
-                                } else {
-                                    $severity = 'medium'
-                                    $title = if ($ssid) { 'Wi-Fi password could be stronger for "{0}" ({1} bits, {2} chars, {3}), so determined attackers might eventually guess the PSK.' -f $ssid, $entropyDisplay, $lengthDisplay, $classesDescription } else { 'Wi-Fi password could be stronger ({0} bits, {1} chars, {2}), so determined attackers might eventually guess the PSK.' -f $entropyDisplay, $lengthDisplay, $classesDescription }
-                                    $remediation = 'Increase to 16–20 chars or use 4–5 random words; ensure AES/CCMP (or WPA3-SAE). Currently {0}; rotate the PSK and disable WPS.' -f $currentSecurityDisplay
-                                }
-
-                                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $remediation
-                            } elseif ($passphraseMetricsError) {
-                                $evidence = [ordered]@{
-                                    Interface = $interfaceEvidence
-                                    Error     = $passphraseMetricsError
-                                }
-                                if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
-                                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WPA2-Personal passphrase strength unknown (scoring failed)' -Evidence $evidence -Subcategory $subcategory
+                        foreach ($signal in $scoreSignals) {
+                            if ($signal -match '(Dictionary|Sequence|Keyboard|Repeated)') {
+                                $patternReasons.Add('Pattern heuristics flagged: {0}' -f $signal) | Out-Null
                             }
                         }
 
-                        $transitionDetected = $false
-                        if ($securityCategory -eq 'WPA3PersonalTransition' -or $securityCategory -eq 'WPA3EnterpriseTransition') { $transitionDetected = $true }
-                        if (-not $transitionDetected -and $apSupportsWpa3 -and $apSupportsWpa2) { $transitionDetected = $true }
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CharacterClassesCount']) {
+                            try {
+                                $classesCount = [int]$passphraseMetrics.CharacterClassesCount
+                                if ($classesCount -le 2 -and $lengthValue -ne $null -and $lengthValue -lt 16) {
+                                    $patternReasons.Add('Limited character variety used') | Out-Null
+                                }
+                            } catch { }
+                        }
 
+                        if ($patternReasons.Count -gt 0) {
+                            $patternPenaltyApplied = $true
+                            $passphraseScore = [math]::Max(1, $passphraseScore - 1)
+                            $passphraseRatingLabel = @('Weak','Average','Strong','Very Strong')[$passphraseScore - 1]
+                        }
+                    } elseif ($passphraseMetricsError) {
+                        $passphraseScore = 1
+                        $passphraseRatingLabel = 'Unknown'
+                        $passphraseMetricsNote = $passphraseMetricsError
+                    } else {
+                        $passphraseScore = 1
+                        $passphraseRatingLabel = 'Unknown'
+                        $passphraseMetricsNote = 'No metrics collected'
+                    }
+
+                    $patternSummary = if ($patternReasons.Count -gt 0) { 'Yes - ' + ($patternReasons.ToArray() -join '; ') } elseif ($passphraseMetricsError) { 'No - scoring failed: ' + $passphraseMetricsError } else { 'No - No pattern weaknesses detected' }
+
+                    $matrix = @{
+                        'Open/WEP/TKIP'   = @('Critical','Critical','Critical','High')
+                        'WPA2-PSK'        = @('High','High','Medium','Low')
+                        'WPA2-Enterprise' = @('High','Medium','Low','Low')
+                        'WPA3-Personal'   = @('High','Medium','Low','Low')
+                        'WPA3-Enterprise' = @('Medium','Low','Low','Low')
+                    }
+
+                    $passphraseIndex = [math]::Min(4, [math]::Max(1, $passphraseScore)) - 1
+                    $matrixResult = if ($matrix.ContainsKey($encryptionGroup)) { $matrix[$encryptionGroup][$passphraseIndex] } else { 'High' }
+                    $finalSeverity = $matrixResult
+
+                    if ($transitionDetected) { $finalSeverity = Get-WifiSeverityWorsen $finalSeverity }
+                    if ($pmfStatus -eq 'Optional' -or $pmfStatus -eq 'Disabled') { $finalSeverity = Get-WifiSeverityWorsen $finalSeverity }
+                    if ($wpsPenaltyApplies -and $wpsStatus -eq 'On') { $finalSeverity = Get-WifiSeverityWorsen $finalSeverity }
+
+                    $modifierNotes = New-Object System.Collections.Generic.List[string]
+                    foreach ($item in $encryptionModifiers) { $modifierNotes.Add($item) | Out-Null }
+                    if ($patternPenaltyApplied) { $modifierNotes.Add('Passphrase pattern penalty applied') | Out-Null }
+                    if ($passphraseRatingLabel -eq 'Unknown' -and $passphraseMetricsNote) { $modifierNotes.Add('Passphrase metrics unavailable') | Out-Null }
+
+                    $severityLower = switch ($finalSeverity) {
+                        'Critical' { 'critical' }
+                        'High'     { 'high' }
+                        'Medium'   { 'medium' }
+                        'Low'      { 'low' }
+                        default    { 'medium' }
+                    }
+
+                    $passphraseTitleSegment = switch ($encryptionGroup) {
+                        'Open/WEP/TKIP'   { if ($securityCategory -eq 'Open') { 'No Encryption' } else { 'Passphrase ' + $passphraseRatingLabel } }
+                        'WPA2-Enterprise' { 'Passphrase N/A' }
+                        'WPA3-Enterprise' { 'Passphrase N/A' }
+                        default           { 'Passphrase ' + $passphraseRatingLabel }
+                    }
+                    if (-not $passphraseTitleSegment) { $passphraseTitleSegment = 'Passphrase ' + $passphraseRatingLabel }
+                    $title = 'Wi-Fi: {0}; {1} → {2}' -f $encryptionDisplay, $passphraseTitleSegment, $finalSeverity
+
+                    $entropyDisplay = if ($entropyKnown) { [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.0}' -f $entropyBits) } else { '0.0' }
+                    $lengthDisplay = if ($lengthValue -ne $null) { [string]$lengthValue } else { '0' }
+                    $classesDisplay = if ($classesUsed -and $classesUsed.Count -gt 0) { $classesUsed -join ', ' } else { $classesDescription }
+
+                    $baseSummary = switch ($encryptionGroup) {
+                        'Open/WEP/TKIP'   {
+                            if ($securityCategory -eq 'Open') {
+                                'Open Wi-Fi lets anyone nearby join and inspect traffic, so risk is Critical.'
+                            } else {
+                                'Legacy WEP/TKIP encryption is broken and enables rapid compromise, so risk is ' + $finalSeverity + '.'
+                            }
+                        }
+                        'WPA2-Enterprise' {
+                            'WPA2-Enterprise uses per-user 802.1X credentials, keeping risk ' + $finalSeverity + '.'
+                        }
+                        'WPA3-Enterprise' {
+                            'WPA3-Enterprise applies strong 802.1X crypto, resulting in ' + $finalSeverity + ' risk.'
+                        }
+                        'WPA3-Personal'   {
+                            if ($passphraseRatingLabel -eq 'Unknown') {
+                                'WPA3-SAE resists offline guessing, but passphrase strength is unknown, so risk is ' + $finalSeverity + '.'
+                            } else {
+                                'WPA3-SAE resists offline guessing; the passphrase is ' + $passphraseRatingLabel + ' (' + $entropyDisplay + ' bits), so risk is ' + $finalSeverity + '.'
+                            }
+                        }
+                        default {
+                            if ($passphraseRatingLabel -eq 'Unknown') {
+                                'WPA2-PSK allows offline guessing of captured handshakes, and passphrase strength is unknown, so risk is ' + $finalSeverity + '.'
+                            } else {
+                                'WPA2-PSK allows offline guessing of captured handshakes; the passphrase is ' + $passphraseRatingLabel + ' (' + $entropyDisplay + ' bits), so risk is ' + $finalSeverity + '.'
+                            }
+                        }
+                    }
+                    $summaryNotes = New-Object System.Collections.Generic.List[string]
+                    if ($transitionDetected) { $summaryNotes.Add('Transition mode keeps downgrade paths open') | Out-Null }
+                    if ($pmfStatus -eq 'Optional' -or $pmfStatus -eq 'Disabled') { $summaryNotes.Add('PMF is not enforced, enabling deauth/disassoc abuse') | Out-Null }
+                    if ($wpsPenaltyApplies -and $wpsStatus -eq 'On') { $summaryNotes.Add('WPS enabled invites PIN brute-force attacks') | Out-Null }
+                    if ($patternPenaltyApplied) { $summaryNotes.Add('Detected patterns reduce effective passphrase strength') | Out-Null }
+                    if ($passphraseMetricsError) { $summaryNotes.Add('Passphrase scoring failed (' + $passphraseMetricsError + ')') | Out-Null }
+
+                    $summary = $baseSummary
+                    if ($summaryNotes.Count -gt 0) {
+                        $summary = $summary.TrimEnd('.')
+                        $summary += '; ' + ($summaryNotes.ToArray() -join '; ') + '.'
+                    }
+
+                    $interfaceLines = New-Object System.Collections.Generic.List[string]
+                    if ($ssid) { $interfaceLines.Add(('SSID: "{0}"' -f $ssid)) | Out-Null }
+                    if ($authenticationText) { $interfaceLines.Add(('Authentication: {0}' -f $authenticationText)) | Out-Null }
+                    if ($cipherText) { $interfaceLines.Add(('Cipher: {0}' -f $cipherText)) | Out-Null }
+                    $interfaceLines.Add(('PMF: {0}' -f $pmfStatus)) | Out-Null
+
+                    $apLines = New-Object System.Collections.Generic.List[string]
+                    $apWpa3Text = if ($apSupportsWpa3) { 'Yes' } else { 'No' }
+                    $apWpa2Text = if ($apSupportsWpa2) { 'Yes' } else { 'No' }
+                    $transitionModeText = if ($transitionDetected) { 'Yes' } else { 'No' }
+                    $apLines.Add(('WPA3 support: {0}' -f $apWpa3Text)) | Out-Null
+                    $apLines.Add(('WPA2 support: {0}' -f $apWpa2Text)) | Out-Null
+                    $apLines.Add(('Transition mode: {0}' -f $transitionModeText)) | Out-Null
+                    $apLines.Add(('PMF policy: {0}' -f $pmfStatus)) | Out-Null
+
+                    $clientLines = @('Actual method used: ' + $currentEncryptionMethod)
+
+                    $passphraseLines = @(
+                        'EntropyBits: ' + $entropyDisplay,
+                        'Length: ' + $lengthDisplay,
+                        'ClassesUsed: ' + $classesDisplay,
+                        'PatternPenaltyApplied: ' + $patternSummary,
+                        'FinalRating: ' + $passphraseRatingLabel
+                    )
+                    if ($passphraseMetricsNote) { $passphraseLines += ('Note: ' + $passphraseMetricsNote) }
+
+                    $riskTransitionMode = if ($transitionDetected) { 'On' } else { 'Off' }
+                    $riskModifierLines = @(
+                        'WPS: ' + $wpsStatus,
+                        'TransitionMode: ' + $riskTransitionMode,
+                        'PMF: ' + $pmfStatus
+                    )
+
+                    $determinationLines = New-Object System.Collections.Generic.List[string]
+                    $determinationLines.Add(('EncryptionScore (E): {0} ({1})' -f $encryptionScore, $encryptionRationale)) | Out-Null
+                    $determinationLines.Add(('PassphraseScore (P): {0} ({1})' -f $passphraseScore, $passphraseRatingLabel)) | Out-Null
+                    $determinationLines.Add('Modifiers applied: ' + (if ($modifierNotes.Count -gt 0) { $modifierNotes.ToArray() -join '; ' } else { 'None' })) | Out-Null
+                    $determinationLines.Add('MatrixResult: ' + $matrixResult) | Out-Null
+
+                    $evidence = [ordered]@{
+                        'Interface'              = $interfaceLines.ToArray()
+                        'AP Capabilities (scan)' = $apLines.ToArray()
+                        'Client Association'     = $clientLines
+                        'Passphrase Metrics'     = $passphraseLines
+                        'Risk Modifiers'         = $riskModifierLines
+                        'Determination'          = $determinationLines.ToArray()
+                    }
+                    if ($profileEvidenceText) { $evidence['Profile'] = $profileEvidenceText }
+                    if ($apEvidence) { $evidence['AccessPoint'] = $apEvidence }
+
+                    $wpsBool = $null
+                    if ($wpsStatus -eq 'On') { $wpsBool = $true } elseif ($wpsStatus -eq 'Off') { $wpsBool = $false }
+
+                    $data = [ordered]@{
+                        Category                    = 'Network/Security'
+                        Subcategory                 = 'Wi-Fi'
+                        SSID                        = $ssid
+                        SecurityMethod              = $encryptionDisplay
+                        Cipher                      = $cipherText
+                        PMF                         = $pmfStatus
+                        TransitionMode              = [bool]$transitionDetected
+                        WPS                         = $wpsBool
+                        'Passphrase.EntropyBits'    = [double]$entropyBits
+                        'Passphrase.Length'         = if ($lengthValue -ne $null) { [int]$lengthValue } else { 0 }
+                        'Passphrase.Classes'        = @($classesUsed)
+                        'Passphrase.PatternPenalty' = [bool]$patternPenaltyApplied
+                        'Passphrase.FinalRating'    = $passphraseRatingLabel
+                        'Scores.E'                  = [int]$encryptionScore
+                        'Scores.P'                  = [int]$passphraseScore
+                        Severity                    = $finalSeverity
+                    }
+                    if (-not $data['Cipher']) {
+                        if ($cipherText) { $data['Cipher'] = $cipherText } else { $data['Cipher'] = 'Unknown' }
+                    }
+
+                    $recommendations = 'Recommended Actions (priority order):' + "`n" + (@(
+                        'Prefer WPA3-Personal (SAE) or WPA2/3-Enterprise (802.1X) with PMF Required.',
+                        'If remaining on PSK: enforce >=16 truly random characters (target >=96-bit entropy), rotate PSK, disable WPS.',
+                        'If transition mode is required for legacy, isolate legacy devices on a separate SSID/VLAN with stricter egress controls and plan a deprecation timeline.'
+                    ) -join "`n")
+
+                    Add-CategoryIssue -CategoryResult $result -Severity $severityLower -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $recommendations -Explanation $summary -Data $data
                         if ($transitionDetected) {
                             $transitionEvidence = [ordered]@{
                                 Interface = $interfaceEvidence
