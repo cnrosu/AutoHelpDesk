@@ -95,10 +95,12 @@ function Invoke-ServicesHeuristics {
     $isServer = ($platform.IsWindowsServer -eq $true)
     $isWorkstation = ($platform.IsWorkstation -eq $true)
     $proxyInfo = Get-SystemProxyInfo -Context $Context
+    $bitsTransfers = Get-BitsTransferInfo -Context $Context
     Write-HeuristicDebug -Source 'Services' -Message 'Platform and proxy information resolved' -Data ([ordered]@{
         IsServer      = $isServer
         IsWorkstation = $isWorkstation
         HasProxyInfo  = [bool]$proxyInfo
+        HasBitsData   = if ($bitsTransfers -and $bitsTransfers.PSObject.Properties['HasData']) { [bool]$bitsTransfers.HasData } else { $false }
     })
 
     $artifactCandidates = @(
@@ -419,7 +421,7 @@ function Invoke-ServicesHeuristics {
 
     Invoke-ServicesCheckWithLog -Result $result -Tracker $checkTracker -Name 'BITS' -Action {
         param($res,$lookupParam,$workstation)
-        Invoke-ServiceCheckBits -Result $res -Lookup $lookupParam -IsWorkstation $workstation
+        Invoke-ServiceCheckBits -Result $res -Lookup $lookupParam -IsWorkstation $workstation -BitsInfo $bitsTransfers
     } -Arguments @($result,$lookup,$isWorkstation)
 
     Invoke-ServicesCheckWithLog -Result $result -Tracker $checkTracker -Name 'Office C2R' -Action {

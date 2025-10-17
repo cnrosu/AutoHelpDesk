@@ -151,7 +151,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Print Spooler Service** – Issues medium findings when the spooler remains running on workstations that should disable it, informational findings when it is stopped, and normals when it runs where printing is expected.
 - **RPC Services** – Raises critical issues when the RPC or endpoint mapper services are missing or stopped and records normals when they are running.
 - **WinHTTP Auto Proxy Service** – Warns when the service is missing or stopped while a proxy is configured (escalating severity when necessary) and records normals when it is running.
-- **BITS Service** – Highlights high/medium issues when BITS is missing, disabled, or stopped (with severity based on role) and records normals when transfers are enabled.
+- **BITS Service** – Flags high severity when BITS is missing, disabled, or stopped with queued jobs, medium when on-demand jobs fail, and records normals when the service runs or is idle on trigger start.
 - **Office Click-to-Run** – Flags high/medium issues when ClickToRunSvc is misconfigured and records normals when it is running as expected.
 
 ### Events

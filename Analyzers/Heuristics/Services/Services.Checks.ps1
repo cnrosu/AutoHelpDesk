@@ -234,37 +234,102 @@ function Invoke-ServiceCheckBits {
     param(
         [Parameter(Mandatory)]$Result,
         [Parameter(Mandatory)]$Lookup,
-        [bool]$IsWorkstation
+        [bool]$IsWorkstation,
+        $BitsInfo
     )
 
     Write-HeuristicDebug -Source 'Services/Check' -Message 'Evaluating BITS service'
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'BITS'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service missing' -Evidence 'Background transfers for Windows Update, AV, and Office will fail.' -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is missing, so Windows Update and other background downloads cannot run.' -Evidence 'Service entry not found; background transfers cannot occur.' -Subcategory 'BITS Service'
         return
     }
 
-    $evidence = "Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode
-    if ($service.StatusNormalized -eq 'running' -and $service.StartModeNormalized -notin @('manual','disabled')) {
-        Add-CategoryNormal -CategoryResult $Result -Title 'BITS running' -Evidence $evidence -Subcategory 'BITS Service'
+    $bitsSummary = if ($BitsInfo) { $BitsInfo } else { $null }
+    $hasTransferData = $false
+    $totalJobs = 0
+    $activeJobs = 0
+    $errorJobs = 0
+    $transientErrors = 0
+    $errorDetails = @()
+    $activeDetails = @()
+    $transferEvidence = $null
+
+    if ($bitsSummary) {
+        if ($bitsSummary.PSObject.Properties['HasData']) { $hasTransferData = [bool]$bitsSummary.HasData }
+        if ($bitsSummary.PSObject.Properties['TotalJobs']) { try { $totalJobs = [int]$bitsSummary.TotalJobs } catch { $totalJobs = 0 } }
+        if ($bitsSummary.PSObject.Properties['ActiveJobs']) { try { $activeJobs = [int]$bitsSummary.ActiveJobs } catch { $activeJobs = 0 } }
+        if ($bitsSummary.PSObject.Properties['ErrorJobs']) { try { $errorJobs = [int]$bitsSummary.ErrorJobs } catch { $errorJobs = 0 } }
+        if ($bitsSummary.PSObject.Properties['TransientErrorJobs']) { try { $transientErrors = [int]$bitsSummary.TransientErrorJobs } catch { $transientErrors = 0 } }
+        if ($bitsSummary.PSObject.Properties['Evidence'] -and $bitsSummary.Evidence) { $transferEvidence = [string]$bitsSummary.Evidence }
+        if ($bitsSummary.PSObject.Properties['ErrorDetails'] -and $bitsSummary.ErrorDetails) { $errorDetails = @($bitsSummary.ErrorDetails | Where-Object { $_ }) }
+        if ($bitsSummary.PSObject.Properties['ActiveDetails'] -and $bitsSummary.ActiveDetails) { $activeDetails = @($bitsSummary.ActiveDetails | Where-Object { $_ }) }
     }
 
-    if ($service.StartModeNormalized -eq 'disabled') {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS disabled — background transfers stopped' -Evidence $evidence -Subcategory 'BITS Service'
-    } elseif ($service.StartModeNormalized -in @('automatic','automatic-delayed')) {
-        if ($service.StatusNormalized -ne 'running') {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS automatic but not running' -Evidence $evidence -Subcategory 'BITS Service'
-        }
-    } elseif ($service.StartModeNormalized -eq 'manual') {
-        if ($IsWorkstation) {
-            $manualWorkstationTitle = 'BITS service stopped; Windows Update, Defender/AV signature updates, Office 365 Click-to-Run updates/repairs, WSUS/SCCM client content downloads, and some Microsoft Store/app servicing will fail or stall.'
-            $manualWorkstationEvidence = 'BITS service stopped; configured for manual start on workstation.'
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $manualWorkstationTitle -Evidence $manualWorkstationEvidence -Subcategory 'BITS Service'
-        } elseif ($service.StatusNormalized -ne 'running') {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'BITS manual start and currently stopped' -Evidence $evidence -Subcategory 'BITS Service'
-        }
+    Write-HeuristicDebug -Source 'Services/Check' -Message 'BITS transfer summary' -Data ([ordered]@{
+        HasData          = $hasTransferData
+        TotalJobs        = $totalJobs
+        ActiveJobs       = $activeJobs
+        ErrorJobs        = $errorJobs
+        TransientErrors  = $transientErrors
+    })
+
+    $evidenceLines = New-Object System.Collections.Generic.List[string]
+    $evidenceLines.Add(("Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode)) | Out-Null
+    if ($transferEvidence) {
+        $evidenceLines.Add(("Transfers: {0}" -f $transferEvidence)) | Out-Null
+    } elseif ($hasTransferData) {
+        $evidenceLines.Add(("Transfers: Jobs={0}" -f $totalJobs)) | Out-Null
     }
+
+    if ($errorDetails -and $errorDetails.Count -gt 0) {
+        $evidenceLines.Add(("Error jobs: {0}" -f ($errorDetails -join '; '))) | Out-Null
+    }
+
+    if ($activeDetails -and $activeDetails.Count -gt 0) {
+        $evidenceLines.Add(("Active jobs: {0}" -f ($activeDetails -join '; '))) | Out-Null
+    }
+
+    $evidence = $evidenceLines -join "`n"
+    $pendingJobs = $activeJobs + $errorJobs
+
+    if ($service.StartModeNormalized -eq 'disabled') {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is disabled, so Windows Update, Store, and Intune downloads cannot transfer.' -Evidence $evidence -Subcategory 'BITS Service'
+        return
+    }
+
+    if ($service.StatusNormalized -ne 'running' -and $pendingJobs -gt 0) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is stopped while background jobs are queued, so Windows downloads stay stuck.' -Evidence $evidence -Subcategory 'BITS Service'
+        return
+    }
+
+    if ($service.StartModeNormalized -in @('automatic','automatic-delayed') -and $service.StatusNormalized -ne 'running') {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is set to start automatically but is not running, so background downloads are stalled.' -Evidence $evidence -Subcategory 'BITS Service'
+        return
+    }
+
+    if ($errorJobs -gt 0) {
+        $severity = if ($service.StartModeNormalized -eq 'manual') { 'medium' } else { 'high' }
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'BITS jobs are failing, so Windows Update and other downloads are erroring out.' -Evidence $evidence -Subcategory 'BITS Service'
+        return
+    }
+
+    if ($service.StatusNormalized -eq 'running') {
+        Add-CategoryNormal -CategoryResult $Result -Title 'BITS service is running, so background downloads can proceed.' -Evidence $evidence -Subcategory 'BITS Service'
+        return
+    }
+
+    if ($service.StartModeNormalized -eq 'manual') {
+        if ($hasTransferData -and $pendingJobs -eq 0 -and $errorJobs -eq 0) {
+            Add-CategoryNormal -CategoryResult $Result -Title 'BITS uses manual trigger start and is idle with no stuck jobs.' -Evidence $evidence -Subcategory 'BITS Service'
+        } else {
+            Add-CategoryNormal -CategoryResult $Result -Title 'BITS uses manual trigger start and will run when background downloads are requested.' -Evidence $evidence -Subcategory 'BITS Service'
+        }
+        return
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS service is in an unexpected state, so background downloads may misbehave.' -Evidence $evidence -Subcategory 'BITS Service'
 }
 
 function Invoke-ServiceCheckOfficeClickToRun {
