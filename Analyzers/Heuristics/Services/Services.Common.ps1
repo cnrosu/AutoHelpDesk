@@ -282,3 +282,135 @@ function Get-SystemProxyInfo {
         Evidence       = $proxyEvidence
     }
 }
+
+function ConvertTo-BitsJobList {
+    param($Value)
+
+    $jobs = New-Object System.Collections.Generic.List[psobject]
+    if ($null -eq $Value) { return $jobs.ToArray() }
+
+    $queue = [System.Collections.Generic.Queue[object]]::new()
+    $queue.Enqueue($Value)
+
+    while ($queue.Count -gt 0) {
+        $item = $queue.Dequeue()
+        if ($null -eq $item) { continue }
+
+        if ($item -is [System.Collections.IEnumerable] -and -not ($item -is [string])) {
+            foreach ($child in $item) { $queue.Enqueue($child) | Out-Null }
+            continue
+        }
+
+        if (-not ($item -is [psobject])) { continue }
+
+        if ($item.PSObject.Properties['JobState'] -or $item.PSObject.Properties['State']) {
+            $jobs.Add($item) | Out-Null
+            continue
+        }
+
+        foreach ($propName in @('Jobs','Transfers','Items','Results','Value','Data')) {
+            if ($item.PSObject.Properties[$propName]) {
+                $queue.Enqueue($item.$propName) | Out-Null
+            }
+        }
+    }
+
+    return $jobs.ToArray()
+}
+
+function Get-BitsTransferInfo {
+    param($Context)
+
+    Write-HeuristicDebug -Source 'Services/Common' -Message 'Evaluating BITS transfer data'
+
+    $summary = [ordered]@{
+        HasData            = $false
+        TotalJobs          = 0
+        ActiveJobs         = 0
+        ErrorJobs          = 0
+        TransientErrorJobs = 0
+        Evidence           = $null
+        ErrorDetails       = @()
+        ActiveDetails      = @()
+    }
+
+    if (-not $Context) { return [pscustomobject]$summary }
+
+    $artifactNames = @('bits-transfers','bits')
+    $artifact = $null
+    foreach ($name in $artifactNames) {
+        $candidate = Get-AnalyzerArtifact -Context $Context -Name $name
+        if ($candidate) { $artifact = $candidate; break }
+    }
+
+    if (-not $artifact) { return [pscustomobject]$summary }
+
+    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+    if (-not $payload) { return [pscustomobject]$summary }
+
+    $jobs = ConvertTo-BitsJobList -Value $payload
+    $summary.HasData = $true
+    if (-not $jobs -or $jobs.Count -eq 0) {
+        $summary.Evidence = 'Jobs=0'
+        return [pscustomobject]$summary
+    }
+
+    $errorDetails = New-Object System.Collections.Generic.List[string]
+    $activeDetails = New-Object System.Collections.Generic.List[string]
+    $errorCount = 0
+    $transientErrorCount = 0
+    $activeCount = 0
+
+    foreach ($job in $jobs) {
+        if (-not $job) { continue }
+
+        $state = $null
+        if ($job.PSObject.Properties['JobState']) { $state = [string]$job.JobState }
+        elseif ($job.PSObject.Properties['State']) { $state = [string]$job.State }
+        $state = if ($state) { $state.Trim() } else { 'Unknown' }
+        $stateLower = $state.ToLowerInvariant()
+
+        $nameParts = New-Object System.Collections.Generic.List[string]
+        if ($job.PSObject.Properties['DisplayName'] -and $job.DisplayName) {
+            $nameParts.Add(([string]$job.DisplayName).Trim()) | Out-Null
+        } elseif ($job.PSObject.Properties['Description'] -and $job.Description) {
+            $nameParts.Add(([string]$job.Description).Trim()) | Out-Null
+        } elseif ($job.PSObject.Properties['JobId'] -and $job.JobId) {
+            $nameParts.Add(('JobId={0}' -f $job.JobId)) | Out-Null
+        }
+        if ($job.PSObject.Properties['OwnerName'] -and $job.OwnerName) {
+            $nameParts.Add(('Owner={0}' -f $job.OwnerName)) | Out-Null
+        }
+        $label = if ($nameParts.Count -gt 0) { $nameParts -join ' ' } else { 'BITS job' }
+
+        $isError = ($stateLower -match 'error')
+        $isTransient = ($stateLower -match 'transient')
+        $isCompleted = ($stateLower -match 'transferred|acknowledged|completed|cancelled')
+        $isActive = -not $isError -and -not $isCompleted -and ($stateLower -match 'transferr|connecting|queued|suspend')
+
+        if ($isError) {
+            $errorCount++
+            if ($isTransient) { $transientErrorCount++ }
+            if ($errorDetails.Count -lt 5) { $errorDetails.Add(('{0} ({1})' -f $state, $label)) | Out-Null }
+        } elseif ($isActive) {
+            $activeCount++
+            if ($activeDetails.Count -lt 5) { $activeDetails.Add(('{0} ({1})' -f $state, $label)) | Out-Null }
+        }
+    }
+
+    $summary.TotalJobs = $jobs.Count
+    $summary.ErrorJobs = $errorCount
+    $summary.TransientErrorJobs = $transientErrorCount
+    $summary.ActiveJobs = $activeCount
+    $summary.ErrorDetails = $errorDetails.ToArray()
+    $summary.ActiveDetails = $activeDetails.ToArray()
+
+    $evidenceParts = New-Object System.Collections.Generic.List[string]
+    $evidenceParts.Add(('Jobs={0}' -f $summary.TotalJobs)) | Out-Null
+    if ($activeCount -gt 0) { $evidenceParts.Add(('Active={0}' -f $activeCount)) | Out-Null }
+    if ($errorCount -gt 0) { $evidenceParts.Add(('Errors={0}' -f $errorCount)) | Out-Null }
+    if ($transientErrorCount -gt 0) { $evidenceParts.Add(('TransientErrors={0}' -f $transientErrorCount)) | Out-Null }
+    $summary.Evidence = ($evidenceParts -join '; ')
+
+    return [pscustomobject]$summary
+}
