@@ -410,7 +410,7 @@ function Invoke-HardwareBatteryChecks {
             }
 
             if ($severity) {
-                $title = "Battery {0} has {1}% wear, so runtime is reduced compared to new." -f $label, $wearPercent
+                $title = "Battery {0} has degraded {1}%." -f $label, $wearPercent
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Subcategory 'Battery'
                 $issueCount++
             }
