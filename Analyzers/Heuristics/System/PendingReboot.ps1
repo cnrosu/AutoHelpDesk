@@ -9,188 +9,285 @@ function Invoke-SystemPendingRebootChecks {
     Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Starting pending reboot checks'
 
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'pendingreboot'
-    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Resolved pendingreboot artifact' -Data ([ordered]@{
-        Found = [bool]$artifact
-    })
+    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Resolved pendingreboot artifact' -Data ([ordered]@{ Found = [bool]$artifact })
+
     if (-not $artifact) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot inventory missing, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
         return
     }
 
-    $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
-    Write-HeuristicDebug -Source 'System/PendingReboot' -Message 'Evaluating pending reboot payload' -Data ([ordered]@{
-        HasPayload = [bool]$payload
-    })
-    if (-not $payload) {
+    $entry = $artifact
+    if ($artifact -is [System.Collections.IEnumerable] -and -not ($artifact -is [string])) {
+        $entry = ($artifact | Select-Object -First 1)
+    }
+
+    if (-not $entry -or -not $entry.Data) {
         Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot data unavailable, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
         return
     }
 
-    $indicatorEntries = @()
-    if ($payload.PSObject.Properties['Indicators']) {
-        $indicatorEntries = $payload.Indicators
-        if (-not ($indicatorEntries -is [System.Collections.IEnumerable] -and -not ($indicatorEntries -is [string]))) {
-            $indicatorEntries = @($indicatorEntries)
+    $data = $entry.Data
+    if ($data.PSObject.Properties['Error'] -and $data.Error) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot data unavailable, so a reboot requirement may be hidden and updates could remain blocked.' -Evidence $data.Error -Subcategory 'Pending Reboot'
+        return
+    }
+
+    if (-not $data.PSObject.Properties['Signals']) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Pending reboot data missing signals, so a reboot requirement may be hidden and updates could remain blocked.' -Subcategory 'Pending Reboot'
+        return
+    }
+
+    $errors = @()
+    if ($data.PSObject.Properties['Errors']) {
+        $rawErrors = $data.Errors
+        if ($rawErrors -and -not ($rawErrors -is [System.Collections.IEnumerable] -and -not ($rawErrors -is [string]))) {
+            $rawErrors = @($rawErrors)
+        }
+        if ($rawErrors) {
+            $errors = @($rawErrors | Where-Object { $_ })
         }
     }
 
-    $presentIndicatorsList = New-Object System.Collections.Generic.List[object]
-    foreach ($entry in $indicatorEntries) {
-        if (-not $entry) { continue }
-        $present = $false
-        if ($entry.PSObject.Properties['Present']) {
-            $present = [bool]$entry.Present
-        }
-        if ($present) {
-            $presentIndicatorsList.Add($entry) | Out-Null
-        }
+    if ($errors.Count -gt 0) {
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Pending reboot signals incomplete due to registry access errors, so a reboot requirement may be hidden.' -Evidence (($errors | Select-Object -First 5) -join "`n") -Subcategory 'Pending Reboot'
+        return
     }
-    $presentIndicators = $presentIndicatorsList.ToArray()
 
-    $fileRenameEvidence = New-Object System.Collections.Generic.List[string]
-    $fileRenameErrors = New-Object System.Collections.Generic.List[string]
-    $pendingFileRenames = $false
-    $pendingSources = New-Object System.Collections.Generic.List[string]
-    $pendingSourceEvidence = New-Object System.Collections.Generic.List[string]
+    $signals = $data.Signals
+    $counts = if ($data.PSObject.Properties['Counts']) { $data.Counts } else { $null }
 
-    if ($payload.PSObject.Properties['PendingFileRenames']) {
-        $renamePayload = $payload.PendingFileRenames
-        $valueName = 'PendingFileRenameOperations'
-        if ($renamePayload.PSObject.Properties[$valueName]) {
-            $values = $renamePayload.$valueName
-            if (-not ($values -is [System.Collections.IEnumerable] -and -not ($values -is [string]))) {
-                $values = @($values)
+    function ConvertTo-Bool {
+        param($Value)
+
+        if ($Value -is [bool]) { return $Value }
+        if ($Value -is [int] -or $Value -is [long]) { return $Value -ne 0 }
+        if ($Value -is [string]) {
+            $normalized = $Value.Trim().ToLowerInvariant()
+            if (-not $normalized) { return $false }
+            return @('true', '1', 'yes', 'y') -contains $normalized
+        }
+        if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+            foreach ($item in $Value) {
+                if (ConvertTo-Bool -Value $item) { return $true }
             }
+            return $false
+        }
 
-            $index = 0
-            foreach ($value in $values) {
-                if ($null -eq $value) { continue }
-                if ($value -is [string]) {
-                    $trimmed = $value.Trim()
-                    if ($trimmed) {
-                        $pendingFileRenames = $true
-                        if ($fileRenameEvidence.Count -lt 6) {
-                            $fileRenameEvidence.Add(('{0}[{1}]: {2}' -f $valueName, $index, $trimmed)) | Out-Null
-                        }
-                    }
-                } elseif ($value.PSObject.Properties['Error']) {
-                    $err = [string]$value.Error
-                    if ($err) { $fileRenameErrors.Add($err) | Out-Null }
-                }
-                $index++
-            }
+        return [bool]$Value
+    }
+
+    function Get-SignalValue {
+        param(
+            [Parameter(Mandatory)]
+            [string]$Name
+        )
+
+        if (-not $signals) { return $false }
+        if ($signals.PSObject.Properties[$Name]) {
+            return ConvertTo-Bool -Value $signals.PSObject.Properties[$Name].Value
+        }
+        return $false
+    }
+
+    $cbsRebootPending = Get-SignalValue -Name 'CBS.RebootPending'
+    $cbsSessionsPending = Get-SignalValue -Name 'CBS.SessionsPending'
+    $wuRebootRequired = Get-SignalValue -Name 'WU.RebootRequired'
+    $msiInProgress = Get-SignalValue -Name 'MSI.InProgress'
+    $pfroHasEntries = Get-SignalValue -Name 'PFRO.HasEntries'
+    $renamePending = Get-SignalValue -Name 'RenamePending'
+
+    $pfroSample = @()
+    if ($data.PSObject.Properties['PFRO.Sample']) {
+        $pfroSampleRaw = $data.'PFRO.Sample'
+        if ($pfroSampleRaw -and -not ($pfroSampleRaw -is [System.Collections.IEnumerable] -and -not ($pfroSampleRaw -is [string]))) {
+            $pfroSampleRaw = @($pfroSampleRaw)
+        }
+        if ($pfroSampleRaw) {
+            $pfroSample = @($pfroSampleRaw | Where-Object { $_ } | Select-Object -First 5 | ForEach-Object { [string]$_ })
         }
     }
 
-    $renameState = $null
-    $nameMismatch = $false
-    $tcpMismatch = $false
-    if ($payload.PSObject.Properties['ComputerRenameState']) {
-        $renameState = $payload.ComputerRenameState
-        if ($renameState) {
-            if ($renameState.PSObject.Properties['NameMismatch']) {
-                $nameMismatch = [bool]$renameState.NameMismatch
-            }
-            if ($renameState.PSObject.Properties['TcpipMismatch']) {
-                $tcpMismatch = [bool]$renameState.TcpipMismatch
-            }
+    $pfroTotal = 0
+    if ($counts -and $counts.PSObject.Properties['PFRO.Total']) {
+        $value = $counts.'PFRO.Total'
+        if ($value -is [int] -or $value -is [long]) {
+            $pfroTotal = [int]$value
+        } elseif ($value -is [string]) {
+            [int]::TryParse($value, [ref]$pfroTotal) | Out-Null
         }
+    } elseif ($pfroHasEntries -and $pfroSample.Count -gt 0) {
+        $pfroTotal = $pfroSample.Count
     }
 
-    if ($fileRenameErrors.Count -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to enumerate pending file rename operations, so a reboot requirement may be hidden and updates could remain blocked.' -Evidence (($fileRenameErrors | Select-Object -First 5) -join "`n") -Subcategory 'Pending Reboot'
-    }
+    $collectedAt = if ($data.PSObject.Properties['CollectedAtUtc']) { [string]$data.CollectedAtUtc } else { $null }
+    $renameDetails = if ($data.PSObject.Properties['RenameDetails']) { $data.RenameDetails } else { $null }
 
-    if (($presentIndicators.Count -eq 0) -and -not $pendingFileRenames -and -not $nameMismatch -and -not $tcpMismatch) {
+    if (-not $cbsRebootPending -and -not $cbsSessionsPending -and -not $wuRebootRequired -and -not $msiInProgress -and -not $pfroHasEntries -and -not $renamePending) {
         Add-CategoryNormal -CategoryResult $Result -Title 'No pending reboot indicators detected' -Subcategory 'Pending Reboot'
         return
     }
 
-    if ($presentIndicators.Count -gt 0) {
-        $evidenceLines = New-Object System.Collections.Generic.List[string]
-        foreach ($entry in $presentIndicators) {
-            $line = $entry.Name
-            if ($entry.PSObject.Properties['Path'] -and $entry.Path) {
-                $line = '{0} ({1})' -f $entry.Name, $entry.Path
-            }
-            $evidenceLines.Add($line) | Out-Null
-            if (-not $pendingSourceEvidence.Contains($line)) {
-                $pendingSourceEvidence.Add($line) | Out-Null
-            }
-            $sourceName = $null
-            if ($entry.PSObject.Properties['Name'] -and $entry.Name) {
-                $sourceName = [string]$entry.Name
-            } elseif ($entry.PSObject.Properties['Source'] -and $entry.Source) {
-                $sourceName = [string]$entry.Source
-            }
-            if (-not $sourceName) { $sourceName = 'Indicator' }
-            if (-not $pendingSources.Contains($sourceName)) {
-                $pendingSources.Add($sourceName) | Out-Null
+    $highSeverity = $cbsRebootPending -or $cbsSessionsPending -or $wuRebootRequired
+    $pfroLikelyLow = $false
+    if ($pfroHasEntries -and -not $highSeverity -and -not $msiInProgress -and -not $renamePending) {
+        if ($pfroTotal -le 2 -and $pfroSample.Count -gt 0) {
+            $pfroLikelyLow = $true
+            foreach ($item in $pfroSample) {
+                $upper = $item.ToUpperInvariant()
+                if ($upper -like 'C:\WINDOWS*' -or $upper -like 'C:\PROGRAM FILES*' -or $upper -like 'C:\PROGRAMDATA*') {
+                    $pfroLikelyLow = $false
+                    break
+                }
             }
         }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Updates pending reboot, so a reboot is required to complete updates or resolve blocked operations.' -Evidence (($evidenceLines | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot'
     }
 
-    if ($pendingFileRenames) {
-        $evidence = $fileRenameEvidence
-        if ($evidence.Count -eq 0) {
-            $evidence = @('PendingFileRenameOperations contains entries.')
-        }
-        if (-not $pendingSources.Contains('PendingFileRename')) {
-            $pendingSources.Add('PendingFileRename') | Out-Null
-        }
-        $renameDescriptor = 'PendingFileRenameOperations (HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager)'
-        if (-not $pendingSourceEvidence.Contains($renameDescriptor)) {
-            $pendingSourceEvidence.Add($renameDescriptor) | Out-Null
-        }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'File rename operations require a reboot to complete updates or resolve blocked operations.' -Evidence (($evidence | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot'
+    $severity = 'medium'
+    if ($highSeverity) {
+        $severity = 'high'
+    } elseif ($renamePending -and -not $pfroHasEntries -and -not $msiInProgress) {
+        $severity = 'low'
+    } elseif ($pfroLikelyLow) {
+        $severity = 'low'
     }
 
-    if ($renameState -and ($nameMismatch -or $tcpMismatch)) {
-        $details = New-Object System.Collections.Generic.List[string]
-        if ($renameState.PSObject.Properties['ActiveName'] -and $renameState.ActiveName) {
-            $details.Add("Active name: $($renameState.ActiveName)") | Out-Null
+    $title = 'System/Pending Reboot: Pending operations require restart'
+    if ($severity -eq 'high') {
+        if ($wuRebootRequired -and ($cbsRebootPending -or $cbsSessionsPending)) {
+            $title = 'System/Pending Reboot: Windows servicing requires restart (CBS/WU)'
+        } elseif ($wuRebootRequired) {
+            $title = 'System/Pending Reboot: Windows Update requires restart'
+        } else {
+            $title = 'System/Pending Reboot: Windows servicing requires restart (CBS)'
         }
-        if ($renameState.PSObject.Properties['PendingName'] -and $renameState.PendingName) {
-            $details.Add("Pending name: $($renameState.PendingName)") | Out-Null
-        }
-        if ($renameState.PSObject.Properties['TcpipHostname'] -and $renameState.TcpipHostname) {
-            $details.Add("TCP/IP hostname: $($renameState.TcpipHostname)") | Out-Null
-        }
-        if ($renameState.PSObject.Properties['TcpipPendingName'] -and $renameState.TcpipPendingName) {
-            $details.Add("TCP/IP pending hostname: $($renameState.TcpipPendingName)") | Out-Null
-        }
-
-        $title = if ($nameMismatch) { 'Computer rename pending reboot, so a reboot is required to complete updates or resolve blocked operations.' } else { 'Hostname change pending reboot, so a reboot is required to complete updates or resolve blocked operations.' }
-        if ($nameMismatch -and -not $pendingSources.Contains('ComputerRename')) {
-            $pendingSources.Add('ComputerRename') | Out-Null
-        }
-        if ($tcpMismatch -and -not $pendingSources.Contains('TcpipRename')) {
-            $pendingSources.Add('TcpipRename') | Out-Null
-        }
-        if ($nameMismatch) {
-            $descriptor = 'Computer rename pending reboot (Active and pending names differ).'
-            if (-not $pendingSourceEvidence.Contains($descriptor)) {
-                $pendingSourceEvidence.Add($descriptor) | Out-Null
-            }
-        }
-        if ($tcpMismatch) {
-            $descriptor = 'TCP/IP hostname pending reboot (Hostname and pending hostname differ).'
-            if (-not $pendingSourceEvidence.Contains($descriptor)) {
-                $pendingSourceEvidence.Add($descriptor) | Out-Null
-            }
-        }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'low' -Title $title -Evidence (($details | Where-Object { $_ }) -join "`n") -Subcategory 'Pending Reboot'
+    } elseif ($pfroHasEntries -and -not $msiInProgress -and -not $renamePending) {
+        $titlePrefix = if ($severity -eq 'low') { 'System/Pending Reboot: Minor file rename operations pending' } else { 'System/Pending Reboot: File rename operations pending' }
+        $title = '{0} (PFRO: {1} {2})' -f $titlePrefix, $pfroTotal, (if ($pfroTotal -eq 1) { 'item' } else { 'items' })
+    } elseif ($msiInProgress -and -not $pfroHasEntries -and -not $renamePending) {
+        $title = 'System/Pending Reboot: MSI installer pending restart'
+    } elseif ($renamePending -and -not $pfroHasEntries -and -not $msiInProgress) {
+        $title = 'System/Pending Reboot: Computer rename pending'
     }
 
-    $sources = $pendingSources.ToArray()
-    $sourceEvidenceLines = $pendingSourceEvidence.ToArray()
-    if ($sourceEvidenceLines.Count -gt 1) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Pending reboot required, so updates remain blocked until the system restarts.' -Evidence (($sourceEvidenceLines | Select-Object -First 8) -join "`n") -Subcategory 'Pending Reboot' -Data @{
-            Area = 'System/PendingReboot'
-            Kind = 'RebootFlags'
-            Sources = $sources
-            Evidence = $sourceEvidenceLines
+    $highTriggerNames = @()
+    if ($cbsRebootPending) { $highTriggerNames += 'CBS.RebootPending' }
+    if ($cbsSessionsPending) { $highTriggerNames += 'CBS.SessionsPending' }
+    if ($wuRebootRequired) { $highTriggerNames += 'WU.RebootRequired' }
+
+    $additionalTriggers = [System.Collections.Generic.List[string]]::new()
+    if ($pfroHasEntries) {
+        $additionalTriggers.Add(('PFRO {0} {1}' -f $pfroTotal, (if ($pfroTotal -eq 1) { 'item' } else { 'items' }))) | Out-Null
+    }
+    if ($msiInProgress) { $additionalTriggers.Add('MSI in-progress') | Out-Null }
+    if ($renamePending) { $additionalTriggers.Add('Rename pending') | Out-Null }
+    $additionalTriggerTexts = @($additionalTriggers.ToArray())
+
+    $summary = $null
+    if ($highSeverity) {
+        $primary = if ($highTriggerNames.Count -gt 0) { $highTriggerNames -join '/' } else { 'servicing signals' }
+        $summary = 'Reboot required due to {0}.' -f $primary
+        if ($additionalTriggerTexts.Count -gt 0) {
+            $summary += ' Additional pending operations detected: {0}.' -f ($additionalTriggerTexts -join ', ')
+        }
+    } elseif ($msiInProgress -and -not $pfroHasEntries -and -not $renamePending) {
+        $summary = 'Reboot required to complete an MSI installation (Installer\InProgress present).'
+    } elseif ($pfroHasEntries -and -not $renamePending -and -not $msiInProgress) {
+        $summary = 'Reboot required to complete PendingFileRenameOperations ({0}).' -f ($additionalTriggerTexts -join ', ')
+    } elseif ($renamePending -and -not $pfroHasEntries -and -not $msiInProgress) {
+        $summary = 'Computer rename pending until the next restart completes.'
+    } else {
+        if ($additionalTriggerTexts.Count -gt 0) {
+            $summary = 'Reboot required to clear pending operations: {0}.' -f ($additionalTriggerTexts -join ', ')
+        } else {
+            $summary = 'Reboot required to clear pending operations.'
         }
     }
+
+    $signalOrder = @('CBS.RebootPending', 'CBS.SessionsPending', 'WU.RebootRequired', 'MSI.InProgress', 'PFRO.HasEntries', 'RenamePending')
+    $signalLineParts = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $signalOrder) {
+        $value = Get-SignalValue -Name $name
+        $signalLineParts.Add(('{0}={1}' -f $name, (if ($value) { 'True' } else { 'False' }))) | Out-Null
+    }
+    if ($pfroTotal -gt 0) {
+        $signalLineParts.Add(('PFRO.Total={0}' -f $pfroTotal)) | Out-Null
+    }
+
+    $evidenceLines = [System.Collections.Generic.List[string]]::new()
+    if ($summary) {
+        $evidenceLines.Add('Summary: {0}' -f $summary) | Out-Null
+    }
+    if ($signalLineParts.Count -gt 0) {
+        $evidenceLines.Add('Signals: {0}' -f ($signalLineParts -join '; ')) | Out-Null
+    }
+
+    if ($pfroSample.Count -gt 0) {
+        $sampleCount = $pfroSample.Count
+        $displayTotal = if ($pfroTotal -gt 0) { $pfroTotal } else { $sampleCount }
+        $sampleHeader = 'PFRO.Sample ({0}/{1}):' -f ($sampleCount), ($displayTotal)
+        $evidenceLines.Add($sampleHeader) | Out-Null
+        foreach ($item in $pfroSample) {
+            $evidenceLines.Add($item) | Out-Null
+        }
+    }
+
+    if ($renamePending -and $renameDetails) {
+        $active = if ($renameDetails.PSObject.Properties['ActiveName']) { [string]$renameDetails.ActiveName } else { $null }
+        $pending = if ($renameDetails.PSObject.Properties['PendingName']) { [string]$renameDetails.PendingName } else { $null }
+        if ($active -or $pending) {
+            $activeDisplay = if ($active) { $active } else { '(unknown)' }
+            $pendingDisplay = if ($pending) { $pending } else { '(unknown)' }
+            $evidenceLines.Add(('ComputerName (Active)={0}; (Pending)={1}' -f $activeDisplay, $pendingDisplay)) | Out-Null
+        }
+        $tcpActive = if ($renameDetails.PSObject.Properties['TcpipHostname']) { [string]$renameDetails.TcpipHostname } else { $null }
+        $tcpPending = if ($renameDetails.PSObject.Properties['TcpipPendingName']) { [string]$renameDetails.TcpipPendingName } else { $null }
+        if ($tcpActive -or $tcpPending) {
+            $tcpActiveDisplay = if ($tcpActive) { $tcpActive } else { '(unknown)' }
+            $tcpPendingDisplay = if ($tcpPending) { $tcpPending } else { '(unknown)' }
+            $evidenceLines.Add(('TCP/IP Hostname (Current)={0}; (Pending)={1}' -f $tcpActiveDisplay, $tcpPendingDisplay)) | Out-Null
+        }
+    }
+
+    if ($collectedAt) {
+        $evidenceLines.Add('CollectedAtUtc: {0}' -f $collectedAt) | Out-Null
+    }
+
+    $remediationSteps = [System.Collections.Generic.List[string]]::new()
+    $remediationSteps.Add('Restart the device at the next maintenance window to complete servicing/updates.') | Out-Null
+    if ($highSeverity) {
+        $remediationSteps.Add('If reboot prompts persist, complete the Windows Update cycle (install → reboot → re-check).') | Out-Null
+    }
+    if ($msiInProgress) {
+        $remediationSteps.Add('Finish or cancel any in-progress MSI installers so Installer\InProgress clears.') | Out-Null
+    }
+    if ($pfroHasEntries) {
+        $remediationSteps.Add('Investigate frequent PendingFileRenameOperations entries (fonts, ClickToRun, drivers) and repair or reinstall affected apps.') | Out-Null
+    }
+    if ($renamePending) {
+        $remediationSteps.Add('For rename scenarios, confirm device rename policies complete after restart.') | Out-Null
+    }
+
+    $cardData = [ordered]@{
+        CollectedAtUtc = $collectedAt
+        Signals        = @{}
+        Counts         = @{}
+        PFROSample     = $pfroSample
+        RenameDetails  = $renameDetails
+        Severity       = $severity
+        SummaryTriggers = [ordered]@{
+            High  = @($highTriggerNames)
+            Other = $additionalTriggerTexts
+        }
+    }
+
+    foreach ($name in $signalOrder) {
+        $cardData.Signals[$name] = Get-SignalValue -Name $name
+    }
+    $cardData.Counts['PFRO.Total'] = $pfroTotal
+
+    if ($summary) {
+        $cardData['Summary'] = $summary
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence (($evidenceLines | Where-Object { $_ }) -join "`n") -Subcategory 'Pending Reboot' -Remediation (($remediationSteps | Select-Object -Unique) -join ' ') -Data $cardData
 }
