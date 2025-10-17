@@ -2145,7 +2145,6 @@ function Invoke-NetworkHeuristics {
                     }
                 }
             }
-        }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
     }
