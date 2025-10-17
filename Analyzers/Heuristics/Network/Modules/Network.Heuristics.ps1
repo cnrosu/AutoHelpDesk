@@ -1709,7 +1709,12 @@ function Invoke-NetworkHeuristics {
                 } else {
                     $primaryInterface = $connectedInterfaces | Select-Object -First 1
 
-                    $profileName = if ($primaryInterface.Profile) { [string]$primaryInterface.Profile } elseif ($primaryInterface.Ssid) { [string]$primaryInterface.Ssid } else { $null }
+                    $profileName = $null
+                    if ($primaryInterface.Profile) {
+                        $profileName = [string]$primaryInterface.Profile
+                    } elseif ($primaryInterface.Ssid) {
+                        $profileName = [string]$primaryInterface.Ssid
+                    }
                     $profileInfo = $null
                     if ($profileName) {
                         $profileInfo = $profiles | Where-Object { $_.Name -eq $profileName } | Select-Object -First 1
@@ -1720,7 +1725,8 @@ function Invoke-NetworkHeuristics {
                     if ($primaryInterface.Authentication) { $authCandidates.Add([string]$primaryInterface.Authentication) | Out-Null }
                     if ($profileInfo -and $profileInfo.Authentication) { $authCandidates.Add([string]$profileInfo.Authentication) | Out-Null }
                     if ($profileInfo -and $profileInfo.AuthenticationFallback) { $authCandidates.Add([string]$profileInfo.AuthenticationFallback) | Out-Null }
-                    $useOneX = if ($profileInfo) { $profileInfo.UseOneX } else { $null }
+                    $useOneX = $null
+                    if ($profileInfo) { $useOneX = $profileInfo.UseOneX }
                     $securityCategory = Get-WlanSecurityCategory -AuthTexts $authCandidates.ToArray() -UseOneX $useOneX
 
                     $cipherCandidates = New-Object System.Collections.Generic.List[string]
@@ -1739,14 +1745,20 @@ function Invoke-NetworkHeuristics {
                     }
                     $tkipAllowed = Test-WlanCipherIncludesTkip -CipherTexts $cipherCandidates.ToArray()
 
-                    $ssid = if ($primaryInterface.Ssid) { [string]$primaryInterface.Ssid } else { $profileName }
+                    $ssid = $profileName
+                    if ($primaryInterface.Ssid) { $ssid = [string]$primaryInterface.Ssid }
                     $authenticationText = $null
                     foreach ($candidate in $authCandidates) {
                         if ($candidate) { $authenticationText = $candidate; break }
                     }
                     if (-not $authenticationText -and $securityCategory) { $authenticationText = $securityCategory }
 
-                    $cipherText = if ($primaryInterface.Cipher) { [string]$primaryInterface.Cipher } elseif ($profileInfo -and $profileInfo.Encryption) { $profileInfo.Encryption } else { $null }
+                    $cipherText = $null
+                    if ($primaryInterface.Cipher) {
+                        $cipherText = [string]$primaryInterface.Cipher
+                    } elseif ($profileInfo -and $profileInfo.Encryption) {
+                        $cipherText = $profileInfo.Encryption
+                    }
 
                     $currentEncryptionMethod = 'unknown security'
                     if ($authenticationText -and $cipherText) {
@@ -1756,7 +1768,10 @@ function Invoke-NetworkHeuristics {
                     } elseif ($cipherText) {
                         $currentEncryptionMethod = $cipherText
                     }
-                    $currentSecurityDisplay = if ($currentEncryptionMethod -and $currentEncryptionMethod -ne 'unknown security') { $currentEncryptionMethod } else { 'the current security mode' }
+                    $currentSecurityDisplay = 'the current security mode'
+                    if ($currentEncryptionMethod -and $currentEncryptionMethod -ne 'unknown security') {
+                        $currentSecurityDisplay = $currentEncryptionMethod
+                    }
 
                     $profileEvidenceText = $null
                     if ($profileInfo -and ($profileInfo.Authentication -or $profileInfo.Encryption)) {
@@ -1794,8 +1809,12 @@ function Invoke-NetworkHeuristics {
                     $apSupportsWpa3 = ($apAuthTokens | Where-Object { $_ -match 'WPA3' }).Count -gt 0
                     $apSupportsWpa2 = ($apAuthTokens | Where-Object { $_ -match 'WPA2' }).Count -gt 0
 
-                    $passphraseMetrics = if ($profileInfo) { $profileInfo.PassphraseMetrics } else { $null }
-                    $passphraseMetricsError = if ($profileInfo) { $profileInfo.PassphraseMetricsError } else { $null }
+                    $passphraseMetrics = $null
+                    $passphraseMetricsError = $null
+                    if ($profileInfo) {
+                        $passphraseMetrics = $profileInfo.PassphraseMetrics
+                        $passphraseMetricsError = $profileInfo.PassphraseMetricsError
+                    }
 
                     $subcategory = 'Security'
 
@@ -1826,7 +1845,8 @@ function Invoke-NetworkHeuristics {
                     if (-not $transitionDetected -and $apSupportsWpa3 -and $apSupportsWpa2) { $transitionDetected = $true }
 
                     $encryptionGroup = 'WPA2-PSK'
-                    $encryptionDisplay = if ($currentEncryptionMethod -ne 'unknown security') { $currentEncryptionMethod } else { 'WPA2-Personal' }
+                    $encryptionDisplay = 'WPA2-Personal'
+                    if ($currentEncryptionMethod -ne 'unknown security') { $encryptionDisplay = $currentEncryptionMethod }
                     $encryptionRationale = 'Shared PSK controls access'
 
                     if ($securityCategory -eq 'Open') {
@@ -1843,11 +1863,13 @@ function Invoke-NetworkHeuristics {
                         $encryptionRationale = '802.1X/EAP controls access'
                     } elseif ($isWpa3Enterprise) {
                         $encryptionGroup = 'WPA3-Enterprise'
-                        $encryptionDisplay = if ($securityCategory -eq 'WPA3Enterprise192') { 'WPA3-Enterprise (Suite-B 192)' } else { 'WPA3-Enterprise' }
+                        $encryptionDisplay = 'WPA3-Enterprise'
+                        if ($securityCategory -eq 'WPA3Enterprise192') { $encryptionDisplay = 'WPA3-Enterprise (Suite-B 192)' }
                         $encryptionRationale = '802.1X with WPA3 crypto suites'
                     } elseif ($isWpa3Personal) {
                         $encryptionGroup = 'WPA3-Personal'
-                        $encryptionDisplay = if ($pmfStatus -eq 'Required') { 'WPA3-Personal (SAE, PMF required)' } else { 'WPA3-Personal (SAE)' }
+                        $encryptionDisplay = 'WPA3-Personal (SAE)'
+                        if ($pmfStatus -eq 'Required') { $encryptionDisplay = 'WPA3-Personal (SAE, PMF required)' }
                         $encryptionRationale = 'SAE resists offline guessing'
                     } else {
                         $encryptionGroup = 'WPA2-PSK'
@@ -1924,11 +1946,21 @@ function Invoke-NetworkHeuristics {
                             $classesDescription = $classesUsed -join ', '
                         }
 
-                        $entropyScore = if ($entropyBits -ge 96) { 4 } elseif ($entropyBits -ge 72) { 3 } elseif ($entropyBits -ge 60) { 2 } else { 1 }
+                        $entropyScore = 1
+                        if ($entropyBits -ge 96) {
+                            $entropyScore = 4
+                        } elseif ($entropyBits -ge 72) {
+                            $entropyScore = 3
+                        } elseif ($entropyBits -ge 60) {
+                            $entropyScore = 2
+                        }
                         $passphraseScore = $entropyScore
                         $passphraseRatingLabel = @('Weak','Average','Strong','Very Strong')[$passphraseScore - 1]
 
-                        $scoreSignals = if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Signals']) { ConvertTo-NetworkArray $passphraseMetrics.Signals } else { @() }
+                        $scoreSignals = @()
+                        if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['Signals']) {
+                            $scoreSignals = ConvertTo-NetworkArray $passphraseMetrics.Signals
+                        }
 
                         $commonPassword = $false
                         if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CommonPassword']) {
@@ -1974,7 +2006,12 @@ function Invoke-NetworkHeuristics {
                         $passphraseMetricsNote = 'No metrics collected'
                     }
 
-                    $patternSummary = if ($patternReasons.Count -gt 0) { 'Yes - ' + ($patternReasons.ToArray() -join '; ') } elseif ($passphraseMetricsError) { 'No - scoring failed: ' + $passphraseMetricsError } else { 'No - No pattern weaknesses detected' }
+                    $patternSummary = 'No - No pattern weaknesses detected'
+                    if ($patternReasons.Count -gt 0) {
+                        $patternSummary = 'Yes - ' + ($patternReasons.ToArray() -join '; ')
+                    } elseif ($passphraseMetricsError) {
+                        $patternSummary = 'No - scoring failed: ' + $passphraseMetricsError
+                    }
 
                     $matrix = @{
                         'Open/WEP/TKIP'   = @('Critical','Critical','Critical','High')
@@ -1985,7 +2022,10 @@ function Invoke-NetworkHeuristics {
                     }
 
                     $passphraseIndex = [math]::Min(4, [math]::Max(1, $passphraseScore)) - 1
-                    $matrixResult = if ($matrix.ContainsKey($encryptionGroup)) { $matrix[$encryptionGroup][$passphraseIndex] } else { 'High' }
+                    $matrixResult = 'High'
+                    if ($matrix.ContainsKey($encryptionGroup)) {
+                        $matrixResult = $matrix[$encryptionGroup][$passphraseIndex]
+                    }
                     $finalSeverity = $matrixResult
 
                     if ($transitionDetected) { $finalSeverity = Get-WifiSeverityWorsen $finalSeverity }
@@ -2014,9 +2054,22 @@ function Invoke-NetworkHeuristics {
                     if (-not $passphraseTitleSegment) { $passphraseTitleSegment = 'Passphrase ' + $passphraseRatingLabel }
                     $title = 'Wi-Fi: {0}; {1} → {2}' -f $encryptionDisplay, $passphraseTitleSegment, $finalSeverity
 
-                    $entropyDisplay = if ($entropyKnown) { [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.0}' -f $entropyBits) } else { '0.0' }
-                    $lengthDisplay = if ($lengthValue -ne $null) { [string]$lengthValue } else { '0' }
-                    $classesDisplay = if ($classesUsed -and $classesUsed.Count -gt 0) { $classesUsed -join ', ' } else { $classesDescription }
+                    if ($entropyKnown) {
+                        $entropyDisplay = [string]([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.0}' -f $entropyBits)
+                    } else {
+                        $entropyDisplay = '0.0'
+                    }
+
+                    if ($lengthValue -ne $null) {
+                        $lengthDisplay = [string]$lengthValue
+                    } else {
+                        $lengthDisplay = '0'
+                    }
+
+                    $classesDisplay = $classesDescription
+                    if ($classesUsed -and $classesUsed.Count -gt 0) {
+                        $classesDisplay = $classesUsed -join ', '
+                    }
 
                     $baseSummary = switch ($encryptionGroup) {
                         'Open/WEP/TKIP'   {
@@ -2067,9 +2120,14 @@ function Invoke-NetworkHeuristics {
                     $interfaceLines.Add(('PMF: {0}' -f $pmfStatus)) | Out-Null
 
                     $apLines = New-Object System.Collections.Generic.List[string]
-                    $apWpa3Text = if ($apSupportsWpa3) { 'Yes' } else { 'No' }
-                    $apWpa2Text = if ($apSupportsWpa2) { 'Yes' } else { 'No' }
-                    $transitionModeText = if ($transitionDetected) { 'Yes' } else { 'No' }
+                    $apWpa3Text = 'No'
+                    if ($apSupportsWpa3) { $apWpa3Text = 'Yes' }
+
+                    $apWpa2Text = 'No'
+                    if ($apSupportsWpa2) { $apWpa2Text = 'Yes' }
+
+                    $transitionModeText = 'No'
+                    if ($transitionDetected) { $transitionModeText = 'Yes' }
                     $apLines.Add(('WPA3 support: {0}' -f $apWpa3Text)) | Out-Null
                     $apLines.Add(('WPA2 support: {0}' -f $apWpa2Text)) | Out-Null
                     $apLines.Add(('Transition mode: {0}' -f $transitionModeText)) | Out-Null
@@ -2086,7 +2144,8 @@ function Invoke-NetworkHeuristics {
                     )
                     if ($passphraseMetricsNote) { $passphraseLines += ('Note: ' + $passphraseMetricsNote) }
 
-                    $riskTransitionMode = if ($transitionDetected) { 'On' } else { 'Off' }
+                    $riskTransitionMode = 'Off'
+                    if ($transitionDetected) { $riskTransitionMode = 'On' }
                     $riskModifierLines = @(
                         'WPS: ' + $wpsStatus,
                         'TransitionMode: ' + $riskTransitionMode,
@@ -2096,7 +2155,9 @@ function Invoke-NetworkHeuristics {
                     $determinationLines = New-Object System.Collections.Generic.List[string]
                     $determinationLines.Add(('EncryptionScore (E): {0} ({1})' -f $encryptionScore, $encryptionRationale)) | Out-Null
                     $determinationLines.Add(('PassphraseScore (P): {0} ({1})' -f $passphraseScore, $passphraseRatingLabel)) | Out-Null
-                    $determinationLines.Add('Modifiers applied: ' + (if ($modifierNotes.Count -gt 0) { $modifierNotes.ToArray() -join '; ' } else { 'None' })) | Out-Null
+                    $modifierSummary = 'None'
+                    if ($modifierNotes.Count -gt 0) { $modifierSummary = $modifierNotes.ToArray() -join '; ' }
+                    $determinationLines.Add('Modifiers applied: ' + $modifierSummary) | Out-Null
                     $determinationLines.Add('MatrixResult: ' + $matrixResult) | Out-Null
 
                     $evidence = [ordered]@{
@@ -2113,6 +2174,12 @@ function Invoke-NetworkHeuristics {
                     $wpsBool = $null
                     if ($wpsStatus -eq 'On') { $wpsBool = $true } elseif ($wpsStatus -eq 'Off') { $wpsBool = $false }
 
+                    $passphraseLengthNumeric = 0
+                    if ($lengthValue -ne $null) { $passphraseLengthNumeric = [int]$lengthValue }
+
+                    $passphraseClassesArray = @()
+                    if ($classesUsed) { $passphraseClassesArray = @($classesUsed) }
+
                     $data = [ordered]@{
                         Category                    = 'Network/Security'
                         Subcategory                 = 'Wi-Fi'
@@ -2123,8 +2190,8 @@ function Invoke-NetworkHeuristics {
                         TransitionMode              = [bool]$transitionDetected
                         WPS                         = $wpsBool
                         'Passphrase.EntropyBits'    = [double]$entropyBits
-                        'Passphrase.Length'         = if ($lengthValue -ne $null) { [int]$lengthValue } else { 0 }
-                        'Passphrase.Classes'        = @($classesUsed)
+                        'Passphrase.Length'         = $passphraseLengthNumeric
+                        'Passphrase.Classes'        = $passphraseClassesArray
                         'Passphrase.PatternPenalty' = [bool]$patternPenaltyApplied
                         'Passphrase.FinalRating'    = $passphraseRatingLabel
                         'Scores.E'                  = [int]$encryptionScore
@@ -2167,9 +2234,16 @@ function Invoke-NetworkHeuristics {
         }
     }
 
-    $dhcpFolderPath = if ($dhcpFolder) { $dhcpFolder } else { $null }
-    $dhcpFolderExists = if ($dhcpFolderPath) { Test-Path -LiteralPath $dhcpFolderPath } else { $false }
-    $dhcpFileCount = if ($dhcpFolderExists) { (Get-ChildItem -Path $dhcpFolderPath -Filter 'dhcp-*.json' -ErrorAction SilentlyContinue | Measure-Object).Count } else { 'n/a' }
+    $dhcpFolderPath = $null
+    if ($dhcpFolder) { $dhcpFolderPath = $dhcpFolder }
+
+    $dhcpFolderExists = $false
+    if ($dhcpFolderPath) { $dhcpFolderExists = Test-Path -LiteralPath $dhcpFolderPath }
+
+    $dhcpFileCount = 'n/a'
+    if ($dhcpFolderExists) {
+        $dhcpFileCount = (Get-ChildItem -Path $dhcpFolderPath -Filter 'dhcp-*.json' -ErrorAction SilentlyContinue | Measure-Object).Count
+    }
     Write-Host ("DHCP ENTRY: dhcpFolder={0} exists={1} files={2} keys={3}" -f $dhcpFolderPath,$dhcpFolderExists,$dhcpFileCount,($Context.Artifacts.Keys | Where-Object { $_ -like 'dhcp-*.json' } | Measure-Object).Count)
     Invoke-DhcpAnalyzers -Context $Context -CategoryResult $result -InputFolder $dhcpFolderPath
 
