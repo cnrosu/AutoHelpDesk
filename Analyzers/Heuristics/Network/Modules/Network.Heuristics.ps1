@@ -2142,27 +2142,30 @@ function Invoke-NetworkHeuristics {
                     ) -join "`n")
 
                     Add-CategoryIssue -CategoryResult $result -Severity $severityLower -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $recommendations -Explanation $summary -Data $data
-                        if ($transitionDetected) {
-                            $transitionEvidence = [ordered]@{
-                                Interface = $interfaceEvidence
-                            }
-                            if ($apEvidence) { $transitionEvidence['AccessPoint'] = $apEvidence }
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WPA2/WPA3 transition (mixed) mode' -Evidence $transitionEvidence -Subcategory $subcategory
-                        }
-
-                        if (($securityCategory -eq 'WPA2Personal' -or $securityCategory -eq 'WPA2Enterprise') -and $apSupportsWpa3) {
-                            $fallbackEvidence = [ordered]@{
-                                Interface = $interfaceEvidence
-                            }
-                            if ($apEvidence) { $fallbackEvidence['AccessPoint'] = $apEvidence }
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory
-                        }
                     }
                 }
             }
         }
     } else {
         Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Wireless diagnostics not collected, so Wi-Fi security posture cannot be evaluated.' -Subcategory 'Security'
+    }
+
+    if ($interfaceEvidence) {
+        if ($transitionDetected) {
+            $transitionEvidence = [ordered]@{
+                Interface = $interfaceEvidence
+            }
+            if ($apEvidence) { $transitionEvidence['AccessPoint'] = $apEvidence }
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'WPA2/WPA3 transition (mixed) mode' -Evidence $transitionEvidence -Subcategory $subcategory
+        }
+
+        if (($securityCategory -eq 'WPA2Personal' -or $securityCategory -eq 'WPA2Enterprise') -and $apSupportsWpa3) {
+            $fallbackEvidence = [ordered]@{
+                Interface = $interfaceEvidence
+            }
+            if ($apEvidence) { $fallbackEvidence['AccessPoint'] = $apEvidence }
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory
+        }
     }
 
     $dhcpFolderPath = if ($dhcpFolder) { $dhcpFolder } else { $null }
