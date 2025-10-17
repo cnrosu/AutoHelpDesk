@@ -15,6 +15,22 @@ function Test-NetworkLoopback {
     return ($Address -match '^127\.')
 }
 
+function ConvertTo-NetworkBoolean {
+    param(
+        $Value,
+        $Default = $false
+    )
+
+    if ($null -eq $Value) { return $Default }
+    if ($Value -is [bool]) { return $Value }
+
+    try {
+        return [System.Management.Automation.LanguagePrimitives]::ConvertTo($Value, [bool])
+    } catch {
+        return $Default
+    }
+}
+
 function Test-NetworkValidIpv4Address {
     param([string]$Address)
 

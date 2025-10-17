@@ -1795,14 +1795,14 @@ function Invoke-NetworkHeuristics {
 
                                 $commonPassword = $false
                                 if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['CommonPassword']) {
-                                    $commonPassword = [bool]$passphraseMetrics.CommonPassword
+                                    $commonPassword = ConvertTo-NetworkBoolean -Value $passphraseMetrics.CommonPassword
                                 } elseif ($scoreSignals -contains 'Blocklisted') {
                                     $commonPassword = $true
                                 }
 
                                 $hasSsidSubstring = $false
                                 if ($passphraseMetrics.PSObject -and $passphraseMetrics.PSObject.Properties['HasSSIDSubstring']) {
-                                    $hasSsidSubstring = [bool]$passphraseMetrics.HasSSIDSubstring
+                                    $hasSsidSubstring = ConvertTo-NetworkBoolean -Value $passphraseMetrics.HasSSIDSubstring
                                 }
                                 if (-not $hasSsidSubstring -and $ssid) {
                                     try {
