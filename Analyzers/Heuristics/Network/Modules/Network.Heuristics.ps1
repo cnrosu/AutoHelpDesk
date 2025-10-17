@@ -1276,9 +1276,53 @@ function Invoke-NetworkHeuristics {
         if ($adapters.Count -eq 1 -and ($adapters[0] -is [pscustomobject]) -and $adapters[0].PSObject.Properties['Error'] -and $adapters[0].Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
         } elseif ($adapters.Count -gt 0) {
-            $upAdapters = $adapters | Where-Object { $_ -and $_.Status -eq 'Up' }
-            if ($upAdapters.Count -gt 0) {
-                Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($upAdapters.Name -join ', ')) -Subcategory 'Network Adapters'
+            $activeAdapterNames = New-Object System.Collections.Generic.List[string]
+            $addActiveAdapter = {
+                param([string]$Alias)
+
+                if (-not $Alias) { return }
+                if (-not ($activeAdapterNames -contains $Alias)) { $null = $activeAdapterNames.Add($Alias) }
+            }
+
+            foreach ($adapter in $adapters) {
+                if (-not $adapter) { continue }
+
+                $name = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
+                $statusText = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
+                $normalizedStatus = if ($statusText) { $statusText.Trim().ToLowerInvariant() } else { '' }
+                $isReportedUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
+
+                if ($isReportedUp -and $name) { & $addActiveAdapter $name }
+            }
+
+            if ($adapterInventory -and $adapterInventory.PSObject.Properties['Map'] -and $adapterInventory.Map) {
+                foreach ($entry in $adapterInventory.Map.GetEnumerator()) {
+                    if (-not $entry) { continue }
+
+                    $info = $entry.Value
+                    if (-not $info) { continue }
+
+                    $alias = if ($info.PSObject.Properties['Alias']) { [string]$info.Alias } else { $null }
+                    if (-not $alias) { continue }
+
+                    $hasValidAddress = if ($info.PSObject.Properties['HasValidAddress']) { [bool]$info.HasValidAddress } else { $false }
+                    $hasGateway = if ($info.PSObject.Properties['HasGateway']) { [bool]$info.HasGateway } else { $false }
+                    $isPseudo = if ($info.PSObject.Properties['IsPseudo']) { [bool]$info.IsPseudo } else { $false }
+                    $isEligible = if ($info.PSObject.Properties['IsEligible']) { [bool]$info.IsEligible } else { $false }
+                    $isFallbackEligible = if ($info.PSObject.Properties['IsFallbackEligible']) { [bool]$info.IsFallbackEligible } else { $false }
+                    $ipv6GatewayCount = 0
+                    if ($info.PSObject.Properties['IPv6Gateways'] -and $info.IPv6Gateways) {
+                        $ipv6GatewayCount = (@($info.IPv6Gateways | Where-Object { $_ })).Count
+                    }
+
+                    if ($isEligible -or $isFallbackEligible -or ($hasValidAddress -and -not $isPseudo -and ($hasGateway -or $ipv6GatewayCount -gt 0))) {
+                        & $addActiveAdapter $alias
+                    }
+                }
+            }
+
+            if ($activeAdapterNames.Count -gt 0) {
+                Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($activeAdapterNames -join ', ')) -Subcategory 'Network Adapters'
             } else {
                 Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters' -Remediation 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.'
             }
