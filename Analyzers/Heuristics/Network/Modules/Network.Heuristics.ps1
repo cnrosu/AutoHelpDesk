@@ -108,6 +108,389 @@ function Get-WifiSeverityWorsen {
     }
 }
 
+function Test-NetworkInternalDnsAddress {
+    param([string]$Address)
+
+    if (-not $Address) { return $false }
+
+    $trimmed = $Address.Trim()
+    if (-not $trimmed) { return $false }
+
+    if (Test-NetworkLoopback $trimmed) { return $true }
+    if (Test-NetworkPrivateIpv4 $trimmed) { return $true }
+
+    if ($trimmed -match '^(?i)(fc|fd)[0-9a-f]{2}:') { return $true }
+    if ($trimmed -match '^(?i)fe80:') { return $true }
+
+    return $false
+}
+
+function Get-NetworkDsregStatus {
+    param($Context)
+
+    $text = $null
+    if (Get-Command -Name 'Get-IntuneDsregText' -ErrorAction SilentlyContinue) {
+        try { $text = Get-IntuneDsregText -Context $Context } catch { $text = $null }
+    }
+
+    if (-not $text) {
+        try {
+            $identityArtifact = Get-AnalyzerArtifact -Context $Context -Name 'identity'
+            if ($identityArtifact) {
+                $identityPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $identityArtifact)
+                if ($identityPayload -and $identityPayload.PSObject.Properties['DsRegCmd']) {
+                    $raw = $identityPayload.DsRegCmd
+                    if ($raw -is [System.Collections.IEnumerable] -and -not ($raw -is [string])) {
+                        $text = ($raw -join "`n")
+                    } elseif ($raw) {
+                        $text = [string]$raw
+                    }
+                }
+            }
+        } catch {
+            $text = $null
+        }
+    }
+
+    $azure = $null
+    $domainJoined = $null
+    $tenantName = $null
+
+    if ($text) {
+        foreach ($line in [regex]::Split($text, '\r?\n')) {
+            if (-not $line) { continue }
+            $trimmed = $line.Trim()
+            if (-not $trimmed) { continue }
+
+            if ($null -eq $azure -and $trimmed -match '^(?i)AzureAdJoined\s*:\s*(.+)$') {
+                $value = $matches[1].Trim()
+                if ($value) {
+                    $upper = $value.ToUpperInvariant()
+                    if ($upper -eq 'YES' -or $upper -eq 'TRUE') { $azure = $true }
+                    elseif ($upper -eq 'NO' -or $upper -eq 'FALSE') { $azure = $false }
+                    else { $azure = $null }
+                }
+                continue
+            }
+
+            if ($null -eq $domainJoined -and $trimmed -match '^(?i)DomainJoined\s*:\s*(.+)$') {
+                $value = $matches[1].Trim()
+                if ($value) {
+                    $upper = $value.ToUpperInvariant()
+                    if ($upper -eq 'YES' -or $upper -eq 'TRUE') { $domainJoined = $true }
+                    elseif ($upper -eq 'NO' -or $upper -eq 'FALSE') { $domainJoined = $false }
+                    else { $domainJoined = $null }
+                }
+                continue
+            }
+
+            if (-not $tenantName -and $trimmed -match '^(?i)TenantName\s*:\s*(.+)$') {
+                $tenantName = $matches[1].Trim()
+                continue
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Text          = $text
+        AzureAdJoined = $azure
+        DomainJoined  = $domainJoined
+        TenantName    = $tenantName
+    }
+}
+
+function Get-NetworkDnsJoinContext {
+    param(
+        $Context,
+        $MsinfoIdentity
+    )
+
+    $domainName = $null
+    $domainRoleInt = $null
+    $domainRoleLabel = $null
+    $domainJoined = $null
+
+    if ($MsinfoIdentity) {
+        if ($MsinfoIdentity.PSObject.Properties['Domain'] -and $MsinfoIdentity.Domain) {
+            $domainName = [string]$MsinfoIdentity.Domain
+        }
+        if ($MsinfoIdentity.PSObject.Properties['PartOfDomain']) {
+            try { $domainJoined = [bool]$MsinfoIdentity.PartOfDomain } catch { $domainJoined = $null }
+        }
+        if ($MsinfoIdentity.PSObject.Properties['DomainRole']) {
+            $domainRoleLabel = [string]$MsinfoIdentity.DomainRole
+            $roleValue = $MsinfoIdentity.DomainRole
+            try { $domainRoleInt = [int]$roleValue } catch {
+                $normalized = $domainRoleLabel.ToLowerInvariant()
+                if ($normalized -match 'primary') { $domainRoleInt = 5 }
+                elseif ($normalized -match 'backup') { $domainRoleInt = 4 }
+                elseif ($normalized -match 'member\s+server') { $domainRoleInt = 3 }
+                elseif ($normalized -match 'standalone\s+server') { $domainRoleInt = 2 }
+                elseif ($normalized -match 'member\s+workstation') { $domainRoleInt = 1 }
+                elseif ($normalized -match 'standalone\s+workstation') { $domainRoleInt = 0 }
+            }
+        }
+    }
+
+    $dsregStatus = Get-NetworkDsregStatus -Context $Context
+    if ($null -eq $domainJoined -and $dsregStatus.DomainJoined -ne $null) {
+        $domainJoined = [bool]$dsregStatus.DomainJoined
+    }
+
+    $azureJoined = if ($dsregStatus.AzureAdJoined -ne $null) { [bool]$dsregStatus.AzureAdJoined } else { $false }
+
+    $joinCategory = 'Workgroup'
+    $joinTitle = 'non-domain'
+    $needsInternalZones = $false
+
+    if ($domainRoleInt -in @(4,5)) {
+        $joinCategory = 'DomainController'
+        $joinTitle = 'domain controller'
+        $needsInternalZones = $true
+    } elseif ($domainJoined) {
+        if ($azureJoined) {
+            $joinCategory = 'Hybrid'
+            $joinTitle = 'Hybrid AADJ'
+        } else {
+            $joinCategory = 'DomainJoined'
+            $joinTitle = 'AD-joined'
+        }
+        $needsInternalZones = $true
+    } elseif ($azureJoined) {
+        $joinCategory = 'AzureAd'
+        $joinTitle = 'Azure AD-joined'
+    }
+
+    return [pscustomobject]@{
+        DomainName        = $domainName
+        DomainRoleInt     = $domainRoleInt
+        DomainRoleLabel   = $domainRoleLabel
+        DomainJoined      = $domainJoined
+        AzureAdJoined     = $azureJoined
+        TenantName        = $dsregStatus.TenantName
+        JoinCategory      = $joinCategory
+        JoinTitle         = $joinTitle
+        NeedsInternalZones = $needsInternalZones
+    }
+}
+
+function Get-NetworkDnsSuffixList {
+    param($DnsPayload)
+
+    $suffixes = New-Object System.Collections.Generic.List[string]
+
+    if ($DnsPayload -and $DnsPayload.PSObject.Properties['ClientPolicies']) {
+        foreach ($policy in (ConvertTo-NetworkArray $DnsPayload.ClientPolicies)) {
+            if (-not $policy) { continue }
+            if ($policy.PSObject.Properties['ConnectionSpecificSuffix'] -and $policy.ConnectionSpecificSuffix) {
+                $value = [string]$policy.ConnectionSpecificSuffix
+                if (-not [string]::IsNullOrWhiteSpace($value) -and -not $suffixes.Contains($value)) {
+                    $suffixes.Add($value) | Out-Null
+                }
+            }
+        }
+    }
+
+    return $suffixes.ToArray()
+}
+
+function Get-NetworkDnsInternalZones {
+    param(
+        $JoinContext,
+        [string[]]$Suffixes
+    )
+
+    $set = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addZone = {
+        param([string]$Zone)
+        if ([string]::IsNullOrWhiteSpace($Zone)) { return }
+        $trimmed = $Zone.Trim()
+        if (-not $trimmed) { return }
+        $null = $set.Add($trimmed)
+    }
+
+    if ($JoinContext -and $JoinContext.DomainName) {
+        & $addZone $JoinContext.DomainName
+        & $addZone ('*.{0}' -f $JoinContext.DomainName)
+    }
+
+    if ($Suffixes) {
+        foreach ($suffix in $Suffixes) {
+            if (-not $suffix) { continue }
+            & $addZone $suffix
+            & $addZone ('*.{0}' -f $suffix)
+        }
+    }
+
+    return $set.ToArray()
+}
+
+function Get-NetworkPrimaryGateway {
+    param($AdapterInventory)
+
+    if (-not $AdapterInventory -or -not $AdapterInventory.Map) { return $null }
+
+    $candidates = New-Object System.Collections.Generic.List[object]
+    foreach ($info in $AdapterInventory.Map.Values) { if ($info) { $candidates.Add($info) | Out-Null } }
+
+    $preferred = $candidates | Where-Object { $_.IsEligible -and $_.Gateways -and $_.Gateways.Count -gt 0 }
+    if (-not $preferred) { $preferred = $candidates | Where-Object { $_.HasGateway -and $_.Gateways -and $_.Gateways.Count -gt 0 } }
+
+    foreach ($entry in $preferred) {
+        foreach ($gateway in $entry.Gateways) {
+            if ($gateway) { return [string]$gateway }
+        }
+    }
+
+    foreach ($entry in $candidates) {
+        if (-not $entry.Gateways) { continue }
+        foreach ($gateway in $entry.Gateways) {
+            if ($gateway) { return [string]$gateway }
+        }
+    }
+
+    return $null
+}
+
+function Get-NetworkDnsActiveSsid {
+    param($Context)
+
+    try {
+        $wlanArtifact = Get-AnalyzerArtifact -Context $Context -Name 'wlan'
+        if (-not $wlanArtifact) { return $null }
+        $wlanPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $wlanArtifact)
+        if (-not $wlanPayload) { return $null }
+
+        if ($wlanPayload.PSObject -and $wlanPayload.PSObject.Properties['Interfaces']) {
+            $interfaces = ConvertTo-WlanInterfaces $wlanPayload.Interfaces
+            if ($interfaces) {
+                $connected = $interfaces | Where-Object { Test-WlanInterfaceConnected -Interface $_ } | Select-Object -First 1
+                if ($connected -and $connected.PSObject.Properties['Ssid'] -and $connected.Ssid) {
+                    return [string]$connected.Ssid
+                }
+            }
+        }
+    } catch {
+    }
+
+    return $null
+}
+
+function Get-NetworkDnsNetworkContext {
+    param(
+        $Context,
+        $AdapterInventory,
+        [string[]]$Suffixes,
+        $JoinContext
+    )
+
+    $ssid = Get-NetworkDnsActiveSsid -Context $Context
+    $gateway = Get-NetworkPrimaryGateway -AdapterInventory $AdapterInventory
+
+    $contextKey = 'offsite'
+    $label = 'offsite network'
+
+    $hasSuffix = ($Suffixes -and $Suffixes.Count -gt 0)
+
+    if ($ssid -and $ssid -match '(?i)guest') {
+        $contextKey = 'guest'
+        $label = 'guest network'
+    } elseif ($JoinContext.JoinCategory -eq 'DomainController' -or $JoinContext.DomainJoined -eq $true -or $hasSuffix) {
+        $contextKey = 'corp'
+        $label = 'corp LAN'
+    }
+
+    return [pscustomobject]@{
+        Key      = $contextKey
+        Label    = $label
+        Ssid     = $ssid
+        Gateway  = $gateway
+        HasSuffix = $hasSuffix
+    }
+}
+
+function Get-NetworkSecureChannelStatus {
+    param($Context)
+
+    $status = 'Unknown'
+    $artifact = $null
+    try { $artifact = Get-AnalyzerArtifact -Context $Context -Name 'ad-health' } catch { $artifact = $null }
+    if ($artifact) {
+        try {
+            $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+            if ($payload -and $payload.PSObject.Properties['Secure'] -and $payload.Secure -and $payload.Secure.PSObject.Properties['TestComputerSecureChannel']) {
+                $test = $payload.Secure.TestComputerSecureChannel
+                if ($test.PSObject.Properties['Succeeded'] -and $test.Succeeded -eq $true) {
+                    if ($test.PSObject.Properties['IsSecure'] -and $test.IsSecure -eq $true) {
+                        $status = 'OK'
+                    } else {
+                        $status = 'Fail'
+                    }
+                } elseif ($test.PSObject.Properties['Error'] -and $test.Error) {
+                    $status = 'Error'
+                }
+            }
+        } catch {
+        }
+    }
+
+    return [pscustomobject]@{ Status = $status }
+}
+
+function Get-NetworkDnsRemediation {
+    param(
+        $JoinContext,
+        [bool]$NeedsInternalZones,
+        [pscustomobject]$NetworkContext
+    )
+
+    $steps = New-Object System.Collections.Generic.List[string]
+
+    switch ($JoinContext.JoinCategory) {
+        'DomainController' {
+            $steps.Add('Use only AD-integrated DNS servers on each NIC (DHCP option 006); remove public resolvers.') | Out-Null
+            $steps.Add('Verify domain controller/DNS reachability and repair the machine secure channel if needed.') | Out-Null
+            $steps.Add('Block outbound access to public DNS resolvers on the host and at network egress where feasible.') | Out-Null
+        }
+        'DomainJoined' {
+            $steps.Add('Use AD-integrated DNS servers on the NIC (DHCP option 006) and remove public resolvers.') | Out-Null
+            $steps.Add('Ensure domain controllers are reachable and the secure channel remains healthy.') | Out-Null
+            $steps.Add('Push NRPT rules or enforce always-on VPN split DNS so corporate zones resolve internally.') | Out-Null
+            $steps.Add('Disable unmanaged DoH/DoT endpoints or enforce the approved resolver to prevent bypass.') | Out-Null
+        }
+        'Hybrid' {
+            $steps.Add('Use AD-integrated DNS servers on the NIC (DHCP option 006) and remove public resolvers.') | Out-Null
+            $steps.Add('Ensure domain controllers are reachable and the secure channel remains healthy.') | Out-Null
+            $steps.Add('Push NRPT rules or enforce always-on VPN split DNS so corporate zones resolve internally.') | Out-Null
+            $steps.Add('Disable unmanaged DoH/DoT endpoints or enforce the approved resolver to prevent bypass.') | Out-Null
+        }
+        'AzureAd' {
+            if ($NeedsInternalZones) {
+                $steps.Add('Deploy NRPT rules or always-on VPN split DNS for corporate zones via Intune.') | Out-Null
+                $steps.Add('Move the device onto the managed staff SSID that hands out internal DNS, or require corporate VPN when onsite.') | Out-Null
+                $steps.Add('Disable unmanaged DoH/DoT that bypasses corporate resolvers or point clients to the approved endpoint.') | Out-Null
+            } else {
+                $steps.Add('If corporate resources are required, enroll the device and apply NRPT or VPN policies before relying on public DNS.') | Out-Null
+            }
+        }
+        default {
+            if ($NetworkContext -and $NetworkContext.Key -eq 'corp') {
+                $steps.Add('Onboard the device to management or connect using the staff SSID that provides internal DNS servers.') | Out-Null
+                $steps.Add('Remove hard-coded public DNS so corporate hostnames are not leaked to external resolvers.') | Out-Null
+            } else {
+                $steps.Add('Use the corporate VPN or staff SSID with split DNS when corporate resources are needed.') | Out-Null
+            }
+        }
+    }
+
+    if ($steps.Count -eq 0) {
+        $steps.Add('Replace public resolvers with the corporate DNS servers provided by DHCP or VPN policies.') | Out-Null
+    }
+
+    return 'Recommended actions:' + "`n" + ($steps.ToArray() -join "`n")
+}
+
 function Invoke-NetworkHeuristics {
     param(
         [Parameter(Mandatory)]
@@ -198,6 +581,8 @@ function Invoke-NetworkHeuristics {
     if ($msinfoIdentity -and $msinfoIdentity.PSObject.Properties['PartOfDomain']) {
         $devicePartOfDomain = $msinfoIdentity.PartOfDomain
     }
+
+    $dnsJoinContext = Get-NetworkDnsJoinContext -Context $Context -MsinfoIdentity $msinfoIdentity
 
     $adapterPayload = $null
     $adapterInventory = $null
@@ -1211,6 +1596,8 @@ function Invoke-NetworkHeuristics {
         if ($payload -and $payload.ClientServers) {
             $entries = ConvertTo-NetworkArray $payload.ClientServers
             $publicServers = New-Object System.Collections.Generic.List[string]
+            $privateServers = New-Object System.Collections.Generic.List[string]
+            $allServerSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
             $loopbackOnly = $true
             $missingInterfaces = @()
             $ignoredPseudo = @()
@@ -1259,9 +1646,15 @@ function Invoke-NetworkHeuristics {
 
                 $loopbackForInterface = $true
                 foreach ($address in $addresses) {
-                    if (-not (Test-NetworkLoopback $address)) { $loopbackForInterface = $false }
-                    if (-not (Test-NetworkPrivateIpv4 $address) -and -not (Test-NetworkLoopback $address)) {
-                        $publicServers.Add($address) | Out-Null
+                    if (-not $address) { continue }
+                    $addressText = [string]$address
+                    if (-not $addressText) { continue }
+                    if (-not (Test-NetworkLoopback $addressText)) { $loopbackForInterface = $false }
+                    if ($allServerSet) { [void]$allServerSet.Add($addressText) }
+                    if (Test-NetworkInternalDnsAddress $addressText) {
+                        $privateServers.Add($addressText) | Out-Null
+                    } elseif (-not (Test-NetworkLoopback $addressText)) {
+                        $publicServers.Add($addressText) | Out-Null
                     }
                 }
 
@@ -1279,9 +1672,96 @@ function Invoke-NetworkHeuristics {
             }
 
             if ($publicServers.Count -gt 0) {
-                $severity = if ($devicePartOfDomain -eq $true) { 'high' } else { 'medium' }
-                $unique = ($publicServers | Select-Object -Unique)
-                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ('Public DNS servers detected: {0}, risking resolution failures on domain devices.' -f ($unique -join ', ')) -Evidence 'Prioritize internal DNS for domain services.' -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                $uniquePublic = ($publicServers | Select-Object -Unique)
+                $allServers = @($allServerSet.ToArray())
+                $hasInternalDns = ($privateServers.Count -gt 0)
+
+                $suffixList = Get-NetworkDnsSuffixList -DnsPayload $payload
+                $internalZones = Get-NetworkDnsInternalZones -JoinContext $dnsJoinContext -Suffixes $suffixList
+                $networkContextInfo = Get-NetworkDnsNetworkContext -Context $Context -AdapterInventory $adapterInventory -Suffixes $suffixList -JoinContext $dnsJoinContext
+                $secureChannelStatus = Get-NetworkSecureChannelStatus -Context $Context
+
+                $needsInternalZones = $dnsJoinContext.NeedsInternalZones
+                if (-not $needsInternalZones -and $dnsJoinContext.JoinCategory -eq 'AzureAd' -and $internalZones.Count -gt 0) {
+                    $needsInternalZones = $true
+                }
+
+                $hasCoverage = $hasInternalDns
+
+                $severity = 'info'
+                switch ($dnsJoinContext.JoinCategory) {
+                    'DomainController' { $severity = 'critical' }
+                    'DomainJoined' { $severity = ($hasCoverage ? 'low' : 'high') }
+                    'Hybrid'        { $severity = ($hasCoverage ? 'low' : 'high') }
+                    'AzureAd' {
+                        if ($needsInternalZones) {
+                            $severity = ($hasCoverage ? 'low' : 'high')
+                        } elseif ($networkContextInfo.Key -eq 'corp') {
+                            $severity = 'medium'
+                        } elseif ($networkContextInfo.Key -eq 'guest') {
+                            $severity = 'info'
+                        } else {
+                            $severity = 'info'
+                        }
+                    }
+                    default {
+                        if ($needsInternalZones) {
+                            $severity = ($hasCoverage ? 'low' : 'high')
+                        } elseif ($networkContextInfo.Key -eq 'corp') {
+                            $severity = 'medium'
+                        } elseif ($networkContextInfo.Key -eq 'guest') {
+                            $severity = 'info'
+                        } else {
+                            $severity = 'info'
+                        }
+                    }
+                }
+
+                $severityTitle = [System.Globalization.CultureInfo]::InvariantCulture.TextInfo.ToTitleCase($severity)
+                $coverageWord = if ($hasCoverage) { 'do' } else { 'do not' }
+                $summary = 'Public DNS can break AD service discovery and split-DNS for internal apps; on this {0} device in {1}, internal zones {2} have NRPT/VPN coverage.' -f $dnsJoinContext.JoinTitle, $networkContextInfo.Label, $coverageWord
+
+                $domainLabel = if ($dnsJoinContext.DomainName) { $dnsJoinContext.DomainName } else { 'Workgroup' }
+                $secureChannelText = if ($secureChannelStatus -and $secureChannelStatus.Status) { [string]$secureChannelStatus.Status } else { 'Unknown' }
+                $ssidText = if ($networkContextInfo.Ssid) { $networkContextInfo.Ssid } else { 'N/A' }
+                $gatewayText = if ($networkContextInfo.Gateway) { $networkContextInfo.Gateway } else { 'Unknown' }
+                $suffixText = if ($suffixList -and $suffixList.Count -gt 0) { $suffixList -join ', ' } else { 'none' }
+                $internalZoneText = if ($internalZones -and $internalZones.Count -gt 0) { $internalZones -join ', ' } else { 'none detected' }
+                $coverageText = if ($hasCoverage) { 'Present' } else { 'Missing' }
+
+                $evidence = [ordered]@{
+                    'Join/Identity'     = ('Domain={0}; Join={1}; SecureChannel={2}' -f $domainLabel, $dnsJoinContext.JoinTitle, $secureChannelText)
+                    'Network Context'   = ('Context={0}; SSID={1}; Gateway={2}' -f $networkContextInfo.Label, $ssidText, $gatewayText)
+                    'DNS Servers'       = ('{0}' -f ($allServers -join ', '))
+                    'Public Resolvers'  = ('{0}' -f ($uniquePublic -join ', '))
+                    'Search Suffixes'   = ('{0}' -f $suffixText)
+                    'Internal Zones'    = ('{0}' -f $internalZoneText)
+                    'NRPT/VPN Coverage' = ('{0}' -f $coverageText)
+                }
+
+                $data = [ordered]@{
+                    'Join.DomainName'           = $dnsJoinContext.DomainName
+                    'Join.JoinCategory'         = $dnsJoinContext.JoinCategory
+                    'Join.JoinTitle'            = $dnsJoinContext.JoinTitle
+                    'Join.DomainJoined'         = $dnsJoinContext.DomainJoined
+                    'Join.AzureAdJoined'        = $dnsJoinContext.AzureAdJoined
+                    'Join.SecureChannel'        = $secureChannelText
+                    'Network.Context'           = $networkContextInfo.Label
+                    'Network.Ssid'              = $networkContextInfo.Ssid
+                    'Network.DefaultGateway'    = $networkContextInfo.Gateway
+                    'Dns.Servers'               = $allServers
+                    'Dns.PublicServers'         = $uniquePublic
+                    'Dns.PrivateServersPresent' = $hasInternalDns
+                    'Dns.SearchSuffixList'      = $suffixList
+                    'Dns.InternalZones'         = $internalZones
+                    'Dns.NrptVpnCoverage'       = $hasCoverage
+                    'Dns.NeedsInternalZones'    = $needsInternalZones
+                }
+
+                $remediation = Get-NetworkDnsRemediation -JoinContext $dnsJoinContext -NeedsInternalZones $needsInternalZones -NetworkContext $networkContextInfo
+                $title = 'DNS: Public resolvers detected on {0} device in {1} → {2}' -f $dnsJoinContext.JoinTitle, $networkContextInfo.Label, $severityTitle
+
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Explanation $summary -Subcategory 'DNS Client' -Remediation $remediation -Data $data
             } elseif (-not $loopbackOnly) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Private DNS servers detected' -Subcategory 'DNS Client'
             }
