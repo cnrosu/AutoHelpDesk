@@ -99,6 +99,25 @@ function Get-IdentityEmailAddresses {
     return @($addresses | Where-Object { $_ })
 }
 
+function Test-AutodiscoverDomainName {
+    param([string]$Domain)
+
+    if ([string]::IsNullOrWhiteSpace($Domain)) { return $false }
+
+    $candidate = $Domain.Trim()
+    if (-not $candidate) { return $false }
+
+    if ($candidate.EndsWith('.')) {
+        $candidate = $candidate.TrimEnd('.')
+        if (-not $candidate) { return $false }
+    }
+
+    if ($candidate.Length -gt 253) { return $false }
+
+    $pattern = '^(?i)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$'
+    return ($candidate -match $pattern)
+}
+
 function Get-CandidateDomains {
     param([string[]]$EmailAddresses)
 
@@ -112,6 +131,9 @@ function Get-CandidateDomains {
         $domain = $parts[-1].Trim()
         if (-not $domain) { continue }
         if ($domain -notmatch '\.') { continue }
+        if (-not (Test-AutodiscoverDomainName -Domain $domain)) { continue }
+        if ($domain.EndsWith('.')) { $domain = $domain.TrimEnd('.') }
+        if (-not $domain) { continue }
         $domains.Add($domain) | Out-Null
     }
 
