@@ -555,6 +555,7 @@ function Invoke-NetworkHeuristics {
         Proxy      = $null
         Vpn        = $null
         Outlook    = $null
+        Wifi       = @()
     }
 
     $createConnectivityData = {
@@ -569,6 +570,7 @@ function Invoke-NetworkHeuristics {
             Proxy     = $ctx.Proxy
             Vpn       = $ctx.Vpn
             Outlook   = $ctx.Outlook
+            Wifi      = if ($ctx.Wifi) { $ctx.Wifi } else { @() }
         }
     }
 
@@ -1865,7 +1867,441 @@ function Invoke-NetworkHeuristics {
         }
     }
 
-    if ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
+    if ($adapterPayload -and $adapterPayload.PSObject.Properties['Passes']) {
+        $normalizeNetworkMatch = {
+            param([string]$Text)
+
+            if (-not $Text) { return $null }
+
+            $trimmed = $Text.Trim()
+            if (-not $trimmed) { return $null }
+
+            $lower = $null
+            try { $lower = $trimmed.ToLowerInvariant() } catch { $lower = $trimmed }
+
+            $alphaBuilder = New-Object System.Text.StringBuilder
+            foreach ($ch in $lower.ToCharArray()) {
+                if ([char]::IsLetterOrDigit($ch)) { [void]$alphaBuilder.Append($ch) }
+            }
+
+            [pscustomobject]@{
+                Lower = $lower
+                Alpha = if ($alphaBuilder.Length -gt 0) { $alphaBuilder.ToString() } else { $null }
+            }
+        }
+
+        $stringsRoughlyEqual = {
+            param([string]$Left, [string]$Right)
+
+            if (-not $Left -or -not $Right) { return $false }
+
+            $leftNorm = & $normalizeNetworkMatch $Left
+            $rightNorm = & $normalizeNetworkMatch $Right
+
+            if (-not $leftNorm -or -not $rightNorm) { return $false }
+
+            if ($leftNorm.Lower -and $rightNorm.Lower -and $leftNorm.Lower -eq $rightNorm.Lower) { return $true }
+            if ($leftNorm.Alpha -and $rightNorm.Alpha -and $leftNorm.Alpha -eq $rightNorm.Alpha) { return $true }
+
+            if ($leftNorm.Lower -and $rightNorm.Lower) {
+                if ($leftNorm.Lower.Contains($rightNorm.Lower) -or $rightNorm.Lower.Contains($leftNorm.Lower)) { return $true }
+            }
+
+            return $false
+        }
+
+        $passesRaw = ConvertTo-NetworkArray $adapterPayload.Passes
+        $adapterPasses = New-Object System.Collections.Generic.List[pscustomobject]
+
+        $getStatusValue = {
+            param($statusMap, [string]$key)
+
+            if (-not $statusMap) { return $null }
+            if (-not $statusMap.PSObject) { return $null }
+            if (-not $statusMap.PSObject.Properties[$key]) { return $null }
+
+            $raw = $statusMap.$key
+            if ($null -eq $raw) { return $null }
+
+            $text = [string]$raw
+            if (-not $text) { return $null }
+
+            try {
+                return $text.Trim().ToLowerInvariant()
+            } catch {
+                return $text.ToLowerInvariant()
+            }
+        }
+
+        foreach ($pass in $passesRaw) {
+            if (-not $pass) { continue }
+
+            $interfacesRaw = ConvertTo-NetworkArray ($pass.PSObject.Properties['Interfaces'] ? $pass.Interfaces : $null)
+            $interfaceDetails = New-Object System.Collections.Generic.List[pscustomobject]
+            $wifiEntriesRaw = @(ConvertTo-NetworkArray ($pass.PSObject.Properties['Wifi'] ? $pass.Wifi : $null) | Where-Object { $_ })
+            $wifiRecords = New-Object System.Collections.Generic.List[pscustomobject]
+
+            foreach ($wifiEntry in $wifiEntriesRaw) {
+                if (-not $wifiEntry) { continue }
+
+                $wifiName = if ($wifiEntry.PSObject.Properties['Name']) { [string]$wifiEntry.Name } else { $null }
+                $wifiDescription = if ($wifiEntry.PSObject.Properties['Description']) { [string]$wifiEntry.Description } else { $null }
+                $wifiState = if ($wifiEntry.PSObject.Properties['State']) { [string]$wifiEntry.State } else { $null }
+                $wifiSsid = if ($wifiEntry.PSObject.Properties['SSID']) { [string]$wifiEntry.SSID } else { $null }
+                $wifiSignal = if ($wifiEntry.PSObject.Properties['Signal']) { [string]$wifiEntry.Signal } else { $null }
+                $wifiBssid = if ($wifiEntry.PSObject.Properties['BSSID']) { [string]$wifiEntry.BSSID } else { $null }
+                $wifiRadio = if ($wifiEntry.PSObject.Properties['RadioType']) { [string]$wifiEntry.RadioType } else { $null }
+
+                $wifiRecord = [ordered]@{
+                    Name        = $wifiName
+                    Description = $wifiDescription
+                    State       = $wifiState
+                    SSID        = $wifiSsid
+                    Signal      = $wifiSignal
+                    BSSID       = $wifiBssid
+                    RadioType   = $wifiRadio
+                }
+
+                $wifiRecords.Add([pscustomobject]$wifiRecord) | Out-Null
+            }
+
+            foreach ($iface in $interfacesRaw) {
+                if (-not $iface) { continue }
+
+                $alias = $null
+                if ($iface.PSObject.Properties['InterfaceAlias']) { $alias = [string]$iface.InterfaceAlias }
+                if (-not $alias -and $iface.PSObject.Properties['Name']) { $alias = [string]$iface.Name }
+                if (-not $alias) { continue }
+
+                $description = if ($iface.PSObject.Properties['InterfaceDescription']) { [string]$iface.InterfaceDescription } else { $null }
+                $statusText = if ($iface.PSObject.Properties['Status']) { [string]$iface.Status } else { $null }
+                $normalizedStatus = if ($statusText) { $statusText.Trim().ToLowerInvariant() } else { '' }
+                $isUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
+                $ifIndex = $null
+                if ($iface.PSObject.Properties['IfIndex']) {
+                    try { $ifIndex = [int]$iface.IfIndex } catch { $ifIndex = $iface.IfIndex }
+                }
+
+                $ipv4List = @(ConvertTo-NetworkArray ($iface.PSObject.Properties['IPv4'] ? $iface.IPv4 : $null) | Where-Object { $_ })
+                $ipv6List = @(ConvertTo-NetworkArray ($iface.PSObject.Properties['IPv6'] ? $iface.IPv6 : $null) | Where-Object { $_ })
+                $ipv4Gateways = @(ConvertTo-NetworkArray ($iface.PSObject.Properties['IPv4DefaultGateway'] ? $iface.IPv4DefaultGateway : $null) | Where-Object { $_ })
+                $ipv6Gateways = @(ConvertTo-NetworkArray ($iface.PSObject.Properties['IPv6DefaultGateway'] ? $iface.IPv6DefaultGateway : $null) | Where-Object { $_ })
+                $routeGatewayV4 = if ($iface.PSObject.Properties['RouteDefaultGatewayV4']) { [string]$iface.RouteDefaultGatewayV4 } else { $null }
+                $routeGatewayV6 = if ($iface.PSObject.Properties['RouteDefaultGatewayV6']) { [string]$iface.RouteDefaultGatewayV6 } else { $null }
+                $routeMetricV4 = $null
+                if ($iface.PSObject.Properties['RouteDefaultGatewayV4Metric']) {
+                    try { $routeMetricV4 = [int]$iface.RouteDefaultGatewayV4Metric } catch { $routeMetricV4 = $iface.RouteDefaultGatewayV4Metric }
+                }
+                $routeMetricV6 = $null
+                if ($iface.PSObject.Properties['RouteDefaultGatewayV6Metric']) {
+                    try { $routeMetricV6 = [int]$iface.RouteDefaultGatewayV6Metric } catch { $routeMetricV6 = $iface.RouteDefaultGatewayV6Metric }
+                }
+
+                $linkSpeedText = if ($iface.PSObject.Properties['LinkSpeedText']) { [string]$iface.LinkSpeedText } else { $null }
+                $linkSpeedMbps = $null
+                if ($iface.PSObject.Properties['LinkSpeedMbps']) {
+                    try { $linkSpeedMbps = [double]$iface.LinkSpeedMbps } catch { $linkSpeedMbps = $iface.LinkSpeedMbps }
+                }
+
+                $mediaType = if ($iface.PSObject.Properties['MediaType']) { [string]$iface.MediaType } else { $null }
+                $macAddress = if ($iface.PSObject.Properties['MacAddress']) { [string]$iface.MacAddress } else { $null }
+                $dnsServers = @(ConvertTo-NetworkArray ($iface.PSObject.Properties['DnsServers'] ? $iface.DnsServers : $null) | Where-Object { $_ })
+                $collectedAt = if ($iface.PSObject.Properties['CollectedAtUtc']) { [string]$iface.CollectedAtUtc } else { $null }
+
+                $matchingWifi = $null
+                if ($wifiRecords.Count -gt 0) {
+                    $candidateTexts = @()
+                    if ($alias) { $candidateTexts += $alias }
+                    if ($description) { $candidateTexts += $description }
+
+                    foreach ($candidateText in $candidateTexts) {
+                        if (-not $candidateText) { continue }
+
+                        foreach ($wifiCandidate in $wifiRecords) {
+                            if ($matchingWifi) { break }
+
+                            $wifiNameText = if ($wifiCandidate.PSObject.Properties['Name']) { [string]$wifiCandidate.Name } else { $null }
+                            $wifiDescriptionText = if ($wifiCandidate.PSObject.Properties['Description']) { [string]$wifiCandidate.Description } else { $null }
+
+                            if ($wifiNameText -and (& $stringsRoughlyEqual $candidateText $wifiNameText)) { $matchingWifi = $wifiCandidate; break }
+                            if ($wifiDescriptionText -and (& $stringsRoughlyEqual $candidateText $wifiDescriptionText)) { $matchingWifi = $wifiCandidate; break }
+                        }
+
+                        if ($matchingWifi) { break }
+                    }
+
+                    if (-not $matchingWifi -and $wifiRecords.Count -eq 1) { $matchingWifi = $wifiRecords[0] }
+                }
+
+                $hasIpv4 = ($ipv4List | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+                $hasIpv6 = ($ipv6List | Where-Object { Test-NetworkValidIpv6Address $_ }).Count -gt 0
+                $hasGatewayV4 = ($ipv4Gateways | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+                if ($routeGatewayV4) { $hasGatewayV4 = $hasGatewayV4 -or (Test-NetworkValidIpv4Address $routeGatewayV4) }
+                $hasGatewayV6 = ($ipv6Gateways | Where-Object { Test-NetworkValidIpv6Address $_ }).Count -gt 0
+                if ($routeGatewayV6) { $hasGatewayV6 = $hasGatewayV6 -or (Test-NetworkValidIpv6Address $routeGatewayV6) }
+
+                $isPseudo = Test-NetworkPseudoInterface -Alias $alias -Description $description
+                $hasAnyRoute = ($hasGatewayV4 -or $hasGatewayV6)
+                $isActive = ($isUp -and -not $isPseudo -and $hasAnyRoute)
+
+                $ifaceRecord = [ordered]@{
+                    Alias                       = $alias
+                    Description                 = $description
+                    Status                      = $statusText
+                    NormalizedStatus            = $normalizedStatus
+                    IsUp                        = $isUp
+                    IsPseudo                    = $isPseudo
+                    IfIndex                     = $ifIndex
+                    IPv4                        = $ipv4List
+                    IPv6                        = $ipv6List
+                    IPv4DefaultGateway          = $ipv4Gateways
+                    IPv6DefaultGateway          = $ipv6Gateways
+                    RouteDefaultGatewayV4       = $routeGatewayV4
+                    RouteDefaultGatewayV4Metric = $routeMetricV4
+                    RouteDefaultGatewayV6       = $routeGatewayV6
+                    RouteDefaultGatewayV6Metric = $routeMetricV6
+                    HasIpv4Address              = $hasIpv4
+                    HasIpv6Address              = $hasIpv6
+                    HasDefaultRouteV4           = $hasGatewayV4
+                    HasDefaultRouteV6           = $hasGatewayV6
+                    HasAnyDefaultRoute          = $hasAnyRoute
+                    LinkSpeedText               = $linkSpeedText
+                    LinkSpeedMbps               = $linkSpeedMbps
+                    MediaType                   = $mediaType
+                    MacAddress                  = $macAddress
+                    DnsServers                  = $dnsServers
+                    CollectedAtUtc              = $collectedAt
+                    Active                      = $isActive
+                }
+
+                if ($matchingWifi) {
+                    if ($matchingWifi.PSObject.Properties['State']) { $ifaceRecord.WifiState = [string]$matchingWifi.State }
+                    if ($matchingWifi.PSObject.Properties['SSID']) { $ifaceRecord.WifiSsid = [string]$matchingWifi.SSID }
+                    if ($matchingWifi.PSObject.Properties['Signal']) { $ifaceRecord.WifiSignal = [string]$matchingWifi.Signal }
+                    if ($matchingWifi.PSObject.Properties['BSSID']) { $ifaceRecord.WifiBssid = [string]$matchingWifi.BSSID }
+                    if ($matchingWifi.PSObject.Properties['RadioType']) { $ifaceRecord.WifiRadioType = [string]$matchingWifi.RadioType }
+                }
+
+                $interfaceDetails.Add([pscustomobject]$ifaceRecord) | Out-Null
+            }
+
+            $statusMap = if ($pass.PSObject.Properties['Status']) { $pass.Status } else { $null }
+            $errorsMap = if ($pass.PSObject.Properties['Errors']) { $pass.Errors } else { $null }
+
+            $adapterStatus = & $getStatusValue $statusMap 'NetAdapter'
+            $ipStatus = & $getStatusValue $statusMap 'NetIPConfiguration'
+            $routeV4Status = & $getStatusValue $statusMap 'NetRouteV4'
+            $routeV6Status = & $getStatusValue $statusMap 'NetRouteV6'
+
+            $adapterError = ($adapterStatus -eq 'error')
+            $ipError = ($ipStatus -eq 'error')
+            $routeError = (($routeV4Status -eq 'error') -and ($routeV6Status -eq 'error'))
+            $hasInterfaces = ($interfaceDetails.Count -gt 0)
+
+            $passLabel = 'ok'
+            if (-not $hasInterfaces -and ($adapterError -or $ipError)) {
+                $passLabel = 'fail'
+            } elseif ($adapterError -or $ipError -or $routeError -or -not $hasInterfaces) {
+                $passLabel = 'partial'
+            }
+
+            $adapterPasses.Add([pscustomobject]@{
+                Interfaces      = $interfaceDetails.ToArray()
+                ActiveCount     = ($interfaceDetails | Where-Object { $_.Active }).Count
+                CollectedAtUtc  = if ($pass.PSObject.Properties['CollectedAtUtc']) { [string]$pass.CollectedAtUtc } else { $null }
+                Status          = $statusMap
+                Errors          = $errorsMap
+                Label           = $passLabel
+                AdapterStatus   = $adapterStatus
+                IpStatus        = $ipStatus
+                RouteV4Status   = $routeV4Status
+                RouteV6Status   = $routeV6Status
+                RouteQueryError = $routeError
+                Wifi            = $wifiRecords.ToArray()
+            }) | Out-Null
+        }
+
+        if ($adapterPasses.Count -eq 0) {
+            Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network/Adapters: Collector returned no samples, so link status is unknown.' -Subcategory 'Network Adapters'
+        } else {
+            $firstPass = $adapterPasses[0]
+            $finalPass = $adapterPasses[$adapterPasses.Count - 1]
+            $retryOccurred = ($adapterPasses.Count -gt 1)
+
+            $finalActive = if ($finalPass.PSObject.Properties['ActiveCount']) { [int]$finalPass.ActiveCount } else { 0 }
+            $firstActive = if ($firstPass.PSObject.Properties['ActiveCount']) { [int]$firstPass.ActiveCount } else { 0 }
+            $collectorStatus = if ($finalPass.PSObject.Properties['Label']) { [string]$finalPass.Label } else { 'unknown' }
+
+            if ($finalPass.PSObject.Properties['Wifi']) {
+                $connectivityContext.Wifi = @(ConvertTo-NetworkArray $finalPass.Wifi | Where-Object { $_ })
+            } else {
+                $connectivityContext.Wifi = @()
+            }
+
+            $finalInterfaces = if ($finalPass.PSObject.Properties['Interfaces']) { $finalPass.Interfaces } else { @() }
+            $activeInterfaces = @($finalInterfaces | Where-Object { $_.PSObject.Properties['Active'] -and $_.Active })
+            $upInterfaces = @($finalInterfaces | Where-Object { $_.PSObject.Properties['IsUp'] -and $_.IsUp -and -not ($_.PSObject.Properties['IsPseudo'] -and $_.IsPseudo) })
+            $hasUpWithoutRoute = ($upInterfaces | Where-Object { $_.PSObject.Properties['HasAnyDefaultRoute'] -and -not $_.HasAnyDefaultRoute }).Count -gt 0
+
+            $routeStatuses = [ordered]@{}
+            if ($finalPass.PSObject.Properties['RouteV4Status']) { $routeStatuses.V4 = $finalPass.RouteV4Status }
+            if ($finalPass.PSObject.Properties['RouteV6Status']) { $routeStatuses.V6 = $finalPass.RouteV6Status }
+
+            $finalErrors = @()
+            if ($finalPass.PSObject.Properties['Errors'] -and $finalPass.Errors -and $finalPass.Errors.PSObject) {
+                foreach ($prop in $finalPass.Errors.PSObject.Properties) {
+                    if (-not $prop) { continue }
+                    $name = $prop.Name
+                    $value = $prop.Value
+                    if ($value) {
+                        $finalErrors += ('{0}: {1}' -f $name, $value)
+                    }
+                }
+            }
+
+            $collectedAtUtc = if ($finalPass.PSObject.Properties['CollectedAtUtc']) { $finalPass.CollectedAtUtc } else { $null }
+
+            if ($finalActive -gt 0) {
+                $primaryInterface = $null
+                if ($activeInterfaces.Count -gt 0) {
+                    $primaryInterface = $activeInterfaces | Where-Object { $_.PSObject.Properties['HasDefaultRouteV4'] -and $_.HasDefaultRouteV4 } | Select-Object -First 1
+                    if (-not $primaryInterface) { $primaryInterface = $activeInterfaces | Where-Object { $_.PSObject.Properties['HasDefaultRouteV6'] -and $_.HasDefaultRouteV6 } | Select-Object -First 1 }
+                    if (-not $primaryInterface) { $primaryInterface = $activeInterfaces | Select-Object -First 1 }
+                }
+
+                $interfaceLabel = 'Adapter'
+                $pathSummary = 'link up'
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+
+                if ($primaryInterface) {
+                    $aliasText = if ($primaryInterface.PSObject.Properties['Alias']) { [string]$primaryInterface.Alias } else { 'Adapter' }
+                    $mediaTypeText = if ($primaryInterface.PSObject.Properties['MediaType']) { [string]$primaryInterface.MediaType } else { $null }
+                    $interfaceLabel = $aliasText
+                    if ($mediaTypeText -and $mediaTypeText -match '(?i)(wireless|wi-?fi|802\.11)') {
+                        $interfaceLabel = 'Wi-Fi'
+                    } elseif ($primaryInterface.PSObject.Properties['WifiSsid'] -and $primaryInterface.WifiSsid) {
+                        $interfaceLabel = 'Wi-Fi'
+                    }
+
+                    $ipv4ForSummary = $null
+                    if ($primaryInterface.PSObject.Properties['IPv4']) {
+                        $ipv4ForSummary = ($primaryInterface.IPv4 | Where-Object { Test-NetworkValidIpv4Address $_ } | Select-Object -First 1)
+                    }
+                    $ipv6ForSummary = $null
+                    if (-not $ipv4ForSummary -and $primaryInterface.PSObject.Properties['IPv6']) {
+                        $ipv6ForSummary = ($primaryInterface.IPv6 | Where-Object { Test-NetworkValidIpv6Address $_ } | Select-Object -First 1)
+                    }
+
+                    $gatewayForSummary = $null
+                    if ($primaryInterface.PSObject.Properties['IPv4DefaultGateway'] -and $primaryInterface.IPv4DefaultGateway.Count -gt 0) {
+                        $gatewayForSummary = $primaryInterface.IPv4DefaultGateway[0]
+                    } elseif ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV4'] -and $primaryInterface.RouteDefaultGatewayV4) {
+                        $gatewayForSummary = $primaryInterface.RouteDefaultGatewayV4
+                    } elseif ($primaryInterface.PSObject.Properties['IPv6DefaultGateway'] -and $primaryInterface.IPv6DefaultGateway.Count -gt 0) {
+                        $gatewayForSummary = $primaryInterface.IPv6DefaultGateway[0]
+                    } elseif ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV6'] -and $primaryInterface.RouteDefaultGatewayV6) {
+                        $gatewayForSummary = $primaryInterface.RouteDefaultGatewayV6
+                    }
+
+                    if ($ipv4ForSummary -and $gatewayForSummary) {
+                        $pathSummary = '{0} → {1}' -f $ipv4ForSummary, $gatewayForSummary
+                    } elseif ($ipv6ForSummary -and $gatewayForSummary) {
+                        $pathSummary = '{0} → {1}' -f $ipv6ForSummary, $gatewayForSummary
+                    }
+
+                    $ifIndexText = if ($primaryInterface.PSObject.Properties['IfIndex'] -and $primaryInterface.IfIndex -ne $null) { $primaryInterface.IfIndex } else { 'n/a' }
+                    $statusDisplay = if ($primaryInterface.PSObject.Properties['Status']) { [string]$primaryInterface.Status } else { 'unknown' }
+                    $linkSpeedDisplay = if ($primaryInterface.PSObject.Properties['LinkSpeedText'] -and $primaryInterface.LinkSpeedText) { $primaryInterface.LinkSpeedText } elseif ($primaryInterface.PSObject.Properties['LinkSpeedMbps'] -and $primaryInterface.LinkSpeedMbps) { '{0} Mbps' -f $primaryInterface.LinkSpeedMbps } else { $null }
+
+                    $evidenceLines.Add(('Adapter: {0} (IfIndex {1}, Status {2}{3})' -f $aliasText, $ifIndexText, $statusDisplay, ($linkSpeedDisplay ? ", Link $linkSpeedDisplay" : ''))) | Out-Null
+                    if ($primaryInterface.PSObject.Properties['IPv4'] -and $primaryInterface.IPv4.Count -gt 0) { $evidenceLines.Add('IPv4: {0}' -f ($primaryInterface.IPv4 -join ', ')) | Out-Null }
+                    if ($primaryInterface.PSObject.Properties['IPv6'] -and $primaryInterface.IPv6.Count -gt 0) { $evidenceLines.Add('IPv6: {0}' -f ($primaryInterface.IPv6 -join ', ')) | Out-Null }
+                    if ($primaryInterface.PSObject.Properties['IPv4DefaultGateway'] -and $primaryInterface.IPv4DefaultGateway.Count -gt 0) { $evidenceLines.Add('IPv4DefaultGateway: {0}' -f ($primaryInterface.IPv4DefaultGateway -join ', ')) | Out-Null }
+                    if ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV4'] -and $primaryInterface.RouteDefaultGatewayV4) {
+                        $metricText = if ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV4Metric'] -and $primaryInterface.RouteDefaultGatewayV4Metric -ne $null) { ' (metric {0})' -f $primaryInterface.RouteDefaultGatewayV4Metric } else { '' }
+                        $evidenceLines.Add('Default Route: 0.0.0.0/0 → {0}{1}' -f $primaryInterface.RouteDefaultGatewayV4, $metricText) | Out-Null
+                    }
+                    if ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV6'] -and $primaryInterface.RouteDefaultGatewayV6) {
+                        $metricTextV6 = if ($primaryInterface.PSObject.Properties['RouteDefaultGatewayV6Metric'] -and $primaryInterface.RouteDefaultGatewayV6Metric -ne $null) { ' (metric {0})' -f $primaryInterface.RouteDefaultGatewayV6Metric } else { '' }
+                        $evidenceLines.Add('Default Route: ::/0 → {0}{1}' -f $primaryInterface.RouteDefaultGatewayV6, $metricTextV6) | Out-Null
+                    }
+                    if ($primaryInterface.PSObject.Properties['WifiState'] -and $primaryInterface.WifiState) {
+                        $evidenceLines.Add('Wi-Fi State: {0}' -f $primaryInterface.WifiState) | Out-Null
+                    }
+                    if ($primaryInterface.PSObject.Properties['WifiSsid'] -and $primaryInterface.WifiSsid) {
+                        $evidenceLines.Add('Wi-Fi SSID: {0}' -f $primaryInterface.WifiSsid) | Out-Null
+                    }
+                    if ($primaryInterface.PSObject.Properties['WifiSignal'] -and $primaryInterface.WifiSignal) {
+                        $evidenceLines.Add('Wi-Fi Signal: {0}' -f $primaryInterface.WifiSignal) | Out-Null
+                    }
+                    if ($primaryInterface.PSObject.Properties['WifiBssid'] -and $primaryInterface.WifiBssid) {
+                        $evidenceLines.Add('Wi-Fi BSSID: {0}' -f $primaryInterface.WifiBssid) | Out-Null
+                    }
+                }
+
+                $statusPairs = New-Object System.Collections.Generic.List[string]
+                foreach ($entry in $routeStatuses.GetEnumerator()) { if ($entry.Value) { $statusPairs.Add('{0}={1}' -f $entry.Key, $entry.Value) | Out-Null } }
+                if ($statusPairs.Count -gt 0) { $evidenceLines.Add('RouteQueryStatus: {0}' -f ($statusPairs -join ', ')) | Out-Null }
+                if ($collectedAtUtc) { $evidenceLines.Add('CollectedAtUtc: {0}' -f $collectedAtUtc) | Out-Null }
+                if ($retryOccurred) { $evidenceLines.Add('Retry: FirstPassActive={0}; FinalPassActive={1}' -f $firstActive, $finalActive) | Out-Null }
+                foreach ($errorText in $finalErrors) { $evidenceLines.Add('CollectorError: {0}' -f $errorText) | Out-Null }
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title ('Network/Adapters: Active path via {0} ({1})' -f $interfaceLabel, $pathSummary) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'Network Adapters' -Data (& $createConnectivityData $connectivityContext)
+            } else {
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+                $evidenceLines.Add('CollectorStatus: {0}' -f $collectorStatus) | Out-Null
+                if ($collectedAtUtc) { $evidenceLines.Add('CollectedAtUtc: {0}' -f $collectedAtUtc) | Out-Null }
+                if ($retryOccurred) { $evidenceLines.Add('Retry: FirstPassActive={0}; FinalPassActive={1}' -f $firstActive, $finalActive) | Out-Null }
+                $statusPairs = New-Object System.Collections.Generic.List[string]
+                foreach ($entry in $routeStatuses.GetEnumerator()) { if ($entry.Value) { $statusPairs.Add('{0}={1}' -f $entry.Key, $entry.Value) | Out-Null } }
+                if ($statusPairs.Count -gt 0) { $evidenceLines.Add('RouteQueryStatus: {0}' -f ($statusPairs -join ', ')) | Out-Null }
+                foreach ($errorText in $finalErrors) { $evidenceLines.Add('CollectorError: {0}' -f $errorText) | Out-Null }
+                $evidenceLines.Add('AdaptersUp: {0}' -f $upInterfaces.Count) | Out-Null
+                $evidenceLines.Add('DefaultRoutesDetected: {0}' -f $activeInterfaces.Count) | Out-Null
+
+                $interfacesWithoutRoute = $upInterfaces | Where-Object { $_.PSObject.Properties['HasAnyDefaultRoute'] -and -not $_.HasAnyDefaultRoute }
+                foreach ($iface in $interfacesWithoutRoute) {
+                    $parts = New-Object System.Collections.Generic.List[string]
+                    if ($iface.PSObject.Properties['Alias'] -and $iface.Alias) { $parts.Add($iface.Alias) | Out-Null }
+                    if ($iface.PSObject.Properties['Status'] -and $iface.Status) { $parts.Add('Status=' + $iface.Status) | Out-Null }
+                    if ($iface.PSObject.Properties['IPv4'] -and $iface.IPv4.Count -gt 0) { $parts.Add('IPv4=' + ($iface.IPv4 -join ', ')) | Out-Null }
+                    if ($iface.PSObject.Properties['IPv6'] -and $iface.IPv6.Count -gt 0) { $parts.Add('IPv6=' + ($iface.IPv6 -join ', ')) | Out-Null }
+                    if ($iface.PSObject.Properties['WifiSsid'] -and $iface.WifiSsid) { $parts.Add('SSID=' + $iface.WifiSsid) | Out-Null }
+                    if ($iface.PSObject.Properties['WifiSignal'] -and $iface.WifiSignal) { $parts.Add('Signal=' + $iface.WifiSignal) | Out-Null }
+                    if ($iface.PSObject.Properties['WifiState'] -and $iface.WifiState) { $parts.Add('WiFiState=' + $iface.WifiState) | Out-Null }
+                    if ($iface.PSObject.Properties['WifiBssid'] -and $iface.WifiBssid) { $parts.Add('BSSID=' + $iface.WifiBssid) | Out-Null }
+                    $evidenceLines.Add('No default route: {0}' -f ($parts.ToArray() -join '; ')) | Out-Null
+                }
+
+                $severity = 'high'
+                $title = 'Network/Adapters: No active network path detected after retry'
+                $remediation = 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.'
+
+                if ($collectorStatus -eq 'fail') {
+                    $severity = 'info'
+                    $title = 'Network/Adapters: Adapter inventory unavailable (collection error)'
+                    $remediation = $null
+                } elseif ($collectorStatus -eq 'partial' -and $finalPass.PSObject.Properties['RouteQueryError'] -and $finalPass.RouteQueryError) {
+                    $severity = 'medium'
+                    $title = 'Network/Adapters: Routes missing during collection (transient)'
+                    $remediation = $null
+                } elseif ($collectorStatus -eq 'partial' -and -not ($finalPass.PSObject.Properties['RouteQueryError'] -and $finalPass.RouteQueryError)) {
+                    $severity = 'medium'
+                    $title = 'Network/Adapters: Network adapter inventory incomplete, so link status is unknown.'
+                    $remediation = $null
+                } elseif ($hasUpWithoutRoute) {
+                    $severity = 'medium'
+                    $title = 'Network/Adapters: Adapter up without default route (gateway missing)'
+                    $remediation = $null
+                }
+
+                $params = @{ }
+                if ($remediation) { $params.Remediation = $remediation }
+
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'Network Adapters' -Data (& $createConnectivityData $connectivityContext) @params
+            }
+        }
+    } elseif ($adapterPayload -and $adapterPayload.PSObject.Properties['Adapters']) {
         $adapters = ConvertTo-NetworkArray $adapterPayload.Adapters
         if ($adapters.Count -eq 1 -and ($adapters[0] -is [pscustomobject]) -and $adapters[0].PSObject.Properties['Error'] -and $adapters[0].Error) {
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
@@ -1924,9 +2360,8 @@ function Invoke-NetworkHeuristics {
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory not collected, so link status is unknown.' -Subcategory 'Network Adapters'
+        Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'Network/Adapters: Collector missing, so link status is unknown.' -Subcategory 'Network Adapters'
     }
-
     $proxyArtifact = Get-AnalyzerArtifact -Context $Context -Name 'proxy'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved proxy artifact' -Data ([ordered]@{
         Found = [bool]$proxyArtifact
