@@ -1851,8 +1851,12 @@ function Invoke-NetworkHeuristics {
                     Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}, so mail setup may fail." -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                 }
 
-                foreach ($additional in ($lookups | Where-Object { $_.Label -ne 'Autodiscover' })) {
+                $dnsWarningLabels = @('EnterpriseRegistration','EnterpriseEnrollment')
+                foreach ($additional in $lookups) {
                     if (-not $additional) { continue }
+                    if (-not $additional.Label) { continue }
+                    if ($additional.Label -eq 'Autodiscover') { continue }
+                    if ($dnsWarningLabels -notcontains $additional.Label) { continue }
                     if ($additional.Success -eq $false -and $additional.Error) {
                         Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}, so mail setup may fail." -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                     }
