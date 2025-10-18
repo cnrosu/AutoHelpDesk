@@ -10,6 +10,7 @@ foreach ($moduleName in @(
     'Security.Helpers.ps1',
     'Security.Context.ps1',
     'Security.Defender.ps1',
+    'Security.AntivirusPosture.ps1',
     'Security.Firewall.ps1',
     'Security.BitLocker.ps1',
     'Security.MeasuredBoot.ps1',
@@ -37,6 +38,7 @@ function Invoke-SecurityHeuristics {
     $evaluationContext = New-SecurityEvaluationContext -Context $Context
 
     Invoke-SecurityDefenderChecks -Context $Context -CategoryResult $result
+    Invoke-SecurityAntivirusPostureChecks -Context $Context -CategoryResult $result
     Invoke-SecurityFirewallChecks -Context $Context -CategoryResult $result
     Invoke-SecurityBitLockerChecks -Context $Context -CategoryResult $result
     Invoke-SecurityMeasuredBootChecks -Context $Context -CategoryResult $result
