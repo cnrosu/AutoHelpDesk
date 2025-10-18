@@ -102,6 +102,7 @@ $collectorExecutionOrder = @(
     'Collect-LAPS.ps1',
     'Collect-WDAC.ps1',
     'Collect-VBSHVCI.ps1',
+    'Collect-AvPosture.ps1',
     'Collect-Defender.ps1',
     'Collect-UAC.ps1',
     'Collect-TPM.ps1',
