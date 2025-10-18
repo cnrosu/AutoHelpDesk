@@ -11,7 +11,8 @@ $analyzersRoot = Split-Path -Parent $parsersRoot
 function New-TestIntuneContext {
     param(
         [string[]]$TaskLines,
-        [object[]]$ServiceEntries
+        [object[]]$ServiceEntries,
+        [object]$PushPayload
     )
 
     $artifacts = @{}
@@ -26,6 +27,14 @@ function New-TestIntuneContext {
             }
         }
         $artifacts['scheduled-tasks'] = $taskArtifact
+    }
+
+    if ($PushPayload) {
+        $pushArtifact = [pscustomobject]@{
+            Path = 'intune-push.json'
+            Data = $PushPayload
+        }
+        $artifacts['intune-push'] = $pushArtifact
     }
 
     if ($ServiceEntries) {
@@ -128,11 +137,42 @@ if ($mixedStatus.LastResultNormalized -ne 'success') {
     $null = $failures.Add("Expected LastResultNormalized 'success' for mixed-format fixture but received '$($mixedStatus.LastResultNormalized)'.")
 }
 
-$category = Invoke-IntuneHeuristics -Context $taskContextMixed
-$pushIssues = @($category.Issues | Where-Object { $_.Title -like 'Intune quick sync*' })
+$recentRunUtc = (Get-Date).ToUniversalTime().AddDays(-1).ToString('yyyy-MM-ddTHH:mm:ssZ')
+$collectedAtUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$healthyPushPayload = [pscustomobject]@{
+    CollectedAtUtc    = $collectedAtUtc
+    RecencyWindowDays = 7
+    Service           = [pscustomobject]@{
+        Name      = 'dmwappushservice'
+        Exists    = $true
+        StartType = 'AutomaticDelayedStart'
+        State     = 'Stopped'
+    }
+    Task              = [pscustomobject]@{
+        Path           = '\\Microsoft\\Windows\\PushToInstall\\PushLaunch'
+        Exists         = $true
+        Enabled        = $true
+        LastResult     = 0
+        LastRunTimeUtc = $recentRunUtc
+        State          = 'Ready'
+    }
+    Logs              = [pscustomobject]@{
+        DMEDP = [pscustomobject]@{ RecentErrors = 0; LastErrorUtc = $null }
+        Push  = [pscustomobject]@{ RecentErrors = 0; LastErrorUtc = $null }
+    }
+}
+
+$healthyContext = New-TestIntuneContext -ServiceEntries @($healthyService) -PushPayload $healthyPushPayload
+$category = Invoke-IntuneHeuristics -Context $healthyContext
+$pushIssues = @($category.Issues | Where-Object { $_.Title -like 'Intune/Push Wake*' })
 if ($pushIssues.Count -gt 0) {
     $details = $pushIssues | ForEach-Object { "{0} (Severity={1})" -f $_.Title, $_.Severity }
     $null = $failures.Add('Intune heuristic produced unexpected push notification issues: ' + ($details -join '; '))
+}
+
+$pushNormals = @($category.Normals | Where-Object { $_.Title -like 'Intune push wake is healthy*' })
+if ($pushNormals.Count -eq 0) {
+    $null = $failures.Add('Expected a healthy Intune push wake normal check but none was recorded.')
 }
 
 if ($failures.Count -gt 0) {

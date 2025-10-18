@@ -786,6 +786,87 @@ function Normalize-IntuneTaskResult {
     return 'failure'
 }
 
+function Get-IntunePushCollectorPayload {
+    param([Parameter(Mandatory)] $Context)
+
+    if (-not $Context) { return $null }
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'intune-push'
+    if (-not $artifact) { return $null }
+
+    $payload = $null
+    try {
+        $artifactPayload = Get-ArtifactPayload -Artifact $artifact
+        if ($artifactPayload) {
+            $payload = Resolve-SinglePayload -Payload $artifactPayload
+        }
+    } catch {
+    }
+
+    if ($payload) { return $payload }
+
+    if ($artifact -is [System.Collections.IEnumerable] -and -not ($artifact -is [string])) {
+        foreach ($entry in $artifact) {
+            if ($entry -and $entry.PSObject.Properties['Data'] -and $entry.Data) { return $entry.Data }
+        }
+        return $null
+    }
+
+    if ($artifact.PSObject.Properties['Data'] -and $artifact.Data) { return $artifact.Data }
+
+    return $null
+}
+
+function ConvertTo-IntuneUtcDateTime {
+    param([AllowNull()][object]$Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $dateValue = $null
+
+    if ($Value -is [datetime]) {
+        $dateValue = [datetime]$Value
+    } elseif ($Value -is [string]) {
+        $text = ([string]$Value).Trim()
+        if (-not $text) { return $null }
+        if ($text -match '^(?i)(n/a|not available|never)$') { return $null }
+
+        try {
+            $dateValue = [datetime]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+        } catch {
+            try {
+                $dateValue = [datetime]::Parse($text)
+            } catch {
+                return $null
+            }
+        }
+    } else {
+        try {
+            $dateValue = [datetime]::Parse([string]$Value)
+        } catch {
+            return $null
+        }
+    }
+
+    if (-not $dateValue) { return $null }
+    if ($dateValue -eq [datetime]::MinValue -or $dateValue -eq [datetime]::MaxValue) { return $null }
+
+    if ($dateValue.Kind -eq [System.DateTimeKind]::Unspecified) {
+        $dateValue = [datetime]::SpecifyKind($dateValue, [System.DateTimeKind]::Local)
+    }
+
+    return $dateValue.ToUniversalTime()
+}
+
+function ConvertTo-IntuneUtcString {
+    param([AllowNull()][object]$Value)
+
+    $dt = ConvertTo-IntuneUtcDateTime -Value $Value
+    if (-not $dt) { return $null }
+
+    return $dt.ToString('yyyy-MM-ddTHH:mm:ssZ')
+}
+
 function Get-IntunePushNotificationServiceStatus {
     param(
         [Parameter(Mandatory)]
@@ -808,6 +889,37 @@ function Get-IntunePushNotificationServiceStatus {
     }
 
     if (-not $Context) { return [pscustomobject]$result }
+
+    $collectorPayload = Get-IntunePushCollectorPayload -Context $Context
+    if ($collectorPayload -and $collectorPayload.PSObject.Properties['Service']) {
+        $serviceNode = $collectorPayload.Service
+        if ($collectorPayload.PSObject.Properties['CollectedAtUtc'] -and $collectorPayload.CollectedAtUtc) {
+            $result['CollectedAtUtc'] = [string]$collectorPayload.CollectedAtUtc
+        }
+
+        $result.Source = 'intune-push.json'
+
+        if ($serviceNode) {
+            $result.Collected = $true
+            if ($serviceNode.PSObject.Properties['Name'] -and $serviceNode.Name) { $result.Name = [string]$serviceNode.Name }
+            if ($serviceNode.PSObject.Properties['Exists']) { $result.Found = [bool]$serviceNode.Exists }
+            else { $result.Found = $true }
+            if ($serviceNode.PSObject.Properties['StartType'] -and $serviceNode.StartType) { $result.StartMode = [string]$serviceNode.StartType }
+            if ($serviceNode.PSObject.Properties['State'] -and $serviceNode.State) {
+                $result.State = [string]$serviceNode.State
+                $result.Status = [string]$serviceNode.State
+            }
+            if ($serviceNode.PSObject.Properties['Error'] -and $serviceNode.Error) { $result.Errors.Add([string]$serviceNode.Error) | Out-Null }
+        }
+
+        $result.StartModeNormalized = Normalize-IntuneServiceStartMode -Value $result.StartMode
+        $result.StatusNormalized = Normalize-IntuneServiceStatus -Value $result.Status
+        if ($result.StatusNormalized -eq 'unknown' -and $result.State) {
+            $result.StatusNormalized = Normalize-IntuneServiceStatus -Value $result.State
+        }
+
+        return [pscustomobject]$result
+    }
 
     $serviceName = 'dmwappushservice'
     $artifactCandidates = @('service-baseline','services')
@@ -932,24 +1044,68 @@ function Get-IntunePushLaunchTaskStatus {
     )
 
     $result = [ordered]@{
-        Collected            = $false
-        Found                = $false
-        TaskName             = $null
-        Enabled              = $null
-        Status               = $null
-        StatusNormalized     = 'unknown'
-        ScheduledTaskState   = $null
-        LastResult           = $null
-        LastResultNormalized = 'unknown'
-        LastRunTime          = $null
-        NextRunTime          = $null
-        MissedRuns           = $null
-        Source               = $null
-        Errors               = [System.Collections.Generic.List[string]]::new()
-        Raw                  = $null
+        Collected             = $false
+        Found                 = $false
+        TaskName              = $null
+        Enabled               = $null
+        Status                = $null
+        StatusNormalized      = 'unknown'
+        ScheduledTaskState    = $null
+        LastResult            = $null
+        LastResultNormalized  = 'unknown'
+        LastRunTime           = $null
+        LastRunTimeUtc        = $null
+        LastRunTimeUtcDateTime = $null
+        NextRunTime           = $null
+        MissedRuns            = $null
+        RecencyWindowDays     = $null
+        CollectedAtUtc        = $null
+        Source                = $null
+        Errors                = [System.Collections.Generic.List[string]]::new()
+        Raw                   = $null
     }
 
     if (-not $Context) { return [pscustomobject]$result }
+
+    $collectorPayload = Get-IntunePushCollectorPayload -Context $Context
+    if ($collectorPayload) {
+        if ($collectorPayload.PSObject.Properties['RecencyWindowDays']) {
+            try { $result.RecencyWindowDays = [int]$collectorPayload.RecencyWindowDays } catch { $result.RecencyWindowDays = $collectorPayload.RecencyWindowDays }
+        }
+        if ($collectorPayload.PSObject.Properties['CollectedAtUtc'] -and $collectorPayload.CollectedAtUtc) {
+            $result.CollectedAtUtc = [string]$collectorPayload.CollectedAtUtc
+        }
+
+        if ($collectorPayload.PSObject.Properties['Task']) {
+            $taskNode = $collectorPayload.Task
+            if ($taskNode) {
+                $result.Source = 'intune-push.json'
+                $result.Collected = $true
+
+                if ($taskNode.PSObject.Properties['Path'] -and $taskNode.Path) { $result.TaskName = [string]$taskNode.Path }
+                if ($taskNode.PSObject.Properties['Exists']) { $result.Found = [bool]$taskNode.Exists }
+                else { $result.Found = $true }
+                if ($taskNode.PSObject.Properties['Enabled']) { $result.Enabled = [bool]$taskNode.Enabled }
+                if ($taskNode.PSObject.Properties['State'] -and $taskNode.State) {
+                    $result.Status = [string]$taskNode.State
+                    $result.ScheduledTaskState = [string]$taskNode.State
+                }
+                if ($taskNode.PSObject.Properties['LastResult']) { $result.LastResult = [string]$taskNode.LastResult }
+                if ($taskNode.PSObject.Properties['LastRunTimeUtc'] -and $taskNode.LastRunTimeUtc) {
+                    $result.LastRunTimeUtc = [string]$taskNode.LastRunTimeUtc
+                    $result.LastRunTime = [string]$taskNode.LastRunTimeUtc
+                    $dt = ConvertTo-IntuneUtcDateTime -Value $taskNode.LastRunTimeUtc
+                    if ($dt) { $result.LastRunTimeUtcDateTime = $dt }
+                }
+                if ($taskNode.PSObject.Properties['Error'] -and $taskNode.Error) { $result.Errors.Add([string]$taskNode.Error) | Out-Null }
+
+                $result.StatusNormalized = Normalize-IntuneTaskStatus -Value $result.Status
+                $result.LastResultNormalized = Normalize-IntuneTaskResult -Value $result.LastResult
+
+                return [pscustomobject]$result
+            }
+        }
+    }
 
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'scheduled-tasks'
     if (-not $artifact) { return [pscustomobject]$result }
@@ -1081,6 +1237,14 @@ function Get-IntunePushLaunchTaskStatus {
         }
 
         break
+    }
+
+    if (-not $result.LastRunTimeUtc -and $result.LastRunTime) {
+        $utcString = ConvertTo-IntuneUtcString -Value $result.LastRunTime
+        if ($utcString) {
+            $result.LastRunTimeUtc = $utcString
+            $result.LastRunTimeUtcDateTime = ConvertTo-IntuneUtcDateTime -Value $result.LastRunTime
+        }
     }
 
     return [pscustomobject]$result
