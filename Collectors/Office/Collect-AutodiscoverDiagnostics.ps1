@@ -678,16 +678,44 @@ function Invoke-Main {
             }) | Out-Null
         }
 
+        $domainTimeoutSeconds = 60
+        $domainTimeout = [TimeSpan]::FromSeconds($domainTimeoutSeconds)
+
         foreach ($work in $workItems) {
+            $endInvokeCompleted = $false
+            $timeoutTriggered = $false
             try {
+                $waitHandle = $work.Async.AsyncWaitHandle
+                $completed = $true
+                if ($waitHandle) {
+                    $completed = $waitHandle.WaitOne($domainTimeout)
+                }
+
+                if (-not $completed) {
+                    $timeoutTriggered = $true
+                    try { $work.PowerShell.Stop() } catch { }
+                    throw [System.TimeoutException]::new(("Autodiscover DNS lookups for {0} exceeded the allotted {1} seconds." -f $work.Domain, $domainTimeoutSeconds))
+                }
+
                 $result = $work.PowerShell.EndInvoke($work.Async)
+                $endInvokeCompleted = $true
                 if ($result) {
                     foreach ($item in $result) {
                         if ($item) { $results.Add($item) | Out-Null }
                     }
                 }
             } catch {
-                $errorMessage = $_.Exception.Message
+                $message = $null
+                if ($_.Exception -and $_.Exception.Message) {
+                    $message = [string]$_.Exception.Message
+                } else {
+                    $message = [string]$_
+                }
+
+                if ($timeoutTriggered -and -not $message) {
+                    $message = "Autodiscover DNS lookups for $($work.Domain) exceeded the allotted $domainTimeoutSeconds seconds."
+                }
+
                 $results.Add([pscustomobject]@{
                     Domain    = $work.Domain
                     Lookups   = @()
@@ -696,12 +724,20 @@ function Invoke-Main {
                         Method     = 'HEAD'
                         StatusCode = $null
                         Success    = $false
-                        Error      = $errorMessage
+                        Error      = $message
                         Location   = $null
                     }
-                    Error     = $errorMessage
+                    Error     = $message
                 }) | Out-Null
             } finally {
+                if (-not $endInvokeCompleted) {
+                    try { $null = $work.PowerShell.EndInvoke($work.Async) } catch { }
+                }
+
+                if ($work.Async.AsyncWaitHandle) {
+                    try { $work.Async.AsyncWaitHandle.Dispose() } catch { }
+                }
+
                 try { $work.PowerShell.Dispose() } catch { }
             }
         }
