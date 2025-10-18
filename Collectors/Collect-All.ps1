@@ -79,6 +79,7 @@ $collectorExecutionOrder = @(
     'Collect-DNS.ps1',
     'Collect-Wlan.ps1',
     'Collect-ScheduledTasks.ps1',
+    'Collect-IntunePush.ps1',
     'Collect-Firewall.ps1',
     'Collect-BatteryReport.ps1',
     'Collect-VpnBaseline.ps1',
