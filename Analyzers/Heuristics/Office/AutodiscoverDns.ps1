@@ -59,6 +59,67 @@ function ConvertTo-AutodiscoverLookupMap {
     return $map
 }
 
+function Test-AutodiscoverCnameNxDomain {
+    param($Lookup)
+
+    if (-not $Lookup) { return $false }
+    if ($Lookup.Success -eq $true) { return $false }
+    $errorText = if ($Lookup.PSObject.Properties['Error']) { [string]$Lookup.Error } else { '' }
+    if (-not $errorText) { return $false }
+
+    return (
+        $errorText -match '(?i)does not exist' -or
+        $errorText -match '(?i)non-existent domain' -or
+        $errorText -match '(?i)no cname records'
+    )
+}
+
+function Update-AutodiscoverNxDomainHistory {
+    param(
+        [Parameter(Mandatory)][string]$Domain,
+        [Parameter()][bool]$IsNxDomain
+    )
+
+    $commandsAvailable = (
+        (Get-Command -Name 'Test-AhdCacheItem' -ErrorAction SilentlyContinue) -and
+        (Get-Command -Name 'Get-AhdCacheValue' -ErrorAction SilentlyContinue) -and
+        (Get-Command -Name 'Set-AhdCacheValue' -ErrorAction SilentlyContinue)
+    )
+
+    $history = @()
+    $consecutive = $false
+
+    if ($commandsAvailable) {
+        $keyDomain = $Domain.ToLowerInvariant()
+        $cacheKey = "AutodiscoverDns::${keyDomain}::CnameNxDomain"
+        if (Test-AhdCacheItem -Key $cacheKey) {
+            $cached = Get-AhdCacheValue -Key $cacheKey
+            if ($cached -is [System.Collections.IEnumerable]) {
+                $history = @($cached | Where-Object { $_ -is [bool] })
+            }
+        }
+
+        $history = @($history + $IsNxDomain)
+        if ($history.Count -gt 2) {
+            $history = $history[($history.Count - 2) .. ($history.Count - 1)]
+        }
+
+        try {
+            Set-AhdCacheValue -Key $cacheKey -Value $history -SlidingExpiration ([System.TimeSpan]::FromHours(12))
+        } catch {
+        }
+
+        if ($history.Count -ge 2) {
+            $consecutive = ($history[-1] -eq $true -and $history[-2] -eq $true)
+        }
+    }
+
+    return [pscustomobject]@{
+        History     = $history
+        Consecutive = $consecutive
+    }
+}
+
 function Get-AutodiscoverHostFromUrl {
     param([string]$Url)
 
@@ -168,75 +229,99 @@ function Get-AutodiscoverTopologyInfo {
     )
 
     $result = [ordered]@{
-        Topology           = 'Unknown'
-        HasCname           = $false
-        HasMsCname         = $false
-        CnameTargets       = @()
-        HasSrv             = $false
-        HasSrv443          = $false
-        SrvTargets         = @()
-        HasARecord         = $false
-        ARecordAddresses   = @()
-        HasMsMx            = $false
-        LookupMap          = $LookupMap
+        Topology          = 'Unknown'
+        HasCname          = $false
+        HasMsCname        = $false
+        CnameSuccess      = $false
+        CnameTargets      = @()
+        CnameError        = $null
+        HasSrv            = $false
+        HasSrv443         = $false
+        SrvTargets        = @()
+        SrvRecords        = @()
+        HasARecord        = $false
+        ARecordAddresses  = @()
+        HasMsMx           = $false
+        MxTargets         = @()
+        LookupMap         = $LookupMap
     }
-
-    $domainLower = $Domain.ToLowerInvariant()
 
     $cname = if ($LookupMap.ContainsKey('Autodiscover')) { $LookupMap['Autodiscover'] } else { $null }
-    if ($cname -and $cname.Success -eq $true) {
-        $targets = @($cname.Targets | Where-Object { $_ })
-        $result.CnameTargets = $targets
-        if ($targets.Count -gt 0) { $result.HasCname = $true }
-        if ($targets | Where-Object { $_ -match '(?i)autodiscover\.outlook\.com$' }) { $result.HasMsCname = $true }
+    if ($cname) {
+        if ($cname.PSObject.Properties['Error']) { $result.CnameError = $cname.Error }
+        if ($cname.Success -eq $true) {
+            $result.CnameSuccess = $true
+            $targets = @($cname.Targets | Where-Object { $_ })
+            $result.CnameTargets = $targets
+            if ($targets.Count -gt 0) { $result.HasCname = $true }
+            if ($targets | Where-Object { $_ -match '(?i)autodiscover(-s)?\.outlook\.com$' }) {
+                $result.HasMsCname = $true
+            }
+        }
     }
 
+    $srvRecords = @()
     $srv = if ($LookupMap.ContainsKey('AutodiscoverSrv')) { $LookupMap['AutodiscoverSrv'] } else { $null }
     if ($srv -and $srv.Success -eq $true) {
-        $result.HasSrv = $true
-        $targets = New-Object System.Collections.Generic.List[string]
+        $srvTargets = New-Object System.Collections.Generic.List[string]
         foreach ($record in (ConvertTo-AutodiscoverArray -Value $srv.Records)) {
             if (-not $record) { continue }
             $target = $null
             if ($record.PSObject.Properties['Target'] -and $record.Target) {
-                $target = $record.Target.ToLowerInvariant()
-                $targets.Add($target) | Out-Null
+                $target = [string]$record.Target
+                $srvTargets.Add($target.ToLowerInvariant()) | Out-Null
             }
             if ($record.PSObject.Properties['Port'] -and $record.Port -eq 443) {
                 $result.HasSrv443 = $true
             }
+            $srvRecords += [pscustomobject]@{
+                Priority = if ($record.PSObject.Properties['Priority']) { $record.Priority } else { $null }
+                Weight   = if ($record.PSObject.Properties['Weight']) { $record.Weight } else { $null }
+                Port     = if ($record.PSObject.Properties['Port']) { $record.Port } else { $null }
+                Target   = $target
+            }
         }
-        $result.SrvTargets = $targets.ToArray()
+        if ($srvTargets.Count -gt 0) {
+            $result.HasSrv = $true
+            $result.SrvTargets = $srvTargets.ToArray()
+            $result.SrvRecords = $srvRecords
+        }
     }
 
-    $aRecords = New-Object System.Collections.Generic.List[string]
+    $addresses = New-Object System.Collections.Generic.List[string]
     foreach ($label in @('AutodiscoverA','AutodiscoverAAAA')) {
         if (-not $LookupMap.ContainsKey($label)) { continue }
         $record = $LookupMap[$label]
         if ($record -and $record.Success -eq $true) {
             foreach ($address in (ConvertTo-AutodiscoverArray -Value $record.Addresses)) {
                 if (-not $address) { continue }
-                $aRecords.Add([string]$address) | Out-Null
+                $addresses.Add([string]$address) | Out-Null
             }
         }
     }
-    if ($aRecords.Count -gt 0) {
+    if ($addresses.Count -gt 0) {
         $result.HasARecord = $true
-        $result.ARecordAddresses = $aRecords.ToArray()
+        $result.ARecordAddresses = $addresses.ToArray()
     }
 
+    $mxTargets = New-Object System.Collections.Generic.List[string]
     $mx = if ($LookupMap.ContainsKey('Mx')) { $LookupMap['Mx'] } else { $null }
     if ($mx -and $mx.Success -eq $true) {
-        foreach ($target in (ConvertTo-AutodiscoverArray -Value $mx.Targets)) {
-            if (-not $target) { continue }
-            $text = [string]$target
-            if ($text -match '(?i)(?:^|\.)protection\.outlook\.com$' -or $text -match '(?i)outlook\.com$') {
-                $result.HasMsMx = $true
-                break
+        foreach ($record in (ConvertTo-AutodiscoverArray -Value $mx.Records)) {
+            if (-not $record) { continue }
+            $target = $null
+            if ($record.PSObject.Properties['Target'] -and $record.Target) {
+                $target = [string]$record.Target
+                $mxTargets.Add($target) | Out-Null
+                if ($target -match '(?i)\.mail\.protection\.outlook\.com$') {
+                    $result.HasMsMx = $true
+                }
             }
         }
+        $result.MxTargets = $mxTargets.ToArray()
     }
 
+    $exoSignal = ($result.HasMsCname -or $result.HasMsMx)
     $onPremSignal = $false
     if ($result.HasARecord) { $onPremSignal = $true }
     if ($result.HasSrv -and $result.SrvTargets.Count -gt 0) { $onPremSignal = $true }
@@ -244,7 +329,7 @@ function Get-AutodiscoverTopologyInfo {
 
     if ($result.HasMsCname -and $onPremSignal) {
         $result.Topology = 'Hybrid'
-    } elseif ($result.HasMsCname -or $result.HasMsMx) {
+    } elseif ($exoSignal) {
         $result.Topology = 'EXO'
     } elseif ($onPremSignal) {
         $result.Topology = 'On-prem'
@@ -256,20 +341,28 @@ function Get-AutodiscoverTopologyInfo {
 function Get-AutodiscoverIssueMetadata {
     $metadata = [ordered]@{}
 
-    $metadata['MissingCname'] = [pscustomobject]@{
-        Severity = 'high'
-        Title    = 'CNAME missing'
-        Summary  = { param($c) "Outlook can't auto-configure $($c.Domain) mailboxes because autodiscover.$($c.Domain) is missing the CNAME to autodiscover.outlook.com." }
-        Determination = { param($c) "Topology $($c.Topology); autodiscover.$($c.Domain) CNAME missing." }
-        Fix      = { param($c) "Add or repair autodiscover.$($c.Domain) CNAME to autodiscover.outlook.com." }
-    }
-
     $metadata['WrongCnameTarget'] = [pscustomobject]@{
         Severity = 'medium'
         Title    = 'CNAME points to wrong host'
-        Summary  = { param($c) "Autodiscover for $($c.Domain) points to $($c.TargetDisplay), so Outlook may fail to connect cloud mailboxes." }
+        Summary  = { param($c) "Autodiscover for $($c.Domain) points to $($c.TargetDisplay), so Outlook won't reach the right Exchange endpoint." }
         Determination = { param($c) "Topology $($c.Topology); autodiscover.$($c.Domain) resolves to $($c.TargetDisplay) instead of autodiscover.outlook.com." }
-        Fix      = { param($c) "Update autodiscover.$($c.Domain) CNAME to autodiscover.outlook.com for Exchange Online mailboxes." }
+        Fix      = { param($c) "Update autodiscover.$($c.Domain) CNAME to autodiscover.outlook.com so Exchange Online profiles configure automatically." }
+    }
+
+    $metadata['ExoCnameMissingObserved'] = [pscustomobject]@{
+        Severity = 'info'
+        Title    = 'Autodiscover CNAME missing (unconfirmed)'
+        Summary  = { param($c) "Outlook couldn't resolve autodiscover.$($c.Domain) during this run, so Exchange Online profile setup may fail if the issue persists." }
+        Determination = { param($c) "Topology $($c.Topology); single-run NXDOMAIN for autodiscover.$($c.Domain) and HTTPS probe failed." }
+        Fix      = { param($c) "Verify autodiscover.$($c.Domain) CNAME points to autodiscover.outlook.com and confirm the record has replicated." }
+    }
+
+    $metadata['ExoCnameMissingConfirmed'] = [pscustomobject]@{
+        Severity = 'medium'
+        Title    = 'Autodiscover CNAME missing (confirmed)'
+        Summary  = { param($c) "Outlook still can't resolve autodiscover.$($c.Domain), so Exchange Online mailboxes fail to auto-configure." }
+        Determination = { param($c) "Topology $($c.Topology); repeated NXDOMAIN for autodiscover.$($c.Domain) and HTTPS probe failed." }
+        Fix      = { param($c) "Publish autodiscover.$($c.Domain) CNAME to autodiscover.outlook.com or repair the DNS zone delegation." }
     }
 
     $metadata['MissingOnPremEndpoint'] = [pscustomobject]@{
@@ -318,69 +411,122 @@ function Get-AutodiscoverIssueMetadata {
 function Get-AutodiscoverDnsEvidence {
     param(
         [Parameter(Mandatory)][string]$Domain,
-        [Parameter(Mandatory)]$LookupMap
+        [Parameter(Mandatory)]$LookupMap,
+        [psobject]$HttpProbe
     )
 
     $lines = New-Object System.Collections.Generic.List[string]
+    $cnameTargets = @()
+    $cnameError = $null
 
-    $cname = if ($LookupMap.ContainsKey('Autodiscover')) { $LookupMap['Autodiscover'] } else { $null }
-    if ($cname) {
+    if ($LookupMap.ContainsKey('Autodiscover')) {
+        $cname = $LookupMap['Autodiscover']
         if ($cname.Success -eq $true -and $cname.Targets -and $cname.Targets.Count -gt 0) {
-            $lines.Add(("autodiscover.{0} CNAME → {1} (OK)" -f $Domain, ($cname.Targets -join ', '))) | Out-Null
-        } elseif ($cname.Success -eq $false) {
-            $lines.Add(("autodiscover.{0} CNAME lookup failed: {1}" -f $Domain, $cname.Error)) | Out-Null
+            $cnameTargets = @($cname.Targets | Where-Object { $_ })
+            $lines.Add("autodiscover.$Domain CNAME → $([string]::Join(', ', $cnameTargets)) (OK)") | Out-Null
+        } elseif ($cname.Success -eq $false -and $cname.Error) {
+            $cnameError = [string]$cname.Error
+            $lines.Add("autodiscover.$Domain CNAME lookup failed: $cnameError") | Out-Null
         } else {
-            $lines.Add(("autodiscover.{0} CNAME lookup returned no targets." -f $Domain)) | Out-Null
+            $lines.Add("autodiscover.$Domain CNAME lookup returned no targets.") | Out-Null
         }
     }
 
+    $addressList = New-Object System.Collections.Generic.List[string]
     foreach ($label in @('AutodiscoverA','AutodiscoverAAAA')) {
         if (-not $LookupMap.ContainsKey($label)) { continue }
         $record = $LookupMap[$label]
-        $type = $record.Type
+        $type = if ($record.Type) { [string]$record.Type } else { $label }
         if ($record.Success -eq $true -and $record.Addresses -and $record.Addresses.Count -gt 0) {
-            $lines.Add(("autodiscover.{0} {1} → {2} (OK)" -f $Domain, $type, ($record.Addresses -join ', '))) | Out-Null
-        } elseif ($record.Success -eq $false) {
-            $lines.Add(("autodiscover.{0} {1} lookup failed: {2}" -f $Domain, $type, $record.Error)) | Out-Null
+            $addresses = @($record.Addresses | Where-Object { $_ })
+            foreach ($addr in $addresses) { $addressList.Add([string]$addr) | Out-Null }
+            $lines.Add("autodiscover.$Domain $type → $([string]::Join(', ', $addresses)) (OK)") | Out-Null
+        } elseif ($record.Success -eq $false -and $record.Error) {
+            $lines.Add("autodiscover.$Domain $type lookup failed: $($record.Error)") | Out-Null
         }
     }
 
+    $srvLines = New-Object System.Collections.Generic.List[string]
+    $srvError = $null
     if ($LookupMap.ContainsKey('AutodiscoverSrv')) {
         $srv = $LookupMap['AutodiscoverSrv']
         if ($srv.Success -eq $true -and $srv.Records) {
             foreach ($record in (ConvertTo-AutodiscoverArray -Value $srv.Records)) {
                 if (-not $record) { continue }
-                $target = $record.Target
-                $port = $record.Port
-                $priority = $record.Priority
-                $weight = $record.Weight
+                $target = if ($record.Target) { [string]$record.Target } else { '(no target)' }
+                $priority = if ($record.PSObject.Properties['Priority']) { $record.Priority } else { $null }
+                $weight = if ($record.PSObject.Properties['Weight']) { $record.Weight } else { $null }
+                $port = if ($record.PSObject.Properties['Port']) { $record.Port } else { $null }
                 $status = if ($port -eq 443) { 'OK' } else { "Port $port" }
-                $lines.Add(("_autodiscover._tcp.{0} SRV → {1} {2} {3} {4} ({5})" -f $Domain, $priority, $weight, $port, $target, $status)) | Out-Null
+                $display = "$priority $weight $port $target ($status)"
+                $srvLines.Add($display) | Out-Null
+                $lines.Add("_autodiscover._tcp.$Domain SRV → $display") | Out-Null
             }
-        } elseif ($srv.Success -eq $false) {
-            $lines.Add(("_autodiscover._tcp.{0} SRV lookup failed: {1}" -f $Domain, $srv.Error)) | Out-Null
+        } elseif ($srv.Success -eq $false -and $srv.Error) {
+            $srvError = [string]$srv.Error
+            $lines.Add("_autodiscover._tcp.$Domain SRV lookup failed: $srvError") | Out-Null
         }
     }
 
-    if ($LookupMap.ContainsKey('Mx')) {
-        $mx = $LookupMap['Mx']
+    $mxLines = New-Object System.Collections.Generic.List[string]
+    $mx = if ($LookupMap.ContainsKey('Mx')) { $LookupMap['Mx'] } else { $null }
+    if ($mx) {
         if ($mx.Success -eq $true -and $mx.Records) {
             foreach ($record in (ConvertTo-AutodiscoverArray -Value $mx.Records)) {
                 if (-not $record) { continue }
-                $lines.Add(("{0} MX → {1} {2}" -f $Domain, $record.Preference, $record.Target)) | Out-Null
+                $preference = if ($record.PSObject.Properties['Preference']) { $record.Preference } else { 0 }
+                $target = if ($record.PSObject.Properties['Target']) { [string]$record.Target } else { '(no target)' }
+                $display = "$preference $target"
+                $mxLines.Add($display) | Out-Null
+                $lines.Add("$Domain MX → $display") | Out-Null
             }
+        } elseif ($mx.Success -eq $false -and $mx.Error) {
+            $lines.Add("$Domain MX lookup failed: $($mx.Error)") | Out-Null
         }
     }
 
-    return $lines.ToArray()
+    $httpStatus = $null
+    if ($HttpProbe) {
+        if ($HttpProbe.Success) {
+            $statusCode = if ($HttpProbe.StatusCode) { "HTTP $($HttpProbe.StatusCode)" } else { 'HTTP success' }
+            if ($HttpProbe.Location) {
+                $statusCode = "$statusCode → $($HttpProbe.Location)"
+            }
+            $httpStatus = "$statusCode (OK)"
+        } elseif ($HttpProbe.StatusCode) {
+            $httpStatus = "HTTP $($HttpProbe.StatusCode)"
+            if ($HttpProbe.Error) {
+                $httpStatus = "$httpStatus: $($HttpProbe.Error)"
+            }
+        } elseif ($HttpProbe.Error) {
+            $httpStatus = [string]$HttpProbe.Error
+        }
+
+        if ($httpStatus) {
+            $lines.Add("autodiscover.$Domain HTTP probe → $httpStatus") | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        Lines        = $lines.ToArray()
+        CnameTargets = $cnameTargets
+        CnameError   = $cnameError
+        AAddresses   = $addressList.ToArray()
+        SrvRecords   = $srvLines.ToArray()
+        SrvError     = $srvError
+        MxRecords    = $mxLines.ToArray()
+        HttpStatus   = $httpStatus
+    }
 }
 
 function Get-AutodiscoverScpEvidence {
     param(
         [object[]]$Entries,
-        [string[]]$ProblemHosts
+        [string[]]$ProblemHosts,
+        [string]$JoinState
     )
 
+    if ($JoinState -notin @('AD-joined', 'HAADJ')) { return @() }
     if (-not $Entries -or $Entries.Count -eq 0) { return @() }
 
     $lines = New-Object System.Collections.Generic.List[string]
@@ -394,7 +540,7 @@ function Get-AutodiscoverScpEvidence {
         $host = if ($entry.Host) { $entry.Host } else { '(unknown host)' }
         $status = if ($problemSet.Contains($host)) { 'Mismatch' } else { 'OK' }
         $url = if ($entry.Url) { $entry.Url } else { '(no URL provided)' }
-        $lines.Add(("SCP ServiceBinding: {0} (Host {1}, {2})" -f $url, $host, $status)) | Out-Null
+        $lines.Add("SCP ServiceBinding: $url (Host $host, $status)") | Out-Null
     }
 
     return $lines.ToArray()
@@ -406,7 +552,8 @@ function Evaluate-AutodiscoverDomain {
         [Parameter(Mandatory)]$DomainEntry,
         [Parameter(Mandatory)]$TopologyInfo,
         [Parameter(Mandatory)]$JoinInfo,
-        [Parameter()]$ScpData
+        [Parameter()]$ScpData,
+        [string]$CollectedAtUtc
     )
 
     $lookupMap = $TopologyInfo.LookupMap
@@ -414,17 +561,32 @@ function Evaluate-AutodiscoverDomain {
     $metadata = Get-AutodiscoverIssueMetadata
 
     $topology = $TopologyInfo.Topology
+    $joinState = $JoinInfo.JoinState
+    $isDomainScoped = ($joinState -eq 'AD-joined' -or $joinState -eq 'HAADJ')
+    $isWorkgroupLike = ($joinState -eq 'Workgroup' -or $joinState -eq 'AADJ')
+
+    $httpProbe = $null
+    if ($DomainEntry.PSObject.Properties['HttpProbe'] -and $DomainEntry.HttpProbe) {
+        $httpProbe = $DomainEntry.HttpProbe
+    }
+    $httpSuccess = ($httpProbe -and $httpProbe.Success -eq $true)
+
+    $cnameEntry = if ($lookupMap.ContainsKey('Autodiscover')) { $lookupMap['Autodiscover'] } else { $null }
+    $cnameNxDomain = Test-AutodiscoverCnameNxDomain -Lookup $cnameEntry
+    $nxState = Update-AutodiscoverNxDomainHistory -Domain $Domain -IsNxDomain $cnameNxDomain
+    $consecutiveNxDomain = $nxState.Consecutive
 
     if ($topology -eq 'EXO' -or $topology -eq 'Hybrid') {
         if ($TopologyInfo.HasMsCname) {
-            # Healthy for this axis
+            # Healthy configuration
         } elseif ($TopologyInfo.HasCname) {
             $issues.Add([pscustomobject]@{
                 Reason        = 'WrongCnameTarget'
                 TargetDisplay = ($TopologyInfo.CnameTargets -join ', ')
             }) | Out-Null
-        } else {
-            $issues.Add([pscustomobject]@{ Reason = 'MissingCname' }) | Out-Null
+        } elseif (-not $httpSuccess) {
+            $reason = if ($consecutiveNxDomain -and -not $isWorkgroupLike) { 'ExoCnameMissingConfirmed' } else { 'ExoCnameMissingObserved' }
+            $issues.Add([pscustomobject]@{ Reason = $reason }) | Out-Null
         }
     } elseif ($topology -eq 'On-prem') {
         $hasValidEndpoint = $TopologyInfo.HasARecord -or ($TopologyInfo.HasSrv -and $TopologyInfo.HasSrv443) -or ($TopologyInfo.HasCname -and -not $TopologyInfo.HasMsCname)
@@ -432,10 +594,12 @@ function Evaluate-AutodiscoverDomain {
             $issues.Add([pscustomobject]@{ Reason = 'MissingOnPremEndpoint' }) | Out-Null
         } elseif ($TopologyInfo.HasSrv -and -not $TopologyInfo.HasSrv443) {
             $badPorts = New-Object System.Collections.Generic.List[int]
-            $srv = $lookupMap['AutodiscoverSrv']
-            foreach ($record in (ConvertTo-AutodiscoverArray -Value $srv.Records)) {
-                if ($record -and $record.PSObject.Properties['Port'] -and $record.Port -ne 443) {
-                    $badPorts.Add([int]$record.Port) | Out-Null
+            $srv = if ($lookupMap.ContainsKey('AutodiscoverSrv')) { $lookupMap['AutodiscoverSrv'] } else { $null }
+            if ($srv) {
+                foreach ($record in (ConvertTo-AutodiscoverArray -Value $srv.Records)) {
+                    if ($record -and $record.PSObject.Properties['Port'] -and $record.Port -ne 443) {
+                        $badPorts.Add([int]$record.Port) | Out-Null
+                    }
                 }
             }
             if ($badPorts.Count -gt 0) {
@@ -448,7 +612,9 @@ function Evaluate-AutodiscoverDomain {
     }
 
     if (-not $TopologyInfo.HasCname -and -not $TopologyInfo.HasARecord -and (-not $TopologyInfo.HasSrv -or $TopologyInfo.SrvTargets.Count -eq 0)) {
-        $issues.Add([pscustomobject]@{ Reason = 'MissingRecords' }) | Out-Null
+        if (-not $httpSuccess) {
+            $issues.Add([pscustomobject]@{ Reason = 'MissingRecords' }) | Out-Null
+        }
     }
 
     $scpEntries = @()
@@ -459,9 +625,6 @@ function Evaluate-AutodiscoverDomain {
         elseif ($ScpData.Entries.ContainsKey('*')) { $matches = $ScpData.Entries['*'] }
         $scpEntries = @($matches | Where-Object { $_ })
     }
-
-    $joinState = $JoinInfo.JoinState
-    $isDomainScoped = ($joinState -eq 'AD-joined' -or $joinState -eq 'HAADJ')
 
     if ($isDomainScoped -and $scpEntries.Count -gt 0) {
         $hosts = $scpEntries | ForEach-Object { $_.Host } | Where-Object { $_ }
@@ -516,25 +679,30 @@ function Evaluate-AutodiscoverDomain {
 
         $currentSeverity = $selectedMeta.Severity
         $candidateSeverity = $candidateMeta.Severity
-        $currentRank = switch ($currentSeverity) { 'high' { 3 } 'medium' { 2 } 'low' { 1 } default { 0 } }
-        $candidateRank = switch ($candidateSeverity) { 'high' { 3 } 'medium' { 2 } 'low' { 1 } default { 0 } }
+        $currentRank = switch ($currentSeverity) { 'high' { 3 } 'medium' { 2 } 'low' { 1 } 'info' { 0 } default { 0 } }
+        $candidateRank = switch ($candidateSeverity) { 'high' { 3 } 'medium' { 2 } 'low' { 1 } 'info' { 0 } default { 0 } }
         if ($candidateRank -gt $currentRank) {
             $selected = $issue
             $selectedMeta = $candidateMeta
         }
     }
 
-    $dnsEvidence = Get-AutodiscoverDnsEvidence -Domain $Domain -LookupMap $lookupMap
-    $scpEvidence = Get-AutodiscoverScpEvidence -Entries $scpEntries -ProblemHosts $scpProblems
+    $dnsEvidence = Get-AutodiscoverDnsEvidence -Domain $Domain -LookupMap $lookupMap -HttpProbe $httpProbe
+    $scpEvidence = Get-AutodiscoverScpEvidence -Entries $scpEntries -ProblemHosts $scpProblems -JoinState $joinState
 
     $baseData = [ordered]@{
-        Domain          = $Domain
-        Topology        = $topology
-        JoinState       = $joinState
-        IssuesDetected  = @($issues | ForEach-Object { $_.Reason })
-        CnameTargets    = $TopologyInfo.CnameTargets
-        SrvTargets      = $TopologyInfo.SrvTargets
-        ARecordAddresses = $TopologyInfo.ARecordAddresses
+        Domain                = $Domain
+        Topology              = $topology
+        JoinState             = $joinState
+        IssuesDetected        = @($issues | ForEach-Object { $_.Reason })
+        CnameTargets          = $TopologyInfo.CnameTargets
+        HasMsCname            = $TopologyInfo.HasMsCname
+        CnameNxDomain         = $cnameNxDomain
+        ConsecutiveNxDomain   = $consecutiveNxDomain
+        SrvTargets            = $TopologyInfo.SrvTargets
+        ARecordAddresses      = $TopologyInfo.ARecordAddresses
+        MxTargets             = $TopologyInfo.MxTargets
+        HttpProbeStatus       = $dnsEvidence.HttpStatus
     }
 
     if (-not $selectedMeta) {
@@ -544,8 +712,14 @@ function Evaluate-AutodiscoverDomain {
             Domain        = $Domain
             Topology      = $topology
             JoinState     = $joinState
-            DNS           = $dnsEvidence
+            DNS           = $dnsEvidence.Lines
         }
+        if ($CollectedAtUtc) { $evidence['CollectedAtUtc'] = $CollectedAtUtc }
+        if ($dnsEvidence.CnameTargets.Count -gt 0) { $evidence['CNAME Targets'] = $dnsEvidence.CnameTargets }
+        if ($dnsEvidence.AAddresses.Count -gt 0) { $evidence['A/AAAA Addresses'] = $dnsEvidence.AAddresses }
+        if ($dnsEvidence.SrvRecords.Count -gt 0) { $evidence['SRV Records'] = $dnsEvidence.SrvRecords }
+        if ($dnsEvidence.MxRecords.Count -gt 0) { $evidence['MX Records'] = $dnsEvidence.MxRecords }
+        if ($dnsEvidence.HttpStatus) { $evidence['HTTP Probe Status'] = $dnsEvidence.HttpStatus }
         if ($scpEvidence.Count -gt 0) { $evidence['SCP'] = $scpEvidence }
         $evidence['Determination'] = "Topology $topology with healthy Autodiscover records."
         $evidence['Fix'] = 'No action required.'
@@ -575,8 +749,16 @@ function Evaluate-AutodiscoverDomain {
         Domain        = $Domain
         Topology      = $topology
         JoinState     = $joinState
-        DNS           = $dnsEvidence
+        DNS           = $dnsEvidence.Lines
     }
+    if ($CollectedAtUtc) { $evidence['CollectedAtUtc'] = $CollectedAtUtc }
+    if ($dnsEvidence.CnameTargets.Count -gt 0) { $evidence['CNAME Targets'] = $dnsEvidence.CnameTargets }
+    if ($dnsEvidence.CnameError) { $evidence['CNAME Error'] = $dnsEvidence.CnameError }
+    if ($dnsEvidence.AAddresses.Count -gt 0) { $evidence['A/AAAA Addresses'] = $dnsEvidence.AAddresses }
+    if ($dnsEvidence.SrvRecords.Count -gt 0) { $evidence['SRV Records'] = $dnsEvidence.SrvRecords }
+    elseif ($dnsEvidence.SrvError) { $evidence['SRV Error'] = $dnsEvidence.SrvError }
+    if ($dnsEvidence.MxRecords.Count -gt 0) { $evidence['MX Records'] = $dnsEvidence.MxRecords }
+    if ($dnsEvidence.HttpStatus) { $evidence['HTTP Probe Status'] = $dnsEvidence.HttpStatus }
     if ($scpEvidence.Count -gt 0) { $evidence['SCP'] = $scpEvidence }
     if ($ScpData -and $ScpData.Errors -and $ScpData.Errors.Count -gt 0) {
         $evidence['SCP Lookup Notes'] = $ScpData.Errors
@@ -627,6 +809,10 @@ function Invoke-AutodiscoverDnsHeuristic {
 
     $joinInfo = Get-AutodiscoverJoinContext -Context $Context
     $scpData = Get-AutodiscoverScpData -Context $Context
+    $collectedAtUtc = $null
+    if ($payload.PSObject.Properties['CollectedAtUtc'] -and $payload.CollectedAtUtc) {
+        $collectedAtUtc = [string]$payload.CollectedAtUtc
+    }
 
     foreach ($domainEntry in (ConvertTo-AutodiscoverArray -Value $payload.Results)) {
         if (-not $domainEntry) { continue }
@@ -636,7 +822,7 @@ function Invoke-AutodiscoverDnsHeuristic {
         $lookupMap = ConvertTo-AutodiscoverLookupMap -Lookups $domainEntry.Lookups
         $topologyInfo = Get-AutodiscoverTopologyInfo -Domain $domain -LookupMap $lookupMap
 
-        $finding = Evaluate-AutodiscoverDomain -Domain $domain -DomainEntry $domainEntry -TopologyInfo $topologyInfo -JoinInfo $joinInfo -ScpData $scpData
+        $finding = Evaluate-AutodiscoverDomain -Domain $domain -DomainEntry $domainEntry -TopologyInfo $topologyInfo -JoinInfo $joinInfo -ScpData $scpData -CollectedAtUtc $collectedAtUtc
 
         if ($finding.Outcome -eq 'Issue') {
             Add-CategoryIssue -CategoryResult $Result -Severity $finding.Severity -Title $finding.Title -Evidence $finding.Evidence -Subcategory 'Autodiscover DNS' -Data $finding.Data -Explanation $finding.Summary
