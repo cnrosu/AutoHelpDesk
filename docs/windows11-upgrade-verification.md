@@ -35,4 +35,4 @@ Verifying the OS edition eliminates false upgrade-path failures once a device al
 ```powershell
 Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption, Version
 ```
-Record the caption value in your ticket notes to document that the device is already on Windows 11.
+Record the caption value in your ticket notes so upgrade blockers can be cross-checked against the reported build.
