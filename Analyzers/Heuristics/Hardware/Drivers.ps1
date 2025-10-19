@@ -308,44 +308,166 @@ function Invoke-HardwareDriverChecks {
     }
 
     if ($bluetoothCanEvaluate) {
-        $radioCandidates = @()
+        $bluetoothPnPRecords = @()
         if ($bluetoothDeviceRecords.Count -gt 0) {
-            $radioCandidates = @($bluetoothDeviceRecords | Where-Object { $_.InstanceId -and ($_.InstanceId -like 'USB\\VID*') })
+            $bluetoothPnPRecords = @(
+                $bluetoothDeviceRecords |
+                    Where-Object {
+                        if (-not $_) { return $false }
+                        $classValue = $null
+                        if ($_.PSObject.Properties['Class'] -and $null -ne $_.Class) {
+                            $classValue = ([string]$_.Class).Trim()
+                        }
+                        return $classValue -and ($classValue -ieq 'Bluetooth')
+                    }
+            )
         }
 
-        $radiosOk = @()
-        $radiosWithIssues = @()
-        foreach ($radio in $radioCandidates) {
-            $statusValue = if ($radio.Status) { [string]$radio.Status } else { 'Unknown' }
-            if ($statusValue -eq 'OK') {
-                $radiosOk += $radio
+        $usbBluetoothEntries = @()
+        if ($bluetoothPnPRecords.Count -gt 0) {
+            $usbBluetoothEntries = @($bluetoothPnPRecords | Where-Object { $_.InstanceId -and ($_.InstanceId -like 'USB\\VID*') })
+        }
+
+        $healthyDeviceNames = @()
+        $radioDetails = @()
+        $vendorOk = @()
+        $vendorIssues = @()
+        $enumeratorOk = @()
+        $enumeratorIssues = @()
+        $panDeviceNames = @()
+
+        $vendorPattern = '(?i)(Intel|Qualcomm|Realtek|MediaTek|Broadcom|Adapter|Radio)'
+        $enumeratorPattern = '(?i)Enumerator'
+        $bluetoothKeywordPattern = '(?i)Bluetooth'
+
+        foreach ($device in $bluetoothPnPRecords) {
+            $statusNormalized = if ($device.Status) { ([string]$device.Status).Trim() } else { $null }
+            $problemCodeValue = $null
+            if ($device.PSObject.Properties['ProblemCode']) { $problemCodeValue = $device.ProblemCode }
+
+            $problemActive = $false
+            if ($null -ne $problemCodeValue) {
+                try {
+                    if ([int]$problemCodeValue -ne 0) { $problemActive = $true }
+                } catch {
+                    if ($problemCodeValue -ne '0') { $problemActive = $true }
+                }
+            }
+
+            $isHealthyDevice = $statusNormalized -and ($statusNormalized -ieq 'OK') -and -not $problemActive
+
+            $name = $device | Get-DeviceDisplayName
+            if ($isHealthyDevice) { $healthyDeviceNames += $name }
+
+            if ($name -match '(?i)personal area network') { $panDeviceNames += $name }
+
+            if (-not ($name -match $bluetoothKeywordPattern)) { continue }
+
+            $classification = $null
+            if ($name -match $vendorPattern) {
+                $classification = 'Vendor'
+            } elseif ($name -match $enumeratorPattern) {
+                $classification = 'Enumerator'
+            } else {
                 continue
             }
-            if ($statusValue -in @('Error','Degraded')) {
-                $radiosWithIssues += $radio
+
+            $detail = [pscustomobject]@{
+                Name           = $name
+                Status         = if ($statusNormalized) { $statusNormalized } else { 'Unknown' }
+                ProblemCode    = if ($null -ne $problemCodeValue) { [string]$problemCodeValue } else { $null }
+                Classification = $classification
+                Healthy        = $isHealthyDevice
+                ProblemActive  = $problemActive
+            }
+
+            $radioDetails += $detail
+
+            if ($classification -eq 'Vendor') {
+                if ($detail.Healthy) { $vendorOk += $detail } else { $vendorIssues += $detail }
+            } else {
+                if ($detail.Healthy) { $enumeratorOk += $detail } else { $enumeratorIssues += $detail }
             }
         }
 
-        $serviceRunning = $bluetoothServiceStatus -eq 'Running'
-        $serviceKnown = ($bluetoothServiceStatus -ne $null -and $bluetoothServiceStatus -ne '') -or ($bluetoothServiceExists -ne $null)
+        $radioOkCount = ($vendorOk.Count + $enumeratorOk.Count)
+        $radioIssueCount = ($vendorIssues.Count + $enumeratorIssues.Count)
+        $hasRadio = ($vendorOk.Count -gt 0) -or (($vendorOk.Count -eq 0) -and ($enumeratorOk.Count -gt 0))
+
+        $serviceRunning = $bluetoothServiceStatus -and ($bluetoothServiceStatus -ieq 'Running')
+        $serviceKnown = (($bluetoothServiceStatus -ne $null) -and ($bluetoothServiceStatus -ne '')) -or ($bluetoothServiceExists -ne $null)
+
+        $formatList = {
+            param($values)
+            $buffer = @()
+            foreach ($value in @($values)) {
+                if ($null -eq $value) { continue }
+                $text = [string]$value
+                if ([string]::IsNullOrWhiteSpace($text)) { continue }
+                $trimmed = $text.Trim()
+                if (-not $trimmed) { continue }
+                if ($buffer -notcontains $trimmed) { $buffer += $trimmed }
+            }
+            if ($buffer.Count -eq 0) { return 'None' }
+            return ($buffer -join '; ')
+        }
+
+        $radioFocus = @()
+        if ($vendorOk.Count -gt 0) {
+            $radioFocus = $vendorOk
+        } elseif ($enumeratorOk.Count -gt 0) {
+            $radioFocus = $enumeratorOk
+        } elseif ($vendorIssues.Count -gt 0) {
+            $radioFocus = $vendorIssues
+        } elseif ($enumeratorIssues.Count -gt 0) {
+            $radioFocus = $enumeratorIssues
+        }
+
+        $healthySummary = & $formatList $healthyDeviceNames
+        $radioSummary = & $formatList ($radioFocus | ForEach-Object { $_.Name })
+        $enumeratorSummary = & $formatList ((@($enumeratorOk) + @($enumeratorIssues)) | ForEach-Object { $_.Name })
+
+        $serviceDisplay = if ($bluetoothServiceExists -eq $false) { 'Not Found' } elseif ($serviceKnown) { if ($bluetoothServiceStatus) { $bluetoothServiceStatus } else { 'Unknown' } } else { 'Unknown' }
+
+        $panSummary = if ($panDeviceNames.Count -gt 0) { "Yes ($(& $formatList $panDeviceNames))" } else { 'No' }
 
         $evidenceLines = New-Object System.Collections.Generic.List[string]
-        $serviceDisplay = if ($bluetoothServiceExists -eq $false) { 'Not Found' } elseif ($serviceKnown) { if ($bluetoothServiceStatus) { $bluetoothServiceStatus } else { 'Unknown' } } else { 'Unknown' }
+        $evidenceLines.Add("PnP Bluetooth devices reporting OK: $healthySummary") | Out-Null
+        $evidenceLines.Add("Likely radio or enumerator matches: $radioSummary") | Out-Null
+        $evidenceLines.Add("Bluetooth enumerators detected: $enumeratorSummary") | Out-Null
+        $evidenceLines.Add("Bluetooth PAN device present: $panSummary") | Out-Null
         $evidenceLines.Add("Bluetooth Support Service (bthserv) status: $serviceDisplay") | Out-Null
-        $evidenceLines.Add("USB Bluetooth radios detected: $($radioCandidates.Count)") | Out-Null
+        $evidenceLines.Add("USB Bluetooth radios detected: $($usbBluetoothEntries.Count)") | Out-Null
 
-        foreach ($radio in $radioCandidates) {
-            $name = $radio | Get-DeviceDisplayName
-            $statusText = if ($radio.Status) { [string]$radio.Status } else { 'Unknown' }
-            $evidenceLines.Add("- $name — Status: $statusText") | Out-Null
+        if ($radioDetails.Count -gt 0) {
+            $evidenceLines.Add('Radio/enumerator status:') | Out-Null
+            foreach ($detail in $radioDetails) {
+                $role = if ($detail.Classification -eq 'Enumerator') { 'Enumerator' } else { 'Radio' }
+                $statusText = if ($detail.Status) { $detail.Status } else { 'Unknown' }
+                $line = "- $($detail.Name) ($role) — Status: $statusText"
+                if ($detail.ProblemActive -and $detail.ProblemCode) { $line += "; ProblemCode: $($detail.ProblemCode)" }
+                $evidenceLines.Add($line) | Out-Null
+            }
         }
 
         $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() -join "`n" } else { $null }
 
-        if ($radioCandidates.Count -eq 0) {
+        Write-HeuristicDebug -Source 'Hardware/Bluetooth' -Message 'Bluetooth detection metrics' -Data ([ordered]@{
+            PnpRecordCount        = $bluetoothPnPRecords.Count
+            HealthyPnpCount       = $healthyDeviceNames.Count
+            VendorOkCount         = $vendorOk.Count
+            VendorIssueCount      = $vendorIssues.Count
+            EnumeratorOkCount     = $enumeratorOk.Count
+            EnumeratorIssueCount  = $enumeratorIssues.Count
+            RadioOkCount          = $radioOkCount
+            UsbRadioCount         = $usbBluetoothEntries.Count
+            ServiceStatus         = $bluetoothServiceStatus
+        })
+
+        if (-not $hasRadio) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Bluetooth adapter not detected, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth' -Remediation 'Install or enable the Bluetooth radio, restart the Bluetooth Support Service, or [Open Troubleshoot settings](ms-settings:troubleshoot) to run the Bluetooth troubleshooter and let Windows repair the stack.'
             $issueCount++
-        } elseif ($radiosOk.Count -eq 0 -or $radiosWithIssues.Count -gt 0) {
+        } elseif ($radioIssueCount -gt 0) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Bluetooth adapter detected but reports errors, so wireless accessories cannot pair.' -Evidence $evidence -Subcategory 'Bluetooth' -Remediation 'Update or reinstall the Bluetooth drivers, restart the Bluetooth Support Service, or [Open Troubleshoot settings](ms-settings:troubleshoot) to run the Bluetooth troubleshooter and let Windows repair the stack.'
             $issueCount++
         } elseif (-not $serviceRunning) {
