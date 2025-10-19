@@ -1,18 +1,18 @@
 ## Summary
-The hardware analyzer now validates Bluetooth availability by asking Windows for a live radio inventory and the Bluetooth Support Service status. When no healthy USB radio is enumerated or the service is stopped, AutoHelpDesk raises guidance that explains what was checked. Understanding the logic helps teams defend against false positives and gather proof when adapters truly are missing or unhealthy.
+AutoHelpDesk now validates Bluetooth availability by reviewing every device in the Windows Bluetooth PnP class and confirming at least one healthy radio or enumerator is present. The analyzer still records the Bluetooth Support Service state plus optional PAN and USB context so technicians see exactly which subsystems were inspected. This approach avoids false warnings on systems where vendors expose radios through PCIe, CNVi, or virtual enumerators instead of USB.
 
 ## Signals to Collect
-- `Get-PnpDevice -Class Bluetooth -Status OK,Error,Degraded` → Enumerate Bluetooth adapters that are present, failing, or degraded.
+- `Get-PnpDevice -Class Bluetooth` → Enumerate Bluetooth-class radios, enumerators, and related services regardless of bus type.
 - `Get-Service bthserv` → Confirm the Bluetooth Support Service state and startup mode.
 - **Optional:** `Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\Windows\Bluetooth\*` → Capture baseline policies that may require or forbid Bluetooth support.
 
 ## Detection Rule
-- **AdapterMissingOrDisabled (Low)**: Trigger when no adapter is reported **or** the Bluetooth Support Service is stopped while policy expects it to be enabled. Elevate to **Medium** if the policy baseline explicitly requires Bluetooth to remain enabled.
-- **PolicyConflict (Medium)**: Trigger when organizational policy disables Bluetooth but an adapter and/or service is still running, indicating a configuration mismatch with the baseline.
+- **Warning – Bluetooth adapter not detected**: Raised when no healthy Bluetooth-class radios or enumerators appear in the PnP snapshot, so pairing is unlikely to work.
+- **High – Bluetooth adapter detected but reports errors**: Raised when a Bluetooth-class radio or enumerator returns a non-OK status or active problem code, indicating the stack is unhealthy.
+- **High – Bluetooth adapter detected but support service is not running**: Raised when healthy radios exist but the Bluetooth Support Service is stopped, so accessories cannot connect.
 
 ## Heuristic Mapping
-- `Hardware/Bluetooth/AdapterMissingOrDisabled`
-- `Hardware/Bluetooth/PolicyConflict`
+- `Hardware/Bluetooth` (subcategory **Bluetooth**) issues covering adapter absence, adapter errors, and service stoppage.
 
 ## Remediation
 1. If Bluetooth support is required, install or update OEM drivers, enable the adapter in Device Manager, and set **bthserv** to the expected startup state.
@@ -24,4 +24,17 @@ The hardware analyzer now validates Bluetooth availability by asking Windows for
 
 # Bluetooth adapter detection heuristic
 
-The hardware analyzer evaluates Bluetooth by replaying the following one-liner against the collected payload: `if ((Get-Service bthserv).Status -eq 'Running' -and (Get-PnpDevice -Class Bluetooth | Where-Object { $_.InstanceId -like 'USB\VID*' -and $_.Status -eq 'OK' })) { 'YES' } else { 'NO' }`. Any "NO" outcome generates a technician-facing issue that includes the service status plus the enumerated radios so the real-world impact is obvious. If the query itself fails, the analyzer reports that the device or service snapshot was unavailable so technicians know the limitation came from collection rather than the endpoint.
+The hardware analyzer now evaluates Bluetooth availability with the following steps:
+
+```
+$btPnP = Get-PnpDevice -Class Bluetooth
+$btHealthy = $btPnP | Where-Object { $_.Status -eq 'OK' }
+$radioLike = $btHealthy | Where-Object {
+    $_.Name -match 'Bluetooth' -and
+    ($_.Name -match 'Intel|Qualcomm|Realtek|MediaTek|Broadcom|Adapter|Radio' -or
+     $_.Name -match 'Enumerator')
+}
+$hasRadio = $radioLike.Count -gt 0
+```
+
+If `$hasRadio` is false, the analyzer emits a warning that pairing is blocked; otherwise it checks for error states or a stopped **bthserv** service before declaring success. Evidence always lists the healthy PnP device names, enumerator status, service state, and USB counts so technicians understand how the decision was made. If the underlying data collection fails, the analyzer still raises an informational card explaining which snapshot was missing.
