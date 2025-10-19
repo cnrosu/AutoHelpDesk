@@ -14,6 +14,44 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
+$script:PrintManagementModuleLoaded = $false
+$script:PrintManagementModuleError = $null
+
+function Initialize-PrintManagementModule {
+    if (Get-Module -Name PrintManagement -ErrorAction SilentlyContinue) {
+        $script:PrintManagementModuleLoaded = $true
+        return
+    }
+
+    $importErrors = New-Object System.Collections.Generic.List[string]
+
+    try {
+        Import-Module -Name PrintManagement -ErrorAction Stop | Out-Null
+        $script:PrintManagementModuleLoaded = $true
+        return
+    } catch {
+        $importErrors.Add($_.Exception.Message) | Out-Null
+    }
+
+    if ($PSVersionTable.PSEdition -ne 'Desktop') {
+        try {
+            Import-Module -Name PrintManagement -UseWindowsPowerShell -ErrorAction Stop | Out-Null
+            $script:PrintManagementModuleLoaded = $true
+            return
+        } catch {
+            $importErrors.Add($_.Exception.Message) | Out-Null
+        }
+    }
+
+    if ($importErrors.Count -gt 0) {
+        $script:PrintManagementModuleError = ($importErrors -join '; ')
+    } else {
+        $script:PrintManagementModuleError = 'Unknown error importing PrintManagement module.'
+    }
+}
+
+Initialize-PrintManagementModule
+
 function Get-SpoolerState {
     $info = [ordered]@{
         Name             = 'Spooler'
@@ -76,11 +114,21 @@ function Get-PrinterDictionaries {
         Errors         = [System.Text.StringBuilder]::new()
     }
 
+    if ($script:PrintManagementModuleError) {
+        [void]$result.Errors.AppendLine("Import-Module PrintManagement failed: $script:PrintManagementModuleError")
+    }
+
+    $canUsePrintManagement = $script:PrintManagementModuleLoaded
     $printersRaw = @()
-    try {
-        $printersRaw = Get-Printer -ErrorAction Stop
-    } catch {
-        [void]$result.Errors.AppendLine("Get-Printer failed: $($_.Exception.Message)")
+    if ($canUsePrintManagement) {
+        try {
+            $printersRaw = Get-Printer -ErrorAction Stop
+        } catch {
+            [void]$result.Errors.AppendLine("Get-Printer failed: $($_.Exception.Message)")
+        }
+    }
+
+    if (-not $canUsePrintManagement -or -not $printersRaw -or $printersRaw.Count -eq 0) {
         try {
             $printersRaw = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
         } catch {
@@ -90,25 +138,29 @@ function Get-PrinterDictionaries {
     }
 
     $portsByName = @{}
-    try {
-        foreach ($port in (Get-PrinterPort -ErrorAction Stop)) {
-            if ($null -ne $port) {
-                $portsByName[[string]$port.Name] = $port
+    if ($canUsePrintManagement) {
+        try {
+            foreach ($port in (Get-PrinterPort -ErrorAction Stop)) {
+                if ($null -ne $port) {
+                    $portsByName[[string]$port.Name] = $port
+                }
             }
+        } catch {
+            [void]$result.Errors.AppendLine("Get-PrinterPort failed: $($_.Exception.Message)")
         }
-    } catch {
-        [void]$result.Errors.AppendLine("Get-PrinterPort failed: $($_.Exception.Message)")
     }
 
     $driversByName = @{}
-    try {
-        foreach ($driver in (Get-PrinterDriver -ErrorAction Stop)) {
-            if ($null -ne $driver) {
-                $driversByName[[string]$driver.Name] = $driver
+    if ($canUsePrintManagement) {
+        try {
+            foreach ($driver in (Get-PrinterDriver -ErrorAction Stop)) {
+                if ($null -ne $driver) {
+                    $driversByName[[string]$driver.Name] = $driver
+                }
             }
+        } catch {
+            [void]$result.Errors.AppendLine("Get-PrinterDriver failed: $($_.Exception.Message)")
         }
-    } catch {
-        [void]$result.Errors.AppendLine("Get-PrinterDriver failed: $($_.Exception.Message)")
     }
 
     $now = Get-Date
@@ -143,50 +195,54 @@ function Get-PrinterDictionaries {
         }
 
         $configuration = $null
-        try {
-            $configRaw = $null
-            if ($printer.PSObject.Properties['ComputerName'] -and $printer.ComputerName) {
-                $configRaw = Get-PrintConfiguration -PrinterName $printerName -ComputerName $printer.ComputerName -ErrorAction Stop
-            } else {
-                $configRaw = Get-PrintConfiguration -PrinterName $printerName -ErrorAction Stop
+        if ($canUsePrintManagement) {
+            try {
+                $configRaw = $null
+                if ($printer.PSObject.Properties['ComputerName'] -and $printer.ComputerName) {
+                    $configRaw = Get-PrintConfiguration -PrinterName $printerName -ComputerName $printer.ComputerName -ErrorAction Stop
+                } else {
+                    $configRaw = Get-PrintConfiguration -PrinterName $printerName -ErrorAction Stop
+                }
+                if ($configRaw) { $configuration = ConvertTo-OrderedDictionary $configRaw }
+            } catch {
+                [void]$result.Errors.AppendLine("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
             }
-            if ($configRaw) { $configuration = ConvertTo-OrderedDictionary $configRaw }
-        } catch {
-            [void]$result.Errors.AppendLine("Get-PrintConfiguration ($printerName) failed: $($_.Exception.Message)")
         }
 
         $jobs = [System.Collections.Generic.List[pscustomobject]]::new()
-        try {
-            $jobsRaw = $null
-            if ($printer.PSObject.Properties['ComputerName'] -and $printer.ComputerName) {
-                $jobsRaw = Get-PrintJob -PrinterName $printerName -ComputerName $printer.ComputerName -ErrorAction Stop
-            } else {
-                $jobsRaw = Get-PrintJob -PrinterName $printerName -ErrorAction Stop
-            }
-            foreach ($job in $jobsRaw) {
-                if (-not $job) { continue }
-                $submitted = $null
-                if ($job.PSObject.Properties['SubmittedTime'] -and $job.SubmittedTime) {
-                    try { $submitted = [datetime]$job.SubmittedTime } catch { $submitted = $null }
+        if ($canUsePrintManagement) {
+            try {
+                $jobsRaw = $null
+                if ($printer.PSObject.Properties['ComputerName'] -and $printer.ComputerName) {
+                    $jobsRaw = Get-PrintJob -PrinterName $printerName -ComputerName $printer.ComputerName -ErrorAction Stop
+                } else {
+                    $jobsRaw = Get-PrintJob -PrinterName $printerName -ErrorAction Stop
                 }
-                $ageMinutes = $null
-                if ($submitted) {
-                    $ageMinutes = [math]::Round(($now - $submitted).TotalMinutes,2)
+                foreach ($job in $jobsRaw) {
+                    if (-not $job) { continue }
+                    $submitted = $null
+                    if ($job.PSObject.Properties['SubmittedTime'] -and $job.SubmittedTime) {
+                        try { $submitted = [datetime]$job.SubmittedTime } catch { $submitted = $null }
+                    }
+                    $ageMinutes = $null
+                    if ($submitted) {
+                        $ageMinutes = [math]::Round(($now - $submitted).TotalMinutes,2)
+                    }
+                    $jobs.Add([pscustomobject]@{
+                        Id            = $job.Id
+                        DocumentName  = [string]$job.DocumentName
+                        JobStatus     = [string]$job.JobStatus
+                        JobSize       = $job.JobSize
+                        PagesPrinted  = $job.PagesPrinted
+                        TotalPages    = $job.TotalPages
+                        SubmittedBy   = if ($job.PSObject.Properties['UserName']) { [string]$job.UserName } else { $null }
+                        SubmittedTime = if ($submitted) { $submitted.ToString('o') } else { $null }
+                        AgeMinutes    = $ageMinutes
+                    })
                 }
-                $jobs.Add([pscustomobject]@{
-                    Id            = $job.Id
-                    DocumentName  = [string]$job.DocumentName
-                    JobStatus     = [string]$job.JobStatus
-                    JobSize       = $job.JobSize
-                    PagesPrinted  = $job.PagesPrinted
-                    TotalPages    = $job.TotalPages
-                    SubmittedBy   = if ($job.PSObject.Properties['UserName']) { [string]$job.UserName } else { $null }
-                    SubmittedTime = if ($submitted) { $submitted.ToString('o') } else { $null }
-                    AgeMinutes    = $ageMinutes
-                })
+            } catch {
+                [void]$result.Errors.AppendLine("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
             }
-        } catch {
-            [void]$result.Errors.AppendLine("Get-PrintJob ($printerName) failed: $($_.Exception.Message)")
         }
 
         $portDict = $null
