@@ -1031,8 +1031,32 @@ function Test-NetworkPseudoInterface {
     return $false
 }
 
+function Get-NetworkLatestAdapterPass {
+    param($AdapterPayload)
+
+    if (-not $AdapterPayload) { return $null }
+    if (-not $AdapterPayload.PSObject -or -not $AdapterPayload.PSObject.Properties['Passes']) { return $null }
+
+    $passes = ConvertTo-NetworkArray $AdapterPayload.Passes
+    $latest = $null
+    foreach ($pass in $passes) {
+        if (-not $pass) { continue }
+        if (-not $pass.PSObject) { continue }
+        if (-not $pass.PSObject.Properties['Interfaces']) { continue }
+        $interfaces = ConvertTo-NetworkArray $pass.Interfaces
+        if ($interfaces.Count -eq 0) { continue }
+        $latest = $pass
+    }
+
+    return $latest
+}
+
 function Get-NetworkDnsInterfaceInventory {
     param($AdapterPayload)
+
+    if ($AdapterPayload -and $AdapterPayload.PSObject -and $AdapterPayload.PSObject.Properties['Passes']) {
+        return Get-NetworkDnsInterfaceInventoryFromPasses -AdapterPayload $AdapterPayload
+    }
 
     $map = @{}
 
@@ -1174,8 +1198,105 @@ function Get-NetworkDnsInterfaceInventory {
     }
 }
 
+function Get-NetworkDnsInterfaceInventoryFromPasses {
+    param($AdapterPayload)
+
+    $map = @{}
+
+    $latestPass = Get-NetworkLatestAdapterPass -AdapterPayload $AdapterPayload
+    if ($latestPass) {
+        $interfaceEntries = ConvertTo-NetworkArray $latestPass.Interfaces
+        foreach ($entry in $interfaceEntries) {
+            if (-not $entry) { continue }
+
+            $alias = $null
+            if ($entry.PSObject.Properties['InterfaceAlias']) { $alias = [string]$entry.InterfaceAlias }
+            if (-not $alias -and $entry.PSObject.Properties['Name']) { $alias = [string]$entry.Name }
+            if (-not $alias) { continue }
+
+            try { $key = $alias.ToLowerInvariant() } catch { $key = $alias }
+
+            $info = [ordered]@{
+                Alias                     = $alias
+                Description               = if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $null }
+                Status                    = if ($entry.PSObject.Properties['Status']) { [string]$entry.Status } else { $null }
+                IfIndex                   = if ($entry.PSObject.Properties['IfIndex']) { $entry.IfIndex } else { $null }
+                IPv4                      = @(ConvertTo-NetworkArray ($entry.PSObject.Properties['IPv4'] ? $entry.IPv4 : $null) | Where-Object { $_ })
+                IPv6                      = @(ConvertTo-NetworkArray ($entry.PSObject.Properties['IPv6'] ? $entry.IPv6 : $null) | Where-Object { $_ })
+                Gateways                  = @(ConvertTo-NetworkArray ($entry.PSObject.Properties['IPv4DefaultGateway'] ? $entry.IPv4DefaultGateway : $null) | Where-Object { $_ })
+                IPv6Gateways              = @(ConvertTo-NetworkArray ($entry.PSObject.Properties['IPv6DefaultGateway'] ? $entry.IPv6DefaultGateway : $null) | Where-Object { $_ })
+                RouteDefaultGatewayV4     = if ($entry.PSObject.Properties['RouteDefaultGatewayV4']) { [string]$entry.RouteDefaultGatewayV4 } else { $null }
+                RouteDefaultGatewayV4Metric = if ($entry.PSObject.Properties['RouteDefaultGatewayV4Metric']) { try { [int]$entry.RouteDefaultGatewayV4Metric } catch { $entry.RouteDefaultGatewayV4Metric } } else { $null }
+                RouteDefaultGatewayV6     = if ($entry.PSObject.Properties['RouteDefaultGatewayV6']) { [string]$entry.RouteDefaultGatewayV6 } else { $null }
+                RouteDefaultGatewayV6Metric = if ($entry.PSObject.Properties['RouteDefaultGatewayV6Metric']) { try { [int]$entry.RouteDefaultGatewayV6Metric } catch { $entry.RouteDefaultGatewayV6Metric } } else { $null }
+                MacAddress                = if ($entry.PSObject.Properties['MacAddress'] -and $entry.MacAddress) { Normalize-NetworkMacAddress $entry.MacAddress } else { $null }
+                MediaType                 = if ($entry.PSObject.Properties['MediaType']) { [string]$entry.MediaType } else { $null }
+                LinkSpeedText             = if ($entry.PSObject.Properties['LinkSpeedText']) { [string]$entry.LinkSpeedText } else { $null }
+                LinkSpeedMbps             = if ($entry.PSObject.Properties['LinkSpeedMbps'] -and $entry.LinkSpeedMbps -is [ValueType]) { [double]$entry.LinkSpeedMbps } elseif ($entry.PSObject.Properties['LinkSpeedMbps']) { try { [double]$entry.LinkSpeedMbps } catch { $entry.LinkSpeedMbps } } else { $null }
+                DriverInformation         = if ($entry.PSObject.Properties['DriverInformation']) { [string]$entry.DriverInformation } else { $null }
+                DnsServers                = @(ConvertTo-NetworkArray ($entry.PSObject.Properties['DnsServers'] ? $entry.DnsServers : $null) | Where-Object { $_ })
+                CollectedAtUtc            = if ($entry.PSObject.Properties['CollectedAtUtc']) { [string]$entry.CollectedAtUtc } else { $null }
+            }
+
+            $map[$key] = $info
+        }
+    }
+
+    $eligible = New-Object System.Collections.Generic.List[string]
+    $fallbackEligible = New-Object System.Collections.Generic.List[string]
+
+    foreach ($key in $map.Keys) {
+        $info = $map[$key]
+        if (-not $info) { continue }
+
+        $statusText = if ($info.Status) { [string]$info.Status } else { '' }
+        $normalizedStatus = if ($statusText) { $statusText.ToLowerInvariant() } else { '' }
+        $isUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
+
+        $hasIpv4 = ($info.IPv4 | Where-Object { Test-NetworkValidIpv4Address $_ }).Count -gt 0
+        $hasIpv6 = ($info.IPv6 | Where-Object { Test-NetworkValidIpv6Address $_ }).Count -gt 0
+        $gatewayCount = ($info.Gateways | Where-Object { Test-NetworkValidIpv4Address $_ }).Count
+        $ipv6GatewayCount = ($info.IPv6Gateways | Where-Object { Test-NetworkValidIpv6Address $_ }).Count
+
+        $hasRouteGatewayV4 = $false
+        if ($info.RouteDefaultGatewayV4) {
+            $hasRouteGatewayV4 = Test-NetworkValidIpv4Address $info.RouteDefaultGatewayV4
+        }
+
+        $hasRouteGatewayV6 = $false
+        if ($info.RouteDefaultGatewayV6) {
+            $hasRouteGatewayV6 = Test-NetworkValidIpv6Address $info.RouteDefaultGatewayV6
+        }
+
+        $isPseudo = Test-NetworkPseudoInterface -Alias $info.Alias -Description $info.Description
+
+        $info.IsUp = $isUp
+        $info.HasValidAddress = ($hasIpv4 -or $hasIpv6)
+        $info.HasGateway = (($gatewayCount -gt 0) -or $hasRouteGatewayV4)
+        $info.HasGatewayV6 = (($ipv6GatewayCount -gt 0) -or $hasRouteGatewayV6)
+        $info.HasRouteDefaultGatewayV4 = $hasRouteGatewayV4
+        $info.HasRouteDefaultGatewayV6 = $hasRouteGatewayV6
+        $info.IsPseudo = $isPseudo
+        $info.IsEligible = ($isUp -and $info.HasValidAddress -and ($info.HasGateway -or $info.HasGatewayV6) -and -not $isPseudo)
+        $info.IsFallbackEligible = ($isUp -and $info.HasValidAddress -and -not $isPseudo)
+
+        if ($info.IsEligible) { $eligible.Add($info.Alias) | Out-Null }
+        if ($info.IsFallbackEligible) { $fallbackEligible.Add($info.Alias) | Out-Null }
+    }
+
+    return [pscustomobject]@{
+        Map                     = $map
+        EligibleAliases         = $eligible.ToArray()
+        FallbackEligibleAliases = $fallbackEligible.ToArray()
+    }
+}
+
 function Get-NetworkAdapterLinkInventory {
     param($AdapterPayload)
+
+    if ($AdapterPayload -and $AdapterPayload.PSObject -and $AdapterPayload.PSObject.Properties['Passes']) {
+        return Get-NetworkAdapterLinkInventoryFromPasses -AdapterPayload $AdapterPayload
+    }
 
     $map = @{}
 
@@ -1244,6 +1365,146 @@ function Get-NetworkAdapterLinkInventory {
                     LinkSpeed         = ConvertTo-NetworkLinkSpeedMetrics $null
                     DriverInformation = $null
                     Properties        = New-Object System.Collections.Generic.List[object]
+                    Key               = $key
+                }
+            }
+
+            $map[$key].Properties.Add($property) | Out-Null
+        }
+    }
+
+    foreach ($key in @($map.Keys)) {
+        $info = $map[$key]
+        $properties = if ($info.Properties) { $info.Properties } else { @() }
+
+        $speedProperty = $null
+        foreach ($property in $properties) {
+            $displayName = if ($property.PSObject.Properties['DisplayName']) { [string]$property.DisplayName } else { $null }
+            if (-not $displayName) { continue }
+
+            $normalized = $null
+            try { $normalized = $displayName.ToLowerInvariant() } catch { $normalized = $displayName }
+
+            if ($normalized -match 'speed' -and $normalized -match 'duplex') { $speedProperty = $property; break }
+            if (-not $speedProperty -and $normalized -match 'duplex' -and $normalized -match 'mode') { $speedProperty = $property }
+        }
+
+        if (-not $speedProperty) {
+            foreach ($property in $properties) {
+                $values = Get-NetworkValueText ($property.PSObject.Properties['DisplayValue'] ? $property.DisplayValue : $null)
+                if (($values | Where-Object { $_ -match '(?i)duplex' }).Count -gt 0) { $speedProperty = $property; break }
+            }
+        }
+
+        $policyText = $null
+        if ($speedProperty) {
+            $valueTexts = Get-NetworkValueText ($speedProperty.PSObject.Properties['DisplayValue'] ? $speedProperty.DisplayValue : $null)
+            if ($valueTexts.Count -gt 0) {
+                $policyText = $valueTexts[0]
+            } elseif ($speedProperty.PSObject.Properties['DisplayValue']) {
+                $policyText = [string]$speedProperty.DisplayValue
+            } elseif ($speedProperty.PSObject.Properties['Value']) {
+                $valueTexts = Get-NetworkValueText $speedProperty.Value
+                if ($valueTexts.Count -gt 0) { $policyText = $valueTexts[0] }
+            }
+        }
+
+        $speedPolicy = if ($policyText) { ConvertTo-NetworkSpeedSetting $policyText } else { $null }
+
+        $info.SpeedPolicy = $speedPolicy
+        $info.SpeedPolicyText = $policyText
+        $info.SpeedPolicyDisplayName = if ($speedProperty -and $speedProperty.PSObject.Properties['DisplayName']) { [string]$speedProperty.DisplayName } else { $null }
+
+        if (-not $info.LinkSpeed) { $info.LinkSpeed = ConvertTo-NetworkLinkSpeedMetrics $info.LinkSpeedText }
+
+        $isGigabitCapable = $false
+        if ($speedPolicy -and $speedPolicy.BitsPerSecond -ge 1000000000) {
+            $isGigabitCapable = $true
+        } elseif ($info.LinkSpeed -and $info.LinkSpeed.BitsPerSecond -ge 1000000000) {
+            $isGigabitCapable = $true
+        } else {
+            $capabilityTexts = @($info.Description, $info.DriverInformation, $policyText)
+            foreach ($candidate in $capabilityTexts) {
+                if (-not $candidate) { continue }
+                if ($candidate -match '(?i)(gigabit|10/100/1000|\b1\s*g\b|1000base|gbe|gige|1\.0\s*g)') { $isGigabitCapable = $true; break }
+                if ($candidate -match '(?i)1000\s*(mbps|megabit)') { $isGigabitCapable = $true; break }
+            }
+        }
+
+        $info.IsGigabitCapable = $isGigabitCapable
+    }
+
+    return [pscustomobject]@{
+        Map = $map
+    }
+}
+
+function Get-NetworkAdapterLinkInventoryFromPasses {
+    param($AdapterPayload)
+
+    $map = @{}
+
+    $latestPass = Get-NetworkLatestAdapterPass -AdapterPayload $AdapterPayload
+    if ($latestPass) {
+        $interfaceEntries = ConvertTo-NetworkArray $latestPass.Interfaces
+        foreach ($entry in $interfaceEntries) {
+            if (-not $entry) { continue }
+
+            $alias = $null
+            if ($entry.PSObject.Properties['InterfaceAlias']) { $alias = [string]$entry.InterfaceAlias }
+            if (-not $alias -and $entry.PSObject.Properties['Name']) { $alias = [string]$entry.Name }
+            if (-not $alias) { continue }
+
+            try { $key = $alias.ToLowerInvariant() } catch { $key = $alias }
+
+            $linkSpeedText = if ($entry.PSObject.Properties['LinkSpeedText']) { [string]$entry.LinkSpeedText } else { $null }
+
+            if (-not $map.ContainsKey($key)) {
+                $map[$key] = [ordered]@{
+                    Alias             = $alias
+                    Description       = if ($entry.PSObject.Properties['InterfaceDescription']) { [string]$entry.InterfaceDescription } else { $null }
+                    Status            = if ($entry.PSObject.Properties['Status']) { [string]$entry.Status } else { $null }
+                    LinkSpeedText     = $linkSpeedText
+                    LinkSpeed         = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedText
+                    DriverInformation = if ($entry.PSObject.Properties['DriverInformation']) { [string]$entry.DriverInformation } else { $null }
+                    Properties        = New-Object System.Collections.Generic.List[object]
+                    MediaType         = if ($entry.PSObject.Properties['MediaType']) { [string]$entry.MediaType } else { $null }
+                    Key               = $key
+                }
+            } else {
+                $info = $map[$key]
+                if (-not $info.Description -and $entry.PSObject.Properties['InterfaceDescription']) { $info.Description = [string]$entry.InterfaceDescription }
+                if (-not $info.Status -and $entry.PSObject.Properties['Status']) { $info.Status = [string]$entry.Status }
+                if (-not $info.LinkSpeedText -and $linkSpeedText) {
+                    $info.LinkSpeedText = $linkSpeedText
+                    $info.LinkSpeed = ConvertTo-NetworkLinkSpeedMetrics $linkSpeedText
+                }
+                if (-not $info.DriverInformation -and $entry.PSObject.Properties['DriverInformation']) { $info.DriverInformation = [string]$entry.DriverInformation }
+                if (-not $info.MediaType -and $entry.PSObject.Properties['MediaType']) { $info.MediaType = [string]$entry.MediaType }
+            }
+        }
+    }
+
+    if ($AdapterPayload -and $AdapterPayload.PSObject.Properties['Properties'] -and $AdapterPayload.Properties -and -not $AdapterPayload.Properties.Error) {
+        $propertyEntries = ConvertTo-NetworkArray $AdapterPayload.Properties
+        foreach ($property in $propertyEntries) {
+            if (-not $property) { continue }
+
+            $alias = if ($property.PSObject.Properties['Name']) { [string]$property.Name } else { $null }
+            if (-not $alias) { continue }
+
+            try { $key = $alias.ToLowerInvariant() } catch { $key = $alias }
+
+            if (-not $map.ContainsKey($key)) {
+                $map[$key] = [ordered]@{
+                    Alias             = $alias
+                    Description       = $null
+                    Status            = $null
+                    LinkSpeedText     = $null
+                    LinkSpeed         = ConvertTo-NetworkLinkSpeedMetrics $null
+                    DriverInformation = $null
+                    Properties        = New-Object System.Collections.Generic.List[object]
+                    MediaType         = $null
                     Key               = $key
                 }
             }
