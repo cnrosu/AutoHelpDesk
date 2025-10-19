@@ -209,6 +209,52 @@ function Invoke-SecurityAttackSurfaceChecks {
                     Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label) -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
                 }
             }
+
+            $impactRules = @(
+                @{ Label = 'Block all Office applications from creating child processes'; Ids = @('D4F940AB-401B-4EFC-AADC-AD5F3C50688A'); ImpactClause = 'legacy Office add-ins or macros that spawn cmd, PowerShell, or other tools may break.' },
+                @{ Label = 'Block Office communication application from creating child processes'; Ids = @('26190899-1602-49E8-8B27-EB1D0A1CE869'); ImpactClause = 'Outlook, Teams, or Skype add-ins that launch helper processes may stop working.' },
+                @{ Label = 'Block Office applications from injecting code into other processes'; Ids = @('75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84'); ImpactClause = 'uncommon Office add-ins that rely on code injection may break.' },
+                @{ Label = 'Block Office applications from creating executable content'; Ids = @('3B576869-A4EC-4529-8536-B80A7769E899'); ImpactClause = 'document-driven installers or templates that drop EXE or DLL files are blocked.' },
+                @{ Label = 'Block Win32 API calls from Office macros'; Ids = @('92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B'); ImpactClause = 'VBA macros that call low-level Win32 APIs or shellcode loaders stop running.' },
+                @{ Label = 'Block execution of potentially obfuscated scripts'; Ids = @('5BEB7EFE-FD9A-4556-801D-275E5FFC04CC'); ImpactClause = 'red-team tools or heavily packed admin scripts may be flagged.' },
+                @{ Label = 'Block JavaScript or VBScript from launching downloaded executable content'; Ids = @('D3E037E1-3EB8-44C8-A917-57927947596D'); ImpactClause = 'legacy web installers that script a download-then-run chain are disrupted.' },
+                @{ Label = 'Block executable files unless they meet prevalence, age, or trusted list criteria'; Ids = @('01443614-CD74-433A-B99E-2ECDC07BFC25'); ImpactClause = 'brand-new or rare in-house tools can be blocked until trusted or excluded.' },
+                @{ Label = 'Block untrusted and unsigned processes that run from USB'; Ids = @('B2B3F03D-6A65-4F7B-A9C7-1C7EF74A9BA4'); ImpactClause = 'unsigned tools from thumb drives cannot run, impacting field and bench workflows.' },
+                @{ Label = 'Block process creations originating from PSExec and WMI commands'; Ids = @('D1E49AAC-8F56-4280-B9BA-993A6D77406C'); ImpactClause = 'remote admin tooling, scripted troubleshooting, and some software push methods can be blocked.' },
+                @{ Label = 'Block persistence through WMI event subscription'; Ids = @('E6DB77E5-3DF2-4CF1-B95A-636979351E5B'); ImpactClause = 'niche IT or EDR workflows that use WMI events for automation may fail.' },
+                @{ Label = 'Block use of copied or impersonated system tools'; Ids = @('C0033C00-D16D-4114-A5A0-DC9B3A7D2CEB'); ImpactClause = 'portable admin kits bundling look-alike system binaries can be flagged.' },
+                @{ Label = 'Block Adobe Reader from creating child processes'; Ids = @('7674BA52-37EB-4A4F-A9A1-F0F9A1619A2C'); ImpactClause = 'PDF add-ins or integrations that legitimately spawn helper processes could stop working.' },
+                @{ Label = 'Block rebooting machine in Safe Mode'; Ids = @('33DDEDF1-C6E0-47CB-833E-DE6133960387'); ImpactClause = 'repair workflows that require Safe Mode are blocked.' }
+            )
+
+            foreach ($impactRule in $impactRules) {
+                $impactEvidence = [System.Collections.Generic.List[string]]::new()
+                $actionNames = [System.Collections.Generic.List[string]]::new()
+                foreach ($id in $impactRule.Ids) {
+                    $lookup = $id.ToUpperInvariant()
+                    if (-not $ruleMap.ContainsKey($lookup)) { continue }
+
+                    $action = $ruleMap[$lookup]
+                    if ($action -eq 1) {
+                        $actionNames.Add('Block') | Out-Null
+                    } elseif ($action -eq 6) {
+                        $actionNames.Add('Warn') | Out-Null
+                    } else {
+                        continue
+                    }
+
+                    $impactEvidence.Add("{0} => {1}" -f $lookup, $action) | Out-Null
+                }
+
+                if ($impactEvidence.Count -eq 0) { continue }
+
+                $uniqueActionNames = $actionNames.ToArray() | Select-Object -Unique
+                if (-not $uniqueActionNames) { continue }
+
+                $actionText = ($uniqueActionNames -join '/')
+                $title = "ASR rule '{0}' is set to {1}, so {2}" -f $impactRule.Label, $actionText, $impactRule.ImpactClause
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title $title -Evidence ($impactEvidence -join "`n") -Subcategory 'Attack Surface Reduction'
+            }
         } else {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing, leaving exploit paths open.' -Subcategory 'Attack Surface Reduction'
         }
