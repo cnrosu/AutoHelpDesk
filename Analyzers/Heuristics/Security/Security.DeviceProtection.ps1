@@ -191,6 +191,26 @@ function Invoke-SecurityAttackSurfaceChecks {
                 }
                 if ($missing.Count -eq 0 -and $nonBlocking.Count -eq 0) {
                     $evidence = ($set.Ids | ForEach-Object { "{0} => 1" -f $_ }) -join "`n"
+
+                    if ($set.Ids -contains 'D4F940AB-401B-4EFC-AADC-AD5F3C50688A') {
+                        if (-not $Context.PSObject.Properties['SecurityAnalyzerState'] -or -not $Context.SecurityAnalyzerState) {
+                            $Context | Add-Member -NotePropertyName 'SecurityAnalyzerState' -NotePropertyValue ([pscustomobject]@{}) -Force
+                        }
+
+                        $securityState = $Context.SecurityAnalyzerState
+                        if (-not $securityState.PSObject.Properties['OfficeChildProcessBlock']) {
+                            $securityState | Add-Member -NotePropertyName 'OfficeChildProcessBlock' -NotePropertyValue $true -Force
+                        } else {
+                            $securityState.OfficeChildProcessBlock = $true
+                        }
+
+                        if (-not $securityState.PSObject.Properties['OfficeChildProcessBlockEvidence']) {
+                            $securityState | Add-Member -NotePropertyName 'OfficeChildProcessBlockEvidence' -NotePropertyValue $evidence -Force
+                        } else {
+                            $securityState.OfficeChildProcessBlockEvidence = $evidence
+                        }
+                    }
+
                     Add-CategoryNormal -CategoryResult $CategoryResult -Title ("ASR blocking enforced: {0}" -f $set.Label) -Evidence $evidence -Subcategory 'Attack Surface Reduction'
                 } else {
                     $detailParts = [System.Collections.Generic.List[string]]::new()

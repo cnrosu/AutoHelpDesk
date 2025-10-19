@@ -27,5 +27,17 @@ function Invoke-OfficeHeuristics {
     Invoke-OutlookConnectivityHeuristic -Context $Context -Result $result
     Invoke-AutodiscoverDnsHeuristic     -Context $Context -Result $result
 
+    if ($Context -and $Context.PSObject.Properties['SecurityAnalyzerState'] -and $Context.SecurityAnalyzerState) {
+        $securityState = $Context.SecurityAnalyzerState
+        if ($securityState.PSObject.Properties['OfficeChildProcessBlock'] -and $securityState.OfficeChildProcessBlock) {
+            $evidence = $null
+            if ($securityState.PSObject.Properties['OfficeChildProcessBlockEvidence']) {
+                $evidence = $securityState.OfficeChildProcessBlockEvidence
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'ASR Office child-process blocking may break legacy macros or add-ins that spawn helper processes.' -Evidence $evidence -Subcategory 'Attack Surface Reduction'
+        }
+    }
+
     return $result
 }
