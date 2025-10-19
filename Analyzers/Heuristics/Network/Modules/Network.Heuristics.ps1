@@ -1842,15 +1842,15 @@ function Invoke-NetworkHeuristics {
                     $targets = ($targetsRaw | Where-Object { $_ })
                     $targetText = $targets -join ', '
                     if ($targets -match 'autodiscover\.outlook\.com') {
-                        Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover healthy for {0}" -f $domain) -Evidence $targetText -Subcategory 'Autodiscover DNS'
+                        Add-CategoryNormal -CategoryResult $result -Title "Autodiscover healthy for $domain" -Evidence $targetText -Subcategory 'Autodiscover DNS'
                     } else {
                         $severity = if ($devicePartOfDomain -eq $true) { 'medium' } else { 'low' }
-                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online." -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title "Autodiscover for $domain targets $($targetText), so mail setup may fail for Exchange Online." -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                     }
                 } elseif ($autoRecord.Success -eq $false) {
                     $severity = if ($devicePartOfDomain -eq $true) { 'high' } else { 'medium' }
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
-                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}, so mail setup may fail." -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title "Autodiscover lookup failed for $domain, so mail setup may fail." -Evidence $evidence -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                 }
 
                 $dnsWarningLabels = @('EnterpriseRegistration','EnterpriseEnrollment')
@@ -1860,7 +1860,7 @@ function Invoke-NetworkHeuristics {
                     if ($additional.Label -eq 'Autodiscover') { continue }
                     if ($dnsWarningLabels -notcontains $additional.Label) { continue }
                     if ($additional.Success -eq $false -and $additional.Error) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}, so mail setup may fail." -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title "$($additional.Label) record missing for $domain, so mail setup may fail." -Evidence $additional.Error -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
                     }
                 }
             }

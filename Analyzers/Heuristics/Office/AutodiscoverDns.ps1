@@ -326,11 +326,12 @@ function Get-AutodiscoverDnsEvidence {
     $cname = if ($LookupMap.ContainsKey('Autodiscover')) { $LookupMap['Autodiscover'] } else { $null }
     if ($cname) {
         if ($cname.Success -eq $true -and $cname.Targets -and $cname.Targets.Count -gt 0) {
-            $lines.Add(("autodiscover.{0} CNAME → {1} (OK)" -f $Domain, ($cname.Targets -join ', '))) | Out-Null
+            $targetList = ($cname.Targets -join ', ')
+            $lines.Add("autodiscover.$Domain CNAME → $targetList (OK)") | Out-Null
         } elseif ($cname.Success -eq $false) {
-            $lines.Add(("autodiscover.{0} CNAME lookup failed: {1}" -f $Domain, $cname.Error)) | Out-Null
+            $lines.Add("autodiscover.$Domain CNAME lookup failed: $($cname.Error)") | Out-Null
         } else {
-            $lines.Add(("autodiscover.{0} CNAME lookup returned no targets." -f $Domain)) | Out-Null
+            $lines.Add("autodiscover.$Domain CNAME lookup returned no targets.") | Out-Null
         }
     }
 
@@ -339,9 +340,10 @@ function Get-AutodiscoverDnsEvidence {
         $record = $LookupMap[$label]
         $type = $record.Type
         if ($record.Success -eq $true -and $record.Addresses -and $record.Addresses.Count -gt 0) {
-            $lines.Add(("autodiscover.{0} {1} → {2} (OK)" -f $Domain, $type, ($record.Addresses -join ', '))) | Out-Null
+            $addressList = ($record.Addresses -join ', ')
+            $lines.Add("autodiscover.$Domain $type → $addressList (OK)") | Out-Null
         } elseif ($record.Success -eq $false) {
-            $lines.Add(("autodiscover.{0} {1} lookup failed: {2}" -f $Domain, $type, $record.Error)) | Out-Null
+            $lines.Add("autodiscover.$Domain $type lookup failed: $($record.Error)") | Out-Null
         }
     }
 
@@ -355,10 +357,10 @@ function Get-AutodiscoverDnsEvidence {
                 $priority = $record.Priority
                 $weight = $record.Weight
                 $status = if ($port -eq 443) { 'OK' } else { "Port $port" }
-                $lines.Add(("_autodiscover._tcp.{0} SRV → {1} {2} {3} {4} ({5})" -f $Domain, $priority, $weight, $port, $target, $status)) | Out-Null
+                $lines.Add("_autodiscover._tcp.$Domain SRV → $priority $weight $port $target ($status)") | Out-Null
             }
         } elseif ($srv.Success -eq $false) {
-            $lines.Add(("_autodiscover._tcp.{0} SRV lookup failed: {1}" -f $Domain, $srv.Error)) | Out-Null
+            $lines.Add("_autodiscover._tcp.$Domain SRV lookup failed: $($srv.Error)") | Out-Null
         }
     }
 
@@ -367,7 +369,7 @@ function Get-AutodiscoverDnsEvidence {
         if ($mx.Success -eq $true -and $mx.Records) {
             foreach ($record in (ConvertTo-AutodiscoverArray -Value $mx.Records)) {
                 if (-not $record) { continue }
-                $lines.Add(("{0} MX → {1} {2}" -f $Domain, $record.Preference, $record.Target)) | Out-Null
+                $lines.Add("$Domain MX → $($record.Preference) $($record.Target)") | Out-Null
             }
         }
     }
@@ -394,7 +396,7 @@ function Get-AutodiscoverScpEvidence {
         $host = if ($entry.Host) { $entry.Host } else { '(unknown host)' }
         $status = if ($problemSet.Contains($host)) { 'Mismatch' } else { 'OK' }
         $url = if ($entry.Url) { $entry.Url } else { '(no URL provided)' }
-        $lines.Add(("SCP ServiceBinding: {0} (Host {1}, {2})" -f $url, $host, $status)) | Out-Null
+        $lines.Add("SCP ServiceBinding: $url (Host $host, $status)") | Out-Null
     }
 
     return $lines.ToArray()
