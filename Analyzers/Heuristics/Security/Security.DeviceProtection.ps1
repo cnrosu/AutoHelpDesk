@@ -163,18 +163,18 @@ function Invoke-SecurityAttackSurfaceChecks {
                 $ruleMap[$normalized] = $action
             }
             $requiredRules = @(
-                @{ Label = 'Block abuse of exploited vulnerable signed drivers'; Ids = @('56A863A9-875E-4185-98A7-B882C64B5CE5') },
-                @{ Label = 'Block Adobe Reader from creating child processes'; Ids = @('7674BA52-37EB-4A4F-A9A1-F0F9A1619A2C') },
-                @{ Label = 'Block Office applications from creating executable content'; Ids = @('3B576869-A4EC-4529-8536-B80A7769E899') },
-                @{ Label = 'Block Win32 API calls from Office'; Ids = @('92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B') },
-                @{ Label = 'Block all Office applications from creating child processes.'; Ids = @('D4F940AB-401B-4EFC-AADC-AD5F3C50688A') },
-                @{ Label = 'Block executable content from email client and webmail'; Ids = @('BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550') },
-                @{ Label = 'Block executable files from running unless they meet a prevalence, age, or trusted list criterion'; Ids = @('01443614-CD74-433A-B99E-2ECDC07BFC25') },
-                @{ Label = 'Block JavaScript or VBScript from launching downloaded executable content'; Ids = @('D3E037E1-3EB8-44C8-A917-57927947596D') },
-                @{ Label = 'Block execution of potentially obfuscated scripts'; Ids = @('5BEB7EFE-FD9A-4556-801D-275E5FFC04CC') },
-                @{ Label = 'Block credential stealing from the Windows local security authority subsystem (lsass.exe).'; Ids = @('9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2') },
-                @{ Label = 'Block Office applications from injecting code into other processes'; Ids = @('75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84') },
-                @{ Label = 'Block Office communication application from creating child processes'; Ids = @('26190899-1602-49E8-8B27-EB1D0A1CE869') }
+                @{ Label = 'Block abuse of exploited vulnerable signed drivers'; Ids = @('56A863A9-875E-4185-98A7-B882C64B5CE5'); Impact = 'attackers can load malicious kernel drivers even with stolen certificates' },
+                @{ Label = 'Block Adobe Reader from creating child processes'; Ids = @('7674BA52-37EB-4A4F-A9A1-F0F9A1619A2C'); Impact = 'malicious PDFs can spawn helper processes to install payloads' },
+                @{ Label = 'Block Office applications from creating executable content'; Ids = @('3B576869-A4EC-4529-8536-B80A7769E899'); Impact = 'Office macros can drop executable payloads to disk' },
+                @{ Label = 'Block Win32 API calls from Office'; Ids = @('92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B'); Impact = 'Office macros keep direct access to Windows APIs used for payload delivery' },
+                @{ Label = 'Block all Office applications from creating child processes.'; Ids = @('D4F940AB-401B-4EFC-AADC-AD5F3C50688A'); Impact = 'Office documents can launch external programs like cmd.exe or PowerShell' },
+                @{ Label = 'Block executable content from email client and webmail'; Ids = @('BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550'); Impact = 'phishing attachments can run as soon as users open them' },
+                @{ Label = 'Block executable files from running unless they meet a prevalence, age, or trusted list criterion'; Ids = @('01443614-CD74-433A-B99E-2ECDC07BFC25'); Impact = 'new or rare executables can run without reputation checks' },
+                @{ Label = 'Block JavaScript or VBScript from launching downloaded executable content'; Ids = @('D3E037E1-3EB8-44C8-A917-57927947596D'); Impact = 'downloaded scripts can hand off to executable payloads' },
+                @{ Label = 'Block execution of potentially obfuscated scripts'; Ids = @('5BEB7EFE-FD9A-4556-801D-275E5FFC04CC'); Impact = 'encoded or obfuscated scripts can run to evade inspection' },
+                @{ Label = 'Block credential stealing from the Windows local security authority subsystem (lsass.exe).'; Ids = @('9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2'); Impact = 'credential dumping tools can read LSASS memory to steal passwords' },
+                @{ Label = 'Block Office applications from injecting code into other processes'; Ids = @('75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84'); Impact = 'Office can inject shellcode into trusted processes to hide malware' },
+                @{ Label = 'Block Office communication application from creating child processes'; Ids = @('26190899-1602-49E8-8B27-EB1D0A1CE869'); Impact = 'Teams or Skype style clients can spawn payload processes from chat content' }
             )
             foreach ($set in $requiredRules) {
                 $missing = [System.Collections.Generic.List[string]]::new()
@@ -206,7 +206,10 @@ function Invoke-SecurityAttackSurfaceChecks {
                             $evidenceLines.Add("{0} => (missing)" -f $lookup)
                         }
                     }
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label) -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
+                    $impact = $null
+                    if ($set.ContainsKey('Impact')) { $impact = $set.Impact }
+                    $title = if ($impact) { "ASR rule not enforced: {0}, so {1}." -f $set.Label, $impact } else { "ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label }
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $title -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
                 }
             }
         } else {
