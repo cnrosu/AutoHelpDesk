@@ -144,25 +144,208 @@ function Test-Latency {
     return [PSCustomObject]$summary
 }
 
-function Resolve-AutodiscoverRecords {
+function Test-AutodiscoverDomain {
+    param([string]$Domain)
+
+    if ([string]::IsNullOrWhiteSpace($Domain)) { return $false }
+
+    $candidate = $Domain.Trim()
+    if (-not $candidate) { return $false }
+
+    if ($candidate.EndsWith('.')) {
+        $candidate = $candidate.TrimEnd('.')
+        if (-not $candidate) { return $false }
+    }
+
+    if ($candidate.Length -gt 253) { return $false }
+
+    $pattern = '^(?i)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$'
+    return ($candidate -match $pattern)
+}
+
+function Get-AutodiscoverDomainFromAddress {
+    param([string]$Address)
+
+    if ([string]::IsNullOrWhiteSpace($Address)) { return $null }
+
+    $candidate = $Address.Trim()
+    if (-not $candidate) { return $null }
+
+    $candidate = $candidate -replace '^(?i)smtp:', ''
+    if (-not ($candidate -match '@')) { return $null }
+
+    $parts = $candidate -split '@', 2
+    if ($parts.Count -lt 2) { return $null }
+
+    $domain = $parts[1].Trim()
+    if (-not $domain) { return $null }
+
+    return $domain
+}
+
+function Get-AutodiscoverSignInDomains {
+    $domains = [System.Collections.Generic.List[pscustomobject]]::new()
+    $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addDomain = {
+        param(
+            [string]$Domain,
+            [string]$Source,
+            [bool]$IsPrimary
+        )
+
+        if (-not (Test-AutodiscoverDomain $Domain)) { return }
+
+        $normalized = $Domain.Trim().TrimEnd('.')
+        try { $normalized = $normalized.ToLowerInvariant() } catch { }
+
+        if (-not $normalized) { return }
+
+        if ($seen.Add($normalized)) {
+            $domains.Add([pscustomobject]@{
+                Domain    = $normalized
+                Source    = $Source
+                IsPrimary = [bool]$IsPrimary
+            }) | Out-Null
+        } elseif ($IsPrimary) {
+            $existing = $domains | Where-Object { $_.Domain -eq $normalized } | Select-Object -First 1
+            if ($existing) { $existing.IsPrimary = $true }
+        }
+    }
+
+    $primaryCandidates = New-Object System.Collections.Generic.List[string]
+
+    try {
+        $whoamiUpn = whoami.exe /upn 2>$null
+        if ($LASTEXITCODE -eq 0 -and $whoamiUpn) {
+            $primaryCandidates.Add([string]$whoamiUpn) | Out-Null
+        }
+    } catch {
+    }
+
+    foreach ($candidate in @($env:USERPRINCIPALNAME)) {
+        if ($candidate) { $primaryCandidates.Add([string]$candidate) | Out-Null }
+    }
+
+    $addedPrimary = $false
+    foreach ($candidate in $primaryCandidates) {
+        $domain = Get-AutodiscoverDomainFromAddress -Address $candidate
+        if (-not $domain) { continue }
+        & $addDomain -Domain $domain -Source 'UPN' -IsPrimary:($addedPrimary -eq $false)
+        if (-not $addedPrimary) { $addedPrimary = $true }
+    }
+
+    foreach ($candidate in @($env:EMAIL, $env:USERDNSDOMAIN)) {
+        if (-not $candidate) { continue }
+        $domain = if ($candidate -match '@') { Get-AutodiscoverDomainFromAddress -Address $candidate } else { $candidate }
+        if (-not $domain) { continue }
+        & $addDomain -Domain $domain -Source 'Environment' -IsPrimary:$false
+    }
+
+    return $domains.ToArray()
+}
+
+function New-AutodiscoverQueryDefinition {
     param(
-        [string[]]$Domains = @('autodiscover', 'enterpriseenrollment', 'enterpriseregistration')
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string[]]$Types,
+        [string]$Domain,
+        [string]$Label,
+        [string]$Source,
+        [bool]$IsPrimary
     )
 
+    $definition = [ordered]@{
+        Name      = $Name
+        Types     = $Types
+        Domain    = $Domain
+        Label     = $Label
+        Source    = $Source
+        IsPrimary = [bool]$IsPrimary
+    }
+
+    return [pscustomobject]$definition
+}
+
+function Resolve-AutodiscoverRecords {
+    $domains = Get-AutodiscoverSignInDomains
+
+    $queries = [System.Collections.Generic.List[pscustomobject]]::new()
+    foreach ($entry in $domains) {
+        if (-not $entry) { continue }
+        $baseDomain = [string]$entry.Domain
+        if (-not $baseDomain) { continue }
+
+        $queries.Add((New-AutodiscoverQueryDefinition -Name "autodiscover.$baseDomain" -Types @('CNAME','A') -Domain $baseDomain -Label 'Autodiscover' -Source $entry.Source -IsPrimary:$entry.IsPrimary)) | Out-Null
+        $queries.Add((New-AutodiscoverQueryDefinition -Name "enterpriseenrollment.$baseDomain" -Types @('CNAME') -Domain $baseDomain -Label 'EnterpriseEnrollment' -Source $entry.Source -IsPrimary:$entry.IsPrimary)) | Out-Null
+        $queries.Add((New-AutodiscoverQueryDefinition -Name "enterpriseregistration.$baseDomain" -Types @('CNAME') -Domain $baseDomain -Label 'EnterpriseRegistration' -Source $entry.Source -IsPrimary:$entry.IsPrimary)) | Out-Null
+    }
+
+    $queries.Add((New-AutodiscoverQueryDefinition -Name 'autodiscover.outlook.com' -Types @('CNAME') -Domain 'outlook.com' -Label 'Autodiscover' -Source 'Global' -IsPrimary:$false)) | Out-Null
+
     $results = [System.Collections.Generic.List[pscustomobject]]::new()
-    foreach ($domain in $Domains) {
-        try {
-            $records = Resolve-DnsName -Type CNAME -Name "$domain.outlook.com" -ErrorAction Stop
-            $null = $results.Add([PSCustomObject]@{
-                Query   = "$domain.outlook.com"
-                Records = $records | Select-Object Name, Type, NameHost
-            })
-        } catch {
-            $null = $results.Add([PSCustomObject]@{
-                Query = "$domain.outlook.com"
-                Error = $_.Exception.Message
-            })
+
+    foreach ($query in $queries) {
+        if (-not $query) { continue }
+
+        $recordTypes = @()
+        foreach ($type in $query.Types) {
+            if ([string]::IsNullOrWhiteSpace($type)) { continue }
+            $recordTypes += [string]$type
         }
+
+        if ($recordTypes.Count -eq 0) { continue }
+
+        $resolved = $false
+        $resolution = $null
+        $errors = New-Object System.Collections.Generic.List[object]
+
+        foreach ($type in $recordTypes) {
+            try {
+                $records = Resolve-DnsName -Type $type -Name $query.Name -ErrorAction Stop
+                $selection = $records | Select-Object Name, Type, NameHost, IPAddress
+                $resolution = [ordered]@{
+                    Records   = $selection
+                    RecordType = $type
+                }
+                $resolved = $true
+                break
+            } catch {
+                $errors.Add($_) | Out-Null
+            }
+        }
+
+        $entry = [ordered]@{
+            Query      = $query.Name
+            Domain     = $query.Domain
+            DomainSource = $query.Source
+            Label      = $query.Label
+            IsPrimary  = [bool]$query.IsPrimary
+        }
+
+        if ($resolved -and $resolution) {
+            $entry.RecordType = $resolution.RecordType
+            $entry.Records = $resolution.Records
+        } elseif ($errors.Count -gt 0) {
+            $firstError = [System.Management.Automation.ErrorRecord]$errors[0]
+            $message = $firstError.Exception.Message
+            $entry.RecordType = $recordTypes[0]
+            $entry.Error = $message
+
+            if ($firstError.Exception.PSObject.Properties['DnsResponseCode']) {
+                $entry.ResponseCode = [string]$firstError.Exception.DnsResponseCode
+            } elseif ($firstError.Exception.PSObject.Properties['ErrorCode']) {
+                $entry.ErrorCode = [string]$firstError.Exception.ErrorCode
+            } elseif ($firstError.Exception.PSObject.Properties['HResult']) {
+                $entry.HResult = [string]$firstError.Exception.HResult
+            }
+
+            if ($firstError.FullyQualifiedErrorId) {
+                $entry.ErrorId = [string]$firstError.FullyQualifiedErrorId
+            }
+        }
+
+        $results.Add([pscustomobject]$entry) | Out-Null
     }
 
     return $results.ToArray()
