@@ -27,29 +27,133 @@ function Invoke-SecurityCredentialManagementChecks {
             $lapsPolicies = $payload.Policy
         }
 
-        $lapsEnabled = $false
         $lapsEvidenceLines = [System.Collections.Generic.List[string]]::new()
         if ($lapsPolicies) {
-            foreach ($prop in $lapsPolicies.PSObject.Properties) {
-                if ($prop.Name -match '^PS') { continue }
-                $value = $prop.Value
-                if ($null -eq $value) { continue }
-                if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
-                    foreach ($inner in $value) {
-                        $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $inner))
+            $lapsDetection = $null
+            if ($lapsPolicies.PSObject.Properties['WindowsLapsDetection']) {
+                $lapsDetection = $lapsPolicies.WindowsLapsDetection
+            }
+
+            if ($lapsDetection) {
+                $backupTarget = if ($lapsDetection.BackupTarget) { $lapsDetection.BackupTarget } else { 'Unknown' }
+                $null = $lapsEvidenceLines.Add("Backup target (detector): $backupTarget")
+                if ($lapsDetection.LastRotationUtc) {
+                    $null = $lapsEvidenceLines.Add("Last rotation (UTC): $($lapsDetection.LastRotationUtc)")
+                    if (-not $lapsDetection.RecentRotation) {
+                        $null = $lapsEvidenceLines.Add('Rotation timestamp indicates password may be stale (>35 days).')
                     }
                 } else {
-                    $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $value))
+                    $null = $lapsEvidenceLines.Add('Last rotation timestamp unavailable or zero.')
                 }
-                if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $value) -eq 1) { $lapsEnabled = $true }
-                if ($prop.Name -match 'BackupDirectory' -and -not [string]::IsNullOrWhiteSpace($value.ToString())) { $lapsEnabled = $true }
-            }
-        }
+                if ($lapsDetection.ManagedRid) {
+                    $null = $lapsEvidenceLines.Add("Managed account RID: $($lapsDetection.ManagedRid)")
+                }
 
-        if ($lapsEnabled) {
-            Add-CategoryNormal -CategoryResult $CategoryResult -Title 'LAPS/PLAP policy detected' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
-        } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.' -Evidence ($lapsEvidenceLines -join "`n") -Subcategory 'Credential Management'
+                if ($lapsDetection.Signals) {
+                    foreach ($signal in $lapsDetection.Signals) {
+                        if ([string]::IsNullOrWhiteSpace($signal)) { continue }
+                        $null = $lapsEvidenceLines.Add($signal)
+                    }
+                }
+
+                $logEntries = @()
+                if ($lapsPolicies.PSObject.Properties['WindowsLapsOperationalLog']) {
+                    $logEntries = $lapsPolicies.WindowsLapsOperationalLog | Where-Object { -not $_.Error } | Select-Object -First 5
+                }
+                foreach ($entry in $logEntries) {
+                    $message = if ($entry.Message) { $entry.Message } else { 'No message' }
+                    $null = $lapsEvidenceLines.Add(("Log event {0} @ {1}: {2}" -f $entry.Id, $entry.TimeCreatedUtc, $message))
+                }
+
+                $legacyEnabled = $false
+                if ($lapsPolicies.PSObject.Properties['LegacyAdmPwdPolicy'] -and $lapsPolicies.LegacyAdmPwdPolicy) {
+                    foreach ($prop in ($lapsPolicies.LegacyAdmPwdPolicy.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' })) {
+                        $value = $prop.Value
+                        if ($null -eq $value) { continue }
+                        if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                            foreach ($inner in $value) {
+                                $null = $lapsEvidenceLines.Add(("Legacy.{0}: {1}" -f $prop.Name, $inner))
+                            }
+                        } else {
+                            $null = $lapsEvidenceLines.Add(("Legacy.{0}: {1}" -f $prop.Name, $value))
+                        }
+                        if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $value) -eq 1) { $legacyEnabled = $true }
+                    }
+                }
+
+                if ($lapsPolicies.PSObject.Properties['WindowsLapsPolicy'] -and $lapsPolicies.WindowsLapsPolicy) {
+                    foreach ($prop in ($lapsPolicies.WindowsLapsPolicy.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' })) {
+                        $value = $prop.Value
+                        if ($null -eq $value) { continue }
+                        if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                            foreach ($inner in $value) {
+                                $null = $lapsEvidenceLines.Add(("Policy.{0}: {1}" -f $prop.Name, $inner))
+                            }
+                        } else {
+                            $null = $lapsEvidenceLines.Add(("Policy.{0}: {1}" -f $prop.Name, $value))
+                        }
+                    }
+                }
+
+                if ($lapsPolicies.PSObject.Properties['WindowsLapsState'] -and $lapsPolicies.WindowsLapsState) {
+                    foreach ($prop in ($lapsPolicies.WindowsLapsState.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' })) {
+                        $value = $prop.Value
+                        if ($null -eq $value) { continue }
+                        if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                            foreach ($inner in $value) {
+                                $null = $lapsEvidenceLines.Add(("State.{0}: {1}" -f $prop.Name, $inner))
+                            }
+                        } else {
+                            $null = $lapsEvidenceLines.Add(("State.{0}: {1}" -f $prop.Name, $value))
+                        }
+                    }
+                }
+
+                $statusLabels = [System.Collections.Generic.List[string]]::new()
+                $azureActive = [bool]$lapsDetection.AzureActive
+                $adActive = [bool]$lapsDetection.ActiveDirectoryActive
+                $anyActive = $azureActive -or $adActive
+
+                if ($azureActive) { $statusLabels.Add('Entra (Azure AD)') }
+                if ($adActive) { $statusLabels.Add('Active Directory') }
+                if ($legacyEnabled) {
+                    $statusLabels.Add('Legacy LAPS (AdmPwd)')
+                    $anyActive = $true
+                }
+
+                if ($anyActive) {
+                    $title = if ($statusLabels.Count -gt 0) {
+                        'Windows LAPS active (' + ($statusLabels -join ' & ') + ')'
+                    } else {
+                        'Windows LAPS signals detected'
+                    }
+                    Add-CategoryNormal -CategoryResult $CategoryResult -Title $title -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
+                } else {
+                    $null = $lapsEvidenceLines.Add('Detector did not find recent Windows LAPS rotations or backup targets.')
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
+                }
+            } else {
+                $legacyEnabled = $false
+                foreach ($prop in ($lapsPolicies.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' })) {
+                    $value = $prop.Value
+                    if ($null -eq $value) { continue }
+                    if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                        foreach ($inner in $value) {
+                            $null = $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $inner))
+                        }
+                    } else {
+                        $null = $lapsEvidenceLines.Add(("{0}: {1}" -f $prop.Name, $value))
+                    }
+                    if ($prop.Name -match 'Enabled' -and (ConvertTo-NullableInt $value) -eq 1) { $legacyEnabled = $true }
+                    if ($prop.Name -match 'BackupDirectory' -and -not [string]::IsNullOrWhiteSpace($value.ToString())) { $legacyEnabled = $true }
+                }
+
+                if ($legacyEnabled) {
+                    Add-CategoryNormal -CategoryResult $CategoryResult -Title 'LAPS/PLAP policy detected' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
+                } else {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.' -Evidence ($lapsEvidenceLines.ToArray() -join "`n") -Subcategory 'Credential Management'
+                }
+            }
         }
     }
 
