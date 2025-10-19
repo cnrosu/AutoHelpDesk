@@ -13,7 +13,7 @@ param(
 function Get-DefenderStatus {
     try {
         $status = Get-MpComputerStatus -ErrorAction Stop
-        return $status | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled, IoavProtectionEnabled, RealTimeProtectionEnabled, TamperProtectionEnabled, IsTamperProtected, NISEnabled, QuickScanEndTime, FullScanEndTime, ProductStatus, AntivirusSignatureVersion, AntispywareSignatureVersion
+        return $status | Select-Object AMServiceEnabled, AMRunningMode, AntispywareEnabled, AntivirusEnabled, BehaviorMonitorEnabled, DefenderSignaturesOutOfDate, IoavProtectionEnabled, RealTimeProtectionEnabled, TamperProtectionEnabled, IsTamperProtected, NISEnabled, QuickScanEndTime, FullScanEndTime, ProductStatus, AntivirusSignatureVersion, AntispywareSignatureVersion
     } catch {
         return [PSCustomObject]@{
             Source = 'Get-MpComputerStatus'

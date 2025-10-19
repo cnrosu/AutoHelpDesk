@@ -16,11 +16,89 @@ function Invoke-SecurityDefenderChecks {
             HasPayload = [bool]$payload
         })
         $statusTamper = $null
+        $rtp = $null
+        $modeLabel = 'Unknown'
+        $modePassiveOrEdr = $false
+        $otherAvKnown = $false
+        $otherAvDetected = $false
+        $otherAvNames = @()
+        $securityCenterError = $null
+        $prefDisableRealtime = $null
+        $prefDisableIoav = $null
+
         if ($payload -and $payload.Status -and -not $payload.Status.Error) {
             $status = $payload.Status
             $rtp = ConvertTo-NullableBool $status.RealTimeProtectionEnabled
-            if ($rtp -eq $false) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Defender real-time protection disabled, creating antivirus protection gaps.' -Evidence 'Get-MpComputerStatus reports RealTimeProtectionEnabled = False.' -Subcategory 'Microsoft Defender'
+
+            $modeRaw = $null
+            if ($status.PSObject.Properties['AMRunningMode'] -and $status.AMRunningMode) {
+                $modeRaw = [string]$status.AMRunningMode
+            }
+
+            $modeNormalized = $null
+            if ($modeRaw) {
+                try {
+                    $modeNormalized = $modeRaw.Trim()
+                } catch {
+                    $modeNormalized = $modeRaw
+                    if ($modeNormalized) { $modeNormalized = $modeNormalized.Trim() }
+                }
+
+                if ($modeNormalized -and $modeNormalized.Equals('Passive', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $modeNormalized = 'Passive Mode'
+                }
+            }
+
+            $modeIsPassive = $false
+            $modeIsEdrBlock = $false
+            if ($modeNormalized) {
+                if ($modeNormalized.Equals('Passive Mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $modeIsPassive = $true
+                    $modeNormalized = 'Passive Mode'
+                } elseif ($modeNormalized.Equals('EDR Block Mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $modeIsEdrBlock = $true
+                    $modeNormalized = 'EDR Block Mode'
+                }
+            }
+
+            if ($modeNormalized) { $modeLabel = $modeNormalized }
+            $modePassiveOrEdr = $modeIsPassive -or $modeIsEdrBlock
+
+            $avArtifact = Get-AnalyzerArtifact -Context $Context -Name 'av-posture'
+            if ($avArtifact) {
+                $avPayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $avArtifact)
+                if ($avPayload -and $avPayload.PSObject.Properties['SecurityCenter']) {
+                    $securityCenter = $avPayload.SecurityCenter
+                    if ($securityCenter -and -not ($securityCenter.PSObject.Properties['Error'] -and $securityCenter.Error)) {
+                        $otherAvKnown = $true
+                        foreach ($product in (ConvertTo-List $securityCenter.Products)) {
+                            if (-not $product) { continue }
+
+                            $nameValue = $null
+                            if ($product.PSObject.Properties['Name'] -and $product.Name) {
+                                $nameValue = [string]$product.Name
+                            } elseif ($product.PSObject.Properties['displayName'] -and $product.displayName) {
+                                $nameValue = [string]$product.displayName
+                            } elseif ($product.PSObject.Properties['DisplayName'] -and $product.DisplayName) {
+                                $nameValue = [string]$product.DisplayName
+                            }
+
+                            if ([string]::IsNullOrWhiteSpace($nameValue)) { continue }
+                            $trimmedName = $nameValue.Trim()
+                            if (-not $trimmedName) { continue }
+                            if ($trimmedName.Equals('Windows Defender', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+                            $otherAvNames += $trimmedName
+                        }
+                    } elseif ($securityCenter -and $securityCenter.PSObject.Properties['Error'] -and $securityCenter.Error) {
+                        $securityCenterError = [string]$securityCenter.Error
+                    }
+                }
+            }
+
+            if ($otherAvNames.Count -gt 0) {
+                $otherAvDetected = $true
+                $otherAvNames = $otherAvNames | Select-Object -Unique
             }
 
             $av = ConvertTo-NullableBool $status.AntivirusEnabled
@@ -56,6 +134,14 @@ function Invoke-SecurityDefenderChecks {
                     (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'MAPSReporting'), `
                     (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'SubmitSamplesConsent'), `
                     (Get-ObjectPropertyString -Object $preferencesEntry -PropertyName 'CloudBlockLevel')
+
+                if ($preferencesEntry.PSObject.Properties['DisableRealtimeMonitoring']) {
+                    $prefDisableRealtime = ConvertTo-NullableBool $preferencesEntry.DisableRealtimeMonitoring
+                }
+
+                if ($preferencesEntry.PSObject.Properties['DisableIOAVProtection']) {
+                    $prefDisableIoav = ConvertTo-NullableBool $preferencesEntry.DisableIOAVProtection
+                }
 
                 $prefTamperDisabled = $null
                 if ($preferencesEntry.PSObject.Properties['DisableTamperProtection']) {
@@ -140,6 +226,55 @@ function Invoke-SecurityDefenderChecks {
                 } elseif (($mapsEnabled -eq $true) -or ($cloudDisabled -eq $false)) {
                     Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Defender cloud-delivered protection enabled' -Evidence $prefEvidence -Subcategory 'Microsoft Defender' -CheckId 'Security/DefenderCloudProt'
                 }
+            }
+        }
+
+        if ($rtp -eq $false) {
+            $disableRealtimeLabel = if ($prefDisableRealtime -eq $true) { 'True' } elseif ($prefDisableRealtime -eq $false) { 'False' } else { 'Unknown' }
+            $disableIoavLabel = if ($prefDisableIoav -eq $true) { 'True' } elseif ($prefDisableIoav -eq $false) { 'False' } else { 'Unknown' }
+
+            $evidenceLines = [System.Collections.Generic.List[string]]::new()
+            $evidenceLines.Add(("AMRunningMode={0}" -f $modeLabel)) | Out-Null
+            $evidenceLines.Add('RealTimeProtectionEnabled=False') | Out-Null
+
+            if ($otherAvKnown) {
+                if ($otherAvDetected) {
+                    $evidenceLines.Add(("Other AV detected: {0}" -f ($otherAvNames -join '; '))) | Out-Null
+                } else {
+                    $evidenceLines.Add('Other AV detected: (none)') | Out-Null
+                }
+            } elseif ($securityCenterError) {
+                $evidenceLines.Add(("Other AV detected: Unknown ({0})" -f $securityCenterError)) | Out-Null
+            } else {
+                $evidenceLines.Add('Other AV detected: Unknown') | Out-Null
+            }
+
+            if ($prefDisableRealtime -ne $null) {
+                $evidenceLines.Add(("DisableRealtimeMonitoring={0}" -f $disableRealtimeLabel)) | Out-Null
+            }
+            if ($prefDisableIoav -ne $null) {
+                $evidenceLines.Add(("DisableIOAVProtection={0}" -f $disableIoavLabel)) | Out-Null
+            }
+
+            $policyDisabled = ($prefDisableRealtime -eq $true) -or ($prefDisableIoav -eq $true)
+            $thirdPartyListText = if ($otherAvDetected) { $otherAvNames -join '; ' } else { 'third-party antivirus' }
+
+            if ($policyDisabled) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Defender real-time protection disabled by policy.' -Evidence $evidenceLines.ToArray() -Explanation 'Policy settings disabled Defender real-time scanning, so technicians must re-enable those controls or confirm another antivirus is covering the device.' -Subcategory 'Microsoft Defender'
+            } elseif ($modePassiveOrEdr -and $otherAvDetected) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Defender passive; third-party antivirus active.' -Evidence $evidenceLines.ToArray() -Explanation ('Another antivirus agent ({0}) is handling real-time protection while Defender stays passive.' -f $thirdPartyListText) -Subcategory 'Microsoft Defender'
+            } elseif (-not $modePassiveOrEdr -and $otherAvKnown -and -not $otherAvDetected) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Defender real-time protection disabled, creating antivirus protection gaps.' -Evidence $evidenceLines.ToArray() -Explanation 'No antivirus engine is actively scanning because Defender real-time protection is off and no alternate AV is registered.' -Subcategory 'Microsoft Defender'
+            } elseif (-not $otherAvKnown) {
+                $title = 'Defender real-time protection disabled; third-party coverage unknown.'
+                $explanation = 'Defender real-time scanning is off and no alternate antivirus could be confirmed, so technicians should verify another agent is protecting the device or restore Defender.'
+
+                if ($securityCenterError) {
+                    $title = 'Defender real-time protection disabled; antivirus inventory unavailable.'
+                    $explanation = 'Defender real-time scanning is off and Windows Security Center inventory was unavailable, so technicians should verify another antivirus is protecting the device.'
+                }
+
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidenceLines.ToArray() -Explanation $explanation -Subcategory 'Microsoft Defender'
             }
         }
     } else {
