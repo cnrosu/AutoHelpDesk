@@ -231,7 +231,13 @@ function Invoke-SecurityAttackSurfaceChecks {
                     }
                     $remediationIntro = if ($impactClause) { $impactClause } else { 'Enable this rule in block mode to close the gap.' }
                     if ($commandLines.Count -gt 0) {
-                        $remediation = "{0}`n`n```powershell`n{1}`n```" -f $remediationIntro, ($commandLines.ToArray() -join "`n")
+                        $remediation = [System.String]::Join("`n", @(
+                            $remediationIntro,
+                            '',
+                            '```powershell',
+                            ($commandLines.ToArray() -join "`n"),
+                            '```'
+                        ))
                     } else {
                         $remediation = $remediationIntro
                     }
