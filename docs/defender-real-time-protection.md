@@ -1,13 +1,13 @@
 ## Summary
-The Microsoft Defender heuristic compares real-time monitoring, engine status, and companion safeguards to determine which cards to raise. When `RealTimeProtectionEnabled` is false, AutoHelpDesk emits a critical-severity alert even if signatures and tamper protection remain healthy, and it supplements that finding with tamper, cloud, signature age, and exclusion drift checks. This doc outlines the data sources, evaluation order, thresholds, and remediation workflow so technicians can quickly restore protection.
+The Microsoft Defender heuristic compares real-time monitoring, engine status, running mode, and companion safeguards to determine which cards to raise. When `RealTimeProtectionEnabled` is false, AutoHelpDesk now inspects Defender’s running mode and Windows Security Center inventory before choosing the severity: **High** when no other AV is active, **Medium** when policy keys disabled scanning or the inventory is unknown, and **Info** when Defender is expected to run passive alongside another AV. The analyzer still supplements that finding with tamper, cloud, signature age, and exclusion drift checks so technicians can quickly restore protection.
 
 ## Signals to Collect
-- `Get-MpComputerStatus` → Persist `RealTimeProtectionEnabled`, `IsTamperProtected`, `AntivirusSignatureLastUpdated`, `AMServiceEnabled`, and companion health flags for state comparison.
+- `Get-MpComputerStatus` → Persist `RealTimeProtectionEnabled`, `AMRunningMode`, `BehaviorMonitorEnabled`, `DefenderSignaturesOutOfDate`, `IsTamperProtected`, `AntivirusSignatureLastUpdated`, `AMServiceEnabled`, and companion health flags for state comparison.
 - `Get-MpPreference` → Record `DisableRealtimeMonitoring`, MAPS/Cloud configuration (`MAPSReporting`, `SubmitSamplesConsent`, `CloudBlockLevel`), and all file/path/process exclusions.
 - *(Optional)* Parse a local Defender baseline exclusions file (for example, `C:\ProgramData\AutoHelpDesk\defender-exclusions-baseline.json`) to detect drift between expected and observed exclusions.
 
 ## Detection Rule
-- **RTPDisabled** → When `RealTimeProtectionEnabled = $false`, emit a **Critical** severity issue because real-time protection is off.
+- **RTPDisabled** → When `RealTimeProtectionEnabled = $false`, emit: **High** severity if Defender should be active and Security Center shows no alternate AV, **Medium** severity if policy keys (`DisableRealtimeMonitoring` or `DisableIOAVProtection`) disabled scanning or third-party coverage cannot be confirmed, and **Info** severity when Defender is intentionally passive alongside an active non-Microsoft AV.
 - **TamperOff** → When `IsTamperProtected = $false` (from `Get-MpComputerStatus` or `Get-MpPreference`), emit a **High** severity issue.
 - **CloudOff** → When cloud/MAPS toggles (`MAPSReporting`, `SubmitSamplesConsent`, `CloudBlockLevel`) indicate cloud-delivered protection is disabled, emit a **Medium** severity issue.
 - **SignaturesOld** → When `(Get-Date) - AntivirusSignatureLastUpdated` exceeds **SignatureAgeHoursThreshold = 72** hours, emit a **Medium** severity issue.
@@ -33,8 +33,12 @@ The Microsoft Defender heuristic compares real-time monitoring, engine status, a
 
 ## What the cards are telling you
 - **Analyzer**: Security → Microsoft Defender
-- **Critical-severity issue**: **"Defender real-time protection disabled, creating antivirus protection gaps."**
-  - Triggered when `Get-MpComputerStatus` reports `RealTimeProtectionEnabled = False`.
+- **High-severity issue**: **"Defender real-time protection disabled, creating antivirus protection gaps."**
+  - Triggered when `Get-MpComputerStatus` reports `RealTimeProtectionEnabled = False`, Defender is not in Passive or EDR Block Mode, and Windows Security Center lists no other active antivirus.
+- **Medium-severity issue**: **"Defender real-time protection disabled by policy."** or **"Defender real-time protection disabled; third-party coverage unknown."**
+  - Triggered when policy keys disable Defender scanning or when real-time protection is off but Security Center inventory is unavailable.
+- **Info-severity issue**: **"Defender passive; third-party antivirus active."**
+  - Triggered when Defender is in Passive or EDR Block Mode and at least one non-Microsoft antivirus is registered as present.
 - **High-severity issue**: **"Defender tamper protection disabled, allowing unauthorized Defender changes."**
   - Triggered when tamper protection flags (`IsTamperProtected`, `DisableTamperProtection`) indicate the safeguard is off.
 - **Medium-severity issues**: cover cloud-delivered protection disabled and Defender signatures older than 72 hours.
@@ -52,15 +56,17 @@ The Microsoft Defender heuristic compares real-time monitoring, engine status, a
 
 ## Why good cards can appear next to a critical issue
 The collector snapshots multiple Defender subsystems at once. Real-time monitoring is controlled by the `RealTimeProtectionEnabled` flag, while signature currency, tamper protection, exclusion hygiene, and cloud-delivered protection each have independent controls and thresholds. It is therefore common to see:
-- **Critical**: Real-time protection disabled.
+- **High**: Real-time protection disabled with no alternate antivirus or tamper protection disabled.
 - **High**: Tamper protection disabled or overbroad exclusions detected.
 - **Medium**: Cloud-delivered protection disabled or signatures older than the 72-hour threshold.
+- **Medium**: Real-time protection disabled by policy or when third-party coverage cannot be confirmed.
+- **Info**: Defender passive because another antivirus is active.
 - **Good**: Remaining safeguards showing compliant states because updates are still installing successfully and policy is intact.
-These cards describe different aspects of Defender’s configuration, so technicians should treat the critical real-time protection finding—and any accompanying tamper, cloud, signature, or exclusion findings—as actionable even when other safeguards remain in place.
+These cards describe different aspects of Defender’s configuration, so technicians should treat the real-time protection finding—and any accompanying tamper, cloud, signature, or exclusion findings—as actionable whenever it indicates a coverage gap, even when other safeguards remain in place.
 
 ## Typical causes of the critical card
 - A user or script ran `Set-MpPreference -DisableRealtimeMonitoring $true` (often to install unsigned software) and never re-enabled it.
-- Third-party security products turned Defender’s real-time engine off to avoid conflicts, leaving Defender dormant without another AV registered.
+- Third-party security products turned Defender’s real-time engine off to avoid conflicts while remaining the primary AV, so Defender reports Passive Mode with an informational card.
 - Tamper protection was temporarily relaxed by an administrator or Intune security task, allowing the setting to be toggled off.
 - Malware disabled Defender protections before being remediated.
 
