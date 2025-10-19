@@ -449,25 +449,535 @@ function New-FirewallRuleEvidenceItem {
     }
 }
 
+function Get-SmbProfileTokenFromCategory {
+    param([string]$Category)
+
+    if ([string]::IsNullOrWhiteSpace($Category)) { return $null }
+
+    $trimmed = $Category.Trim()
+    if (-not $trimmed) { return $null }
+
+    $upper = $null
+    try { $upper = $trimmed.ToUpperInvariant() } catch { $upper = $trimmed.ToUpper() }
+    $compact = ($upper -replace '\s', '')
+
+    if ($compact -match 'DOMAIN') { return 'DOMAIN' }
+    if ($compact -match 'PRIVATE') { return 'PRIVATE' }
+    if ($compact -match 'PUBLIC') { return 'PUBLIC' }
+
+    return $upper
+}
+
+function Test-SmbIsListening {
+    param($Listeners)
+
+    foreach ($listener in (ConvertTo-List $Listeners)) {
+        if (-not $listener) { continue }
+        if ($listener.PSObject.Properties['Error'] -and $listener.Error) { continue }
+        if (-not $listener.PSObject.Properties['LocalPort']) { continue }
+
+        $portValue = $listener.LocalPort
+        $port = 0
+        if ($portValue -is [int]) {
+            $port = [int]$portValue
+        } elseif (-not [int]::TryParse([string]$portValue, [ref]$port)) {
+            continue
+        }
+
+        if ($port -in 139, 445) { return $true }
+    }
+
+    return $false
+}
+
+function Test-SmbRuleAppliesToActiveProfile {
+    param(
+        $Rule,
+        [string[]]$ActiveTokens
+    )
+
+    if (-not $Rule) { return $false }
+
+    $profiles = ConvertTo-List $Rule.ProfilesNormalized
+    if ($profiles.Count -eq 0) { return $true }
+
+    $activeSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($token in (ConvertTo-List $ActiveTokens)) {
+        if ($null -eq $token) { continue }
+        $activeSet.Add([string]$token) | Out-Null
+    }
+
+    foreach ($profile in $profiles) {
+        if (-not $profile) { continue }
+
+        $token = [string]$profile
+        if (-not $token) { continue }
+        try { $token = $token.ToUpperInvariant() } catch { $token = $token.ToUpper() }
+
+        switch ($token) {
+            'ANY' { return $true }
+            'ALL' { return $true }
+            'NOTAPPLICABLE' { return $true }
+        }
+
+        if ($activeSet.Count -eq 0) { continue }
+
+        if ($activeSet.Contains($token)) { return $true }
+
+        switch ($token) {
+            'DOMAIN' {
+                if ($activeSet.Contains('DOMAINAUTHENTICATED')) { return $true }
+                continue
+            }
+            'DOMAINAUTHENTICATED' {
+                if ($activeSet.Contains('DOMAIN')) { return $true }
+                continue
+            }
+            default { continue }
+        }
+    }
+
+    return $false
+}
+
+function Test-SmbRemoteScopeIsCrossVlan {
+    param($RemoteAddresses)
+
+    $addresses = ConvertTo-List $RemoteAddresses
+    if ($addresses.Count -eq 0) { return $true }
+
+    foreach ($address in $addresses) {
+        if ($null -eq $address) { return $true }
+
+        $text = [string]$address
+        if ([string]::IsNullOrWhiteSpace($text)) { return $true }
+
+        $trimmed = $text.Trim()
+        $upper = $null
+        try { $upper = $trimmed.ToUpperInvariant() } catch { $upper = $trimmed.ToUpper() }
+        $compact = ($upper -replace '\s', '')
+
+        if ($compact -eq 'LOCALSUBNET' -or $compact -eq 'LOCALSUBNET6') { continue }
+
+        return $true
+    }
+
+    return $false
+}
+
+function Get-SmbServiceSummary {
+    param($Service)
+
+    if (-not $Service) { return $null }
+
+    $serviceEntry = $Service
+    if ($Service -is [System.Collections.IEnumerable] -and -not ($Service -is [string])) {
+        $serviceEntry = ($Service | Select-Object -First 1)
+    }
+
+    if (-not $serviceEntry) { return $null }
+
+    if ($serviceEntry.PSObject.Properties['Error'] -and $serviceEntry.Error) {
+        return [ordered]@{
+            Source = if ($serviceEntry.PSObject.Properties['Source']) { [string]$serviceEntry.Source } else { 'Get-Service LanmanServer' }
+            Error  = [string]$serviceEntry.Error
+        }
+    }
+
+    return [ordered]@{
+        Name      = if ($serviceEntry.PSObject.Properties['Name']) { [string]$serviceEntry.Name } else { 'LanmanServer' }
+        Status    = if ($serviceEntry.PSObject.Properties['Status']) { [string]$serviceEntry.Status } else { $null }
+        StartType = if ($serviceEntry.PSObject.Properties['StartType']) { [string]$serviceEntry.StartType } else { $null }
+    }
+}
+
+function Get-SmbListenerSummaries {
+    param($Listeners)
+
+    $list = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($listener in (ConvertTo-List $Listeners)) {
+        if (-not $listener) { continue }
+
+        if ($listener.PSObject.Properties['Error'] -and $listener.Error) {
+            $list.Add([ordered]@{
+                Source = if ($listener.PSObject.Properties['Source']) { [string]$listener.Source } else { 'Get-NetTCPConnection' }
+                Error  = [string]$listener.Error
+            }) | Out-Null
+            continue
+        }
+
+        $list.Add([ordered]@{
+            LocalAddress = if ($listener.PSObject.Properties['LocalAddress']) { [string]$listener.LocalAddress } else { $null }
+            LocalPort    = if ($listener.PSObject.Properties['LocalPort']) { [string]$listener.LocalPort } else { $null }
+            State        = if ($listener.PSObject.Properties['State']) { [string]$listener.State } else { $null }
+        }) | Out-Null
+    }
+
+    return $list.ToArray()
+}
+
+function Get-SmbNetworkProfileSummaries {
+    param($Profiles)
+
+    $list = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($profile in (ConvertTo-List $Profiles)) {
+        if (-not $profile) { continue }
+
+        if ($profile.PSObject.Properties['Error'] -and $profile.Error) {
+            $list.Add([ordered]@{
+                Source = if ($profile.PSObject.Properties['Source']) { [string]$profile.Source } else { 'Get-NetConnectionProfile' }
+                Error  = [string]$profile.Error
+            }) | Out-Null
+            continue
+        }
+
+        $list.Add([ordered]@{
+            InterfaceAlias   = if ($profile.PSObject.Properties['InterfaceAlias']) { [string]$profile.InterfaceAlias } else { $null }
+            IPv4Connectivity = if ($profile.PSObject.Properties['IPv4Connectivity']) { [string]$profile.IPv4Connectivity } else { $null }
+            NetworkCategory  = if ($profile.PSObject.Properties['NetworkCategory']) { [string]$profile.NetworkCategory } else { $null }
+        }) | Out-Null
+    }
+
+    return $list.ToArray()
+}
+
+function Get-SmbShareSummaries {
+    param($Shares)
+
+    $list = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($share in (ConvertTo-List $Shares)) {
+        if (-not $share) { continue }
+
+        if ($share.PSObject.Properties['Error'] -and $share.Error) {
+            $list.Add([ordered]@{
+                Source = if ($share.PSObject.Properties['Source']) { [string]$share.Source } else { 'Get-SmbShare' }
+                Error  = [string]$share.Error
+            }) | Out-Null
+            continue
+        }
+
+        $list.Add([ordered]@{
+            Name        = if ($share.PSObject.Properties['Name']) { [string]$share.Name } else { $null }
+            Path        = if ($share.PSObject.Properties['Path']) { [string]$share.Path } else { $null }
+            EncryptData = if ($share.PSObject.Properties['EncryptData']) { $share.EncryptData } else { $null }
+        }) | Out-Null
+    }
+
+    return $list.ToArray()
+}
+
+function Get-SmbConfigurationSummary {
+    param($Configuration)
+
+    if (-not $Configuration) { return $null }
+
+    if ($Configuration.PSObject.Properties['Error'] -and $Configuration.Error) {
+        return [ordered]@{
+            Source = if ($Configuration.PSObject.Properties['Source']) { [string]$Configuration.Source } else { 'Get-SmbServerConfiguration' }
+            Error  = [string]$Configuration.Error
+        }
+    }
+
+    $summary = [ordered]@{}
+    foreach ($prop in @('EnableSMB1Protocol','EnableSMB2Protocol','RequireSecuritySignature','EnableSecuritySignature','EncryptData','RejectUnencryptedAccess','EnableLeasing','EnableStrictNameChecking','EnableAuthenticateUserSharing')) {
+        if ($Configuration.PSObject.Properties[$prop]) {
+            $summary[$prop] = $Configuration.$prop
+        }
+    }
+
+    return $summary
+}
+
+function Get-FirewallSmbExposureAnalysis {
+    param(
+        $Context,
+        [pscustomobject[]]$Rules
+    )
+
+    $errors = [System.Collections.Generic.List[string]]::new()
+    $service = $null
+    $listeners = @()
+    $networkProfiles = @()
+    $shares = @()
+    $configuration = $null
+
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'smb'
+    if ($artifact) {
+        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
+        if ($payload) {
+            if ($payload.PSObject.Properties['Service']) { $service = $payload.Service }
+            if ($payload.PSObject.Properties['Listeners']) { $listeners = ConvertTo-List $payload.Listeners } else { $listeners = @() }
+            if ($payload.PSObject.Properties['NetworkProfiles']) { $networkProfiles = ConvertTo-List $payload.NetworkProfiles } else { $networkProfiles = @() }
+            if ($payload.PSObject.Properties['Shares']) { $shares = ConvertTo-List $payload.Shares } else { $shares = @() }
+            if ($payload.PSObject.Properties['Configuration']) { $configuration = $payload.Configuration }
+        } else {
+            $errors.Add('SMB artifact payload missing or unparsed.') | Out-Null
+        }
+    } else {
+        $errors.Add('SMB collector artifact missing.') | Out-Null
+    }
+
+    $isListening = Test-SmbIsListening $listeners
+
+    $activeProfileNames = [System.Collections.Generic.List[string]]::new()
+    $activeProfileTokens = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($profile in (ConvertTo-List $networkProfiles)) {
+        if (-not $profile) { continue }
+        if ($profile.PSObject.Properties['Error'] -and $profile.Error) { continue }
+
+        $category = $null
+        if ($profile.PSObject.Properties['NetworkCategory']) { $category = [string]$profile.NetworkCategory }
+        if ([string]::IsNullOrWhiteSpace($category)) { continue }
+
+        $trimmed = $category.Trim()
+        if (-not $activeProfileNames.Contains($trimmed)) { $activeProfileNames.Add($trimmed) | Out-Null }
+
+        $token = Get-SmbProfileTokenFromCategory $trimmed
+        if ($token -and -not $activeProfileTokens.Contains($token)) { $activeProfileTokens.Add($token) | Out-Null }
+
+        $upperOriginal = $null
+        try { $upperOriginal = $trimmed.ToUpperInvariant() } catch { $upperOriginal = $trimmed.ToUpper() }
+        if (-not [string]::IsNullOrWhiteSpace($upperOriginal) -and -not $activeProfileTokens.Contains($upperOriginal)) {
+            $activeProfileTokens.Add($upperOriginal) | Out-Null
+        }
+    }
+
+    $tcpPorts = @(139,445)
+    $udpPorts = @(137,138)
+
+    $tcpRules = [System.Collections.Generic.List[pscustomobject]]::new()
+    $udpRules = [System.Collections.Generic.List[pscustomobject]]::new()
+
+    foreach ($rule in (ConvertTo-List $Rules)) {
+        if (-not $rule) { continue }
+
+        if ($rule.DirectionNormalized -ne 'INBOUND') { continue }
+        if ($rule.ActionNormalized -ne 'ALLOW') { continue }
+
+        if (Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('TCP')) {
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports $tcpPorts -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $tcpRules.Add($rule) | Out-Null
+                continue
+            }
+        }
+
+        if (Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('UDP')) {
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports $udpPorts -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $udpRules.Add($rule) | Out-Null
+            }
+        }
+    }
+
+    $tcpApplies = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcpCross = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcpLocal = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcpOffProfile = [System.Collections.Generic.List[pscustomobject]]::new()
+
+    foreach ($rule in $tcpRules) {
+        $applies = Test-SmbRuleAppliesToActiveProfile -Rule $rule -ActiveTokens ($activeProfileTokens.ToArray())
+        if ($applies) {
+            $tcpApplies.Add($rule) | Out-Null
+            if (Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList) {
+                $tcpCross.Add($rule) | Out-Null
+            } else {
+                $tcpLocal.Add($rule) | Out-Null
+            }
+        } else {
+            $tcpOffProfile.Add($rule) | Out-Null
+        }
+    }
+
+    $udpCross = [System.Collections.Generic.List[pscustomobject]]::new()
+    foreach ($rule in $udpRules) {
+        if (Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList) {
+            $udpCross.Add($rule) | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        Service             = $service
+        Listeners           = $listeners
+        NetworkProfiles     = $networkProfiles
+        Shares              = $shares
+        Configuration       = $configuration
+        ActiveProfileNames  = $activeProfileNames.ToArray()
+        ActiveProfileTokens = $activeProfileTokens.ToArray()
+        IsListening         = $isListening
+        TcpRules            = $tcpRules.ToArray()
+        TcpRulesApplying    = $tcpApplies.ToArray()
+        TcpCrossVlanRules   = $tcpCross.ToArray()
+        TcpLocalRules       = $tcpLocal.ToArray()
+        TcpOffProfileRules  = $tcpOffProfile.ToArray()
+        UdpRules            = $udpRules.ToArray()
+        UdpCrossVlanRules   = $udpCross.ToArray()
+        Errors              = $errors.ToArray()
+    }
+}
+
+function New-SmbExposureHighEvidence {
+    param($Analysis)
+
+    if (-not $Analysis) { return $null }
+
+    $ruleEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Analysis.TcpCrossVlanRules)) {
+        $item = New-FirewallRuleEvidenceItem $rule
+        if ($item) { $ruleEvidence.Add($item) | Out-Null }
+    }
+
+    $evidence = [ordered]@{
+        Explanation          = 'The device is listening on SMB and at least one inbound firewall rule for TCP 445/139 allows traffic from beyond the local subnet on the active profile, exposing file shares across VLANs.'
+        ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
+        Service              = Get-SmbServiceSummary $Analysis.Service
+        NetworkProfiles      = Get-SmbNetworkProfileSummaries $Analysis.NetworkProfiles
+        Listeners            = Get-SmbListenerSummaries $Analysis.Listeners
+        Rules                = $ruleEvidence.ToArray()
+        Shares               = Get-SmbShareSummaries $Analysis.Shares
+        SmbConfiguration     = Get-SmbConfigurationSummary $Analysis.Configuration
+        Remediation          = [ordered]@{
+            Workstations = @(
+                'Disable File and Printer Sharing inbound rules, or restrict them to LocalSubnet only.',
+                'If SMB serving is not needed on this device, stop and disable the Server (LanmanServer) service.'
+            )
+            Servers = @(
+                'Restrict SMB (TCP 445) inbound to trusted subnets only (avoid “Any”).',
+                'Require SMB signing; enable per-share encryption for sensitive data.'
+            )
+            Commands = @(
+                '# Restrict built-in “File and Printer Sharing” rules to LocalSubnet',
+                'Get-NetFirewallRule -DisplayGroup "File and Printer Sharing" | Where-Object Enabled -eq True | ForEach-Object { Set-NetFirewallRule -Name $_.Name -RemoteAddress LocalSubnet }',
+                '# OR disable them entirely (workstations)',
+                'Disable-NetFirewallRule -DisplayGroup "File and Printer Sharing"',
+                '# Stop/disable SMB server if not needed (workstations)',
+                'Stop-Service LanmanServer -ErrorAction SilentlyContinue',
+                'Set-Service LanmanServer -StartupType Disabled',
+                '# Hardening on servers',
+                'Set-SmbServerConfiguration -RequireSecuritySignature $true -Force',
+                '# Per-share encryption (example)',
+                'Set-SmbShare -Name <ShareName> -EncryptData $true',
+                '# Disable NB discovery rules if unneeded',
+                'Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)"',
+                '# Ensure SMB1 is disabled',
+                'Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart',
+                'Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force'
+            )
+        }
+    }
+
+    if ($Analysis.UdpRules -and $Analysis.UdpRules.Count -gt 0) {
+        $udpEvidence = [System.Collections.Generic.List[object]]::new()
+        foreach ($udpRule in (ConvertTo-List $Analysis.UdpRules)) {
+            $item = New-FirewallRuleEvidenceItem $udpRule
+            if ($item) { $udpEvidence.Add($item) | Out-Null }
+        }
+        if ($udpEvidence.Count -gt 0) {
+            $evidence['NetBiosDiscoveryRules'] = $udpEvidence.ToArray()
+        }
+    }
+
+    if ($Analysis.Errors -and $Analysis.Errors.Count -gt 0) {
+        $evidence['DataWarnings'] = $Analysis.Errors
+    }
+
+    return $evidence
+}
+
+function New-SmbExposureRestrictedEvidence {
+    param($Analysis)
+
+    if (-not $Analysis) { return $null }
+
+    $reasonParts = [System.Collections.Generic.List[string]]::new()
+    if ($Analysis.TcpLocalRules -and $Analysis.TcpLocalRules.Count -gt 0) {
+        $reasonParts.Add('All inbound SMB firewall rules that match the active profile are scoped to LocalSubnet or trusted ranges.') | Out-Null
+    }
+    if ($Analysis.TcpOffProfileRules -and $Analysis.TcpOffProfileRules.Count -gt 0) {
+        $reasonParts.Add('Some SMB firewall rules target profiles that are not currently active.') | Out-Null
+    }
+    if (($Analysis.ActiveProfileTokens -and $Analysis.ActiveProfileTokens.Count -eq 0) -or (-not $Analysis.ActiveProfileTokens)) {
+        $reasonParts.Add('Active network profile could not be determined, so cross-VLAN exposure cannot be confirmed.') | Out-Null
+    }
+
+    $summary = if ($reasonParts.Count -gt 0) { $reasonParts -join ' ' } else { 'SMB firewall rules do not expose TCP 445/139 on the active profile.' }
+
+    $localEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Analysis.TcpLocalRules)) {
+        $item = New-FirewallRuleEvidenceItem $rule
+        if ($item) { $localEvidence.Add($item) | Out-Null }
+    }
+
+    $offProfileEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Analysis.TcpOffProfileRules)) {
+        $item = New-FirewallRuleEvidenceItem $rule
+        if ($item) { $offProfileEvidence.Add($item) | Out-Null }
+    }
+
+    $evidence = [ordered]@{
+        Explanation          = $summary
+        ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
+        Service              = Get-SmbServiceSummary $Analysis.Service
+        NetworkProfiles      = Get-SmbNetworkProfileSummaries $Analysis.NetworkProfiles
+        Listeners            = Get-SmbListenerSummaries $Analysis.Listeners
+        LocalScopeRules      = $localEvidence.ToArray()
+        OffProfileRules      = $offProfileEvidence.ToArray()
+        Shares               = Get-SmbShareSummaries $Analysis.Shares
+        SmbConfiguration     = Get-SmbConfigurationSummary $Analysis.Configuration
+    }
+
+    if ($Analysis.UdpRules -and $Analysis.UdpRules.Count -gt 0) {
+        $udpEvidence = [System.Collections.Generic.List[object]]::new()
+        foreach ($udpRule in (ConvertTo-List $Analysis.UdpRules)) {
+            $item = New-FirewallRuleEvidenceItem $udpRule
+            if ($item) { $udpEvidence.Add($item) | Out-Null }
+        }
+        if ($udpEvidence.Count -gt 0) {
+            $evidence['NetBiosDiscoveryRules'] = $udpEvidence.ToArray()
+        }
+    }
+
+    if ($Analysis.Errors -and $Analysis.Errors.Count -gt 0) {
+        $evidence['DataWarnings'] = $Analysis.Errors
+    }
+
+    return $evidence
+}
+
+function New-SmbUdpHygieneEvidence {
+    param($Analysis)
+
+    if (-not $Analysis) { return $null }
+
+    $udpEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Analysis.UdpRules)) {
+        $item = New-FirewallRuleEvidenceItem $rule
+        if ($item) { $udpEvidence.Add($item) | Out-Null }
+    }
+
+    if ($udpEvidence.Count -eq 0) { return $null }
+
+    $evidence = [ordered]@{
+        Explanation          = 'Only NetBIOS discovery rules (UDP 137/138) are enabled. Review and tighten these scopes for hygiene.'
+        ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
+        Rules                = $udpEvidence.ToArray()
+        Remediation          = @('Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)"')
+    }
+
+    if ($Analysis.Errors -and $Analysis.Errors.Count -gt 0) {
+        $evidence['DataWarnings'] = $Analysis.Errors
+    }
+
+    return $evidence
+}
+
 function Get-FirewallPortPolicies {
     $rpcDynamicRange = [pscustomobject]@{ Start = 49152; End = 65535 }
     $vncRange = [pscustomobject]@{ Start = 5900; End = 5902 }
 
     return @(
-        [pscustomobject]@{
-            Key = 'FirewallSMBInbound'
-            Title = 'Firewall allows SMB/NetBIOS ports from unrestricted networks, so file shares are exposed across VLANs.'
-            Severity = 'high'
-            CheckId = 'Security/Firewall/SmbInbound'
-            Direction = 'INBOUND'
-            Protocols = @('TCP','UDP')
-            Ports = @(135,137,138,139,445)
-            Ranges = @()
-            PortTokens = @()
-            TreatAnyAsMatch = $false
-            FlagWhenRemoteUntrusted = $true
-            Guidance = 'Block cross-VLAN; only allow to file servers from trusted subnets.'
-        },
         [pscustomobject]@{
             Key = 'FirewallRdp'
             Title = 'Firewall exposes RDP to broad networks, so attackers can reach remote desktop without VPN.'
@@ -903,6 +1413,34 @@ function Invoke-SecurityFirewallChecks {
         }
 
         if ($normalizedRules.Count -gt 0) {
+            $smbAnalysis = Get-FirewallSmbExposureAnalysis -Context $Context -Rules ($normalizedRules.ToArray())
+            if ($smbAnalysis) {
+                $crossVlanRules = ConvertTo-List $smbAnalysis.TcpCrossVlanRules
+                $allTcpRules = ConvertTo-List $smbAnalysis.TcpRules
+                $udpRules = ConvertTo-List $smbAnalysis.UdpRules
+
+                if ($smbAnalysis.IsListening -and $crossVlanRules.Count -gt 0) {
+                    $smbEvidence = New-SmbExposureHighEvidence $smbAnalysis
+                    if ($smbEvidence) {
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'SMB/NetBIOS exposed across VLANs (inbound rule allows 445/139 from unrestricted scope)' -Evidence $smbEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbInbound'
+                    }
+                } else {
+                    if ($smbAnalysis.IsListening -and $allTcpRules.Count -gt 0 -and $crossVlanRules.Count -eq 0) {
+                        $restrictedEvidence = New-SmbExposureRestrictedEvidence $smbAnalysis
+                        if ($restrictedEvidence) {
+                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'SMB firewall rules restricted to local scopes or inactive profiles.' -Evidence $restrictedEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbInbound'
+                        }
+                    }
+
+                    if ($crossVlanRules.Count -eq 0 -and $allTcpRules.Count -eq 0 -and $udpRules.Count -gt 0) {
+                        $udpEvidence = New-SmbUdpHygieneEvidence $smbAnalysis
+                        if ($udpEvidence) {
+                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'NetBIOS discovery rules allow inbound UDP 137/138 (hygiene).' -Evidence $udpEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbUdpDiscovery'
+                        }
+                    }
+                }
+            }
+
             $policyMatches = Get-FirewallPolicyMatches -Rules ($normalizedRules.ToArray())
             foreach ($match in $policyMatches) {
                 if (-not $match) { continue }
