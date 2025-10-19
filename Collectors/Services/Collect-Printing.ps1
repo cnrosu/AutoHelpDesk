@@ -14,6 +14,8 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
+Import-Module -Name PrintManagement -ErrorAction SilentlyContinue
+
 function Get-SpoolerState {
     $info = [ordered]@{
         Name             = 'Spooler'
