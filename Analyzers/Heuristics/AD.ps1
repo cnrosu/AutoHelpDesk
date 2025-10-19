@@ -41,8 +41,7 @@ function Invoke-ADHeuristics {
     }
 
     if (-not $domainStatusInfo.DomainJoined) {
-        Write-HeuristicDebug -Source 'AD' -Message 'System not domain joined; marking AD as not applicable'
-        Add-CategoryNormal -CategoryResult $result -Title 'AD not applicable' -Subcategory 'Discovery'
+        Write-HeuristicDebug -Source 'AD' -Message 'System not domain joined; Active Directory heuristics not applicable'
         return $result
     }
 
