@@ -1586,9 +1586,50 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($payload -and $payload.Autodiscover) {
-            $autoErrors = $payload.Autodiscover | Where-Object { $_.Error }
-            if ($autoErrors.Count -gt 0) {
-                $details = $autoErrors | Select-Object -ExpandProperty Error -First 3
+            $entries = ConvertTo-NetworkArray $payload.Autodiscover
+            $primaryErrors = New-Object System.Collections.Generic.List[string]
+
+            foreach ($entry in $entries) {
+                if (-not ($entry -and $entry.PSObject.Properties['Error'] -and $entry.Error)) { continue }
+
+                $query = if ($entry.PSObject.Properties['Query']) { [string]$entry.Query } else { $null }
+                $source = if ($entry.PSObject.Properties['DomainSource']) { [string]$entry.DomainSource } else { $null }
+                $isPrimary = $false
+
+                if ($entry.PSObject.Properties['IsPrimary']) {
+                    $flag = $entry.IsPrimary
+                    if ($flag -is [bool]) {
+                        $isPrimary = $flag
+                    } elseif ($flag -is [string]) {
+                        $trimmed = $flag.Trim()
+                        if ($trimmed) {
+                            $upper = $trimmed.ToUpperInvariant()
+                            if ($upper -in @('TRUE','YES','1')) { $isPrimary = $true }
+                        }
+                    }
+                }
+
+                if (-not $isPrimary -and $source) {
+                    $normalizedSource = $source.Trim()
+                    if ($normalizedSource) {
+                        try { $normalizedSource = $normalizedSource.ToUpperInvariant() } catch { }
+                        if ($normalizedSource -eq 'UPN') { $isPrimary = $true }
+                    }
+                }
+
+                if (-not $isPrimary) { continue }
+
+                if ($query -and $query -match '^(?i)(enterpriseenrollment|enterpriseregistration)\.outlook\.com$') { continue }
+
+                $message = [string]$entry.Error
+                if (-not $message) { continue }
+
+                $display = if ($query) { '{0} : {1}' -f $query, $message } else { $message }
+                $primaryErrors.Add($display) | Out-Null
+            }
+
+            if ($primaryErrors.Count -gt 0) {
+                $details = $primaryErrors | Select-Object -First 3
                 Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Data (& $createConnectivityData $connectivityContext)
             }
         }
