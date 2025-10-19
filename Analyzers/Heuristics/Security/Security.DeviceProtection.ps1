@@ -208,7 +208,7 @@ function Invoke-SecurityAttackSurfaceChecks {
                     }
                     $impact = $null
                     if ($set.ContainsKey('Impact')) { $impact = $set.Impact }
-                    $title = if ($impact) { "ASR rule not enforced: {0}, so {1}." -f $set.Label, $impact } else { "ASR rule not enforced: {0}, leaving exploit paths open." -f $set.Label }
+                    $title = if ($impact) { "ASR rule not enforced: {0}, so {1}." -f $set.Label, $impact } else { "ASR rule not enforced: {0}." -f $set.Label }
                     Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $title -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
                 }
             }
@@ -259,10 +259,10 @@ function Invoke-SecurityAttackSurfaceChecks {
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title $title -Evidence ($impactEvidence -join "`n") -Subcategory 'Attack Surface Reduction'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing, leaving exploit paths open.' -Subcategory 'Attack Surface Reduction'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing.' -Subcategory 'Attack Surface Reduction'
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing, leaving exploit paths open.' -Subcategory 'Attack Surface Reduction'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing.' -Subcategory 'Attack Surface Reduction'
     }
 
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
