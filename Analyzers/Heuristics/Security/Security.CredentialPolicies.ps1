@@ -292,12 +292,16 @@ function Invoke-SecurityPolicyChecks {
     if ($restrictSendingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 RestrictSendingNTLMTraffic: $restrictSendingMsv") }
     if ($restrictReceivingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 RestrictReceivingNTLMTraffic: $restrictReceivingMsv") }
     if ($auditReceivingMsv -ne $null) { $ntlmEvidenceLines.Add("MSV1_0 AuditReceivingNTLMTraffic: $auditReceivingMsv") }
-    $ntlmEvidence = $ntlmEvidenceLines.ToArray() -join "`n"
-    $ntlmRestricted = ($restrictSendingLsa -ge 2) -or ($restrictSendingMsv -ge 2)
-    $ntlmAudited = ($auditReceivingMsv -ge 2)
-    if ($ntlmRestricted -and $ntlmAudited) {
-        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'NTLM hardening policies enforced' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
+    if ($ntlmEvidenceLines.Count -eq 0) {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'NTLM hardening registry data not collected, so credential relay exposure is unknown.' -Subcategory 'NTLM Hardening'
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'NTLM hardening policies are not configured, allowing credential relay attacks. Enforce RestrictSending/Audit NTLM settings.' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
+        $ntlmEvidence = $ntlmEvidenceLines.ToArray() -join "`n"
+        $ntlmRestricted = ($restrictSendingLsa -ge 2) -or ($restrictSendingMsv -ge 2)
+        $ntlmAudited = ($auditReceivingMsv -ge 2)
+        if ($ntlmRestricted -and $ntlmAudited) {
+            Add-CategoryNormal -CategoryResult $CategoryResult -Title 'NTLM hardening policies enforced' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
+        } else {
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'NTLM hardening policies are not configured, allowing credential relay attacks. Enforce RestrictSending/Audit NTLM settings.' -Evidence $ntlmEvidence -Subcategory 'NTLM Hardening'
+        }
     }
 }
