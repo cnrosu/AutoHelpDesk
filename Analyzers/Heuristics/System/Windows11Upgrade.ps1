@@ -416,7 +416,6 @@ function Invoke-SystemWindows11UpgradeChecks {
     }
 
     if ($alreadyWindows11) {
-        Add-CategoryNormal -CategoryResult $Result -Title 'Already on Windows 11' -Evidence "Detected $caption." -Subcategory 'Windows 11 Upgrade'
         return
     }
 
