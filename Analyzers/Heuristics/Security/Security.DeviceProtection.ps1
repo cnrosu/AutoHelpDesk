@@ -196,7 +196,6 @@ function Invoke-SecurityAttackSurfaceChecks {
                     $detailParts = [System.Collections.Generic.List[string]]::new()
                     if ($missing.Count -gt 0) { $detailParts.Add(("Missing rule(s): {0}" -f ($missing.ToArray() -join ', '))) }
                     if ($nonBlocking.Count -gt 0) { $detailParts.Add(("Non-blocking: {0}" -f ($nonBlocking.ToArray() -join '; '))) }
-                    $detailText = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Rule not enforced.' }
                     $evidenceLines = [System.Collections.Generic.List[string]]::new()
                     foreach ($id in $set.Ids) {
                         $lookup = $id.ToUpperInvariant()
@@ -206,10 +205,38 @@ function Invoke-SecurityAttackSurfaceChecks {
                             $evidenceLines.Add("{0} => (missing)" -f $lookup)
                         }
                     }
-                    $impact = $null
-                    if ($set.ContainsKey('Impact')) { $impact = $set.Impact }
-                    $title = if ($impact) { "ASR rule not enforced: {0}, so {1}." -f $set.Label, $impact } else { "ASR rule not enforced: {0}." -f $set.Label }
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $title -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction'
+                    $impactClause = $null
+                    if ($set.ContainsKey('Impact') -and $set.Impact) {
+                        $impactClause = [string]$set.Impact
+                        $impactClause = $impactClause.Trim()
+                        if ($impactClause.Length -gt 0) {
+                            $firstChar = $impactClause.Substring(0,1).ToUpperInvariant()
+                            $rest = if ($impactClause.Length -gt 1) { $impactClause.Substring(1) } else { '' }
+                            $impactClause = "$firstChar$rest"
+                            if (-not $impactClause.EndsWith('.')) { $impactClause = "$impactClause." }
+                        } else {
+                            $impactClause = $null
+                        }
+                    }
+
+                    $titleLabel = [string]$set.Label
+                    $titleLabel = $titleLabel.Trim()
+                    if (-not $titleLabel.EndsWith('.')) { $titleLabel = "$titleLabel." }
+
+                    $explanation = if ($impactClause) { "ASR rule not enforced, so $impactClause" } else { 'ASR rule not enforced.' }
+
+                    $commandLines = [System.Collections.Generic.List[string]]::new()
+                    foreach ($id in $set.Ids) {
+                        $commandLines.Add("Add-MpPreference -AttackSurfaceReductionRules_Ids '{0}' -AttackSurfaceReductionRules_Actions Enabled" -f $id.ToUpperInvariant())
+                    }
+                    $remediationIntro = if ($impactClause) { $impactClause } else { 'Enable this rule in block mode to close the gap.' }
+                    if ($commandLines.Count -gt 0) {
+                        $remediation = "{0}`n`n```powershell`n{1}`n```" -f $remediationIntro, ($commandLines.ToArray() -join "`n")
+                    } else {
+                        $remediation = $remediationIntro
+                    }
+
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $titleLabel -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction' -Explanation $explanation -Remediation $remediation
                 }
             }
 
