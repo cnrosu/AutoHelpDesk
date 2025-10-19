@@ -16,165 +16,286 @@ function Invoke-IntuneHeuristic-PushNotificationQuickSync {
 
     $serviceStatus = Get-IntunePushNotificationServiceStatus -Context $Context
     $taskStatus = Get-IntunePushLaunchTaskStatus -Context $Context
+    $collectorPayload = Get-IntunePushCollectorPayload -Context $Context
 
     $serviceCollected = ($serviceStatus -and $serviceStatus.Collected)
     $taskCollected = ($taskStatus -and $taskStatus.Collected)
+    $serviceFound = ($serviceStatus -and $serviceStatus.Found)
+
+    $startModeNormalized = if ($serviceStatus) { $serviceStatus.StartModeNormalized } else { $null }
+    if (-not $startModeNormalized) { $startModeNormalized = 'unknown' }
+
+    $startTypeKnown = ($startModeNormalized -ne 'unknown' -and $startModeNormalized -ne $null)
+    $startTypeOk = $false
+    if ($startTypeKnown) { $startTypeOk = ($startModeNormalized -in @('automatic','automatic-delayed')) }
+
+    $serviceManual = ($startModeNormalized -eq 'manual')
+    $serviceDisabled = ($startModeNormalized -eq 'disabled')
+
+    $serviceStartTypeText = if ($serviceStatus -and $serviceStatus.StartMode) { [string]$serviceStatus.StartMode } else { $null }
+    if (-not $serviceStartTypeText) {
+        switch ($startModeNormalized) {
+            'automatic' { $serviceStartTypeText = 'Automatic'; break }
+            'automatic-delayed' { $serviceStartTypeText = 'AutomaticDelayedStart'; break }
+            'manual' { $serviceStartTypeText = 'Manual'; break }
+            'disabled' { $serviceStartTypeText = 'Disabled'; break }
+            default { $serviceStartTypeText = 'Unknown'; break }
+        }
+    }
+
+    $serviceStateText = 'Unknown'
+    if ($serviceStatus) {
+        if ($serviceStatus.State) { $serviceStateText = [string]$serviceStatus.State }
+        elseif ($serviceStatus.Status) { $serviceStateText = [string]$serviceStatus.Status }
+    }
+    if (-not $serviceStateText) { $serviceStateText = 'Unknown' }
+
+    $taskFound = ($taskStatus -and $taskStatus.Found)
+    $taskEnabled = if ($taskStatus) { $taskStatus.Enabled } else { $null }
+    $taskEnabledText = if ($null -eq $taskEnabled) { 'Unknown' } elseif ($taskEnabled) { 'True' } else { 'False' }
+
+    $taskStateText = 'Unknown'
+    if ($taskStatus) {
+        if ($taskStatus.Status) { $taskStateText = [string]$taskStatus.Status }
+        elseif ($taskStatus.ScheduledTaskState) { $taskStateText = [string]$taskStatus.ScheduledTaskState }
+    }
+
+    $lastResultRaw = if ($taskStatus -and $taskStatus.LastResult) { [string]$taskStatus.LastResult } else { 'Unknown' }
+    $lastResultNormalized = if ($taskStatus) { $taskStatus.LastResultNormalized } else { 'unknown' }
+
+    $lastRunUtc = $null
+    if ($taskStatus -and $taskStatus.LastRunTimeUtcDateTime) {
+        $lastRunUtc = $taskStatus.LastRunTimeUtcDateTime
+    } elseif ($taskStatus -and $taskStatus.LastRunTimeUtc) {
+        $lastRunUtc = ConvertTo-IntuneUtcDateTime -Value $taskStatus.LastRunTimeUtc
+    } elseif ($taskStatus -and $taskStatus.LastRunTime) {
+        $lastRunUtc = ConvertTo-IntuneUtcDateTime -Value $taskStatus.LastRunTime
+    }
+
+    $lastRunText = 'unknown'
+    if ($taskStatus) {
+        if ($taskStatus.LastRunTimeUtc) { $lastRunText = [string]$taskStatus.LastRunTimeUtc }
+        elseif ($taskStatus.LastRunTime) { $lastRunText = [string]$taskStatus.LastRunTime }
+    }
+    if (-not $lastRunText) { $lastRunText = 'unknown' }
+
+    $recencyWindowDays = 7
+    if ($taskStatus -and $taskStatus.RecencyWindowDays) {
+        try { $recencyWindowDays = [int]$taskStatus.RecencyWindowDays } catch { $recencyWindowDays = $taskStatus.RecencyWindowDays }
+    } elseif ($collectorPayload -and $collectorPayload.PSObject.Properties['RecencyWindowDays']) {
+        try { $recencyWindowDays = [int]$collectorPayload.RecencyWindowDays } catch { $recencyWindowDays = $collectorPayload.RecencyWindowDays }
+    }
+    if ($recencyWindowDays -lt 1) { $recencyWindowDays = 7 }
+
+    $nowUtc = [datetime]::UtcNow
+    $windowStartUtc = $nowUtc.AddDays(-1 * $recencyWindowDays)
+    $lastRunRecent = ($lastRunUtc -and $lastRunUtc -ge $windowStartUtc)
+
+    $taskHealthy = ($taskFound -and ($taskEnabled -ne $false) -and ($lastResultNormalized -eq 'success') -and $lastRunRecent)
+    $hadRecentSuccess = ($taskFound -and ($lastResultNormalized -eq 'success') -and $lastRunRecent)
+
+    $logsData = if ($collectorPayload -and $collectorPayload.PSObject.Properties['Logs']) { $collectorPayload.Logs } else { $null }
+    $logsAvailable = ($null -ne $logsData)
+    $recentErrorCount = 0
+    $lastErrorUtcValue = $null
+    if ($logsAvailable) {
+        foreach ($logEntry in @($logsData.Push, $logsData.DMEDP)) {
+            if (-not $logEntry) { continue }
+            if ($logEntry.PSObject.Properties['RecentErrors']) {
+                $errorsValue = $logEntry.RecentErrors
+                try { $recentErrorCount += [int]$errorsValue } catch {
+                    $intParsed = 0
+                    if ([int]::TryParse([string]$errorsValue, [ref]$intParsed)) { $recentErrorCount += $intParsed }
+                }
+            }
+            if ($logEntry.PSObject.Properties['LastErrorUtc'] -and $logEntry.LastErrorUtc) {
+                $candidate = ConvertTo-IntuneUtcDateTime -Value $logEntry.LastErrorUtc
+                if ($candidate) {
+                    if (-not $lastErrorUtcValue -or $candidate -gt $lastErrorUtcValue) { $lastErrorUtcValue = $candidate }
+                }
+            }
+        }
+    }
+
+    $recentPushErrors = ($logsAvailable -and $recentErrorCount -gt 0)
+    $recentErrorsText = if ($logsAvailable) { [string]$recentErrorCount } else { 'not collected' }
+    if ($logsAvailable -and $recentErrorCount -eq 0) { $recentErrorsText = '0' }
+
+    $lastErrorUtcText = if ($lastErrorUtcValue) { $lastErrorUtcValue.ToString('yyyy-MM-ddTHH:mm:ssZ') } else { $null }
+
+    $collectedAtText = $null
+    if ($taskStatus -and $taskStatus.CollectedAtUtc) { $collectedAtText = [string]$taskStatus.CollectedAtUtc }
+    elseif ($serviceStatus -and $serviceStatus.CollectedAtUtc) { $collectedAtText = [string]$serviceStatus.CollectedAtUtc }
+    elseif ($collectorPayload -and $collectorPayload.PSObject.Properties['CollectedAtUtc']) { $collectedAtText = [string]$collectorPayload.CollectedAtUtc }
 
     $debugData = [ordered]@{
-        ServiceCollected = $serviceCollected
-        ServiceFound     = if ($serviceStatus) { $serviceStatus.Found } else { $null }
-        ServiceStart     = if ($serviceStatus) { $serviceStatus.StartModeNormalized } else { $null }
-        ServiceStatus    = if ($serviceStatus) { $serviceStatus.StatusNormalized } else { $null }
-        TaskCollected    = $taskCollected
-        TaskFound        = if ($taskStatus) { $taskStatus.Found } else { $null }
-        TaskEnabled      = if ($taskStatus) { $taskStatus.Enabled } else { $null }
-        TaskStatus       = if ($taskStatus) { $taskStatus.StatusNormalized } else { $null }
-        TaskResult       = if ($taskStatus) { $taskStatus.LastResultNormalized } else { $null }
+        ServiceCollected     = $serviceCollected
+        ServiceFound         = $serviceFound
+        ServiceStart         = $startModeNormalized
+        TaskCollected        = $taskCollected
+        TaskFound            = $taskFound
+        TaskEnabled          = $taskEnabled
+        TaskLastResult       = $lastResultNormalized
+        TaskLastRunRecent    = $lastRunRecent
+        RecencyWindowDays    = $recencyWindowDays
+        RecentPushErrorCount = if ($logsAvailable) { $recentErrorCount } else { 'n/a' }
     }
     Write-HeuristicDebug -Source 'Intune/PushNotificationQuickSync' -Message 'Push notification dependency summary' -Data $debugData
 
-    $serviceHealthy = $false
-    if ($serviceCollected -and $serviceStatus.Found) {
-        $serviceHealthy = ($serviceStatus.StartModeNormalized -match '^automatic' -and $serviceStatus.StatusNormalized -eq 'running')
+    $dataGaps = New-Object System.Collections.Generic.List[string]
+    if (-not $serviceCollected) {
+        $gap = 'Intune diagnostics were incomplete, so Windows push notification service status was unavailable.'
+        if ($serviceStatus -and $serviceStatus.Errors -and $serviceStatus.Errors.Count -gt 0) {
+            $gap += ' (' + (($serviceStatus.Errors | Where-Object { $_ }) -join '; ') + ')'
+        }
+        $dataGaps.Add($gap) | Out-Null
+    }
+    if (-not $taskCollected) {
+        $gap = 'Intune diagnostics were incomplete, so the PushLaunch scheduled task state was unavailable.'
+        if ($taskStatus -and $taskStatus.Errors -and $taskStatus.Errors.Count -gt 0) {
+            $gap += ' (' + (($taskStatus.Errors | Where-Object { $_ }) -join '; ') + ')'
+        }
+        $dataGaps.Add($gap) | Out-Null
+    }
+    if (-not $logsAvailable) {
+        $dataGaps.Add('Push/DMEDP logs were unavailable, so push notification error history is unknown.') | Out-Null
     }
 
-    $taskHealthy = $false
-    if ($taskCollected -and $taskStatus.Found) {
-        $statusOk = ($taskStatus.StatusNormalized -in @('ready','running','queued','other'))
-        $resultOk = ($taskStatus.LastResultNormalized -in @('success','unknown'))
-        $enabledOk = ($null -eq $taskStatus.Enabled -or $taskStatus.Enabled -eq $true)
-        $taskHealthy = ($statusOk -and $resultOk -and $enabledOk)
+    $evidenceLines = [System.Collections.Generic.List[string]]::new()
+    $serviceEvidenceParts = [System.Collections.Generic.List[string]]::new()
+    $serviceEvidenceParts.Add('Found=' + [string]$serviceFound) | Out-Null
+    $serviceEvidenceParts.Add('StartType=' + $serviceStartTypeText) | Out-Null
+    $serviceEvidenceParts.Add('State=' + $serviceStateText) | Out-Null
+    if ($serviceStatus -and $serviceStatus.Errors -and $serviceStatus.Errors.Count -gt 0) {
+        $serviceEvidenceParts.Add('Errors=' + (($serviceStatus.Errors | Where-Object { $_ }) -join ' | ')) | Out-Null
+    }
+    $evidenceLines.Add('Service: dmwappushservice → ' + ($serviceEvidenceParts -join '; ')) | Out-Null
+
+    $taskEvidenceParts = [System.Collections.Generic.List[string]]::new()
+    $taskEvidenceParts.Add('Exists=' + [string]$taskFound) | Out-Null
+    $taskEvidenceParts.Add('Enabled=' + $taskEnabledText) | Out-Null
+    $taskEvidenceParts.Add('State=' + $taskStateText) | Out-Null
+    $taskEvidenceParts.Add('LastResult=' + $lastResultRaw) | Out-Null
+    $taskEvidenceParts.Add('LastRun=' + $lastRunText) | Out-Null
+    if ($taskStatus -and $taskStatus.Errors -and $taskStatus.Errors.Count -gt 0) {
+        $taskEvidenceParts.Add('Errors=' + (($taskStatus.Errors | Where-Object { $_ }) -join ' | ')) | Out-Null
+    }
+    $evidenceLines.Add('Task: \\Microsoft\\Windows\\PushToInstall\\PushLaunch → ' + ($taskEvidenceParts -join '; ')) | Out-Null
+
+    if ($logsAvailable) {
+        $logParts = [System.Collections.Generic.List[string]]::new()
+        $logParts.Add('Errors=' + $recentErrorsText) | Out-Null
+        if ($lastErrorUtcText) { $logParts.Add('LastErrorUtc=' + $lastErrorUtcText) | Out-Null }
+        $evidenceLines.Add('Logs: ' + ($logParts -join '; ')) | Out-Null
+    } else {
+        $evidenceLines.Add('Logs: not collected') | Out-Null
+    }
+    $evidenceLines.Add('RecencyWindowDays: ' + [string]$recencyWindowDays) | Out-Null
+    if ($collectedAtText) { $evidenceLines.Add('CollectedAtUtc: ' + $collectedAtText) | Out-Null }
+
+    $healthyTitle = 'Intune push wake is healthy: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+
+    if ($startTypeOk -and $taskHealthy -and -not $recentPushErrors) {
+        Add-CategoryNormal -CategoryResult $Result -Title $healthyTitle -Evidence $evidenceLines -Subcategory 'Enrollment & Connectivity'
+        if ($dataGaps.Count -gt 0) {
+            foreach ($gap in $dataGaps) {
+                $gapExplanation = 'Push wake is unverified: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+                Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity' -Explanation $gapExplanation
+            }
+        }
+        return
     }
 
-    if ($serviceHealthy -and $taskHealthy) {
-        Add-CategoryNormal -CategoryResult $Result -Title 'Windows push notifications and PushLaunch task are healthy, so Intune quick sync wake-ups can reach the device.' -Subcategory 'Enrollment & Connectivity'
+    $staleWindowStart = $windowStartUtc.AddDays(-7)
+    $staleButRecent = ($startTypeOk -and $taskFound -and ($taskEnabled -ne $false) -and ($lastResultNormalized -eq 'success') -and $lastRunUtc -and $lastRunUtc -lt $windowStartUtc -and $lastRunUtc -ge $staleWindowStart -and -not $recentPushErrors)
+
+    if ($staleButRecent) {
+        $title = 'Intune/Push Wake: PushLaunch run slightly older than {0} days → Info' -f $recencyWindowDays
+        $explanation = 'Push wake is misconfigured: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $title -Evidence $evidenceLines -Subcategory 'Enrollment & Connectivity' -Explanation $explanation
+        if ($dataGaps.Count -gt 0) {
+            foreach ($gap in $dataGaps) {
+                $gapExplanation = 'Push wake is unverified: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+                Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity' -Explanation $gapExplanation
+            }
+        }
         return
     }
 
     $reasons = New-Object System.Collections.Generic.List[string]
-    $dataGaps = New-Object System.Collections.Generic.List[string]
-
-    if (-not $serviceCollected) {
-        $gapBase = 'Intune diagnostics were incomplete, so Windows push notification service status was unavailable'
-        if ($serviceStatus -and $serviceStatus.Errors -and $serviceStatus.Errors.Count -gt 0) {
-            $gapText = '{0} ({1}).' -f $gapBase, (($serviceStatus.Errors | Where-Object { $_ }) -join '; ')
-        } else {
-            $gapText = $gapBase + '.'
-        }
-        $dataGaps.Add($gapText) | Out-Null
+    if (-not $serviceFound) {
+        $reasons.Add('Windows Push Notification Service is missing') | Out-Null
+    } elseif ($serviceDisabled) {
+        $reasons.Add('Windows Push Notification Service is disabled') | Out-Null
+    } elseif ($serviceManual -and -not $taskHealthy) {
+        $reasons.Add('Windows Push Notification Service is set to Manual start') | Out-Null
+    } elseif ($startTypeKnown -and -not $startTypeOk) {
+        $reasons.Add("Windows Push Notification Service start type is $serviceStartTypeText") | Out-Null
     }
 
-    if (-not $taskCollected) {
-        $gapBase = 'Intune diagnostics were incomplete, so the PushLaunch scheduled task state was unavailable'
-        if ($taskStatus -and $taskStatus.Errors -and $taskStatus.Errors.Count -gt 0) {
-            $gapText = '{0} ({1}).' -f $gapBase, (($taskStatus.Errors | Where-Object { $_ }) -join '; ')
-        } else {
-            $gapText = $gapBase + '.'
+    if (-not $taskFound) {
+        $reasons.Add('PushLaunch scheduled task is missing') | Out-Null
+    } else {
+        if ($taskEnabled -eq $false) {
+            $reasons.Add('PushLaunch scheduled task is disabled') | Out-Null
         }
-        $dataGaps.Add($gapText) | Out-Null
-    }
-
-    $serviceProblem = $false
-    if ($serviceCollected) {
-        if (-not $serviceStatus.Found) {
-            $reasons.Add('the Windows Push Notification Service (dmwappushservice) is missing or could not be queried') | Out-Null
-            $serviceProblem = $true
-        } else {
-            $mode = if ($serviceStatus.StartModeNormalized) { $serviceStatus.StartModeNormalized } else { 'unknown' }
-            $status = if ($serviceStatus.StatusNormalized) { $serviceStatus.StatusNormalized } else { 'unknown' }
-
-            if ($mode -eq 'disabled') {
-                $reasons.Add('the Windows Push Notification Service (dmwappushservice) is disabled') | Out-Null
-                $serviceProblem = $true
-            } elseif ($mode -eq 'manual') {
-                $reasons.Add('the Windows Push Notification Service (dmwappushservice) is set to Manual instead of Automatic') | Out-Null
-                $serviceProblem = $true
-            } elseif ($mode -like 'automatic*' -and $status -ne 'running') {
-                $reasons.Add('the Windows Push Notification Service (dmwappushservice) is stopped even though it should start automatically') | Out-Null
-                $serviceProblem = $true
-            } elseif ($status -eq 'stopped') {
-                $reasons.Add('the Windows Push Notification Service (dmwappushservice) is stopped') | Out-Null
-                $serviceProblem = $true
-            }
+        if ($lastResultNormalized -eq 'failure') {
+            $reasons.Add("PushLaunch last run failed (LastResult=$lastResultRaw)") | Out-Null
+        }
+        if (-not $hadRecentSuccess) {
+            $reasons.Add('no successful PushLaunch run in last ' + [string]$recencyWindowDays + ' days') | Out-Null
         }
     }
 
-    $taskProblem = $false
-    if ($taskCollected) {
-        if (-not $taskStatus.Found) {
-            $reasons.Add('the PushLaunch scheduled task is missing') | Out-Null
-            $taskProblem = $true
-        } else {
-            if ($taskStatus.Enabled -eq $false) {
-                $reasons.Add('the PushLaunch scheduled task is disabled') | Out-Null
-                $taskProblem = $true
-            }
-
-            if ($taskStatus.StatusNormalized -eq 'error') {
-                $statusText = if ($taskStatus.Status) { $taskStatus.Status } else { 'an error state' }
-                $reasons.Add("the PushLaunch scheduled task reports status '$statusText'") | Out-Null
-                $taskProblem = $true
-            } elseif ($taskStatus.StatusNormalized -eq 'disabled') {
-                if (-not ($reasons | Where-Object { $_ -match 'disabled' })) {
-                    $reasons.Add('the PushLaunch scheduled task reports a disabled state') | Out-Null
-                }
-                $taskProblem = $true
-            }
-
-            if ($taskStatus.LastResultNormalized -eq 'failure') {
-                $resultText = if ($taskStatus.LastResult) { $taskStatus.LastResult } else { 'a failure code' }
-                $reasons.Add("the PushLaunch scheduled task last run failed with result $resultText") | Out-Null
-                $taskProblem = $true
-            }
-        }
+    if ($recentPushErrors) {
+        $reasons.Add('recent push notification errors detected') | Out-Null
     }
 
-    if (-not $serviceProblem -and -not $taskProblem) {
-        if ($dataGaps.Count -gt 0) {
-            foreach ($gap in $dataGaps) {
-                Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity'
-            }
+    $severity = $null
+    if (-not $serviceFound) {
+        $severity = 'high'
+    } elseif ($serviceDisabled) {
+        $severity = 'high'
+    } elseif (-not $taskFound) {
+        $severity = 'high'
+    } elseif (($taskEnabled -eq $false) -and (-not $hadRecentSuccess)) {
+        $severity = 'high'
+    } elseif ($recentPushErrors -and -not $taskHealthy) {
+        $severity = 'high'
+    } elseif ($serviceManual -and -not $taskHealthy) {
+        $severity = 'medium'
+    } elseif ($startTypeKnown -and -not $startTypeOk -and -not $taskHealthy) {
+        $severity = 'high'
+    } elseif (-not $taskHealthy) {
+        $severity = 'medium'
+    } elseif ($recentPushErrors) {
+        $severity = 'medium'
+    }
+
+    if (-not $severity -and $reasons.Count -gt 0) {
+        $severity = 'medium'
+    }
+
+    if (-not $severity -and $dataGaps.Count -gt 0) {
+        foreach ($gap in $dataGaps) {
+            $gapExplanation = 'Push wake is unverified: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity' -Explanation $gapExplanation
         }
         return
     }
 
-    $severity = 'medium'
-    if ($serviceProblem -and $taskProblem) {
-        $severity = 'critical'
-    } elseif ($serviceProblem) {
-        if (-not $serviceStatus.Found -or $serviceStatus.StartModeNormalized -eq 'disabled') { $severity = 'high' }
-    } elseif ($taskProblem) {
-        if (-not $taskStatus.Found -or $taskStatus.Enabled -eq $false -or $taskStatus.StatusNormalized -eq 'error') { $severity = 'high' }
-    }
+    if (-not $severity) { return }
 
-    $reasonText = if ($reasons.Count -gt 0) { $reasons -join ' and ' } else { 'push notification dependencies are misconfigured' }
-    $title = 'Intune quick sync never wakes the device because ' + $reasonText + ', so policy and app updates stay pending until someone syncs manually.'
+    $severityLabelMap = @{ high = 'High'; medium = 'Medium'; info = 'Info' }
+    $severityLabel = if ($severityLabelMap.ContainsKey($severity)) { $severityLabelMap[$severity] } else { 'Info' }
 
-    $evidence = [ordered]@{}
-    if ($serviceCollected) {
-        $serviceParts = [System.Collections.Generic.List[string]]::new()
-        $serviceParts.Add('Found=' + [string]$serviceStatus.Found) | Out-Null
-        if ($serviceStatus.StartMode) { $serviceParts.Add('StartMode=' + [string]$serviceStatus.StartMode) | Out-Null }
-        if ($serviceStatus.State) { $serviceParts.Add('State=' + [string]$serviceStatus.State) | Out-Null }
-        if ($serviceStatus.Status -and $serviceStatus.Status -ne $serviceStatus.State) { $serviceParts.Add('Status=' + [string]$serviceStatus.Status) | Out-Null }
-        if ($serviceStatus.Errors -and $serviceStatus.Errors.Count -gt 0) { $serviceParts.Add('Errors=' + (($serviceStatus.Errors | Where-Object { $_ }) -join ' | ')) | Out-Null }
-        $evidence['dmwappushservice'] = $serviceParts -join '; '
-    }
+    $titleReason = if ($reasons.Count -gt 0) { $reasons -join ' and ' } else { 'push wake state is unknown' }
+    $title = 'Intune/Push Wake: ' + $titleReason + ' → ' + $severityLabel
 
-    if ($taskCollected) {
-        $taskParts = [System.Collections.Generic.List[string]]::new()
-        $taskParts.Add('Found=' + [string]$taskStatus.Found) | Out-Null
-        if ($null -ne $taskStatus.Enabled) { $taskParts.Add('Enabled=' + [string]$taskStatus.Enabled) | Out-Null }
-        if ($taskStatus.ScheduledTaskState) { $taskParts.Add('TaskState=' + [string]$taskStatus.ScheduledTaskState) | Out-Null }
-        if ($taskStatus.Status) { $taskParts.Add('Status=' + [string]$taskStatus.Status) | Out-Null }
-        if ($taskStatus.LastResult) { $taskParts.Add('LastResult=' + [string]$taskStatus.LastResult) | Out-Null }
-        if ($taskStatus.LastRunTime) { $taskParts.Add('LastRunTime=' + [string]$taskStatus.LastRunTime) | Out-Null }
-        if ($taskStatus.MissedRuns) { $taskParts.Add('MissedRuns=' + [string]$taskStatus.MissedRuns) | Out-Null }
-        if ($taskStatus.Errors -and $taskStatus.Errors.Count -gt 0) { $taskParts.Add('Errors=' + (($taskStatus.Errors | Where-Object { $_ }) -join ' | ')) | Out-Null }
-        $evidence['PushLaunchTask'] = $taskParts -join '; '
-    }
+    $stateDescriptor = if ($severity -eq 'high') { 'blocked' } else { 'misconfigured' }
+    $explanation = 'Push wake is {0}: StartType={1}; Task.Enabled={2}; LastResult={3}; LastRun={4}; RecentErrors={5}.' -f $stateDescriptor, $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
 
-    $remediation = 'Re-enable Windows push notifications and repair the PushLaunch scheduled task so Intune can receive sync wake-ups.'
+    $remediation = 'Set dmwappushservice to Automatic (Delayed Start), enable the PushLaunch scheduled task, and re-run the task so Intune push wake requests reach the device.'
     $remediationScript = @(
         'sc config dmwappushservice start= delayed-auto',
         'sc start dmwappushservice',
@@ -182,11 +303,26 @@ function Invoke-IntuneHeuristic-PushNotificationQuickSync {
         'schtasks /Run /TN "\\Microsoft\\Windows\\PushToInstall\\PushLaunch"'
     ) -join "`n"
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
+    $issueParams = @{
+        CategoryResult = $Result
+        Severity       = $severity
+        Title          = $title
+        Evidence       = $evidenceLines
+        Subcategory    = 'Enrollment & Connectivity'
+        Explanation    = $explanation
+    }
+
+    if ($severity -in @('high','medium')) {
+        $issueParams['Remediation'] = $remediation
+        $issueParams['RemediationScript'] = $remediationScript
+    }
+
+    Add-CategoryIssue @issueParams
 
     if ($dataGaps.Count -gt 0) {
         foreach ($gap in $dataGaps) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity'
+            $gapExplanation = 'Push wake is unverified: StartType={0}; Task.Enabled={1}; LastResult={2}; LastRun={3}; RecentErrors={4}.' -f $serviceStartTypeText, $taskEnabledText, $lastResultRaw, $lastRunText, $recentErrorsText
+            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gap -Subcategory 'Enrollment & Connectivity' -Explanation $gapExplanation
         }
     }
 }
