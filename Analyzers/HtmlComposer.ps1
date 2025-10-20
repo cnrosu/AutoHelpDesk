@@ -253,11 +253,12 @@ function New-CodeBlockHtml {
     $idPrefix = if ($languageKey -eq 'powershell') { 'psCode' } else { 'codeBlock' }
     $codeId = '{0}{1}' -f $idPrefix, $script:HtmlComposerCodeCardSequence
 
-    $preClasses = @()
+    $preClasses = @("language-$languageKey")
     if ($languageKey -eq 'powershell') {
         $preClasses += 'line-numbers'
     }
     $preClassAttribute = if ($preClasses.Count -gt 0) { " class='" + ($preClasses -join ' ') + "'" } else { '' }
+    $codeClass = "language-$languageKey"
 
     $captionFragment = if ($captionHtml) { "<span class='code-caption'>$captionHtml</span>" } else { '' }
     if (-not $languageLabel) { $languageLabel = $Language }
@@ -280,7 +281,7 @@ function New-CodeBlockHtml {
       <button class='btn' type='button'$themeAttributes>Theme</button>
     </div>
   </div>
-  <pre$preClassAttribute><code class='language-$Language' id='$codeId'>$safe</code></pre>
+  <pre$preClassAttribute><code class='$codeClass' id='$codeId'>$safe</code></pre>
 </div>
 "@
 }
