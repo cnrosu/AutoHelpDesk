@@ -170,9 +170,90 @@ if ($pushIssues.Count -gt 0) {
     $null = $failures.Add('Intune heuristic produced unexpected push notification issues: ' + ($details -join '; '))
 }
 
-$pushNormals = @($category.Normals | Where-Object { $_.Title -like 'Intune push wake is healthy*' })
+$pushNormals = @($category.Normals | Where-Object { $_.Title -like 'Intune push wake prerequisites are ready*' })
 if ($pushNormals.Count -eq 0) {
     $null = $failures.Add('Expected a healthy Intune push wake normal check but none was recorded.')
+}
+
+$disabledPushPayload = [pscustomobject]@{
+    CollectedAtUtc    = $collectedAtUtc
+    RecencyWindowDays = 7
+    Service           = [pscustomobject]@{
+        Name      = 'dmwappushservice'
+        Exists    = $true
+        StartType = 'Disabled'
+        State     = 'Stopped'
+    }
+}
+
+$disabledContext = New-TestIntuneContext -ServiceEntries @($healthyService) -PushPayload $disabledPushPayload
+$disabledCategory = Invoke-IntuneHeuristics -Context $disabledContext
+$disabledIssues = @($disabledCategory.Issues | Where-Object { $_.Title -like 'Intune/Push Wake*' })
+if ($disabledIssues.Count -ne 1) {
+    $null = $failures.Add('Expected a single Intune push wake issue when the service is disabled.')
+} else {
+    $disabledIssue = $disabledIssues[0]
+    if ($disabledIssue.Severity -ne 'high') {
+        $null = $failures.Add('Expected disabled service issue severity to be high.')
+    }
+    if ($disabledIssue.Explanation -notmatch 'Service is disabled, so push wake requests from Intune will not arrive') {
+        $null = $failures.Add('Disabled service explanation did not describe the push wake impact.')
+    }
+    $disabledEvidence = $disabledIssue.Evidence | Where-Object { $_ -like 'Service: dmwappushservice*' } | Select-Object -First 1
+    if ($disabledEvidence -notmatch 'StartType=Disabled') {
+        $null = $failures.Add('Disabled service evidence did not include the Disabled start type.')
+    }
+}
+
+$failedPushPayload = [pscustomobject]@{
+    CollectedAtUtc    = $collectedAtUtc
+    RecencyWindowDays = 7
+    Service           = [pscustomobject]@{
+        Name      = 'dmwappushservice'
+        Exists    = $true
+        StartType = 'AutomaticDelayedStart'
+        State     = 'Stopped'
+        Error     = '0x8007041D: The service did not respond to the start request.'
+    }
+}
+
+$failedContext = New-TestIntuneContext -ServiceEntries @($healthyService) -PushPayload $failedPushPayload
+$failedCategory = Invoke-IntuneHeuristics -Context $failedContext
+$failedIssues = @($failedCategory.Issues | Where-Object { $_.Title -like 'Intune/Push Wake*' })
+if ($failedIssues.Count -ne 1) {
+    $null = $failures.Add('Expected a single Intune push wake issue when the service fails to start.')
+} else {
+    $failedIssue = $failedIssues[0]
+    if ($failedIssue.Severity -ne 'high') {
+        $null = $failures.Add('Expected failed start issue severity to be high.')
+    }
+    if ($failedIssue.Explanation -notmatch 'failed to start \(LastStartError=0x8007041D') {
+        $null = $failures.Add('Failed start explanation did not include the last start error.')
+    }
+}
+
+$missingPushPayload = [pscustomobject]@{
+    CollectedAtUtc    = $collectedAtUtc
+    RecencyWindowDays = 7
+    Service           = [pscustomobject]@{
+        Name      = 'dmwappushservice'
+        Exists    = $false
+    }
+}
+
+$missingContext = New-TestIntuneContext -ServiceEntries @($healthyService) -PushPayload $missingPushPayload
+$missingCategory = Invoke-IntuneHeuristics -Context $missingContext
+$missingIssues = @($missingCategory.Issues | Where-Object { $_.Title -like 'Intune/Push Wake*' })
+if ($missingIssues.Count -ne 1) {
+    $null = $failures.Add('Expected a single Intune push wake issue when the service is missing.')
+} else {
+    $missingIssue = $missingIssues[0]
+    if ($missingIssue.Severity -ne 'high') {
+        $null = $failures.Add('Expected missing service issue severity to be high.')
+    }
+    if ($missingIssue.Explanation -notmatch 'Service is missing, so push wake requests from Intune will not arrive') {
+        $null = $failures.Add('Missing service explanation did not describe the push wake impact.')
+    }
 }
 
 if ($failures.Count -gt 0) {
