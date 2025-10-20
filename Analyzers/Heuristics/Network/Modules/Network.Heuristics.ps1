@@ -1714,7 +1714,7 @@ function Invoke-NetworkHeuristics {
 
             if ($publicServers.Count -gt 0) {
                 $uniquePublic = ($publicServers | Select-Object -Unique)
-                $allServers = @($allServerSet.ToArray())
+                $allServers = ConvertTo-NetworkArray $allServerSet
                 $hasInternalDns = ($privateServers.Count -gt 0)
 
                 $suffixList = Get-NetworkDnsSuffixList -DnsPayload $payload
