@@ -1075,7 +1075,8 @@ pre code {
 }
 
 code.language-powershell,
-pre code.language-powershell {
+pre code.language-powershell,
+pre.language-powershell {
   font-family: Consolas, "Courier New", ui-monospace, SFMono-Regular, Menlo, Monaco, "Liberation Mono", monospace !important;
   font-weight: 500;
 }
