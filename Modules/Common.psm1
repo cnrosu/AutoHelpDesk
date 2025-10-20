@@ -899,12 +899,33 @@ function New-IssueCardHtml {
     }
 
     if ($hasRemediationScript) {
-      $codeId = 'remediation-' + ([guid]::NewGuid().ToString('N'))
-      $codeHtml = Encode-Html $Entry.RemediationScript
-      $buttonLabel = Encode-Html 'Copy PowerShell'
-      $successLabel = Encode-Html 'Copied!'
-      $failureLabel = Encode-Html 'Copy failed'
-      [void]$remediationBuilder.Append("<div class='report-remediation__code'><button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button><pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre></div>")
+      $scriptContent = [string]$Entry.RemediationScript
+      $codeBlockHtml = $null
+      try {
+        $codeFunction = Get-Command -Name New-CodeBlockHtml -CommandType Function -ErrorAction SilentlyContinue
+      } catch {
+        $codeFunction = $null
+      }
+
+      if ($codeFunction) {
+        try {
+          $codeBlockHtml = New-CodeBlockHtml -Language 'powershell' -Code $scriptContent -Caption 'Remediation script'
+        } catch {
+          $codeBlockHtml = $null
+        }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($codeBlockHtml)) {
+        $codeId = 'remediation-' + ([guid]::NewGuid().ToString('N'))
+        $codeHtml = Encode-Html $scriptContent
+        $buttonLabel = Encode-Html 'Copy PowerShell'
+        $successLabel = Encode-Html 'Copied!'
+        $failureLabel = Encode-Html 'Copy failed'
+        $fallback = "<div class='report-remediation__code'><button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button><pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre></div>"
+        [void]$remediationBuilder.Append($fallback)
+      } else {
+        [void]$remediationBuilder.Append("<div class='report-remediation__code'>$codeBlockHtml</div>")
+      }
     }
 
     [void]$remediationBuilder.Append('</div></details>')
