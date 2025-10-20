@@ -1066,6 +1066,97 @@ details.troubleshooting > summary {
   font-size: 1rem;
 }
 
+code,
+pre,
+pre code {
+  font-feature-settings: "liga" 0, "calt" 0;
+  letter-spacing: 0.2px;
+  tab-size: 2;
+}
+
+code.language-powershell,
+pre code.language-powershell {
+  font-family: Consolas, "Courier New", ui-monospace, SFMono-Regular, Menlo, Monaco, "Liberation Mono", monospace !important;
+  font-weight: 500;
+}
+
+pre {
+  margin: 0;
+  background: transparent;
+  overflow: auto;
+}
+
+.code-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  margin: 0.5rem 0 0.75rem 0;
+  background: #ffffff;
+}
+
+.code-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.code-toolbar__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lang-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+
+.code-card .code-caption {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #111827;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.btn:hover {
+  background-color: #f3f4f6;
+}
+
+.code-card pre {
+  margin: 0;
+  padding: 12px 16px;
+  background: transparent;
+  overflow: auto;
+}
+
+pre.line-numbers {
+  padding-left: 3em;
+}
+
 .codeblock {
   position: relative;
   margin: 0.5rem 0 0.75rem 0;
@@ -1076,7 +1167,7 @@ details.troubleshooting > summary {
   overflow: hidden;
 }
 
-.code-caption {
+.codeblock .code-caption {
   font-size: 0.85rem;
   background: #0f1530;
   color: #d2d8ff;

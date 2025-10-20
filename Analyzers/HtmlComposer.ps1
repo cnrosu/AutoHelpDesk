@@ -210,6 +210,10 @@ function Format-AnalyzerEvidence {
 
 # --- HTML helpers: safe encoding, code blocks, copy button ---
 
+$script:HtmlComposerCodeCardSequence = 0
+$script:HtmlComposerThemeButtonAssigned = $false
+$script:HtmlComposerHasPowerShellCode = $false
+
 function ConvertTo-HtmlSafe {
     param([string]$Text)
 
@@ -235,13 +239,46 @@ function New-CodeBlockHtml {
     if ($null -ne $Caption -and $Caption -ne '') {
         $captionHtml = ConvertTo-HtmlSafe -Text $Caption
     }
-    $cap = if ($captionHtml) { "<div class='code-caption'>$captionHtml</div>" } else { '' }
 
-@"
+    $languageKey = if ($Language) { $Language.ToLowerInvariant() } else { 'powershell' }
+
+    if ($languageKey -ne 'powershell') {
+        $captionBlock = if ($captionHtml) { "<div class='code-caption'>$captionHtml</div>" } else { '' }
+        return @"
 <div class='codeblock'>
-  $cap
+  $captionBlock
   <pre><code class='language-$Language'>$safe</code></pre>
   <button class='btn-copy' onclick="window.copyCode(this)">Copy</button>
+</div>
+"@
+    }
+
+    $script:HtmlComposerHasPowerShellCode = $true
+    $script:HtmlComposerCodeCardSequence++
+
+    $languageLabel = 'PowerShell'
+    $codeId = 'psCode{0}' -f $script:HtmlComposerCodeCardSequence
+    $captionFragment = if ($captionHtml) { "<span class='code-caption'>$captionHtml</span>" } else { '' }
+
+    if (-not $script:HtmlComposerThemeButtonAssigned) {
+        $themeAttributes = " id='themeBtn' data-theme-toggle='true'"
+        $script:HtmlComposerThemeButtonAssigned = $true
+    } else {
+        $themeAttributes = " data-theme-toggle='true'"
+    }
+
+@"
+<div class='code-card'>
+  <div class='code-toolbar' role='toolbar' aria-label='Code toolbar'>
+    <div class='code-toolbar__meta'>
+      <span class='lang-badge'>$languageLabel</span>$captionFragment
+    </div>
+    <div class='code-actions'>
+      <button class='btn' type='button' data-copy='#$codeId' data-copy-target='#$codeId'>Copy</button>
+      <button class='btn' type='button'$themeAttributes>Theme</button>
+    </div>
+  </div>
+  <pre class='line-numbers'><code class='language-powershell' id='$codeId'>$safe</code></pre>
 </div>
 "@
 }
@@ -1512,6 +1549,10 @@ function New-AnalyzerHtml {
     $categoryCount = if ($Categories) { ($Categories | Measure-Object).Count } else { 0 }
     Write-HtmlDebug -Stage 'Composer' -Message 'Beginning HTML composition.' -Data @{ Categories = $categoryCount; HasSummary = [bool]$Summary; HasContext = [bool]$Context }
 
+    $script:HtmlComposerCodeCardSequence = 0
+    $script:HtmlComposerThemeButtonAssigned = $false
+    $script:HtmlComposerHasPowerShellCode = $false
+
     $issues = New-Object System.Collections.Generic.List[pscustomobject]
     $normals = New-Object System.Collections.Generic.List[pscustomobject]
 
@@ -1604,7 +1645,6 @@ function New-AnalyzerHtml {
     $failedSectionId = 'section-failed'
     $rawSectionId = 'section-raw'
 
-    $head = '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title><link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page"><main class="report-main">'
     $goodContent = Build-GoodSection -Normals $normals
     $issuesContent = Build-IssueSection -Issues $issues
     $failedReports = Get-FailedCollectorReports -Context $Context
@@ -1643,6 +1683,35 @@ function New-AnalyzerHtml {
         @{ Id = $rawSectionId; Label = 'Artifacts'; Count = $rawCount; ContentHtml = $rawContent; PanelHeading = "Artifacts ($rawCount)" }
     )
     $navHtml = Build-ReportNavigation -Sections $navSections
+
+    $includePrism = [bool]$script:HtmlComposerHasPowerShellCode
+    $headParts = @(
+        '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title>'
+    )
+
+    if ($includePrism) {
+        $headParts += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">'
+        $headParts += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/plugins/line-numbers/prism-line-numbers.min.css">'
+    }
+
+    $headParts += '<link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page"><main class="report-main">'
+    $head = ($headParts -join '')
+
+    if ($includePrism) {
+        $prismAssets = @'
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<script>
+  window.Prism = window.Prism || {};
+  Prism.plugins.autoloader = {
+    languages_path: 'https://cdn.jsdelivr.net/npm/prismjs@1/components/'
+  };
+</script>
+'@
+    } else {
+        $prismAssets = ''
+    }
     $tabsScript = @'
 <script>
 (function () {
@@ -2095,6 +2164,103 @@ function New-AnalyzerHtml {
     }
   };
 
+  function initCodeCardCopyButtons(root) {
+    var buttons = toArray((root || document).querySelectorAll('[data-copy]'));
+    buttons.forEach(function (btn) {
+      if (!btn || btn.getAttribute('data-copy-bound') === 'true') {
+        return;
+      }
+
+      btn.setAttribute('data-copy-bound', 'true');
+
+      btn.addEventListener('click', function () {
+        var selector = btn.getAttribute('data-copy');
+        var code = selector ? document.querySelector(selector) : null;
+        var text = code ? (code.innerText || code.textContent || '') : '';
+
+        var original = btn.getAttribute('data-copy-label-inline');
+        if (!original) {
+          original = btn.textContent || btn.innerText || 'Copy';
+          btn.setAttribute('data-copy-label-inline', original);
+        }
+
+        var setText = function (value) {
+          if (typeof btn.textContent === 'string') {
+            btn.textContent = value;
+          } else {
+            btn.innerText = value;
+          }
+        };
+
+        if (!text) {
+          setText('Copy failed');
+          window.setTimeout(function () { setText(original); }, 1200);
+          return;
+        }
+
+        copyToClipboard(text).then(function () {
+          setText('Copied!');
+          window.setTimeout(function () { setText(original); }, 1200);
+        }).catch(function () {
+          setText('Copy failed');
+          window.setTimeout(function () { setText(original); }, 1200);
+        });
+      });
+    });
+  }
+
+  function initPrismThemeButtons() {
+    var buttons = toArray(document.querySelectorAll('#themeBtn, [data-theme-toggle]'));
+    if (buttons.length === 0) {
+      return;
+    }
+
+    var dark = false;
+
+    function findPrismLink() {
+      return toArray(document.querySelectorAll('link[rel="stylesheet"]')).find(function (link) {
+        return /\/themes\/prism.*\.css$/.test((link && link.href) || '');
+      }) || null;
+    }
+
+    function updateButtonLabels() {
+      var label = dark ? 'Theme: Dark' : 'Theme';
+      buttons.forEach(function (btn) {
+        if (!btn) {
+          return;
+        }
+
+        if (typeof btn.textContent === 'string') {
+          btn.textContent = label;
+        } else {
+          btn.innerText = label;
+        }
+      });
+    }
+
+    buttons.forEach(function (btn) {
+      if (!btn || btn.getAttribute('data-theme-bound') === 'true') {
+        return;
+      }
+
+      btn.setAttribute('data-theme-bound', 'true');
+      btn.addEventListener('click', function () {
+        var link = findPrismLink();
+        if (!link) {
+          return;
+        }
+
+        dark = !dark;
+        link.href = dark
+          ? 'https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism-tomorrow.min.css'
+          : 'https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css';
+        updateButtonLabels();
+      });
+    });
+
+    updateButtonLabels();
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var tabsets = toArray(document.querySelectorAll('[data-report-tabs]'));
     tabsets.forEach(function (tabset) {
@@ -2102,11 +2268,13 @@ function New-AnalyzerHtml {
     });
 
     initCopyButtons(document);
+    initCodeCardCopyButtons(document);
+    initPrismThemeButtons();
   });
 })();
 </script>
 '@
-    $tail = "</main>$tabsScript</body></html>"
+    $tail = "</main>$prismAssets$tabsScript</body></html>"
 
     $htmlBuilder = [System.Text.StringBuilder]::new()
     foreach ($segment in @($head, $navHtml, $tail)) {
