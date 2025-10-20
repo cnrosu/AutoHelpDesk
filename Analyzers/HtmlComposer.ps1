@@ -227,7 +227,6 @@ function ConvertTo-HtmlSafe {
 
 function New-CodeBlockHtml {
     param(
-        [ValidateSet('powershell', 'cmd', 'bash', 'python')]
         [string]$Language = 'powershell',
         [string]$Code,
         [string]$Caption = $null
@@ -241,24 +240,28 @@ function New-CodeBlockHtml {
         $captionHtml = ConvertTo-HtmlSafe -Text $Caption
     }
 
-    $languageKey = if ($Language) { $Language.ToLowerInvariant() } else { 'powershell' }
-    $languageLabel = switch ($languageKey) {
+    $languageKey = if ($Language) { $Language.ToString().Trim() } else { 'powershell' }
+    if ([string]::IsNullOrWhiteSpace($languageKey)) { $languageKey = 'powershell' }
+    $languageLower = $languageKey.ToLowerInvariant()
+    $languageToken = [regex]::Replace($languageLower, '[^a-z0-9\+\-#]+', '')
+    if ([string]::IsNullOrWhiteSpace($languageToken)) { $languageToken = 'code' }
+    $languageLabel = switch ($languageToken) {
         'powershell' { 'PowerShell' }
         'cmd'        { 'Command Prompt' }
         'bash'       { 'Bash' }
         'python'     { 'Python' }
-        default      { $Language }
+        default      { if ($Language) { $Language } else { 'Code' } }
     }
 
-    $idPrefix = if ($languageKey -eq 'powershell') { 'psCode' } else { 'codeBlock' }
+    $idPrefix = if ($languageToken -eq 'powershell') { 'psCode' } else { 'codeBlock' }
     $codeId = '{0}{1}' -f $idPrefix, $script:HtmlComposerCodeCardSequence
 
-    $preClasses = @("language-$languageKey")
-    if ($languageKey -eq 'powershell') {
+    $preClasses = @("language-$languageToken")
+    if ($languageToken -eq 'powershell') {
         $preClasses += 'line-numbers'
     }
     $preClassAttribute = if ($preClasses.Count -gt 0) { " class='" + ($preClasses -join ' ') + "'" } else { '' }
-    $codeClass = "language-$languageKey"
+    $codeClass = "language-$languageToken"
 
     $captionFragment = if ($captionHtml) { "<span class='code-caption'>$captionHtml</span>" } else { '' }
     if (-not $languageLabel) { $languageLabel = $Language }
@@ -1646,7 +1649,7 @@ function New-AnalyzerHtml {
 
     $headParts = @(
         '<!doctype html><html><head><meta charset="utf-8"><title>Device Health Report</title>',
-        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">',
+        '<link id="prismTheme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">',
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/plugins/line-numbers/prism-line-numbers.min.css">',
         '<link rel="stylesheet" href="styles/device-health-report.css"></head><body class="page report-page"><main class="report-main">'
     )
