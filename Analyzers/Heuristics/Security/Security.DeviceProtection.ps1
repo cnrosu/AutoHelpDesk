@@ -230,19 +230,23 @@ function Invoke-SecurityAttackSurfaceChecks {
                         $commandLines.Add("Add-MpPreference -AttackSurfaceReductionRules_Ids '{0}' -AttackSurfaceReductionRules_Actions Enabled" -f $id.ToUpperInvariant())
                     }
                     $remediationIntro = if ($impactClause) { $impactClause } else { 'Enable this rule in block mode to close the gap.' }
+                    $remediationScript = $null
                     if ($commandLines.Count -gt 0) {
-                        $remediation = [System.String]::Join("`n", @(
-                            $remediationIntro,
-                            '',
-                            '```powershell',
-                            ($commandLines.ToArray() -join "`n"),
-                            '```'
-                        ))
-                    } else {
-                        $remediation = $remediationIntro
+                        $remediationScript = $commandLines.ToArray() -join "`n"
                     }
 
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $titleLabel -Evidence ($evidenceLines -join "`n") -Subcategory 'Attack Surface Reduction' -Explanation $explanation -Remediation $remediation
+                    $issueArguments = @{
+                        CategoryResult = $CategoryResult
+                        Severity        = 'high'
+                        Title           = $titleLabel
+                        Evidence        = ($evidenceLines -join "`n")
+                        Subcategory     = 'Attack Surface Reduction'
+                        Explanation     = $explanation
+                        Remediation     = $remediationIntro
+                    }
+                    if ($remediationScript) { $issueArguments.RemediationScript = $remediationScript }
+
+                    Add-CategoryIssue @issueArguments
                 }
             }
 
