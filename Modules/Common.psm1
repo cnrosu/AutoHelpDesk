@@ -12,6 +12,30 @@ if (-not ([System.Collections.Specialized.OrderedDictionary].GetMethods() | Wher
   }
 }
 
+# Some collectors return a single error string instead of an array. Several analyzer helpers
+# call .ToArray() on evidence collections, so add a lightweight shim that wraps strings in a
+# single-element array to keep those helpers resilient without special casing every call site.
+$stringHasToArray = $false
+try {
+  $stringTypeData = Get-TypeData -TypeName System.String -ErrorAction Stop
+  if ($stringTypeData -and $stringTypeData.PSObject.Properties['Members']) {
+    $existingToArray = $stringTypeData.Members['ToArray']
+    if ($existingToArray) { $stringHasToArray = $true }
+  }
+} catch {
+  $stringHasToArray = $false
+}
+
+if (-not $stringHasToArray) {
+  try {
+    Update-TypeData -TypeName System.String -MemberType ScriptMethod -MemberName ToArray -Value {
+      return ,([string]$this)
+    } -ErrorAction Stop
+  } catch {
+    # Ignore registration failures so module import proceeds normally.
+  }
+}
+
 $script:SeverityOrder = @('info','warning','low','medium','high','critical')
 
 $script:RegexSplitWhitespaceComma = [System.Text.RegularExpressions.Regex]::new(
