@@ -395,6 +395,44 @@ details.report-card[open] > summary {
   gap: var(--space-sm);
 }
 
+.report-remediation__body .rem-step {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.report-remediation__body .rem-step h4 {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+.report-remediation__body .rem-step p {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+}
+
+.rem-text {
+  font-size: 0.95rem;
+}
+
+.rem-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.report-remediation__body .rem-step--code {
+  gap: 0.6rem;
+}
+
+.report-remediation__body .rem-step--code .code-card {
+  margin: 0;
+}
+
 .report-remediation__text {
   margin: 0;
   color: var(--color-text-primary);

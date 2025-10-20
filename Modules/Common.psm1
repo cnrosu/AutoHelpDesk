@@ -712,14 +712,285 @@ function Test-IsSafeRemediationLink {
   return $false
 }
 
-function ConvertTo-RemediationHtml {
+function Resolve-RemediationTemplateText {
+  param(
+    [string]$Value,
+    [hashtable]$Context
+  )
+
+  if ([string]::IsNullOrEmpty($Value)) { return '' }
+
+  $replacement = {
+    param($match)
+    $key = $match.Groups[1].Value
+    if (-not $key) { return '' }
+    if (-not $Context) { return '' }
+    if (-not ($Context.ContainsKey($key))) { return '' }
+
+    $raw = $Context[$key]
+    if ($null -eq $raw) { return '' }
+    return [string]$raw
+  }
+
+  $pattern = '\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}'
+  return [regex]::Replace([string]$Value, $pattern, $replacement)
+}
+
+function Test-RemediationStepCondition {
+  param(
+    $Condition,
+    [hashtable]$Context
+  )
+
+  if ($null -eq $Condition) { return $true }
+
+  if ($Condition -is [bool]) { return [bool]$Condition }
+  if ($Condition -is [int] -or $Condition -is [double]) { return [bool]$Condition }
+
+  if ($Condition -is [string]) {
+    $expr = $Condition.Trim()
+    if (-not $expr) { return $false }
+    if ($expr.IndexOf([char]';') -ge 0 -or $expr.IndexOf([char]'`n') -ge 0 -or $expr.IndexOf([char]'`r') -ge 0) {
+      return $false
+    }
+    if ($expr -match '[^0-9A-Za-z_\.\-!&|=<>\(\)\s\'\"]') { return $false }
+
+    $normalized = $expr
+    $normalized = $normalized -replace '!=', ' -ne '
+    $normalized = $normalized -replace '==', ' -eq '
+    $normalized = $normalized -replace '&&', ' -and '
+    $normalized = $normalized -replace '\|\|', ' -or '
+    $normalized = [regex]::Replace($normalized, '(?<![<>=!])!', ' -not ')
+
+    $contextTable = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($Context) {
+      foreach ($key in $Context.Keys) {
+        $contextTable[$key] = $Context[$key]
+      }
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    $token = [System.Text.StringBuilder]::new()
+    $inSingle = $false
+    $inDouble = $false
+    $flushToken = {
+      if ($token.Length -eq 0) { return }
+      $word = $token.ToString()
+      $token.Clear()
+      if (-not $word) { return }
+
+      $lower = $word.ToLowerInvariant()
+      switch ($lower) {
+        '-and' { [void]$builder.Append(' -and '); return }
+        '-or'  { [void]$builder.Append(' -or '); return }
+        '-not' { [void]$builder.Append(' -not '); return }
+        'and'  { [void]$builder.Append(' -and '); return }
+        'or'   { [void]$builder.Append(' -or '); return }
+        'not'  { [void]$builder.Append(' -not '); return }
+        'true' { [void]$builder.Append('$true'); return }
+        'false' { [void]$builder.Append('$false'); return }
+        'eq'   { [void]$builder.Append(' -eq '); return }
+        'ne'   { [void]$builder.Append(' -ne '); return }
+        'gt'   { [void]$builder.Append(' -gt '); return }
+        'ge'   { [void]$builder.Append(' -ge '); return }
+        'lt'   { [void]$builder.Append(' -lt '); return }
+        'le'   { [void]$builder.Append(' -le '); return }
+      }
+
+      $numeric = $null
+      if ([double]::TryParse($word, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$numeric)) {
+        [void]$builder.Append($numeric.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+        return
+      }
+
+      if ($contextTable.ContainsKey($word)) {
+        $escaped = $word.Replace("'", "''")
+        [void]$builder.Append("(`$ctx['$escaped'])")
+      } else {
+        [void]$builder.Append('$null')
+      }
+    }
+
+    for ($i = 0; $i -lt $normalized.Length; $i++) {
+      $ch = $normalized[$i]
+      if ($ch -eq '\'') {
+        & $flushToken
+        $inSingle = -not $inSingle
+        [void]$builder.Append($ch)
+        continue
+      }
+      if ($ch -eq '"') {
+        & $flushToken
+        $inDouble = -not $inDouble
+        [void]$builder.Append($ch)
+        continue
+      }
+
+      if (-not $inSingle -and -not $inDouble) {
+        if ([char]::IsLetterOrDigit($ch) -or $ch -eq '_' -or $ch -eq '.' -or $ch -eq '-') {
+          [void]$token.Append($ch)
+          continue
+        }
+
+        & $flushToken
+        [void]$builder.Append($ch)
+        continue
+      }
+
+      [void]$builder.Append($ch)
+    }
+
+    & $flushToken
+    $psExpression = $builder.ToString()
+    if ([string]::IsNullOrWhiteSpace($psExpression)) { return $false }
+
+    try {
+      $script = [scriptblock]::Create($psExpression)
+      $ctx = $contextTable
+      $result = $script.InvokeWithContext($null, @{ ctx = $ctx }, $null)
+      return [bool]$result
+    } catch {
+      return $false
+    }
+  }
+
+  return [bool]$Condition
+}
+
+function ConvertTo-StructuredRemediationHtml {
+  param(
+    [System.Collections.IEnumerable]$Steps,
+    [hashtable]$Context
+  )
+
+  if (-not $Steps) { return '' }
+
+  $contextTable = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+  if ($Context) {
+    foreach ($key in $Context.Keys) {
+      $contextTable[$key] = $Context[$key]
+    }
+  }
+
+  $codeFunction = $null
+  try {
+    $codeFunction = Get-Command -Name New-CodeBlockHtml -CommandType Function -ErrorAction Stop
+  } catch {
+    $codeFunction = $null
+  }
+
+  $builder = [System.Text.StringBuilder]::new()
+  $index = 0
+  foreach ($rawStep in $Steps) {
+    $index++
+    if (-not $rawStep) { continue }
+
+    $step = $rawStep
+    if (-not ($step -is [psobject])) { $step = [pscustomobject]$rawStep }
+
+    if ($step.PSObject.Properties['if']) {
+      if (-not (Test-RemediationStepCondition -Condition $step.if -Context $contextTable)) { continue }
+    }
+
+    $type = 'text'
+    if ($step.PSObject.Properties['type'] -and $step.type) {
+      try {
+        $type = [string]$step.type
+      } catch {
+        $type = 'text'
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($type)) { $type = 'text' }
+    try { $type = $type.ToLowerInvariant() } catch { $type = 'text' }
+
+    $title = $null
+    if ($step.PSObject.Properties['title']) {
+      $title = Resolve-RemediationTemplateText -Value $step.title -Context $contextTable
+    }
+
+    $content = $null
+    if ($step.PSObject.Properties['content']) {
+      $content = Resolve-RemediationTemplateText -Value $step.content -Context $contextTable
+    }
+
+    $classList = @('rem-step')
+    if ($type) { $classList += "rem-step--$type" }
+    $classAttr = ($classList -join ' ')
+    [void]$builder.Append("<div class='$classAttr'>")
+
+    if (-not [string]::IsNullOrWhiteSpace($title)) {
+      $encodedTitle = Encode-Html $title
+      [void]$builder.Append("<h4>$encodedTitle</h4>")
+    }
+
+    switch ($type) {
+      'code' {
+        if ([string]::IsNullOrWhiteSpace($content)) { break }
+
+        $language = 'powershell'
+        if ($step.PSObject.Properties['lang']) {
+          $langCandidate = Resolve-RemediationTemplateText -Value $step.lang -Context $contextTable
+          if (-not [string]::IsNullOrWhiteSpace($langCandidate)) { $language = $langCandidate }
+        }
+
+        $codeBlockHtml = $null
+        if ($codeFunction) {
+          try {
+            $codeBlockHtml = New-CodeBlockHtml -Language $language -Code $content
+          } catch {
+            $codeBlockHtml = $null
+          }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($codeBlockHtml)) {
+          $codeId = 'remediation-' + ([guid]::NewGuid().ToString('N'))
+          $encodedCode = Encode-Html $content
+          $langKey = if ($language) { $language.ToString().ToLowerInvariant() } else { 'powershell' }
+          $langClass = [regex]::Replace($langKey, "[^a-z0-9\-]+", '')
+          if ([string]::IsNullOrWhiteSpace($langClass)) { $langClass = 'code' }
+          $preClasses = if ($langClass -eq 'powershell') { " class='line-numbers'" } else { '' }
+          $copyLabel = Encode-Html 'Copy'
+          $successLabel = Encode-Html 'Copied!'
+          $failureLabel = Encode-Html 'Copy failed'
+          $badge = if ($language) { $language } else { 'Code' }
+          $badgeLabel = Encode-Html $badge
+          $toolbar = "<div class='code-toolbar' role='toolbar' aria-label='Code toolbar'><div class='code-toolbar__meta'><span class='lang-badge'>$badgeLabel</span></div><div class='code-actions'><button class='btn' type='button' data-copy='#$codeId' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$copyLabel</button></div></div>"
+          [void]$builder.Append("<div class='code-card'>$toolbar<pre$preClasses><code class='language-$langClass' id='$codeId'>$encodedCode</code></pre></div>")
+        } else {
+          [void]$builder.Append($codeBlockHtml)
+        }
+      }
+      'note' {
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+          $encoded = Encode-Html $content
+          $encoded = [regex]::Replace($encoded, '\\r?\\n', '<br>')
+          [void]$builder.Append("<p class='rem-note'>$encoded</p>")
+        }
+      }
+      default {
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+          $encoded = Encode-Html $content
+          $encoded = [regex]::Replace($encoded, '\\r?\\n', '<br>')
+          [void]$builder.Append("<p class='rem-text report-remediation__text'>$encoded</p>")
+        }
+      }
+    }
+
+    [void]$builder.Append('</div>')
+  }
+
+  return $builder.ToString()
+}
+
+function ConvertTo-LegacyRemediationHtml {
   param([string]$Text)
 
   if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
 
   $builder = [System.Text.StringBuilder]::new()
   $cursor = 0
-  $pattern = '\[([^\]]+)\]\(([^)]+)\)'
+  $pattern = '\\[([^\\]]+)\\]\\(([^)]+)\\)'
   foreach ($match in [regex]::Matches($Text, $pattern)) {
     if (-not $match) { continue }
 
@@ -751,7 +1022,32 @@ function ConvertTo-RemediationHtml {
     $result = [regex]::Replace($result, '\\r?\\n', '<br>')
   }
 
-  return $result
+  if ([string]::IsNullOrWhiteSpace($result)) { return '' }
+  return "<p class='report-remediation__text'>$result</p>"
+}
+
+function ConvertTo-RemediationHtml {
+  param(
+    [string]$Text,
+    [hashtable]$Context
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+
+  $trimmed = $Text.Trim()
+  if ($trimmed.StartsWith('[')) {
+    try {
+      $parsed = $trimmed | ConvertFrom-Json -Depth 10
+      if ($parsed -is [System.Collections.IEnumerable]) {
+        $structured = ConvertTo-StructuredRemediationHtml -Steps $parsed -Context $Context
+        if (-not [string]::IsNullOrWhiteSpace($structured)) { return $structured }
+      }
+    } catch {
+      # Ignore JSON parsing failures and fall back to legacy behaviour.
+    }
+  }
+
+  return ConvertTo-LegacyRemediationHtml -Text $Text
 }
 
 function New-IssueCardHtml {
@@ -767,6 +1063,46 @@ function New-IssueCardHtml {
   $resolvedTitle = $null
   $troubleshootingHtml = $null
   $messageValue = if ($null -ne $Entry.Message) { $Entry.Message } else { '' }
+
+  $remediationContext = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $addContextValue = {
+    param($name, $value)
+    if (-not $name) { return }
+    if ($remediationContext.ContainsKey($name)) { return }
+    $remediationContext[$name] = $value
+  }
+  $addContextSource = {
+    param($source)
+    if (-not $source) { return }
+    if ($source -is [System.Collections.IDictionary]) {
+      foreach ($key in $source.Keys) {
+        if (-not $remediationContext.ContainsKey($key)) {
+          $remediationContext[$key] = $source[$key]
+        }
+      }
+      return
+    }
+    $props = @()
+    try { $props = $source | Get-Member -MemberType NoteProperty,AliasProperty -ErrorAction Stop } catch { $props = @() }
+    foreach ($prop in $props) {
+      $name = $prop.Name
+      if (-not $remediationContext.ContainsKey($name)) {
+        try { $remediationContext[$name] = $source.$name } catch { }
+      }
+    }
+  }
+
+  foreach ($propName in @('Area', 'Severity', 'Title', 'Message', 'RenderTitle', 'CheckId')) {
+    if ($Entry.PSObject.Properties[$propName]) {
+      try { & $addContextValue $propName $Entry.$propName } catch { }
+    }
+  }
+
+  if ($Entry.PSObject.Properties['Data']) { & $addContextSource $Entry.Data }
+  if ($Entry.PSObject.Properties['Payload']) { & $addContextSource $Entry.Payload }
+  if ($Entry.PSObject.Properties['Meta']) { & $addContextSource $Entry.Meta }
+  if ($Entry.PSObject.Properties['Context']) { & $addContextSource $Entry.Context }
+  if ($Entry.PSObject.Properties['RemediationContext']) { & $addContextSource $Entry.RemediationContext }
 
   $tshootCommand = $null
   try { $tshootCommand = Get-Command -Name Get-TroubleshootingForCard -ErrorAction Stop } catch { $tshootCommand = $null }
@@ -789,7 +1125,10 @@ function New-IssueCardHtml {
         try { $tsCard = $tsCardOriginal | Select-Object * } catch { $tsCard = $tsCardOriginal }
       }
 
-      $bind = @{}
+      $bind = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+      foreach ($key in $remediationContext.Keys) {
+        $bind[$key] = $remediationContext[$key]
+      }
       $addSource = {
         param($source)
         if (-not $source) { return }
@@ -858,6 +1197,11 @@ function New-IssueCardHtml {
       if ($tsHtmlCommand -and $tsCard.troubleshooting) {
         try { $troubleshootingHtml = New-TroubleshootingHtml -Card $tsCard } catch { $troubleshootingHtml = $null }
       }
+      foreach ($key in $bind.Keys) {
+        if (-not $remediationContext.ContainsKey($key)) {
+          $remediationContext[$key] = $bind[$key]
+        }
+      }
     }
   }
 
@@ -894,8 +1238,10 @@ function New-IssueCardHtml {
     [void]$remediationBuilder.Append("<details class='report-remediation'><summary class='report-remediation__summary'>Remediation</summary><div class='report-remediation__body'>")
 
     if ($hasRemediation) {
-      $remediationHtml = ConvertTo-RemediationHtml -Text $Entry.Remediation
-      [void]$remediationBuilder.Append("<p class='report-remediation__text'>$remediationHtml</p>")
+      $remediationHtml = ConvertTo-RemediationHtml -Text $Entry.Remediation -Context $remediationContext
+      if (-not [string]::IsNullOrWhiteSpace($remediationHtml)) {
+        [void]$remediationBuilder.Append($remediationHtml)
+      }
     }
 
     if ($hasRemediationScript) {
