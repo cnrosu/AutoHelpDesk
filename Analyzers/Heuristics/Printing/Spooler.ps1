@@ -16,6 +16,7 @@ function Invoke-PrintingSpoolerChecks {
     $status = if ($Spooler.Status) { [string]$Spooler.Status } else { 'Unknown' }
     $startMode = if ($Spooler.StartMode) { [string]$Spooler.StartMode } else { $Spooler.StartType }
     $statusNorm = Normalize-PrintingServiceState -Value $status
+    $queueRemediation = Get-PrintingQueueRemediation
 
     Add-CategoryCheck -CategoryResult $Result -Name 'Spooler status' -Status $status -Details ("StartMode: {0}" -f $startMode)
 
@@ -27,5 +28,5 @@ function Invoke-PrintingSpoolerChecks {
     }
 
     $note = if ($IsWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing will remain offline until the spooler is started.' }
-    Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler not running, exposing printing security and reliability risks until resolved.' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service'
+    Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler not running, exposing printing security and reliability risks until resolved.' -Evidence ("Status: {0}; StartMode: {1}; Note: {2}" -f $status, $startMode, $note) -Subcategory 'Spooler Service' -Remediation $queueRemediation
 }

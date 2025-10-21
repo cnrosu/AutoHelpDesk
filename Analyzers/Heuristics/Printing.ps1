@@ -69,6 +69,8 @@ function Invoke-PrintingHeuristics {
             StaleJobs    = $inventorySummary.StuckJobs.Count
         })
 
+        $queueRemediation = Get-PrintingQueueRemediation
+
         if ($inventorySummary.Printers.Count -gt 0 -and $inventorySummary.OfflinePrinters.Count -eq 0) {
             Add-CategoryNormal -CategoryResult $result -Title ('Printers online ({0})' -f $inventorySummary.Printers.Count) -Subcategory 'Printers'
         }
@@ -275,7 +277,7 @@ function Invoke-PrintingHeuristics {
             $offlineSeverity = if ($offlineHasHighSeverity) { 'high' } elseif ($offlineHasMediumSeverity) { 'medium' } else { 'low' }
             $offlineEvidence = "Offline queues: {0}" -f ($offlineSummary.ToArray() -join ', ')
             $offlineQueues = @($queueArray | Where-Object { $_.Offline })
-            Add-CategoryIssue -CategoryResult $result -Severity $offlineSeverity -Title 'Printer queues offline, so print jobs cannot reach the device.' -Evidence $offlineEvidence -Subcategory 'Printing' -Data @{
+            Add-CategoryIssue -CategoryResult $result -Severity $offlineSeverity -Title 'Printer queues offline, so print jobs cannot reach the device.' -Evidence $offlineEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
                 Area = 'Printing'
                 Kind = 'PrintQueueOutage'
                 Queues = $offlineQueues
@@ -285,7 +287,7 @@ function Invoke-PrintingHeuristics {
         if ($stuckJobEntries.Count -gt 0) {
             $stuckSeverity = if ($stuckHasHighSeverity) { 'high' } elseif ($stuckHasMediumSeverity) { 'medium' } else { 'low' }
             $stuckEvidence = "Stuck jobs: {0}" -f ($stuckJobSummary.ToArray() -join '; ')
-            Add-CategoryIssue -CategoryResult $result -Severity $stuckSeverity -Title 'Stuck print jobs delaying documents, so users wait hours for output.' -Evidence $stuckEvidence -Subcategory 'Printing' -Data @{
+            Add-CategoryIssue -CategoryResult $result -Severity $stuckSeverity -Title 'Stuck print jobs delaying documents, so users wait hours for output.' -Evidence $stuckEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
                 Area = 'Printing'
                 Kind = 'PrintJobs'
                 StuckJobs = $stuckJobEntries.ToArray()
@@ -294,7 +296,7 @@ function Invoke-PrintingHeuristics {
 
         if ($driverEntries.Count -gt 0 -and ($offlineSummary.Count -gt 0 -or $stuckJobEntries.Count -gt 0)) {
             $driverEvidence = "Drivers linked to affected queues: {0}" -f ($driverSummary.ToArray() -join ', ')
-            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Printer driver packages tied to troubled queues, so driver conflicts may disrupt printing.' -Evidence $driverEvidence -Subcategory 'Printing' -Data @{
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Printer driver packages tied to troubled queues, so driver conflicts may disrupt printing.' -Evidence $driverEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
                 Area = 'Printing'
                 Kind = 'PrintDrivers'
                 Drivers = $driverEntries.ToArray()
