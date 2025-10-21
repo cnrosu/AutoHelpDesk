@@ -44,9 +44,9 @@ function Invoke-SecurityTpmChecks {
                 }
             }
             if ($present -eq $false) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'No TPM detected, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmPresent = False.' -Subcategory 'TPM'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'No TPM detected, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmPresent = False.' -Subcategory 'TPM' -Remediation 'Enable TPM 2.0 in BIOS/UEFI; initialize in Windows Security > Device security > Security processor. (Not scriptable if firmware disabled.)'
             } elseif ($ready -eq $false) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'TPM not initialized, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmReady = False.' -Subcategory 'TPM'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'TPM not initialized, so hardware-based key protection is unavailable.' -Evidence 'Get-Tpm reported TpmReady = False.' -Subcategory 'TPM' -Remediation 'Enable TPM 2.0 in BIOS/UEFI; initialize in Windows Security > Device security > Security processor. (Not scriptable if firmware disabled.)'
             } elseif (-not $legacySpecVersion) {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title 'TPM present and ready' -Subcategory 'TPM'
             }
