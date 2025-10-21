@@ -18,10 +18,6 @@ The table is sorted by file path to mirror the repository layout.
 | [Analyzers/Heuristics/AD/SecureChannel.ps1](../Analyzers/Heuristics/AD/SecureChannel.ps1#L30) | Active Directory Health \ Secure Channel | Broken machine secure channel, blocking domain authentication. | 30 |
 | [Analyzers/Heuristics/AD/Time.ps1](../Analyzers/Heuristics/AD/Time.ps1#L118) | Active Directory Health \ Time Synchronization | Domain time misconfigured (manual NTP), so Active Directory cannot control system time. | 118 |
 | [Analyzers/Heuristics/AD/Time.ps1](../Analyzers/Heuristics/AD/Time.ps1#L124) | Active Directory Health \ Time Service | Kerberos/time skew detected (authentication may fail) | 124 |
-| [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L99) | Events \ $logSubcategory | ("{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) | 99 |
-| [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L112) | Events \ $logSubcategory | Group Policy Operational log errors detected, indicating noisy or unhealthy logs. | 112 |
-| [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L116) | Events \ $logSubcategory | ("{0} log shows many errors ({1} in recent sample), indicating noisy or unhealthy logs." -f $logName, $errorCount) | 116 |
-| [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L119) | Events \ $logSubcategory | ("Many warnings in {0} log, indicating noisy or unhealthy logs." -f $logName) | 119 |
 | [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L147) | Events \ Collection | Event log artifact missing, so noisy or unhealthy logs may be hidden. | 147 |
 | [Analyzers/Heuristics/Events/Authentication.ps1](../Analyzers/Heuristics/Events/Authentication.ps1#L231) | Events \ Authentication | $title | 231 |
 | [Analyzers/Heuristics/Events/Authentication.ps1](../Analyzers/Heuristics/Events/Authentication.ps1#L576) | Events \ Authentication | Repeated account lockouts (possibly from another host/session) | 576 |
