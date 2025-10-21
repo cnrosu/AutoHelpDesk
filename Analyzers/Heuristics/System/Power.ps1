@@ -8,6 +8,21 @@ function Invoke-SystemPowerChecks {
 
     Write-HeuristicDebug -Source 'System/Power' -Message 'Starting power configuration checks'
 
+    $uptimeArtifact = Get-AnalyzerArtifact -Context $Context -Name 'uptime'
+    if ($uptimeArtifact) {
+        $uptimePayload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $uptimeArtifact)
+        if ($uptimePayload -and $uptimePayload.PSObject.Properties['Uptime'] -and $uptimePayload.Uptime) {
+            $uptimeSummary = Get-UptimeSummaryFromPayload -Uptime $uptimePayload.Uptime
+            if ($uptimeSummary -and -not $uptimeSummary.HasError) {
+                $hasFastStartupSignals = ($null -ne $uptimeSummary.FastStartupConfigured) -or ($null -ne $uptimeSummary.FastStartupEffective) -or ($null -ne $uptimeSummary.HibernateEnabled) -or ($null -ne $uptimeSummary.HiberfilePresent)
+                if ($hasFastStartupSignals) {
+                    Write-HeuristicDebug -Source 'System/Power' -Message 'Fast Startup evaluated via uptime collector; skipping legacy power heuristic.'
+                    return
+                }
+            }
+        }
+    }
+
     $powerArtifact = Get-AnalyzerArtifact -Context $Context -Name 'power'
     Write-HeuristicDebug -Source 'System/Power' -Message 'Resolved power artifact' -Data ([ordered]@{
         Found = [bool]$powerArtifact

@@ -753,7 +753,7 @@ function Test-RemediationStepCondition {
     if ($expr.IndexOf([char]';') -ge 0 -or $expr.IndexOf([char]'`n') -ge 0 -or $expr.IndexOf([char]'`r') -ge 0) {
       return $false
     }
-    if ($expr -match '[^0-9A-Za-z_\.\-!&|=<>\(\)\s\'\"]') { return $false }
+    if ($expr -match '[^0-9A-Za-z_\.\-!&|=<>\(\)\s''"]') { return $false }
 
     $normalized = $expr
     $normalized = $normalized -replace '!=', ' -ne '
@@ -813,13 +813,13 @@ function Test-RemediationStepCondition {
 
     for ($i = 0; $i -lt $normalized.Length; $i++) {
       $ch = $normalized[$i]
-      if ($ch -eq '\'') {
+      if ($ch -eq "'") {
         & $flushToken
         $inSingle = -not $inSingle
         [void]$builder.Append($ch)
         continue
       }
-      if ($ch -eq '"') {
+      if ($ch -eq [char]34) {
         & $flushToken
         $inDouble = -not $inDouble
         [void]$builder.Append($ch)
@@ -990,7 +990,7 @@ function ConvertTo-LegacyRemediationHtml {
 
   $builder = [System.Text.StringBuilder]::new()
   $cursor = 0
-  $pattern = '\\[([^\\]]+)\\]\\(([^)]+)\\)'
+  $pattern = '\[([^\]]+)\]\(([^)]+)\)'
   foreach ($match in [regex]::Matches($Text, $pattern)) {
     if (-not $match) { continue }
 
