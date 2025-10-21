@@ -87,7 +87,11 @@ function Format-UptimeBoolean {
     param($Value)
 
     if ($null -eq $Value) { return 'Unknown' }
-    return if ($Value) { 'True' } else { 'False' }
+    if ($Value) {
+        return 'True'
+    }
+
+    return 'False'
 }
 
 function ConvertTo-UptimeHumanizedTime {
