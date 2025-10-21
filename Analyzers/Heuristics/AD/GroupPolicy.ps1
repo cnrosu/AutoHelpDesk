@@ -1,3 +1,25 @@
+$script:GroupPolicyRemediation = @'
+Group Policy
+Symptoms: GP event log unreadable; SYSVOL access errors; GP processing failures.
+
+Fix (endpoint)
+
+```powershell
+wevtutil sl "Microsoft-Windows-GroupPolicy/Operational" /e:true
+gpupdate /force
+```
+
+Fix (infra)
+Ensure DCs replicate SYSVOL/NETLOGON; fix DFSR backlog; remove stale GPOs; eliminate WMI filters that fail.
+
+Validate
+
+```powershell
+Get-WinEvent -LogName "Microsoft-Windows-GroupPolicy/Operational" -Max 20
+```
+Run `rsop.msc` to confirm policy results.
+'@
+
 function Add-AdGroupPolicyFindings {
     param(
         [Parameter(Mandatory)]
@@ -48,7 +70,7 @@ function Add-AdGroupPolicyFindings {
         if ($eventSummary) { Add-StringFragment -Builder $evidenceBuilder -Fragment $eventSummary }
     }
     if ($evidenceBuilder.Length -eq 0) { Add-StringFragment -Builder $evidenceBuilder -Fragment 'GPO data unavailable' }
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidenceBuilder.ToString() -Subcategory 'Group Policy'
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidenceBuilder.ToString() -Subcategory 'Group Policy' -Remediation $script:GroupPolicyRemediation
 }
 
 function Add-AdGroupPolicyEventLogFindings {
@@ -62,7 +84,7 @@ function Add-AdGroupPolicyEventLogFindings {
 
     $groupPolicyLog = $EventsPayload.GroupPolicy
     if ($groupPolicyLog.Error) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to read Group Policy event log, so device policy failures may be hidden.' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Unable to read Group Policy event log, so device policy failures may be hidden.' -Evidence $groupPolicyLog.Error -Subcategory 'Group Policy' -Remediation $script:GroupPolicyRemediation
         return
     }
 
@@ -76,7 +98,7 @@ function Add-AdGroupPolicyEventLogFindings {
         }
 
         $evidence = ($sysvolEvidence -join "`n")
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title "Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title "Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy' -Remediation $script:GroupPolicyRemediation
     }
 
     $gpoFailures = $entries | Where-Object { $_.Id -in 1058, 1030, 1502, 1503 }
@@ -88,6 +110,6 @@ function Add-AdGroupPolicyEventLogFindings {
         }
 
         $evidence = ($gpoFailureEvidence -join "`n")
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Group Policy processing failures detected, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Group Policy processing failures detected, so device policies aren't applied." -Evidence $evidence -Subcategory 'Group Policy' -Remediation $script:GroupPolicyRemediation
     }
 }
