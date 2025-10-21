@@ -10,13 +10,16 @@ USAGE:
     .\Device-Report.ps1
     # or specify an existing folder to analyze:
     .\Device-Report.ps1 -InputFolder "C:\Users\Me\AppData\Local\Temp\autohelpdesk\artifacts\20250924_181518"
+    # or skip collection by referencing a previously collected artifact ID under %TEMP%\autohelpdesk\artifacts
+    .\Device-Report.ps1 -AnalyzeOnly 20251021_155602
 
 #>
 
 [CmdletBinding()]
 param(
   [string]$OutRoot = (Join-Path -Path $env:TEMP -ChildPath 'autohelpdesk\artifacts'),
-  [string]$InputFolder # optional: analyze an existing folder without collecting
+  [string]$InputFolder, # optional: analyze an existing folder without collecting
+  [string]$AnalyzeOnly  # optional: skip collection by targeting an existing artifact ID under OutRoot
 )
 
 function Test-AnsiOutputSupport {
@@ -70,6 +73,11 @@ function Assert-Admin {
 }
 Assert-Admin
 
+if ($AnalyzeOnly -and $InputFolder) {
+  Write-Error 'Specify either -AnalyzeOnly or -InputFolder, not both.'
+  exit 1
+}
+
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $here
 $collectScript = Join-Path $repoRoot "Collectors/Collect-All.ps1"
@@ -80,7 +88,20 @@ if (-not (Test-Path $analyzeScript)) {
   exit 1
 }
 
-if ($InputFolder) {
+if ($AnalyzeOnly) {
+  $candidatePath = $AnalyzeOnly
+  if (-not ([System.IO.Path]::IsPathRooted($candidatePath) -or $candidatePath -match '[\\/]')) {
+    $candidatePath = Join-Path $OutRoot $AnalyzeOnly
+  }
+
+  if (-not (Test-Path $candidatePath)) {
+    Write-Error "AnalyzeOnly artifact not found: $candidatePath"
+    exit 1
+  }
+
+  $target = (Resolve-Path $candidatePath).ProviderPath
+  Write-Host "Skipping collection. Using artifact: $target"
+} elseif ($InputFolder) {
   if (-not (Test-Path $InputFolder)) {
     Write-Error "InputFolder not found: $InputFolder"
     exit 1
