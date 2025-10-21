@@ -300,14 +300,6 @@ function Invoke-SystemUptimeFastStartup {
         return
     }
 
-    $severity = if ($fastStartupEffective -eq $true) { 'high' } else { 'info' }
-    $title = if ($severity -eq 'high') { 'Fast Startup is enabled: Shutdown does not cold boot' } else { 'Fast Startup is inactive, so shutdown performs a cold boot' }
-    $explanation = if ($severity -eq 'high') {
-        'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.'
-    } else {
-        'Fast Startup is inactive, so shutting down already clears kernel state for this device.'
-    }
-
     $evidenceLines = New-Object System.Collections.Generic.List[string]
     $evidenceLines.Add("FastStartupEffective: $(Format-UptimeBoolean $fastStartupEffective)") | Out-Null
     $evidenceLines.Add("FastStartupConfigured: $(Format-UptimeBoolean $fastStartupConfigured)") | Out-Null
@@ -318,27 +310,38 @@ function Invoke-SystemUptimeFastStartup {
         $evidenceLines.Add('Fast Startup is configured but hibernation support is unavailable, so the feature is inert.') | Out-Null
     }
 
-    $signals = [ordered]@{
-        FastStartupEffective = $fastStartupEffective
-        FastStartupConfigured = $fastStartupConfigured
-        HibernateEnabled = $hibernateEnabled
-        HiberfilePresent = $hiberfilePresent
+    if ($fastStartupEffective -ne $true) {
+        $evidenceLines.Insert(0, 'Fast Startup signals indicate shutdown is already performing a cold boot.') | Out-Null
     }
 
-    $data = [ordered]@{
-        BusinessImpact  = if ($severity -eq 'high') { 'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.' } else { 'Fast Startup signals indicate shutdown is already performing a cold boot.' }
-        Signals         = $signals
-    }
+    $evidenceArray = $evidenceLines.ToArray()
 
-    if ($severity -eq 'high') {
+    if ($fastStartupEffective -eq $true) {
+        $title = 'Fast Startup is enabled: Shutdown does not cold boot'
+        $explanation = 'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.'
+        $signals = [ordered]@{
+            FastStartupEffective = $fastStartupEffective
+            FastStartupConfigured = $fastStartupConfigured
+            HibernateEnabled = $hibernateEnabled
+            HiberfilePresent = $hiberfilePresent
+        }
+
+        $data = [ordered]@{
+            BusinessImpact = 'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.'
+            Signals        = $signals
+        }
+
         $data['Recommendations'] = @(
             'Disable Fast Startup so Shutdown performs a cold boot.',
             'Schedule a weekly Restart policy to refresh kernel state.',
             'Communicate to users: use Restart after driver/Windows updates.'
         )
-    }
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Explanation $explanation -Evidence ($evidenceLines.ToArray()) -Subcategory 'Fast Startup' -Data $data
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Explanation $explanation -Evidence $evidenceArray -Subcategory 'Fast Startup' -Data $data
+    } else {
+        $title = 'Fast Startup is inactive, so shutdown performs a cold boot.'
+        Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidenceArray -Subcategory 'Fast Startup'
+    }
 }
 
 function Invoke-SystemLongUptime {
