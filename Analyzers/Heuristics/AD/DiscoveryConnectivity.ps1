@@ -1,3 +1,42 @@
+$script:AdDiscoveryConnectivityRemediation = @'
+Active Directory Health
+DNS Discovery / Discovery / Connectivity / SYSVOL
+
+Symptoms (cards): SRV records not resolvable; no DC candidates; can't reach DC ports; SYSVOL/NETLOGON unreachable.
+Triage
+
+Verify domain suffix & DNS:
+
+```powershell
+$domain = (Get-CimInstance Win32_ComputerSystem).Domain
+Resolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$domain
+Resolve-DnsName $domain
+Test-NetConnection -ComputerName (Get-ADDomainController -Discover -ErrorAction SilentlyContinue).HostName -Port 389,445,88,135,3268
+```
+
+Check secure channel & time (see below).
+Fix
+
+Point client DNS to AD DCs only (no public resolvers on domain members):
+
+```powershell
+Get-DnsClientServerAddress -AddressFamily IPv4 |
+  Where-Object { $_.ServerAddresses -notcontains '10.x.x.x' } |
+  ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses @('10.x.x.x','10.y.y.y') }
+```
+
+Restore SYSVOL access:
+\\<domain>\SYSVOL should open; if not, check DFS Namespace/DFS Replication service state on DCs and site connectivity.
+
+Firewall in path: ensure branch firewalls allow Kerberos/LDAP/SMB to DCs.
+Validate
+
+```powershell
+nltest /dsgetdc:<yourdomain>
+Test-Path \$env:USERDNSDOMAIN\SYSVOL
+```
+'@
+
 function Add-AdDiscoveryFindings {
     param(
         [Parameter(Mandatory)]
@@ -53,7 +92,7 @@ function Add-AdDiscoveryFindings {
         $evidence = ($srvErrors | ForEach-Object {
                 if ($_.Error) { "{0}: {1}" -f $_.Query, $_.Error } else { "{0}: no records" -f $_.Query }
             }) -join '; '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
             Area = 'AD/DiscoveryConnectivity'
             Kind = 'SrvLookup'
             Discovery = @{
@@ -77,7 +116,7 @@ function Add-AdDiscoveryFindings {
         }
         $evidenceText = $evidenceBuilder.ToString()
         $nltestEvidence = if ($candidates -and $candidates.Count -gt 0) { $candidates -join ', ' } else { $evidenceText }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No reachable DC candidates were discovered.' -Evidence $nltestEvidence -Subcategory 'Discovery' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No reachable DC candidates were discovered.' -Evidence $nltestEvidence -Subcategory 'Discovery' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
             Area = 'AD/DiscoveryConnectivity'
             Kind = 'NltestDiscovery'
             Discovery = @{
@@ -184,7 +223,7 @@ function Add-AdConnectivityFindings {
     $allPortsTested = $portMap.Count -gt 0
     if ($Candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
         $evidenceText = ($portMap.Keys | Sort-Object) -join ', '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Connectivity' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Connectivity' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
             Area = 'AD/DiscoveryConnectivity'
             Kind = 'PortReachability'
             Connectivity = @{
@@ -201,7 +240,7 @@ function Add-AdConnectivityFindings {
 
     if ($sharesFailingHosts.Count -gt 0) {
         $sharesEvidence = ($sharesFailingHosts | Sort-Object -Unique) -join ', '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence $sharesEvidence -Subcategory 'SYSVOL' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence $sharesEvidence -Subcategory 'SYSVOL' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
             Area = 'AD/DiscoveryConnectivity'
             Kind = 'SysvolNetlogon'
             Sysvol = @{

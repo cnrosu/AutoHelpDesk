@@ -8,10 +8,6 @@ The table is sorted by file path to mirror the repository layout.
 | File | Card | Issue title | Line |
 | --- | --- | --- | --- |
 | [Analyzers/Heuristics/AD.ps1](../Analyzers/Heuristics/AD.ps1#L39) | Active Directory Health \ Collection | AD health data unavailable, so Active Directory reachability is unknown. | 39 |
-| [Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1](../Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1#L56) | Active Directory Health \ DNS Discovery | AD SRV records not resolvable, so Active Directory is unreachable. | 56 |
-| [Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1](../Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1#L80) | Active Directory Health \ Discovery | No reachable DC candidates were discovered. | 80 |
-| [Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1](../Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1#L187) | Active Directory Health \ Connectivity | Cannot reach any DC on required ports, so Active Directory is unreachable. | 187 |
-| [Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1](../Analyzers/Heuristics/AD/DiscoveryConnectivity.ps1#L204) | Active Directory Health \ SYSVOL | Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs. | 204 |
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L51) | Active Directory Health \ Group Policy | $title | 51 |
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L65) | Active Directory Health \ Group Policy | Unable to read Group Policy event log, so device policy failures may be hidden. | 65 |
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L79) | Active Directory Health \ Group Policy | Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied. | 79 |
