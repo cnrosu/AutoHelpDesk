@@ -141,6 +141,18 @@ function Invoke-SecurityAttackSurfaceChecks {
         $CategoryResult
     )
 
+    $asrMissingTitle = 'ASR policy data missing, so Attack Surface Reduction enforcement is unknown.'
+    $asrMissingExplanation = 'Without ASR telemetry, technicians cannot confirm whether Attack Surface Reduction rules are blocking malicious Office behaviors.'
+    $asrMissingRemediation = @'
+Attack Surface Reduction (ASR) data missing / policy gap
+
+Fix (Intune > Endpoint security > Attack surface reduction): deploy your ASR baseline (Block Office child processes; Block Win32 API calls; etc.).
+Validate
+```powershell
+Get-MpPreference | Select-Object AttackSurfaceReductionRules_Ids, AttackSurfaceReductionRules_Actions
+```
+'@
+
     $asrArtifact = Get-AnalyzerArtifact -Context $Context -Name 'asr'
     Write-HeuristicDebug -Source 'Security' -Message 'Resolved ASR artifact' -Data ([ordered]@{
         Found = [bool]$asrArtifact
@@ -296,10 +308,27 @@ function Invoke-SecurityAttackSurfaceChecks {
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title $title -Evidence ($impactEvidence -join "`n") -Subcategory 'Attack Surface Reduction'
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing.' -Subcategory 'Attack Surface Reduction'
+            $missingEvidence = 'ASR policy payload missing from collector output.'
+            if ($payload -and $payload.Policy -and $payload.Policy.Error) {
+                $missingEvidence = $payload.Policy.Error
+            } elseif ($payload -and $payload.Policy) {
+                $missingEvidence = 'ASR policy payload missing rule data.'
+            }
+
+            $missingIssue = @{
+                CategoryResult = $CategoryResult
+                Severity        = 'high'
+                Title           = $asrMissingTitle
+                Subcategory     = 'Attack Surface Reduction'
+                Explanation     = $asrMissingExplanation
+                Remediation     = $asrMissingRemediation
+            }
+            if ($missingEvidence) { $missingIssue.Evidence = $missingEvidence }
+
+            Add-CategoryIssue @missingIssue
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing.' -Subcategory 'Attack Surface Reduction'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $asrMissingTitle -Subcategory 'Attack Surface Reduction' -Explanation $asrMissingExplanation -Remediation $asrMissingRemediation -Evidence 'ASR collector artifact missing from diagnostics.'
     }
 
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
