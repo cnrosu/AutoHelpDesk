@@ -668,6 +668,21 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($arpEntries.Count -gt 0 -and $gatewayInventory) {
+            $arpCacheSpoofingRemediation = @'
+Immediate containment (endpoint):
+```
+arp -d *
+# Pin default gateway by static ARP (temporary, only for incident containment)
+# netsh interface ipv4 add neighbors "Ethernet" 192.168.1.1 00-11-22-33-44-55
+```
+
+Network fix: Enable DHCP Snooping, Dynamic ARP Inspection on switches; investigate rogue bridges.
+
+Validate
+```
+Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'
+```
+'@
             $gatewayMap = @{}
             $localMacs = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
             $localIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -770,7 +785,7 @@ function Invoke-NetworkHeuristics {
             if ($unexpected.Count -gt 0) {
                 $gatewayText = ($observedGatewayEntries | Where-Object { $_.NormalizedMac -and ($unexpected -contains $_.NormalizedMac) } | ForEach-Object { "{0}→{1}" -f $_.Gateway, $_.NormalizedMac } | Sort-Object)
                 $evidence = if ($gatewayText) { $gatewayText -join '; ' } else { $unexpected -join ', ' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $duplicateGatewayMacs = @()
@@ -786,7 +801,7 @@ function Invoke-NetworkHeuristics {
 
             if ($duplicateGatewayMacs.Count -gt 0) {
                 $evidence = ($duplicateGatewayMacs | ForEach-Object { "{0} used by {1}" -f $_.Mac, ($_.Gateways -join ', ') }) -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $suspiciousOuiMap = @{
@@ -815,7 +830,7 @@ function Invoke-NetworkHeuristics {
 
             if ($suspiciousEntries.Count -gt 0) {
                 $evidence = $suspiciousEntries -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $broadcastEntries = @()
@@ -958,7 +973,7 @@ function Invoke-NetworkHeuristics {
 
             if ($localMacAlerts.Count -gt 0) {
                 $evidence = $localMacAlerts -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $observedGatewayData = New-Object System.Collections.Generic.List[object]
