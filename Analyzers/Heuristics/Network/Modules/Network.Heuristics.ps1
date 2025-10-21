@@ -1359,6 +1359,21 @@ function Invoke-NetworkHeuristics {
     }
 
     $lldpSubcategory = 'Switch Port Mapping'
+    $lldpRemediation = @'
+**Endpoint**
+
+Ensure the LLDP service is available and started:
+
+```powershell
+# Ensure LLDP service available/started (Windows LLDP service: "lldpsvc")
+Set-Service lldpsvc -StartupType Automatic
+Start-Service lldpsvc
+```
+
+**Infrastructure**
+
+Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispatches.
+'@
     $lldpArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-lldp'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-lldp artifact' -Data ([ordered]@{
         Found = [bool]$lldpArtifact
@@ -1383,7 +1398,7 @@ function Invoke-NetworkHeuristics {
         })
 
         if ($neighborCount -eq 0) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
         } else {
             $neighborMap = @{}
             foreach ($neighbor in $lldpNeighbors) {
@@ -1457,7 +1472,7 @@ function Invoke-NetworkHeuristics {
                         if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel -and -not $evidence.Contains('ExpectedPort')) { $evidence['ExpectedLabel'] = [string]$expected.ExpectedLabel }
                         if ($expected.PSObject.Properties['Source'] -and $expected.Source) { $evidence['InventorySource'] = [string]$expected.Source }
 
-                        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory
+                        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory -Remediation $lldpRemediation
                         continue
                     }
 
@@ -1532,15 +1547,15 @@ function Invoke-NetworkHeuristics {
                         elseif ($selectedNeighbor.PSObject.Properties['NeighborPortDescription'] -and $selectedNeighbor.NeighborPortDescription) { $evidence['ObservedPort'] = [string]$selectedNeighbor.NeighborPortDescription }
                         if ($selectedNeighbor.PSObject.Properties['Source'] -and $selectedNeighbor.Source) { $evidence['ObservationSource'] = [string]$selectedNeighbor.Source }
 
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port." -f $alias, $observedDisplay, $expectedDisplay) -Evidence $evidence -Subcategory $lldpSubcategory
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port." -f $alias, $observedDisplay, $expectedDisplay) -Evidence $evidence -Subcategory $lldpSubcategory -Remediation $lldpRemediation
                     }
                 }
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
