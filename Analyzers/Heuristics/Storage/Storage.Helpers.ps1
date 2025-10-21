@@ -1,3 +1,28 @@
+$script:StorageHealthAndSpaceRemediation = @'
+Storage disk health and free space recovery
+
+Checks
+
+```powershell
+Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage
+Get-Volume | Sort SizeRemaining | Ft DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto
+```
+
+Fix
+
+- Degraded disks: replace disk; if USB/NVMe enclosure, update bridge firmware.
+- SMART unavailable: re-run as admin; ensure NVMe/RAID vendor drivers installed.
+- Low space (automatable):
+
+```powershell
+# Clean component store
+Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
+# Temp + recycle bin
+Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+Clear-RecycleBin -Force
+```
+'@
+
 function ConvertTo-StorageArray {
     param($Value)
 
