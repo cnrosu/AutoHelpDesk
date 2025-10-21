@@ -1,3 +1,36 @@
+$script:SecurityFirewallBaselineRemediation = @'
+Security — Windows Firewall
+Profiles disabled / Rule inventory failed / RDP exposed on Public / SMB exposed
+
+Immediate baseline
+
+```powershell
+# Enable all profiles
+Set-NetFirewallProfile -All -Enabled True
+
+# Restrict RDP exposure to Domain/Private; block Public
+Get-NetFirewallRule -DisplayGroup "Remote Desktop" |
+  Set-NetFirewallRule -Profile Domain,Private -Enabled True
+Get-NetFirewallRule -DisplayGroup "Remote Desktop" |
+  Where-Object { $_.Profile -match "Public" } | Disable-NetFirewallRule
+
+# Hygiene: block NetBIOS discovery on Public
+Get-NetFirewallRule | Where-Object { $_.DisplayName -match "NetBIOS|mDNS|LLMNR" } |
+  Where-Object { $_.Profile -match "Public" } | Disable-NetFirewallRule
+
+# Scope SMB to local subnet (example)
+Get-NetFirewallRule | Where-Object { $_.DisplayName -match "File and Printer Sharing" } |
+  Set-NetFirewallRule -RemoteAddress LocalSubnet
+```
+
+Validate
+
+```powershell
+Get-NetFirewallProfile | Format-Table Name,Enabled
+Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Format-Table DisplayName,Profile,Enabled
+```
+'@
+
 function Get-FirewallTokenList {
     param($Value)
 
@@ -1255,14 +1288,14 @@ function Invoke-SecurityFirewallChecks {
             }
 
             if ($disabledProfiles.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ('Firewall profiles disabled: {0}, leaving the system unprotected.' -f ($disabledProfiles -join ', ')) -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation
             } else {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title 'All firewall profiles enabled' -Subcategory 'Windows Firewall'
             }
         } elseif ($firewallPayload -and $firewallPayload.Profiles -and $firewallPayload.Profiles.Error) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Firewall profile query failed, so the network defense posture is unknown.' -Evidence $firewallPayload.Profiles.Error -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Firewall profile query failed, so the network defense posture is unknown.' -Evidence $firewallPayload.Profiles.Error -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation
         }
 
         if ($firewallPayload -and $firewallPayload.Rules) {
@@ -1272,7 +1305,7 @@ function Invoke-SecurityFirewallChecks {
             if ($ruleErrors.Count -gt 0) {
                 $ruleError = $ruleErrors | Select-Object -First 1
                 $errorEvidence = if ($ruleError -and $ruleError.Error) { [string]$ruleError.Error } else { 'Unknown error enumerating firewall rules.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Firewall rule query failed, so Remote Desktop exposure cannot be verified.' -Evidence $errorEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Firewall rule query failed, so Remote Desktop exposure cannot be verified.' -Evidence $errorEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/RdpPublicProfile'
             } else {
                 $rdpRules = [System.Collections.Generic.List[object]]::new()
                 $rdpPublicEvidence = [System.Collections.Generic.List[string]]::new()
@@ -1385,7 +1418,7 @@ function Invoke-SecurityFirewallChecks {
 
                 if ($rdpPublicEvidence.Count -gt 0) {
                     $evidence = $rdpPublicEvidence -join ' | '
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Remote Desktop firewall rules allow the Public profile and expose the device to unsolicited internet logon attempts.' -Evidence $evidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/RdpPublicProfile'
                 } elseif ($rdpRules.Count -gt 0) {
                     $evidence = if ($rdpRestrictedEvidence.Count -gt 0) { $rdpRestrictedEvidence -join ' | ' } else { 'Remote Desktop rules detected without Public profile access.' }
                     Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Remote Desktop firewall rules exclude the Public profile so unsolicited internet access is blocked.' -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId 'Security/RdpPublicProfile'
@@ -1393,7 +1426,7 @@ function Invoke-SecurityFirewallChecks {
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Windows Firewall not captured, so the network defense posture is unknown.' -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation
     }
 
     if ($firewallPayload -and $firewallPayload.PSObject.Properties['Rules']) {
@@ -1422,7 +1455,7 @@ function Invoke-SecurityFirewallChecks {
                 if ($smbAnalysis.IsListening -and $crossVlanRules.Count -gt 0) {
                     $smbEvidence = New-SmbExposureHighEvidence $smbAnalysis
                     if ($smbEvidence) {
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'SMB/NetBIOS exposed across VLANs (inbound rule allows 445/139 from unrestricted scope)' -Evidence $smbEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbInbound'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'SMB/NetBIOS exposed across VLANs (inbound rule allows 445/139 from unrestricted scope)' -Evidence $smbEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbInbound'
                     }
                 } else {
                     if ($smbAnalysis.IsListening -and $allTcpRules.Count -gt 0 -and $crossVlanRules.Count -eq 0) {
@@ -1435,7 +1468,7 @@ function Invoke-SecurityFirewallChecks {
                     if ($crossVlanRules.Count -eq 0 -and $allTcpRules.Count -eq 0 -and $udpRules.Count -gt 0) {
                         $udpEvidence = New-SmbUdpHygieneEvidence $smbAnalysis
                         if ($udpEvidence) {
-                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'NetBIOS discovery rules allow inbound UDP 137/138 (hygiene).' -Evidence $udpEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbUdpDiscovery'
+                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'NetBIOS discovery rules allow inbound UDP 137/138 (hygiene).' -Evidence $udpEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbUdpDiscovery'
                         }
                     }
                 }
@@ -1463,9 +1496,9 @@ function Invoke-SecurityFirewallChecks {
         }
 
         if ($ruleErrors.Count -gt 0) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.' -Evidence ($ruleErrors.ToArray()) -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/RuleErrors'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Some firewall rules could not be parsed, so port exposure coverage may be incomplete.' -Evidence ($ruleErrors.ToArray()) -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/RuleErrors'
         }
     } elseif ($firewallArtifact) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall rule inventory missing, so port exposure checks could not run.' -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/MissingRules'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall rule inventory missing, so port exposure checks could not run.' -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/MissingRules'
     }
 }
