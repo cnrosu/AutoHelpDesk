@@ -1,3 +1,38 @@
+function Get-AdKerberosSecureChannelTimeRemediation {
+    @'
+Active Directory Health
+Kerberos / Secure Channel / Time
+
+Impact: Domain logons and machine trust fail until the device resynchronizes time and repairs its secure channel.
+Symptoms: Kerberos failures; broken machine trust; manual NTP; time skew.
+
+Fix
+
+Time back to domain hierarchy
+```powershell
+w32tm /config /syncfromflags:domhier /update
+Restart-Service w32time
+w32tm /resync /force
+```
+
+Repair secure channel
+```powershell
+Test-ComputerSecureChannel -Verbose -Repair -Credential (Get-Credential)
+```
+
+Clear Kerb cache (user logon session)
+```powershell
+klist purge
+```
+
+Validate
+```powershell
+w32tm /query /status
+Test-ComputerSecureChannel -Verbose
+```
+'@
+}
+
 function Get-FirstPayloadProperty {
     param(
         $Payload,
