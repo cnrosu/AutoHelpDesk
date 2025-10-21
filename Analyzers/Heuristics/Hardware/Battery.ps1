@@ -1,3 +1,28 @@
+if (-not $script:HardwareBatteryRemediation) {
+    $script:HardwareBatteryRemediation = @'
+**Symptoms:** Query errors; poor health titles.
+
+**Fix (device)**
+
+Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity.
+
+Apply power policy to reduce wear/thermals on laptops:
+
+```cmd
+powercfg /setactive SCHEME_BALANCED
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+```
+
+**Validate**
+
+```cmd
+powercfg /batteryreport /output %temp%\battery.html
+```
+'@
+}
+
 function Get-BatteryDesignCapacity {
     [CmdletBinding()]
     param(
@@ -299,7 +324,7 @@ function Invoke-HardwareBatteryChecks {
         $firstError = $batteryErrors | Select-Object -First 1
         $errorText = if ($firstError -and $firstError.PSObject.Properties['Error'] -and $firstError.Error) { [string]$firstError.Error } else { 'Unknown error' }
         $source = if ($firstError -and $firstError.PSObject.Properties['Source'] -and $firstError.Source) { [string]$firstError.Source } else { 'root\wmi battery classes' }
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Battery health query reported an error, so health data may be incomplete.' -Evidence ("{0}: {1}" -f $source, $errorText) -Subcategory 'Battery'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Battery health query reported an error, so health data may be incomplete.' -Evidence ("{0}: {1}" -f $source, $errorText) -Subcategory 'Battery' -Explanation 'Battery monitoring failed, so technicians cannot verify wear or runtime impacts.' -Remediation $script:HardwareBatteryRemediation
         $issueCount++
     }
 
@@ -388,7 +413,7 @@ function Invoke-HardwareBatteryChecks {
             }
 
             $title = "Battery {0} is missing design/full capacity data, so health cannot be calculated." -f $label
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title $title -Evidence ($evidenceParts -join ' ') -Subcategory 'Battery'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title $title -Evidence ($evidenceParts -join ' ') -Subcategory 'Battery' -Explanation 'Battery capacity signals are incomplete, so technicians cannot determine wear or plan replacements.' -Remediation $script:HardwareBatteryRemediation
             $issueCount++
             continue
         }
@@ -411,7 +436,7 @@ function Invoke-HardwareBatteryChecks {
 
             if ($severity) {
                 $title = "Battery {0} has degraded {1}%." -f $label, $wearPercent
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Subcategory 'Battery'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Subcategory 'Battery' -Explanation 'Battery wear has reduced usable capacity, so unplugged runtime shortens for end users.' -Remediation $script:HardwareBatteryRemediation
                 $issueCount++
             }
         }

@@ -28,9 +28,6 @@ The table is sorted by file path to mirror the repository layout.
 | [Analyzers/Heuristics/Events/Dns.ps1](../Analyzers/Heuristics/Events/Dns.ps1#L189) | Events \ $subcat | $title | 189 |
 | [Analyzers/Heuristics/Events/Netlogon.ps1](../Analyzers/Heuristics/Events/Netlogon.ps1#L164) | Events \ $subcat | $title | 164 |
 | [Analyzers/Heuristics/Events/Vpn.ps1](../Analyzers/Heuristics/Events/Vpn.ps1#L201) | Events \ $subcat | $title | 201 |
-| [Analyzers/Heuristics/Hardware/Battery.ps1](../Analyzers/Heuristics/Hardware/Battery.ps1#L302) | Hardware \ Battery | Battery health query reported an error, so health data may be incomplete. | 302 |
-| [Analyzers/Heuristics/Hardware/Battery.ps1](../Analyzers/Heuristics/Hardware/Battery.ps1#L391) | Hardware \ Battery | $title | 391 |
-| [Analyzers/Heuristics/Hardware/Battery.ps1](../Analyzers/Heuristics/Hardware/Battery.ps1#L414) | Hardware \ Battery | $title | 414 |
 | [Analyzers/Heuristics/Hardware/Drivers.ps1](../Analyzers/Heuristics/Hardware/Drivers.ps1#L109) | Hardware \ Collection | Driver inventory artifact missing, so Device Manager issues can't be evaluated. | 109 |
 | [Analyzers/Heuristics/Hardware/Drivers.ps1](../Analyzers/Heuristics/Hardware/Drivers.ps1#L120) | Hardware \ Collection | Driver inventory payload missing, so Device Manager issues can't be evaluated. | 120 |
 | [Analyzers/Heuristics/Hardware/Drivers.ps1](../Analyzers/Heuristics/Hardware/Drivers.ps1#L140) | Hardware \ Collection | Driver inventory command failed, so Device Manager issues may be hidden. | 140 |
