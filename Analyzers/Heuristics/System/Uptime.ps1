@@ -142,14 +142,14 @@ function Get-UptimeSummaryFromPayload {
         HasError               = $false
         LastBootUtc            = ConvertTo-UptimeDateTimeUtc -Value $lastBootRaw
         LastBootRaw            = $lastBootRaw
-        KernelUptimeSeconds    = ConvertTo-UptimeInt64 -Value (if ($Uptime.PSObject.Properties['KernelUptimeSeconds']) { $Uptime.KernelUptimeSeconds } else { $null })
+        KernelUptimeSeconds    = ConvertTo-UptimeInt64 -Value $(if ($Uptime.PSObject.Properties['KernelUptimeSeconds']) { $Uptime.KernelUptimeSeconds } else { $null })
         EffectiveSinceUtc      = ConvertTo-UptimeDateTimeUtc -Value $effectiveSinceRaw
         EffectiveSinceRaw      = $effectiveSinceRaw
-        EffectiveUptimeSeconds = ConvertTo-UptimeInt64 -Value (if ($Uptime.PSObject.Properties['EffectiveUptimeSeconds']) { $Uptime.EffectiveUptimeSeconds } else { $null })
-        FastStartupConfigured  = ConvertTo-UptimeNullableBool -Value (if ($Uptime.PSObject.Properties['FastStartupConfigured']) { $Uptime.FastStartupConfigured } else { $null })
-        HibernateEnabled       = ConvertTo-UptimeNullableBool -Value (if ($Uptime.PSObject.Properties['HibernateEnabled']) { $Uptime.HibernateEnabled } else { $null })
-        HiberfilePresent       = ConvertTo-UptimeNullableBool -Value (if ($Uptime.PSObject.Properties['HiberfilePresent']) { $Uptime.HiberfilePresent } else { $null })
-        FastStartupEffective   = ConvertTo-UptimeNullableBool -Value (if ($Uptime.PSObject.Properties['FastStartupEffective']) { $Uptime.FastStartupEffective } else { $null })
+        EffectiveUptimeSeconds = ConvertTo-UptimeInt64 -Value $(if ($Uptime.PSObject.Properties['EffectiveUptimeSeconds']) { $Uptime.EffectiveUptimeSeconds } else { $null })
+        FastStartupConfigured  = ConvertTo-UptimeNullableBool -Value $(if ($Uptime.PSObject.Properties['FastStartupConfigured']) { $Uptime.FastStartupConfigured } else { $null })
+        HibernateEnabled       = ConvertTo-UptimeNullableBool -Value $(if ($Uptime.PSObject.Properties['HibernateEnabled']) { $Uptime.HibernateEnabled } else { $null })
+        HiberfilePresent       = ConvertTo-UptimeNullableBool -Value $(if ($Uptime.PSObject.Properties['HiberfilePresent']) { $Uptime.HiberfilePresent } else { $null })
+        FastStartupEffective   = ConvertTo-UptimeNullableBool -Value $(if ($Uptime.PSObject.Properties['FastStartupEffective']) { $Uptime.FastStartupEffective } else { $null })
     }
 }
 
@@ -413,9 +413,9 @@ function Invoke-SystemLongUptime {
     $humanUptime = ConvertTo-UptimeHumanizedTime -Seconds $effectiveSeconds
 
     $evidenceLines = New-Object System.Collections.Generic.List[string]
-    $evidenceLines.Add("EffectiveSince (UTC): {0}" -f (if ($effectiveSinceIso) { $effectiveSinceIso } else { 'Unknown' })) | Out-Null
-    $evidenceLines.Add("EffectiveUptime: {0}" -f (if ($humanUptime) { $humanUptime } else { 'Unknown' })) | Out-Null
-    $evidenceLines.Add("EffectiveUptimeSeconds: {0}" -f (if ($effectiveSeconds -ne $null) { $effectiveSeconds } else { 'Unknown' })) | Out-Null
+    $evidenceLines.Add("EffectiveSince (UTC): {0}" -f $(if ($effectiveSinceIso) { $effectiveSinceIso } else { 'Unknown' })) | Out-Null
+    $evidenceLines.Add("EffectiveUptime: {0}" -f $(if ($humanUptime) { $humanUptime } else { 'Unknown' })) | Out-Null
+    $evidenceLines.Add("EffectiveUptimeSeconds: {0}" -f $(if ($effectiveSeconds -ne $null) { $effectiveSeconds } else { 'Unknown' })) | Out-Null
 
     if ($usedKernelFallback) {
         $evidenceLines.Add('Effective uptime seconds missing; using kernel uptime seconds as a fallback.') | Out-Null

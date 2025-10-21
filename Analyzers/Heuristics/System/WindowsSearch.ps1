@@ -70,7 +70,7 @@ function Invoke-SystemWindowsSearchChecks {
 
     if (-not $serviceRunning -or $startDisabled -or -not $snapshot.Service) {
         $title = 'Windows Search indexing is stopped, so Start menu and Outlook searches will miss results.'
-        $evidence = "Service status: {0}; Startup type: {1}" -f (if ($serviceStatus) { $serviceStatus } else { 'Unknown' }), (if ($startType) { $startType } else { 'Unknown' })
+        $evidence = "Service status: {0}; Startup type: {1}" -f $(if ($serviceStatus) { $serviceStatus } else { 'Unknown' }), $(if ($startType) { $startType } else { 'Unknown' })
         $data = @{ ServiceStatus = $serviceStatus; StartType = $startType }
         $remediation = @(
             'Set the Windows Search (WSearch) service startup type to Automatic (Delayed Start).',
@@ -123,7 +123,7 @@ function Invoke-SystemWindowsSearchChecks {
     $pauseDetected = ($pauseReason -ne $null -and $pauseReason -ne 0) -or ($indexerStatus -eq 4)
     if ($pauseDetected -and -not $batterySaver) {
         $title = 'Windows Search indexing appears paused, so new files are not being added to results.'
-        $evidence = "IndexerStatus: {0}; PauseReason: {1}" -f (if ($indexerStatus -ne $null) { $indexerStatus } else { 'Unknown' }), (if ($pauseReason -ne $null) { $pauseReason } else { 'None' })
+        $evidence = "IndexerStatus: {0}; PauseReason: {1}" -f $(if ($indexerStatus -ne $null) { $indexerStatus } else { 'Unknown' }), $(if ($pauseReason -ne $null) { $pauseReason } else { 'None' })
         $data = @{ IndexerStatus = $indexerStatus; PauseReason = $pauseReason; BatterySaver = $batterySaver }
         $remediation = @(
             'Disable Battery Saver or connected standby throttling and leave the device on AC power.',
