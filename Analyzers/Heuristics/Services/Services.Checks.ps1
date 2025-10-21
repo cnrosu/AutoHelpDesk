@@ -1,3 +1,43 @@
+$script:CriticalServiceAutostartRemediation = @'
+Bring these core network services back online and set them to start automatically so DNS, RPC, SMB, printing, proxy discovery, and background transfers can recover:
+
+```powershell
+'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |
+  ForEach-Object {
+    if (Get-Service $_ -ErrorAction SilentlyContinue) {
+      Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue
+      Start-Service $_ -ErrorAction SilentlyContinue
+    }
+  }
+```
+
+If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet.
+'@
+
+$script:BitsJobQueueRemediation = @'
+If BITS jobs keep failing after the service is running, review and reset the queue:
+
+```cmd
+bitsadmin /list /allusers /verbose
+bitsadmin /reset /allusers
+```
+
+Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume.
+'@
+
+$script:BitsJobFailureRemediation = $script:CriticalServiceAutostartRemediation + "`n`n" + $script:BitsJobQueueRemediation
+
+$script:WorkstationSpoolerDisableRemediation = @'
+If this workstation does not require printing, disable the Print Spooler to remove the PrintNightmare attack surface:
+
+```powershell
+Stop-Service -Name Spooler -Force
+Set-Service -Name Spooler -StartupType Disabled
+```
+
+Re-enable the spooler only when printing is required and the device is patched.
+'@
+
 function Invoke-ServiceCheckWindowsSearch {
     param(
         [Parameter(Mandatory)]$Result,
@@ -53,7 +93,7 @@ function Invoke-ServiceCheckDnsClient {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'Dnscache'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'DNS Client (Dnscache) service missing' -Evidence 'Service entry not found; DNS resolution will fail.' -Subcategory 'DNS Client Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'DNS Client (Dnscache) service missing' -Evidence 'Service entry not found; DNS resolution will fail.' -Subcategory 'DNS Client Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
@@ -61,7 +101,7 @@ function Invoke-ServiceCheckDnsClient {
         Add-CategoryNormal -CategoryResult $Result -Title 'DNS Client service running' -Evidence ("Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode) -Subcategory 'DNS Client Service'
     } else {
         $evidence = "DNS Client service not running (Status: {0}; StartType: {1})." -f $service.Status, $service.StartMode
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'DNS Client service offline — name resolution will break' -Evidence $evidence -Subcategory 'DNS Client Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'DNS Client service offline — name resolution will break' -Evidence $evidence -Subcategory 'DNS Client Service' -Remediation $script:CriticalServiceAutostartRemediation
     }
 }
 
@@ -76,7 +116,7 @@ function Invoke-ServiceCheckNetworkLocation {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'NlaSvc'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service missing' -Evidence 'Service entry not found; network profile detection will fail.' -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service missing' -Evidence 'Service entry not found; network profile detection will fail.' -Subcategory 'Network Location Awareness' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
@@ -87,9 +127,9 @@ function Invoke-ServiceCheckNetworkLocation {
 
     $evidence = "Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode
     if ($service.StartModeNormalized -eq 'manual' -and $IsWorkstation) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Network Location Awareness set to Manual and stopped' -Evidence $evidence -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Network Location Awareness set to Manual and stopped' -Evidence $evidence -Subcategory 'Network Location Awareness' -Remediation $script:CriticalServiceAutostartRemediation
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service not running' -Evidence $evidence -Subcategory 'Network Location Awareness'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Network Location Awareness service not running' -Evidence $evidence -Subcategory 'Network Location Awareness' -Remediation $script:CriticalServiceAutostartRemediation
     }
 }
 
@@ -103,7 +143,7 @@ function Invoke-ServiceCheckWorkstation {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'LanmanWorkstation'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Workstation (LanmanWorkstation) service missing' -Evidence 'Service entry not found; SMB client functionality unavailable.' -Subcategory 'Workstation Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Workstation (LanmanWorkstation) service missing' -Evidence 'Service entry not found; SMB client functionality unavailable.' -Subcategory 'Workstation Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
@@ -114,7 +154,7 @@ function Invoke-ServiceCheckWorkstation {
 
     $evidence = "Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode
     $title = if ($service.StartModeNormalized -eq 'disabled') { 'Workstation service disabled — SMB connectivity broken' } else { 'Workstation service stopped — SMB connectivity broken' }
-    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Workstation Service'
+    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Evidence $evidence -Subcategory 'Workstation Service' -Remediation $script:CriticalServiceAutostartRemediation
 }
 
 function Invoke-ServiceCheckPrintSpooler {
@@ -128,14 +168,14 @@ function Invoke-ServiceCheckPrintSpooler {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'Spooler'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler service missing' -Evidence 'Service entry not found; printing features unavailable.' -Subcategory 'Print Spooler Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler service missing' -Evidence 'Service entry not found; printing features unavailable.' -Subcategory 'Print Spooler Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
     if ($service.StatusNormalized -eq 'running') {
         if ($IsWorkstation) {
             $title = 'Print Spooler running — disable if this workstation does not require printing (PrintNightmare risk).'
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence ("Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode) -Subcategory 'Print Spooler Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence ("Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode) -Subcategory 'Print Spooler Service' -Remediation $script:WorkstationSpoolerDisableRemediation
         } else {
             Add-CategoryNormal -CategoryResult $Result -Title 'Print Spooler running' -Evidence ("Status: {0}; StartType: {1}" -f $service.Status, $service.StartMode) -Subcategory 'Print Spooler Service'
         }
@@ -144,7 +184,7 @@ function Invoke-ServiceCheckPrintSpooler {
 
     $note = if ($IsWorkstation) { 'PrintNightmare guidance: disable spooler unless required.' } else { 'Printing functionality will be unavailable while stopped.' }
     $evidence = "Status: {0}; StartType: {1}; Note: {2}" -f $service.Status, $service.StartMode, $note
-    Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler not running' -Evidence $evidence -Subcategory 'Print Spooler Service'
+    Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'Print Spooler not running' -Evidence $evidence -Subcategory 'Print Spooler Service' -Remediation $script:CriticalServiceAutostartRemediation
 }
 
 function Invoke-ServiceCheckRpc {
@@ -157,22 +197,22 @@ function Invoke-ServiceCheckRpc {
 
     $rpc = Get-ServiceStateInfo -Lookup $Lookup -Name 'RpcSs'
     if (-not $rpc.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC (RpcSs) service missing' -Evidence 'Service entry not found; Windows cannot operate without RPC.' -Subcategory 'RPC Services'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC (RpcSs) service missing' -Evidence 'Service entry not found; Windows cannot operate without RPC.' -Subcategory 'RPC Services' -Remediation $script:CriticalServiceAutostartRemediation
     } elseif ($rpc.StatusNormalized -eq 'running') {
         Add-CategoryNormal -CategoryResult $Result -Title 'RPC (RpcSs) service running' -Evidence ("Status: {0}; StartType: {1}" -f $rpc.Status, $rpc.StartMode) -Subcategory 'RPC Services'
     } else {
         $evidence = "Status: {0}; StartType: {1}" -f $rpc.Status, $rpc.StartMode
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC (RpcSs) service not running — system instability expected' -Evidence $evidence -Subcategory 'RPC Services'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC (RpcSs) service not running — system instability expected' -Evidence $evidence -Subcategory 'RPC Services' -Remediation $script:CriticalServiceAutostartRemediation
     }
 
     $mapper = Get-ServiceStateInfo -Lookup $Lookup -Name 'RpcEptMapper'
     if (-not $mapper.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC Endpoint Mapper service missing' -Evidence 'Service entry not found; RPC endpoint resolution unavailable.' -Subcategory 'RPC Services'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC Endpoint Mapper service missing' -Evidence 'Service entry not found; RPC endpoint resolution unavailable.' -Subcategory 'RPC Services' -Remediation $script:CriticalServiceAutostartRemediation
     } elseif ($mapper.StatusNormalized -eq 'running') {
         Add-CategoryNormal -CategoryResult $Result -Title 'RPC Endpoint Mapper running' -Evidence ("Status: {0}; StartType: {1}" -f $mapper.Status, $mapper.StartMode) -Subcategory 'RPC Services'
     } else {
         $evidence = "Status: {0}; StartType: {1}" -f $mapper.Status, $mapper.StartMode
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC Endpoint Mapper not running — RPC clients will fail' -Evidence $evidence -Subcategory 'RPC Services'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'RPC Endpoint Mapper not running — RPC clients will fail' -Evidence $evidence -Subcategory 'RPC Services' -Remediation $script:CriticalServiceAutostartRemediation
     }
 }
 
@@ -190,9 +230,9 @@ function Invoke-ServiceCheckWinHttpAutoProxy {
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'WinHttpAutoProxySvc'
     if (-not $service.Exists) {
         if ($ProxyInfo.HasSystemProxy) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'WinHTTP Auto Proxy service missing while a proxy is configured' -Evidence $ProxyInfo.Evidence -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'WinHTTP Auto Proxy service missing while a proxy is configured' -Evidence $ProxyInfo.Evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy service missing' -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy service missing' -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
         }
         return
     }
@@ -212,21 +252,21 @@ function Invoke-ServiceCheckWinHttpAutoProxy {
 
     if ($service.StartModeNormalized -eq 'manual') {
         if ($ProxyInfo.HasSystemProxy) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy manual start while a proxy is configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy manual start while a proxy is configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
         } else {
             Add-CategoryNormal -CategoryResult $Result -Title 'WinHTTP Auto Proxy in manual mode with no proxy configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
         }
     } elseif ($service.StartModeNormalized -in @('automatic','automatic-delayed')) {
         $severity = if ($ProxyInfo.HasSystemProxy) { 'high' } else { 'medium' }
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'WinHTTP Auto Proxy service not running' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'WinHTTP Auto Proxy service not running' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
     } elseif ($service.StartModeNormalized -eq 'disabled') {
         if ($ProxyInfo.HasSystemProxy) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'WinHTTP Auto Proxy disabled while a proxy is configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'WinHTTP Auto Proxy disabled while a proxy is configured' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
         } else {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'WinHTTP Auto Proxy disabled' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'WinHTTP Auto Proxy disabled' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy service in unexpected state' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'WinHTTP Auto Proxy service in unexpected state' -Evidence $evidence -Subcategory 'WinHTTP Auto Proxy Service' -Remediation $script:CriticalServiceAutostartRemediation
     }
 }
 
@@ -242,7 +282,7 @@ function Invoke-ServiceCheckBits {
 
     $service = Get-ServiceStateInfo -Lookup $Lookup -Name 'BITS'
     if (-not $service.Exists) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is missing, so Windows Update and other background downloads cannot run.' -Evidence 'Service entry not found; background transfers cannot occur.' -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is missing, so Windows Update and other background downloads cannot run.' -Evidence 'Service entry not found; background transfers cannot occur.' -Subcategory 'BITS Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
@@ -295,23 +335,23 @@ function Invoke-ServiceCheckBits {
     $pendingJobs = $activeJobs + $errorJobs
 
     if ($service.StartModeNormalized -eq 'disabled') {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is disabled, so Windows Update, Store, and Intune downloads cannot transfer.' -Evidence $evidence -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS service is disabled, so Windows Update, Store, and Intune downloads cannot transfer.' -Evidence $evidence -Subcategory 'BITS Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
     if ($service.StatusNormalized -ne 'running' -and $pendingJobs -gt 0) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is stopped while background jobs are queued, so Windows downloads stay stuck.' -Evidence $evidence -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is stopped while background jobs are queued, so Windows downloads stay stuck.' -Evidence $evidence -Subcategory 'BITS Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
     if ($service.StartModeNormalized -in @('automatic','automatic-delayed') -and $service.StatusNormalized -ne 'running') {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is set to start automatically but is not running, so background downloads are stalled.' -Evidence $evidence -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'BITS is set to start automatically but is not running, so background downloads are stalled.' -Evidence $evidence -Subcategory 'BITS Service' -Remediation $script:CriticalServiceAutostartRemediation
         return
     }
 
     if ($errorJobs -gt 0) {
         $severity = if ($service.StartModeNormalized -eq 'manual') { 'medium' } else { 'high' }
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'BITS jobs are failing, so Windows Update and other downloads are erroring out.' -Evidence $evidence -Subcategory 'BITS Service'
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'BITS jobs are failing, so Windows Update and other downloads are erroring out.' -Evidence $evidence -Subcategory 'BITS Service' -Remediation $script:BitsJobFailureRemediation
         return
     }
 
@@ -329,7 +369,7 @@ function Invoke-ServiceCheckBits {
         return
     }
 
-    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS service is in an unexpected state, so background downloads may misbehave.' -Evidence $evidence -Subcategory 'BITS Service'
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'BITS service is in an unexpected state, so background downloads may misbehave.' -Evidence $evidence -Subcategory 'BITS Service' -Remediation $script:CriticalServiceAutostartRemediation
 }
 
 function Invoke-ServiceCheckOfficeClickToRun {
