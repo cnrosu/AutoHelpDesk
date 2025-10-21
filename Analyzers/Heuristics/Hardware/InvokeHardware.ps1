@@ -27,34 +27,6 @@ function Invoke-HardwareHeuristics {
 
     $result = New-CategoryResult -Name 'Hardware'
 
-    $inventorySummary = Get-HardwareInventorySummary -Context $Context
-    if ($inventorySummary) {
-        $cpuInfo = $inventorySummary.CPU
-        $memoryInfo = $inventorySummary.Memory
-        $tpmInfo = $inventorySummary.TPM
-        $secureBootInfo = $inventorySummary.SecureBoot
-        $modelInfo = $inventorySummary.Model
-        $biosInfo = $inventorySummary.Bios
-        $title = if ($inventorySummary.Title) { [string]$inventorySummary.Title } else { 'Hardware inventory summary' }
-        $severity = if ($inventorySummary.Severity) { [string]$inventorySummary.Severity } else { 'info' }
-        $evidence = $inventorySummary.Evidence
-
-        Add-CategoryIssue -CategoryResult $result -Severity $severity `
-            -Title $title `
-            -Evidence $evidence `
-            -Subcategory 'Hardware' `
-            -Data @{
-                Area       = 'Hardware'
-                Kind       = 'Inventory'
-                CPU        = $cpuInfo
-                Memory     = $memoryInfo
-                TPM        = $tpmInfo
-                SecureBoot = $secureBootInfo
-                Model      = $modelInfo
-                Bios       = $biosInfo
-            }
-    }
-
     $totalIssueCount = 0
 
     $batteryIssues = Invoke-HardwareBatteryChecks -Context $Context -CategoryResult $result
