@@ -125,8 +125,12 @@ $reportOutput = Join-Path $target 'diagnostics-report.html'
 try {
   $analysisResult = & $analyzeScript -InputFolder $target -OutputPath $reportOutput
 } catch {
-  Write-Error "Analyzer failed: $_"
-  exit 1
+  Write-Error ("[CRASH] {0}: {1}`n{2}`n{3}" -f `
+    $_.Exception.GetType().FullName,
+    $_.Exception.Message,
+    ($_.InvocationInfo | ForEach-Object { $_.PositionMessage }),
+    $_.ScriptStackTrace)
+  throw
 }
 
 $reportPath = $null
