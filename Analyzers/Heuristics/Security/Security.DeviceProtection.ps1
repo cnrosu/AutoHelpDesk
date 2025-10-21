@@ -302,6 +302,27 @@ function Invoke-SecurityAttackSurfaceChecks {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'ASR policy data missing.' -Subcategory 'Attack Surface Reduction'
     }
 
+    $exploitProtectionRemediation = @'
+[
+  {
+    "title": "Stage the hardened Exploit Protection policy",
+    "content": "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and make it available on the affected machine (e.g., C:\\Policies\\ExploitProtection.xml)."
+  },
+  {
+    "title": "Apply the enterprise policy (PowerShell)",
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml"
+  },
+  {
+    "title": "Confirm system-wide mitigations",
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-ProcessMitigation -System"
+  }
+]
+'@
+
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
     if ($exploitArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $exploitArtifact)
@@ -332,15 +353,15 @@ function Invoke-SecurityAttackSurfaceChecks {
                     $null = $detailBuilder.Append('ASLR disabled')
                 }
                 $detailText = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { 'Mitigation status unknown.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}), reducing exploit resistance.' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}), reducing exploit resistance.' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
             }
         } elseif ($payload -and $payload.Mitigations -and $payload.Mitigations.Error) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Evidence $payload.Mitigations.Error -Subcategory 'Exploit Protection'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Evidence $payload.Mitigations.Error -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
     }
 }
 
