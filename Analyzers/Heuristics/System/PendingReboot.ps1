@@ -162,7 +162,7 @@ function Invoke-SystemPendingRebootChecks {
         }
     } elseif ($pfroHasEntries -and -not $msiInProgress -and -not $renamePending) {
         $titlePrefix = if ($severity -eq 'low') { 'System/Pending Reboot: Minor file rename operations pending' } else { 'System/Pending Reboot: File rename operations pending' }
-        $title = '{0} (PFRO: {1} {2})' -f $titlePrefix, $pfroTotal, (if ($pfroTotal -eq 1) { 'item' } else { 'items' })
+        $title = '{0} (PFRO: {1} {2})' -f $titlePrefix, $pfroTotal, $(if ($pfroTotal -eq 1) { 'item' } else { 'items' })
     } elseif ($msiInProgress -and -not $pfroHasEntries -and -not $renamePending) {
         $title = 'System/Pending Reboot: MSI installer pending restart'
     } elseif ($renamePending -and -not $pfroHasEntries -and -not $msiInProgress) {
@@ -176,7 +176,7 @@ function Invoke-SystemPendingRebootChecks {
 
     $additionalTriggers = [System.Collections.Generic.List[string]]::new()
     if ($pfroHasEntries) {
-        $additionalTriggers.Add(('PFRO {0} {1}' -f $pfroTotal, (if ($pfroTotal -eq 1) { 'item' } else { 'items' }))) | Out-Null
+        $additionalTriggers.Add(('PFRO {0} {1}' -f $pfroTotal, $(if ($pfroTotal -eq 1) { 'item' } else { 'items' }))) | Out-Null
     }
     if ($msiInProgress) { $additionalTriggers.Add('MSI in-progress') | Out-Null }
     if ($renamePending) { $additionalTriggers.Add('Rename pending') | Out-Null }
@@ -207,7 +207,7 @@ function Invoke-SystemPendingRebootChecks {
     $signalLineParts = [System.Collections.Generic.List[string]]::new()
     foreach ($name in $signalOrder) {
         $value = Get-SignalValue -Name $name
-        $signalLineParts.Add(('{0}={1}' -f $name, (if ($value) { 'True' } else { 'False' }))) | Out-Null
+        $signalLineParts.Add(('{0}={1}' -f $name, $(if ($value) { 'True' } else { 'False' }))) | Out-Null
     }
     if ($pfroTotal -gt 0) {
         $signalLineParts.Add(('PFRO.Total={0}' -f $pfroTotal)) | Out-Null
