@@ -123,7 +123,7 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **Attack Surface Reduction** – Confirms ASR rules operating in block mode, raises high-severity issues when required rules are missing, and flags data gaps when policy output is unavailable.
 - **Exploit Protection** – Notes when CFG/DEP/ASLR mitigations are enforced and warns when diagnostics are missing.
 - **Windows Defender Application Control** – Records normals when WDAC enforcement is detected and raises issues when no policy is active.
-- **Smart App Control** – Flags Windows 11 devices where Smart App Control is disabled, in evaluation, or unreported, and records normals when enforcement is confirmed.
+- **Smart App Control / WDAC App Trust** – Evaluates Smart App Control state alongside App Control for Business (WDAC), suppresses guidance when enterprise WDAC enforcement is active, flags audit or evaluation states that leave gaps, and records normals when enforcement is confirmed.
 - **PowerShell Logging** – Warns when script block or module logging or transcription is disabled and records normals when logging policies are fully enabled.
 - **NTLM Hardening** – Raises medium issues when RestrictSending/Audit policies are not enforced and records normals when NTLM hardening is in place.
 - **Autorun Policies** – Notes hardened Autorun/Autoplay registry values, raises medium issues when required values are absent, and flags informational gaps when artifacts are missing.

@@ -391,39 +391,134 @@ function Invoke-SecurityWdacChecks {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'No WDAC policy enforcement detected, so unrestricted code execution remains possible.' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control'
         }
 
-        $smartAppEvidence = [System.Collections.Generic.List[string]]::new()
-        $smartAppState = $null
-        if ($payload -and $payload.SmartAppControl) {
-            $entry = $payload.SmartAppControl
-            if ($entry.Error) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
-            } elseif ($entry.Values) {
-                foreach ($prop in $entry.Values.PSObject.Properties) {
-                    if ($prop.Name -match '^PS') { continue }
-                    $smartAppEvidence.Add(("{0}: {1}" -f $prop.Name, $prop.Value))
-                    $candidate = $prop.Value
-                    if ($null -ne $candidate) {
-                        $parsed = 0
-                        if ([int]::TryParse($candidate.ToString(), [ref]$parsed)) {
-                            if ($prop.Name -match 'Enabled' -or $prop.Name -match 'State') {
-                                $smartAppState = $parsed
+        $posture = $null
+        if ($payload -and $payload.PSObject.Properties['AppTrustPosture']) {
+            $posture = $payload.AppTrustPosture
+        }
+
+        if ($posture) {
+            $decision = $null
+            if ($posture.PSObject.Properties['Decision'] -and $posture.Decision) {
+                $decision = $posture.Decision.ToString().ToUpperInvariant()
+            }
+
+            $reason = $null
+            if ($posture.PSObject.Properties['Reason']) { $reason = [string]$posture.Reason }
+
+            $remediation = $null
+            if ($posture.PSObject.Properties['Remediation'] -and $posture.Remediation) {
+                $remediation = [string]$posture.Remediation
+            }
+
+            $evidenceLines = [System.Collections.Generic.List[string]]::new()
+            if ($posture.PSObject.Properties['OSVersion'] -and $posture.OSVersion) {
+                $evidenceLines.Add("OSVersion: {0}" -f $posture.OSVersion) | Out-Null
+            }
+            if ($posture.PSObject.Properties['SAC']) {
+                $evidenceLines.Add("SAC.State: {0}" -f $posture.SAC) | Out-Null
+            }
+            if ($posture.PSObject.Properties['Decision'] -and $posture.Decision) {
+                $evidenceLines.Add("Decision: {0}" -f $posture.Decision) | Out-Null
+            }
+            if (-not [string]::IsNullOrWhiteSpace($reason)) {
+                $evidenceLines.Add("Decision.Reason: {0}" -f $reason) | Out-Null
+            }
+            if ($posture.PSObject.Properties['WDAC'] -and $posture.WDAC) {
+                $wdacDetails = $posture.WDAC
+                if ($wdacDetails.PSObject.Properties['FilesPresent']) {
+                    $evidenceLines.Add("WDAC.FilesPresent: {0}" -f ([bool]$wdacDetails.FilesPresent)) | Out-Null
+                }
+                if ($wdacDetails.PSObject.Properties['SipolicyP7b']) {
+                    $evidenceLines.Add("WDAC.SIPolicyP7b: {0}" -f ([bool]$wdacDetails.SipolicyP7b)) | Out-Null
+                }
+                if ($wdacDetails.PSObject.Properties['CipCount']) {
+                    $evidenceLines.Add("WDAC.CipCount: {0}" -f $wdacDetails.CipCount) | Out-Null
+                }
+                if ($wdacDetails.PSObject.Properties['CiStatus']) {
+                    $evidenceLines.Add("WDAC.CIStatus: {0}" -f $wdacDetails.CiStatus) | Out-Null
+                }
+                if ($wdacDetails.PSObject.Properties['UmciStatus']) {
+                    $evidenceLines.Add("WDAC.UMCIStatus: {0}" -f $wdacDetails.UmciStatus) | Out-Null
+                }
+                if ($wdacDetails.PSObject.Properties['CipSamples']) {
+                    $samples = @(ConvertTo-List $wdacDetails.CipSamples | Where-Object { $_ })
+                    if ($samples.Count -gt 0) {
+                        $evidenceLines.Add("WDAC.CipSamples: {0}" -f ($samples -join ', ')) | Out-Null
+                    }
+                }
+            }
+
+            $evidenceText = ($evidenceLines.ToArray() | Where-Object { $_ }) -join "`n"
+
+            if (-not $decision) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'App trust posture is indeterminate, so technicians must verify SAC or WDAC enforcement manually.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Explanation $reason -Remediation $remediation
+            } else {
+                switch ($decision) {
+                    'NA' { }
+                    'SUPPRESS' { }
+                    'OK' {
+                        Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Smart App Control enforced, so untrusted apps are blocked by reputation checks.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+                    }
+                    'MEDIUM' {
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is Off on Windows 11, so untrusted apps can run without reputation checks.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Explanation $reason -Remediation $remediation
+                    }
+                    'INFO' {
+                        $infoTitle = $null
+                        $hasWdacArtifacts = $false
+                        if ($posture.PSObject.Properties['WDAC'] -and $posture.WDAC) {
+                            $hasWdacArtifacts = [bool]$posture.WDAC.FilesPresent
+                        }
+
+                        if ($posture.WDAC -and $hasWdacArtifacts -and ($posture.WDAC.CiStatus -eq 2) -and ($posture.WDAC.UmciStatus -in 0, 2)) {
+                            $infoTitle = 'WDAC audit mode leaves UMCI unenforced, so untrusted apps may still run.'
+                        } elseif (-not $hasWdacArtifacts -and ($posture.SAC -eq 1)) {
+                            $infoTitle = 'Smart App Control evaluating apps, so untrusted apps might still run until enforcement turns on.'
+                        } else {
+                            $infoTitle = 'App trust posture is indeterminate, so technicians must verify SAC or WDAC enforcement manually.'
+                        }
+
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title $infoTitle -Evidence $evidenceText -Subcategory 'Smart App Control' -Explanation $reason -Remediation $remediation
+                    }
+                    default {
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'App trust posture is indeterminate, so technicians must verify SAC or WDAC enforcement manually.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Explanation $reason -Remediation $remediation
+                    }
+                }
+            }
+        } else {
+            $smartAppEvidence = [System.Collections.Generic.List[string]]::new()
+            $smartAppState = $null
+            if ($payload -and $payload.SmartAppControl) {
+                $entry = $payload.SmartAppControl
+                if ($entry.Error) {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
+                } elseif ($entry.Values) {
+                    foreach ($prop in $entry.Values.PSObject.Properties) {
+                        if ($prop.Name -match '^PS') { continue }
+                        $smartAppEvidence.Add(("{0}: {1}" -f $prop.Name, $prop.Value))
+                        $candidate = $prop.Value
+                        if ($null -ne $candidate) {
+                            $parsed = 0
+                            if ([int]::TryParse($candidate.ToString(), [ref]$parsed)) {
+                                if ($prop.Name -match 'Enabled' -or $prop.Name -match 'State') {
+                                    $smartAppState = $parsed
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        $evidenceText = if ($smartAppEvidence.Count -gt 0) { $smartAppEvidence.ToArray() -join "`n" } else { '' }
-        if ($smartAppState -eq 1) {
-            Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Smart App Control enforced' -Evidence $evidenceText -Subcategory 'Smart App Control'
-        } elseif ($smartAppState -eq 2) {
-            $severity = if ($EvaluationContext.IsWindows11) { 'low' } else { 'info' }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title 'Smart App Control in evaluation mode, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
-        } elseif ($EvaluationContext.IsWindows11) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
-        } elseif ($smartAppState -ne $null) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            $evidenceText = if ($smartAppEvidence.Count -gt 0) { $smartAppEvidence.ToArray() -join "`n" } else { '' }
+            if ($smartAppState -eq 1) {
+                Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Smart App Control enforced' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            } elseif ($smartAppState -eq 2) {
+                $severity = if ($EvaluationContext.IsWindows11) { 'low' } else { 'info' }
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title 'Smart App Control in evaluation mode, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            } elseif ($EvaluationContext.IsWindows11) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            } elseif ($smartAppState -ne $null) {
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            }
         }
     } else {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control'
