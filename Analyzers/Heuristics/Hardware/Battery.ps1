@@ -8,17 +8,21 @@ Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity.
 
 Apply power policy to reduce wear/thermals on laptops:
 
-```cmd
-powercfg /setactive SCHEME_BALANCED
-powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
-powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+```powershell
+$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
+& $powercfg /setactive SCHEME_BALANCED
+& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
+& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+& $powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
 ```
 
 **Validate**
 
-```cmd
-powercfg /batteryreport /output %temp%\battery.html
+```powershell
+$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
+$output = Join-Path $env:TEMP 'battery.html'
+& $powercfg /batteryreport /output $output
+Write-Host "Battery report exported to $output"
 ```
 '@
 }
