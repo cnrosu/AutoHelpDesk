@@ -1,6 +1,6 @@
 <#!
 .SYNOPSIS
-    Collects device identity posture including Azure AD registration and current user context.
+    Collects device identity posture including Entra ID registration and current user context.
 #>
 [CmdletBinding()]
 param(

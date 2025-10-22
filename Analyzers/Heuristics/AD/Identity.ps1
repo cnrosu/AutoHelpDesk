@@ -12,7 +12,7 @@ function Add-AdIdentityFindings {
     if ($identityPayload -and $identityPayload.DsRegCmd) {
         $text = if ($identityPayload.DsRegCmd -is [string[]]) { $identityPayload.DsRegCmd -join "`n" } else { [string]$identityPayload.DsRegCmd }
         if ($text -match 'AzureAdJoined\s*:\s*YES') {
-            Add-CategoryNormal -CategoryResult $Result -Title 'Azure AD join detected' -Subcategory 'Discovery'
+            Add-CategoryNormal -CategoryResult $Result -Title 'Entra Joined detected' -Subcategory 'Discovery'
         }
     }
 }
