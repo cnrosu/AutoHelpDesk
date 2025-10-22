@@ -275,33 +275,63 @@ function Invoke-PrintingHeuristics {
 
         if ($offlineSummary.Count -gt 0) {
             $offlineSeverity = if ($offlineHasHighSeverity) { 'high' } elseif ($offlineHasMediumSeverity) { 'medium' } else { 'low' }
-            $offlineEvidence = "Offline queues: {0}" -f ($offlineSummary.ToArray() -join ', ')
             $offlineQueues = @($queueArray | Where-Object { $_.Offline })
-            Add-CategoryIssue -CategoryResult $result -Severity $offlineSeverity -Title 'Printer queues offline, so print jobs cannot reach the device.' -Evidence $offlineEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
-                Area = 'Printing'
-                Kind = 'PrintQueueOutage'
-                Queues = $offlineQueues
+            $offlineQueueEvidenceObjects = @()
+            foreach ($offlineQueue in $offlineQueues) {
+                if (-not $offlineQueue) { continue }
+
+                $queueEvidence = [ordered]@{
+                    Name          = $offlineQueue.Name
+                    Default       = $offlineQueue.Default
+                    QueueStatus   = $offlineQueue.QueueStatus
+                    PrinterStatus = $offlineQueue.PrinterStatus
+                    DriverName    = $offlineQueue.DriverName
+                    PortName      = $offlineQueue.PortName
+                }
+
+                if ($offlineQueue.PSObject.Properties['Connection'] -and $offlineQueue.Connection) {
+                    $queueEvidence['Connection'] = $offlineQueue.Connection
+                }
+
+                $offlineQueueEvidenceObjects += [pscustomobject]$queueEvidence
             }
+
+            $offlineQueueEvidenceJson = if ($offlineQueueEvidenceObjects.Count -gt 0) {
+                $offlineQueueEvidenceObjects | ConvertTo-Json -Depth 5
+            } else {
+                '[]'
+            }
+
+            $offlineEvidence = @(
+                "Offline queues: {0}" -f ($offlineSummary.ToArray() -join ', '),
+                'Offline queue details (JSON):',
+                $offlineQueueEvidenceJson
+            ) -join [Environment]::NewLine
+
+            Add-CategoryIssue -CategoryResult $result -Severity $offlineSeverity -Title 'Printer queues offline, so print jobs cannot reach the device.' -Evidence $offlineEvidence -Subcategory 'Printing' -Remediation $queueRemediation
         }
 
         if ($stuckJobEntries.Count -gt 0) {
             $stuckSeverity = if ($stuckHasHighSeverity) { 'high' } elseif ($stuckHasMediumSeverity) { 'medium' } else { 'low' }
-            $stuckEvidence = "Stuck jobs: {0}" -f ($stuckJobSummary.ToArray() -join '; ')
-            Add-CategoryIssue -CategoryResult $result -Severity $stuckSeverity -Title 'Stuck print jobs delaying documents, so users wait hours for output.' -Evidence $stuckEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
-                Area = 'Printing'
-                Kind = 'PrintJobs'
-                StuckJobs = $stuckJobEntries.ToArray()
-            }
+            $stuckJobEvidenceJson = $stuckJobEntries.ToArray() | ConvertTo-Json -Depth 5
+            $stuckEvidence = @(
+                "Stuck jobs: {0}" -f ($stuckJobSummary.ToArray() -join '; '),
+                'Stuck job details (JSON):',
+                $stuckJobEvidenceJson
+            ) -join [Environment]::NewLine
+
+            Add-CategoryIssue -CategoryResult $result -Severity $stuckSeverity -Title 'Stuck print jobs delaying documents, so users wait hours for output.' -Evidence $stuckEvidence -Subcategory 'Printing' -Remediation $queueRemediation
         }
 
         if ($driverEntries.Count -gt 0 -and ($offlineSummary.Count -gt 0 -or $stuckJobEntries.Count -gt 0)) {
-            $driverEvidence = "Drivers linked to affected queues: {0}" -f ($driverSummary.ToArray() -join ', ')
-            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Printer driver packages tied to troubled queues, so driver conflicts may disrupt printing.' -Evidence $driverEvidence -Subcategory 'Printing' -Remediation $queueRemediation -Data @{
-                Area = 'Printing'
-                Kind = 'PrintDrivers'
-                Drivers = $driverEntries.ToArray()
-                Queues = $queueArray
-            }
+            $driverEvidenceJson = $driverEntries.ToArray() | ConvertTo-Json -Depth 5
+            $driverEvidence = @(
+                "Drivers linked to affected queues: {0}" -f ($driverSummary.ToArray() -join ', '),
+                'Driver details (JSON):',
+                $driverEvidenceJson
+            ) -join [Environment]::NewLine
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Printer driver packages tied to troubled queues, so driver conflicts may disrupt printing.' -Evidence $driverEvidence -Subcategory 'Printing' -Remediation $queueRemediation
         }
     }
 
