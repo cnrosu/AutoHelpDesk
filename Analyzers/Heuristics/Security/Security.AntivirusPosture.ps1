@@ -110,7 +110,7 @@ function Invoke-SecurityAntivirusPostureChecks {
         $securityCenter = $payload.SecurityCenter
     }
 
-Nlear    # Structured remediation mapping:
+    # Structured remediation mapping:
     # - Restore instruction -> text step leading into the startup commands.
     # - WMI repair guidance becomes a separate text + code pair.
     $serviceSignalRemediation = @'
