@@ -27,7 +27,20 @@ function Invoke-OutlookCacheHeuristic {
             $largeCaches = $payload.Caches | Where-Object { $_.Length -gt 25GB }
             if ($largeCaches.Count -gt 0) {
                 $names = $largeCaches | Select-Object -ExpandProperty FullName -First 5
-                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.' -Evidence ($names -join "`n") -Subcategory 'Outlook Cache'
+                $remediation = @(
+                    'Options',
+                    '- Reduce "Cached Exchange Mode" horizon (e.g., 3–12 months).',
+                    '- Compact OST: File > Account Settings > Data Files > Settings > Compact Now.',
+                    '',
+                    'Script (close Outlook first)',
+                    '```powershell',
+                    '# List OSTs >10GB',
+                    'Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Outlook" -Filter *.ost | Where Length -gt 10GB |',
+                    "    Select Name, @{n='GB';e={[math]::Round($_.Length/1GB,1)}}",
+                    '```'
+                ) -join "`n"
+
+                Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.' -Evidence ($names -join "`n") -Subcategory 'Outlook Cache' -Remediation $remediation
             } elseif ($payload.Caches.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $Result -Title ('Outlook cache files present ({0})' -f $payload.Caches.Count) -Subcategory 'Outlook Cache'
             }
