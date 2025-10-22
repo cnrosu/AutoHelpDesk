@@ -235,7 +235,7 @@ function Invoke-SystemWindowsSearchChecks {
             'Trim noisy folders (build outputs, node_modules, .git) from the index scope.',
             'Compact or rebuild the index during maintenance windows to reclaim space.'
         ) -join "`n"
-        Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Remediation $remediation
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title $title -Evidence $evidence -Subcategory 'Windows Search Indexing' -Remediation $remediation
     }
 
     if ($snapshot.PSObject.Properties['EnablePerUserCatalog'] -and $snapshot.EnablePerUserCatalog -eq 1) {
