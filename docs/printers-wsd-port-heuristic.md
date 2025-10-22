@@ -16,6 +16,8 @@
 
 ## Remediation guidance
 
-- Reconfigure affected printers to use a Standard TCP/IP or IPP port instead of WSD so the client keeps a persistent socket to the print device.
+**When to keep WSD:** Retain WSD ports when vendor discovery utilities or scanning workflows rely on multicast announcements; swapping transports there can break pairing or device event notifications. **When to move to TCP/RAW:** Prefer Standard TCP/IP (RAW or IPP) ports when queues must serve multiple subnets or require deterministic socket behavior that is not gated on multicast discovery boundaries.
+
+- Reconfigure affected printers to use a Standard TCP/IP or IPP port instead of WSD when no application dependency exists, so the client keeps a persistent socket to the print device.
 - Audit Group Policy Preferences, provisioning scripts, or OEM installers that may auto-create WSD queues and adjust them to deploy TCP/IP definitions.
 - Remove stale WSD queues after migration so users only see the supported printer objects.
