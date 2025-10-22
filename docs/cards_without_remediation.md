@@ -77,7 +77,6 @@ The table is sorted by file path to mirror the repository layout.
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2088) | Network \ $wiredSubcategory | $title | 2088 |
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2117) | Network \ $wiredSubcategory | $title | 2117 |
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2134) | Network \ $wiredSubcategory | Machine certificate inventory failed, so 802.1X certificate health is unknown. | 2134 |
-| [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2158) | Network \ $wiredSubcategory | No valid machine certificate is installed, so wired 802.1X authentication cannot succeed. | 2158 |
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2174) | Network \ $wiredSubcategory | $title | 2174 |
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2177) | Network \ $wiredSubcategory | $title | 2177 |
 | [Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1](../Analyzers/Heuristics/Network/Modules/Network.Heuristics.ps1#L2184) | Network \ $wiredSubcategory | Wired 802.1X diagnostics not collected, so port authentication posture is unknown. | 2184 |

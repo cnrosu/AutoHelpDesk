@@ -2397,18 +2397,34 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
                     if ($machineCerts.Count -gt 0) {
                         $evidence['FirstCertificate'] = if ($machineCerts[0].PSObject.Properties['Subject']) { [string]$machineCerts[0].Subject } else { 'n/a' }
                     }
-                    $remediation = @(
-                        'Fix (machine EAP-TLS)',
-                        '',
-                        '1. Ensure a valid machine certificate exists under Local Computer\Personal\Certificates.',
-                        '2. If one is missing, enroll the device through Intune SCEP/PKCS or Group Policy auto-enrollment.',
-                        '3. Confirm wired 802.1X status:',
-                        '```powershell',
-                        'netsh lan show interfaces',
-                        'certutil -store -enterprise MY',
-                        '```'
-                    ) -join [Environment]::NewLine
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory -Remediation $remediation
+                    $remediationSteps = @(
+                        [ordered]@{
+                            type    = 'text'
+                            title   = 'Install a valid machine certificate'
+                            content = 'Open certlm.msc and confirm a current EAP-TLS machine certificate exists under Local Computer\Personal\Certificates.'
+                        }
+                        [ordered]@{
+                            type    = 'text'
+                            title   = 'Re-enroll if the certificate is missing'
+                            content = 'Trigger Intune SCEP/PKCS enrollment or Group Policy auto-enrollment so the NIC receives a new machine certificate.'
+                        }
+                        [ordered]@{
+                            type    = 'text'
+                            title   = 'Verify wired 802.1X authentication'
+                            content = 'Run the commands below to confirm the interface is authenticated and the certificate is accessible.'
+                        }
+                        [ordered]@{
+                            type    = 'code'
+                            lang    = 'powershell'
+                            content = @"
+netsh lan show interfaces
+certutil -store -enterprise MY
+"@.Trim()
+                        }
+                    )
+                    $remediation = $remediationSteps | ConvertTo-Json -Depth 5
+                    $explanation = 'Without a valid machine certificate, switches reject wired 802.1X so the device cannot join the network.'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory -Remediation $remediation -Explanation $explanation
                 } else {
                     foreach ($cert in $validCerts) {
                         if (-not $cert.PSObject.Properties['NotAfter'] -or -not $cert.NotAfter) { continue }
