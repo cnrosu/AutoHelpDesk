@@ -211,30 +211,38 @@ function Invoke-EventsAuthenticationChecks {
     }
 
     if ($trigger24h -or $correlationDetected) {
-        $evidence = [ordered]@{
-            totalPreAuthFailures = $kerberosSummary.PreAuthEvents
-            kdc18PreAuthFailures = $kerberosSummary.Kdc18Events
-            recent24hFailures    = $kerberosSummary.Recent24h
-            correlatedTimeEvents = $correlatedEventIds.ToArray()
-        }
-
-        if ($kerberosSummary.OffsetSeconds -ne $null) {
-            $evidence['clockSkewSeconds'] = $kerberosSummary.OffsetSeconds
-        }
-        if ($kerberosSummary.ContainsKey('TimeSource')) {
-            $evidence['timeSource'] = $kerberosSummary.TimeSource
-        }
-
         $severity = if ($correlationDetected) { 'high' } else { 'medium' }
         $title = 'Kerberos pre-authentication failures detected, possibly due to clock skew.'
         $kerberosWindowMinutes = 14 * 24 * 60
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Authentication' -Data ([ordered]@{
-            Area                = 'Events/Authentication'
-            Kind                = 'KerberosPreAuth'
-            WindowMinutes       = $kerberosWindowMinutes
-            Summary             = $kerberosSummary
-            CorrelatedEventIds  = @($correlatedEventIds.ToArray())
-        })
+        $windowDays = [math]::Round($kerberosWindowMinutes / (24 * 60), 2)
+        $uniqueCorrelatedIds = @($correlatedEventIds | Sort-Object -Unique)
+        $correlatedText = if ($uniqueCorrelatedIds.Count -gt 0) {
+            [string]::Join(', ', $uniqueCorrelatedIds)
+        } else {
+            'none'
+        }
+
+        $evidenceLines = New-Object System.Collections.Generic.List[string]
+        $evidenceLines.Add(("Observation window: {0} minutes (~{1:N2} days)." -f $kerberosWindowMinutes, $windowDays)) | Out-Null
+        $evidenceLines.Add(("Kerberos pre-auth failures: {0} total events, {1} with KDC 0x18 (recent 24h: {2})." -f $kerberosSummary.PreAuthEvents, $kerberosSummary.Kdc18Events, $kerberosSummary.Recent24h)) | Out-Null
+
+        if ($kerberosSummary.OffsetSeconds -ne $null) {
+            $evidenceLines.Add(("Observed clock skew offset: {0} seconds." -f $kerberosSummary.OffsetSeconds)) | Out-Null
+        }
+        if ($kerberosSummary.ContainsKey('TimeSource') -and $kerberosSummary.TimeSource) {
+            $evidenceLines.Add(("Time source reported by w32tm: {0}." -f $kerberosSummary.TimeSource)) | Out-Null
+        }
+
+        $evidenceLines.Add(("Correlated time service event IDs: {0}." -f $correlatedText)) | Out-Null
+
+        $summaryJson = $kerberosSummary | ConvertTo-Json -Depth 4 -Compress
+        if ($summaryJson) {
+            $evidenceLines.Add("Summary JSON: $summaryJson") | Out-Null
+        }
+
+        $evidence = [string]::Join("`n", $evidenceLines)
+
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Authentication'
     }
 
     $accountData = $null
@@ -552,16 +560,61 @@ function Invoke-EventsAuthenticationChecks {
             $firstUtcString = if ($firstUtc) { $firstUtc.ToString('o') } else { $null }
             $lastUtcString = if ($lastUtc) { $lastUtc.ToString('o') } else { $null }
 
-            $evidence = [ordered]@{
-                userMasked        = $userMasked
-                sourceHostMasked  = $hostMasked
-                lockoutCount      = $matchingLockouts.Count
-                failedSignInCount = $sourceEvents.Count
-                firstUtc          = $firstUtcString
-                lastUtc           = $lastUtcString
+            $windowDays = [math]::Round($WindowMinutes / (24 * 60), 2)
+            $evidenceLines = New-Object System.Collections.Generic.List[string]
+            $evidenceLines.Add(("Observation window: {0} minutes (~{1:N2} days)." -f $WindowMinutes, $windowDays)) | Out-Null
+            $evidenceLines.Add(("Account {0} was locked out {1} time(s) following {2} failed sign-in(s) from {3}." -f $userMasked, $matchingLockouts.Count, $sourceEvents.Count, $hostMasked)) | Out-Null
+
+            if ($firstUtcString) {
+                $evidenceLines.Add("First observed UTC: $firstUtcString.") | Out-Null
+            }
+            if ($lastUtcString) {
+                $evidenceLines.Add("Most recent UTC: $lastUtcString.") | Out-Null
             }
 
-            $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
+            if ($failureGroups.Count -gt 0) {
+                $groupSummary = @($failureGroups | Select-Object -First 3 | ForEach-Object {
+                        $label = if ($_.Id) { "Event $($_.Id)" } else { 'Unknown event' }
+                        "${label}: $($_.Count) failure(s)"
+                    })
+                if ($groupSummary.Count -gt 0) {
+                    $evidenceLines.Add("Bucketed failure summary: $([string]::Join('; ', $groupSummary)).") | Out-Null
+                }
+            }
+
+            if ($topAccounts.Count -gt 0) {
+                $accountSummary = @($topAccounts | Select-Object -First 3 | ForEach-Object {
+                        $name = if ($_.AccountMasked) { $_.AccountMasked } elseif ($_.Account) { $_.Account } else { 'unknown' }
+                        "$name ($($_.Count))"
+                    })
+                if ($accountSummary.Count -gt 0) {
+                    $evidenceLines.Add("Top accounts by failure volume: $([string]::Join('; ', $accountSummary)).") | Out-Null
+                }
+            }
+
+            if ($topSources.Count -gt 0) {
+                $sourceSummary = @($topSources | Select-Object -First 3 | ForEach-Object {
+                        $name = if ($_.SourceMasked) { $_.SourceMasked } elseif ($_.Source) { $_.Source } else { 'unknown source' }
+                        "$name ($($_.Count))"
+                    })
+                if ($sourceSummary.Count -gt 0) {
+                    $evidenceLines.Add("Top failure sources: $([string]::Join('; ', $sourceSummary)).") | Out-Null
+                }
+            }
+
+            $supportPayload = [ordered]@{}
+            if ($failureGroups.Count -gt 0) { $supportPayload['FailureGroups'] = $failureGroups }
+            if ($topAccounts.Count -gt 0) { $supportPayload['TopAccounts'] = $topAccounts }
+            if ($topSources.Count -gt 0) { $supportPayload['TopSources'] = $topSources }
+
+            if ($supportPayload.Count -gt 0) {
+                $supportJson = $supportPayload | ConvertTo-Json -Depth 4 -Compress
+                if ($supportJson) {
+                    $evidenceLines.Add("Supporting data JSON: $supportJson") | Out-Null
+                }
+            }
+
+            $evidenceText = [string]::Join("`n", $evidenceLines)
 
             Write-HeuristicDebug -Source 'Events/Auth' -Message 'Account lockout pattern detected' -Data ([ordered]@{
                 UserKey      = $userKey
@@ -573,14 +626,7 @@ function Invoke-EventsAuthenticationChecks {
                 LastUtc      = $lastUtcString
             })
 
-            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated account lockouts (possibly from another host/session)' -Evidence $evidenceJson -Subcategory 'Authentication' -Data ([ordered]@{
-                Area          = 'Events/Authentication'
-                Kind          = 'EventFailures'
-                WindowMinutes = $WindowMinutes
-                Failures      = @($failureGroups)
-                TopAccounts   = @($topAccounts)
-                TopSources    = @($topSources)
-            })
+            Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Repeated account lockouts (possibly from another host/session)' -Evidence $evidenceText -Subcategory 'Authentication'
         }
     }
 }
