@@ -1,3 +1,16 @@
+$script:WdacSmartAppControlRemediation = @'
+Fix (pick one)
+
+- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.
+- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period.
+
+Validate with:
+
+```powershell
+Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -Class Win32_DeviceGuard
+```
+'@
+
 function Invoke-SecurityTpmChecks {
     param(
         [Parameter(Mandatory)]
@@ -409,7 +422,7 @@ function Invoke-SecurityWdacChecks {
         if ($wdacEnforced) {
             Add-CategoryNormal -CategoryResult $CategoryResult -Title 'WDAC policy enforcement detected' -Evidence ($wdacEvidenceLines.ToArray() -join "`n") -Subcategory 'Windows Defender Application Control'
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'No WDAC policy enforcement detected, so unrestricted code execution remains possible.' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'No WDAC policy enforcement detected, so unrestricted code execution remains possible.' -Evidence ($wdacEvidenceLines -join "`n") -Subcategory 'Windows Defender Application Control' -Remediation $script:WdacSmartAppControlRemediation
         }
 
         $smartAppEvidence = [System.Collections.Generic.List[string]]::new()
@@ -417,7 +430,7 @@ function Invoke-SecurityWdacChecks {
         if ($payload -and $payload.SmartAppControl) {
             $entry = $payload.SmartAppControl
             if ($entry.Error) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Unable to query Smart App Control state, so app trust enforcement is unknown.' -Evidence $entry.Error -Subcategory 'Smart App Control' -Remediation $script:WdacSmartAppControlRemediation
             } elseif ($entry.Values) {
                 foreach ($prop in $entry.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
@@ -440,13 +453,13 @@ function Invoke-SecurityWdacChecks {
             Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Smart App Control enforced' -Evidence $evidenceText -Subcategory 'Smart App Control'
         } elseif ($smartAppState -eq 2) {
             $severity = if ($EvaluationContext.IsWindows11) { 'low' } else { 'info' }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title 'Smart App Control in evaluation mode, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title 'Smart App Control in evaluation mode, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Remediation $script:WdacSmartAppControlRemediation
         } elseif ($EvaluationContext.IsWindows11) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Smart App Control is not enabled on Windows 11 device, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Remediation $script:WdacSmartAppControlRemediation
         } elseif ($smartAppState -ne $null) {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Smart App Control disabled, so app trust enforcement is reduced.' -Evidence $evidenceText -Subcategory 'Smart App Control' -Remediation $script:WdacSmartAppControlRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'WDAC/Smart App Control diagnostics not collected, so app trust enforcement is unknown.' -Subcategory 'Smart App Control' -Remediation $script:WdacSmartAppControlRemediation
     }
 }
