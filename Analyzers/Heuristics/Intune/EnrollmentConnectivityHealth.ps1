@@ -146,11 +146,19 @@ function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
         TokenFailures2h = $recentTokenFailures
     }
 
-    $remediation = 'Resync device time, rebind the work account, and allow initial Intune registration in conditional access.'
+    $remediation = 'Review Azure AD join and MDM enrollment status, clear stale Workplace joins, verify outbound access to Microsoft enrollment endpoints, and assign the Enable automatic MDM enrollment (user scope) policy with proxy exclusions for Microsoft MDM URLs.'
     $remediationScript = @(
-        'w32tm /resync',
+        '```powershell',
+        '# Check join & MDM',
         'dsregcmd /status',
-        'Settings > Accounts > Access work or school > Disconnect > Re-add'
+        '',
+        '# If stale Workplace join:',
+        'dsregcmd /leave',
+        '',
+        '# Ensure enrollment endpoints reachable (proxy-free)',
+        'Test-NetConnection enterpriseregistration.windows.net -Port 443',
+        'Test-NetConnection enterpriseenrollment.manage.microsoft.com -Port 443',
+        '```'
     ) -join "`n"
 
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
