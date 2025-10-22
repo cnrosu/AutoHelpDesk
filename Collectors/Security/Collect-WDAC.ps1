@@ -10,6 +10,30 @@ param(
 
 . (Join-Path -Path $PSScriptRoot -ChildPath '..\\CollectorCommon.ps1')
 
+$script:SacOffNoWdacRemediationJson = @'
+[
+  { "type": "text", "title": "What’s happening", "content": "Smart App Control (SAC) is Off on Windows 11, and no enterprise App Control policy is present. Unknown/unsigned apps won’t be proactively blocked." },
+  { "type": "text", "title": "Turn on SAC", "content": "Open Windows Security → App & browser control → Smart App Control → On. If SAC was previously turned Off or the device was upgraded, a Reset/clean install may be required by design." },
+  { "type": "code", "lang": "powershell", "content": "Get-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy -Name VerifiedAndReputablePolicyState | Select-Object VerifiedAndReputablePolicyState" },
+  { "type": "note", "content": "In managed environments, prefer App Control for Business (WDAC). If you adopt WDAC, SAC can remain Off." }
+]
+'@
+
+$script:WdacAuditRemediationJson = @'
+[
+  { "type": "text", "title": "What’s happening", "content": "An App Control for Business (WDAC) policy is present in Audit mode (kernel). UMCI is Off. SAC is suppressed because WDAC governs app trust posture." },
+  { "type": "text", "title": "Promote to enforce (admins)", "content": "Update the WDAC policy to Enforced (and enable UMCI if required). Redeploy the policy, then reboot the device to load it." },
+  { "type": "code", "lang": "powershell", "content": "Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -Class Win32_DeviceGuard | Select CodeIntegrityPolicyEnforcementStatus, UserModeCodeIntegrityPolicyEnforcementStatus" },
+  { "type": "note", "content": "Values: 0=Off, 1=Enforce, 2=Audit. When Enforced, the SAC card will remain suppressed." }
+]
+'@
+
+$script:SacEvaluationRemediationJson = @'
+[
+  { "type": "note", "content": "Smart App Control is evaluating recent installs. Windows may enable enforcement automatically if no compatibility issues are detected." }
+]
+'@
+
 function Get-DeviceGuardPolicy {
     try {
         $dg = Get-CimInstance -Namespace 'root/Microsoft/Windows/DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction Stop
@@ -67,11 +91,118 @@ function Get-SmartAppControlState {
     }
 }
 
+function Get-AppTrustPosture {
+  [CmdletBinding()]
+  param()
+
+  $result = [ordered]@{
+    OSVersion   = [string][Environment]::OSVersion.Version
+    IsWin11     = $false
+    SAC         = $null
+    WDAC        = [ordered]@{
+      FilesPresent = $false
+      CiStatus     = $null
+      UmciStatus   = $null
+      CipCount     = 0
+      SipolicyP7b  = $false
+      CipSamples   = @()
+    }
+    Decision    = $null
+    Reason      = $null
+    Remediation = $null
+  }
+
+  $ver = [Version]$result.OSVersion
+  $result.IsWin11 = ($ver -ge [Version]'10.0.22621.0')
+
+  $sacVal = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name VerifiedAndReputablePolicyState -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
+  if ($null -eq $sacVal) { $sacVal = -1 }
+  $result.SAC = [int]$sacVal
+
+  $sip = Test-Path 'C:\Windows\System32\CodeIntegrity\SIPolicy.p7b'
+  $cip = @(Get-ChildItem 'C:\Windows\System32\CodeIntegrity\CiPolicies\Active\' -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ieq '.cip' })
+  $result.WDAC.SipolicyP7b = [bool]$sip
+  $result.WDAC.CipCount    = $cip.Count
+  $result.WDAC.CipSamples  = $cip | Select-Object -First 3 -ExpandProperty Name
+  $result.WDAC.FilesPresent = $result.WDAC.SipolicyP7b -or ($result.WDAC.CipCount -gt 0)
+
+  try {
+    $dg = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -Class Win32_DeviceGuard -ErrorAction Stop
+    $result.WDAC.CiStatus   = [int]$dg.CodeIntegrityPolicyEnforcementStatus
+    $result.WDAC.UmciStatus = [int]$dg.UserModeCodeIntegrityPolicyEnforcementStatus
+  } catch {
+    $result.WDAC.CiStatus   = -1
+    $result.WDAC.UmciStatus = -1
+  }
+
+  if (-not $result.IsWin11) {
+    $result.Decision = 'NA'
+    $result.Reason   = 'Windows 10 or earlier; SAC not applicable.'
+    return [pscustomobject]$result
+  }
+
+  $hasWDAC = [bool]$result.WDAC.FilesPresent
+  $ci = [int]$result.WDAC.CiStatus
+  $um = [int]$result.WDAC.UmciStatus
+
+  $SAC_On   = ($result.SAC -eq 2)
+  $SAC_Eval = ($result.SAC -eq 1)
+  $SAC_Off  = ($result.SAC -eq 0)
+
+  if ($hasWDAC -and (($ci -eq 1) -or ($um -eq 1))) {
+    $result.Decision = 'SUPPRESS'
+    $result.Reason   = 'WDAC present and Enforced (kernel and/or UMCI); SAC superseded.'
+    return [pscustomobject]$result
+  }
+
+  if ($hasWDAC -and ($ci -eq 2) -and ($um -in 0,2)) {
+    $result.Decision = 'INFO'
+    $result.Reason   = 'WDAC present in Audit; UMCI Off/Audit.'
+    $result.Remediation = $script:WdacAuditRemediationJson
+    return [pscustomobject]$result
+  }
+
+  if ($hasWDAC -and (($ci -lt 0) -or ($um -lt 0))) {
+    $result.Decision = 'INFO'
+    $result.Reason   = 'WDAC artifacts found; enforcement status unavailable, so SAC guidance skipped.'
+    return [pscustomobject]$result
+  }
+
+  if (-not $hasWDAC) {
+    if ($SAC_On) {
+      $result.Decision = 'OK'
+      $result.Reason   = 'SAC On; no WDAC present.'
+      return [pscustomobject]$result
+    }
+    if ($SAC_Eval) {
+      $result.Decision = 'INFO'
+      $result.Reason   = 'SAC in Evaluation; Windows may auto-enable.'
+      $result.Remediation = $script:SacEvaluationRemediationJson
+      return [pscustomobject]$result
+    }
+    if ($SAC_Off) {
+      $result.Decision = 'MEDIUM'
+      $result.Reason   = 'SAC Off on Windows 11 and no WDAC present.'
+      $result.Remediation = $script:SacOffNoWdacRemediationJson
+      return [pscustomobject]$result
+    }
+  }
+
+  $result.Decision = 'INFO'
+  if ($hasWDAC) {
+    $result.Reason = 'WDAC artifacts found; enforcement status indeterminate.'
+  } else {
+    $result.Reason = 'Indeterminate posture (check SAC state and WDAC artifacts).'
+  }
+  return [pscustomobject]$result
+}
+
 function Invoke-Main {
     $payload = [ordered]@{
         DeviceGuard       = Get-DeviceGuardPolicy
         Registry          = Get-WdacRegistrySnapshot
         SmartAppControl   = Get-SmartAppControlState
+        AppTrustPosture   = Get-AppTrustPosture
     }
 
     $result = New-CollectorMetadata -Payload $payload
