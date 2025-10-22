@@ -527,18 +527,64 @@ function Evaluate-AutodiscoverDomain {
     $dnsEvidence = Get-AutodiscoverDnsEvidence -Domain $Domain -LookupMap $lookupMap
     $scpEvidence = Get-AutodiscoverScpEvidence -Entries $scpEntries -ProblemHosts $scpProblems
 
-    $baseData = [ordered]@{
-        Domain          = $Domain
-        Topology        = $topology
-        JoinState       = $joinState
-        IssuesDetected  = @($issues | ForEach-Object { $_.Reason })
-        CnameTargets    = $TopologyInfo.CnameTargets
-        SrvTargets      = $TopologyInfo.SrvTargets
-        ARecordAddresses = $TopologyInfo.ARecordAddresses
+    $issueReasons = New-Object System.Collections.Generic.List[string]
+    foreach ($issue in $issues) {
+        if (-not $issue) { continue }
+        if ($issue.PSObject.Properties['Reason'] -and $issue.Reason) {
+            $issueReasons.Add([string]$issue.Reason) | Out-Null
+        }
+    }
+    $issueReasonArray = $issueReasons.ToArray()
+    $issueReasonText = if ($issueReasonArray.Count -gt 0) { $issueReasonArray -join ', ' } else { 'None' }
+
+    $cnameTargetsList = New-Object System.Collections.Generic.List[string]
+    foreach ($target in (ConvertTo-AutodiscoverArray -Value $TopologyInfo.CnameTargets)) {
+        if (-not $target) { continue }
+        $cnameTargetsList.Add([string]$target) | Out-Null
+    }
+    $cnameTargets = $cnameTargetsList.ToArray()
+    $cnameTargetsText = if ($cnameTargets.Count -gt 0) { $cnameTargets -join ', ' } else { '(none)' }
+
+    $srvTargetsList = New-Object System.Collections.Generic.List[string]
+    foreach ($target in (ConvertTo-AutodiscoverArray -Value $TopologyInfo.SrvTargets)) {
+        if (-not $target) { continue }
+        $srvTargetsList.Add([string]$target) | Out-Null
+    }
+    $srvTargets = $srvTargetsList.ToArray()
+    $srvTargetsText = if ($srvTargets.Count -gt 0) { $srvTargets -join ', ' } else { '(none)' }
+
+    $aRecordList = New-Object System.Collections.Generic.List[string]
+    foreach ($address in (ConvertTo-AutodiscoverArray -Value $TopologyInfo.ARecordAddresses)) {
+        if (-not $address) { continue }
+        $aRecordList.Add([string]$address) | Out-Null
+    }
+    $aRecordAddresses = $aRecordList.ToArray()
+    $aRecordAddressesText = if ($aRecordAddresses.Count -gt 0) { $aRecordAddresses -join ', ' } else { '(none)' }
+
+    $contextLines = New-Object System.Collections.Generic.List[string]
+    $contextLines.Add("Topology: $topology") | Out-Null
+    $contextLines.Add("Join state: $joinState") | Out-Null
+    $contextLines.Add("Issues detected: $issueReasonText") | Out-Null
+    $contextLines.Add("CNAME targets: $cnameTargetsText") | Out-Null
+    $contextLines.Add("SRV targets: $srvTargetsText") | Out-Null
+    $contextLines.Add("A/AAAA addresses: $aRecordAddressesText") | Out-Null
+    $contextArray = $contextLines.ToArray()
+
+    $signalsDetail = [ordered]@{
+        IssuesDetected    = $issueReasonArray
+        CnameTargets      = $cnameTargets
+        SrvTargets        = $srvTargets
+        ARecordAddresses  = $aRecordAddresses
     }
 
     if (-not $selectedMeta) {
         $summary = "Autodiscover for $Domain is published correctly, so Outlook can auto-configure mailboxes."
+        if ($contextArray.Count -gt 0) {
+            $contextSummaryLines = $contextArray | ForEach-Object { "- $_" }
+            $contextSummaryText = $contextSummaryLines -join "`n"
+            $summary = "$summary`n`nContext:`n$contextSummaryText"
+        }
+
         $evidence = [ordered]@{
             Summary       = $summary
             Domain        = $Domain
@@ -547,6 +593,8 @@ function Evaluate-AutodiscoverDomain {
             DNS           = $dnsEvidence
         }
         if ($scpEvidence.Count -gt 0) { $evidence['SCP'] = $scpEvidence }
+        if ($contextArray.Count -gt 0) { $evidence['Context'] = $contextArray }
+        $evidence['Signals'] = $signalsDetail
         $evidence['Determination'] = "Topology $topology with healthy Autodiscover records."
         $evidence['Fix'] = 'No action required.'
 
@@ -554,7 +602,7 @@ function Evaluate-AutodiscoverDomain {
             Outcome   = 'Normal'
             Title     = "Office/Autodiscover DNS: $Domain Autodiscover published correctly → Info"
             Evidence  = $evidence
-            Data      = $baseData
+            Summary   = $summary
         }
     }
 
@@ -567,6 +615,11 @@ function Evaluate-AutodiscoverDomain {
     }
 
     $summaryText = & $selectedMeta.Summary $context
+    if ($contextArray.Count -gt 0) {
+        $contextSummaryLines = $contextArray | ForEach-Object { "- $_" }
+        $contextSummaryText = $contextSummaryLines -join "`n"
+        $summaryText = "$summaryText`n`nContext:`n$contextSummaryText"
+    }
     $determinationText = & $selectedMeta.Determination $context
     $fixText = & $selectedMeta.Fix $context
 
@@ -578,9 +631,11 @@ function Evaluate-AutodiscoverDomain {
         DNS           = $dnsEvidence
     }
     if ($scpEvidence.Count -gt 0) { $evidence['SCP'] = $scpEvidence }
+    if ($contextArray.Count -gt 0) { $evidence['Context'] = $contextArray }
     if ($ScpData -and $ScpData.Errors -and $ScpData.Errors.Count -gt 0) {
         $evidence['SCP Lookup Notes'] = $ScpData.Errors
     }
+    $evidence['Signals'] = $signalsDetail
     $evidence['Determination'] = $determinationText
     $evidence['Fix'] = $fixText
 
@@ -593,7 +648,6 @@ function Evaluate-AutodiscoverDomain {
         Severity = $selectedMeta.Severity
         Title    = $title
         Evidence = $evidence
-        Data     = $baseData
         Summary  = $summaryText
     }
 }
@@ -639,7 +693,7 @@ function Invoke-AutodiscoverDnsHeuristic {
         $finding = Evaluate-AutodiscoverDomain -Domain $domain -DomainEntry $domainEntry -TopologyInfo $topologyInfo -JoinInfo $joinInfo -ScpData $scpData
 
         if ($finding.Outcome -eq 'Issue') {
-            Add-CategoryIssue -CategoryResult $Result -Severity $finding.Severity -Title $finding.Title -Evidence $finding.Evidence -Subcategory 'Autodiscover DNS' -Data $finding.Data -Explanation $finding.Summary
+            Add-CategoryIssue -CategoryResult $Result -Severity $finding.Severity -Title $finding.Title -Evidence $finding.Evidence -Subcategory 'Autodiscover DNS' -Explanation $finding.Summary
         } elseif ($finding.Outcome -eq 'Normal') {
             Add-CategoryNormal -CategoryResult $Result -Title $finding.Title -Evidence $finding.Evidence -Subcategory 'Autodiscover DNS'
         }
