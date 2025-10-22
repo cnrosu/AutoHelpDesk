@@ -1,40 +1,64 @@
+# Structured remediation mapping:
+# - Headings become text steps with titles for quick scanning.
+# - Symptom and triage guidance translate to text or note steps in the order presented.
+# - PowerShell blocks remain code steps, keeping commands and placeholders.
+# - Follow-up paragraphs (SYSVOL access, firewall reminder) become note steps.
 $script:AdDiscoveryConnectivityRemediation = @'
-Active Directory Health
-DNS Discovery / Discovery / Connectivity / SYSVOL
-
-Symptoms (cards): SRV records not resolvable; no DC candidates; can't reach DC ports; SYSVOL/NETLOGON unreachable.
-Triage
-
-Verify domain suffix & DNS:
-
-```powershell
-$domain = (Get-CimInstance Win32_ComputerSystem).Domain
-Resolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$domain
-Resolve-DnsName $domain
-Test-NetConnection -ComputerName (Get-ADDomainController -Discover -ErrorAction SilentlyContinue).HostName -Port 389,445,88,135,3268
-```
-
-Check secure channel & time (see below).
-Fix
-
-Point client DNS to AD DCs only (no public resolvers on domain members):
-
-```powershell
-Get-DnsClientServerAddress -AddressFamily IPv4 |
-  Where-Object { $_.ServerAddresses -notcontains '10.x.x.x' } |
-  ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses @('10.x.x.x','10.y.y.y') }
-```
-
-Restore SYSVOL access:
-\\<domain>\SYSVOL should open; if not, check DFS Namespace/DFS Replication service state on DCs and site connectivity.
-
-Firewall in path: ensure branch firewalls allow Kerberos/LDAP/SMB to DCs.
-Validate
-
-```powershell
-nltest /dsgetdc:<yourdomain>
-Test-Path \$env:USERDNSDOMAIN\SYSVOL
-```
+[
+  {
+    "type": "text",
+    "title": "Active Directory Health",
+    "content": "DNS Discovery / Discovery / Connectivity / SYSVOL"
+  },
+  {
+    "type": "text",
+    "title": "Symptoms",
+    "content": "SRV records not resolvable; no DC candidates; can't reach DC ports; SYSVOL/NETLOGON unreachable."
+  },
+  {
+    "type": "text",
+    "title": "Triage",
+    "content": "Verify domain suffix and DNS before deeper troubleshooting."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$domain = (Get-CimInstance Win32_ComputerSystem).Domain\nResolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$domain\nResolve-DnsName $domain\nTest-NetConnection -ComputerName (Get-ADDomainController -Discover -ErrorAction SilentlyContinue).HostName -Port 389,445,88,135,3268"
+  },
+  {
+    "type": "note",
+    "content": "Check secure channel and time as a follow-up step if the discovery tests succeed."
+  },
+  {
+    "type": "text",
+    "title": "Fix",
+    "content": "Point client DNS to AD DCs only (no public resolvers on domain members)."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-DnsClientServerAddress -AddressFamily IPv4 |\n  Where-Object { $_.ServerAddresses -notcontains '10.x.x.x' } |\n  ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses @('10.x.x.x','10.y.y.y') }"
+  },
+  {
+    "type": "text",
+    "title": "Restore SYSVOL access",
+    "content": "\\\\<domain>\\SYSVOL should open; if not, check DFS Namespace/DFS Replication service state on DCs and validate site connectivity."
+  },
+  {
+    "type": "note",
+    "content": "Ensure branch firewalls allow Kerberos/LDAP/SMB to domain controllers."
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Confirm discovery succeeds and SYSVOL is reachable."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "nltest /dsgetdc:<yourdomain>\nTest-Path \\\\$env:USERDNSDOMAIN\\SYSVOL"
+  }
+]
 '@
 
 function Add-AdDiscoveryFindings {

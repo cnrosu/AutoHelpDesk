@@ -1,41 +1,69 @@
+# Structured remediation mapping:
+# - Intro sentence -> text step highlighting the service recovery goal.
+# - Script block -> code step retaining the pipeline and indentation.
+# - Final guidance about missing services -> text step.
 $script:CriticalServiceAutostartRemediation = @'
-Bring these core network services back online and set them to start automatically so DNS, RPC, SMB, printing, proxy discovery, and background transfers can recover:
-
-```powershell
-'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |
-  ForEach-Object {
-    if (Get-Service $_ -ErrorAction SilentlyContinue) {
-      Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue
-      Start-Service $_ -ErrorAction SilentlyContinue
-    }
+[
+  {
+    "type": "text",
+    "content": "Bring these core network services back online and set them to start automatically so DNS, RPC, SMB, printing, proxy discovery, and background transfers can recover."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |\n  ForEach-Object {\n    if (Get-Service $_ -ErrorAction SilentlyContinue) {\n      Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue\n      Start-Service $_ -ErrorAction SilentlyContinue\n    }\n  }"
+  },
+  {
+    "type": "text",
+    "content": "If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet."
   }
-```
-
-If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet.
+]
 '@
 
+# Structured remediation mapping:
+# - Problem sentence -> text step introducing the queue reset.
+# - Command list -> code step.
+# - Follow-up sentence -> text step reminding to requeue deployments.
 $script:BitsJobQueueRemediation = @'
-If BITS jobs keep failing after the service is running, review and reset the queue with PowerShell:
-
-```powershell
-Get-BitsTransfer -AllUsers | Format-Table -AutoSize Id, DisplayName, JobState, OwnerName
-Get-BitsTransfer -AllUsers | Remove-BitsTransfer -Confirm:$false
-```
-
-Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume.
+[
+  {
+    "type": "text",
+    "content": "If BITS jobs keep failing after the service is running, review and reset the queue with PowerShell."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-BitsTransfer -AllUsers | Format-Table -AutoSize Id, DisplayName, JobState, OwnerName\nGet-BitsTransfer -AllUsers | Remove-BitsTransfer -Confirm:$false"
+  },
+  {
+    "type": "text",
+    "content": "Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume."
+  }
+]
 '@
 
 $script:BitsJobFailureRemediation = $script:CriticalServiceAutostartRemediation + "`n`n" + $script:BitsJobQueueRemediation
 
+# Structured remediation mapping:
+# - Intro sentence -> text step that frames why to disable the spooler.
+# - Commands -> code step.
+# - Reminder sentence -> text step covering when to re-enable.
 $script:WorkstationSpoolerDisableRemediation = @'
-If this workstation does not require printing, disable the Print Spooler to remove the PrintNightmare attack surface:
-
-```powershell
-Stop-Service -Name Spooler -Force
-Set-Service -Name Spooler -StartupType Disabled
-```
-
-Re-enable the spooler only when printing is required and the device is patched.
+[
+  {
+    "type": "text",
+    "content": "If this workstation does not require printing, disable the Print Spooler to remove the PrintNightmare attack surface."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Stop-Service -Name Spooler -Force\nSet-Service -Name Spooler -StartupType Disabled"
+  },
+  {
+    "type": "text",
+    "content": "Re-enable the spooler only when printing is required and the device is patched."
+  }
+]
 '@
 
 function Invoke-ServiceCheckWindowsSearch {

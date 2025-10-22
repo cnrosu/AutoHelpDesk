@@ -110,16 +110,31 @@ function Invoke-SecurityAntivirusPostureChecks {
         $securityCenter = $payload.SecurityCenter
     }
 
+    # Structured remediation mapping:
+    # - Restore instruction -> text step leading into the startup commands.
+    # - WMI repair guidance becomes a separate text + code pair.
     $serviceSignalRemediation = @'
-Restore Windows Security Center reporting so Defender posture can be collected:
-```powershell
-Set-Service wscsvc -StartupType Automatic
-Restart-Service wscsvc
-```
-If Security Center still fails, verify and repair WMI (use with caution):
-```powershell
-winmgmt /verifyrepository
-```
+[
+  {
+    "type": "text",
+    "title": "Restore Windows Security Center reporting",
+    "content": "Ensure the Security Center service starts automatically so Defender posture can be collected."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-Service wscsvc -StartupType Automatic\nRestart-Service wscsvc"
+  },
+  {
+    "type": "text",
+    "content": "If Security Center still fails, verify and repair WMI (use with caution)."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "winmgmt /verifyrepository"
+  }
+]
 '@
 
     if (-not $securityCenter) {

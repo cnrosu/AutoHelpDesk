@@ -1,26 +1,31 @@
+# Structured remediation steps derived from the legacy block:
+# - The heading becomes a text step that summarizes when to use the playbook.
+# - The "Checks" section turns into a code step listing the discovery commands.
+# - The bullet list under "Fix" is captured as a text step with newline-separated guidance.
+# - The cleanup script stays a code step with comments preserved.
 $script:StorageHealthAndSpaceRemediation = @'
-Storage disk health and free space recovery
-
-Checks
-
-```powershell
-Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage
-Get-Volume | Sort SizeRemaining | Ft DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto
-```
-
-Fix
-
-- Degraded disks: replace disk; if USB/NVMe enclosure, update bridge firmware.
-- SMART unavailable: re-run as admin; ensure NVMe/RAID vendor drivers installed.
-- Low space (automatable):
-
-```powershell
-# Clean component store
-Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
-# Temp + recycle bin
-Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-Clear-RecycleBin -Force
-```
+[
+  {
+    "type": "text",
+    "title": "Storage disk health and free space recovery",
+    "content": "Run these checks and fixes to address disk health warnings and low free space."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage\nGet-Volume | Sort SizeRemaining | Format-Table DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto"
+  },
+  {
+    "type": "text",
+    "title": "Fix",
+    "content": "- Degraded disks: replace the disk; if using a USB/NVMe enclosure, update the bridge firmware.\n- SMART unavailable: re-run as admin and ensure NVMe/RAID vendor drivers are installed.\n- Low space (automatable): run the cleanup script."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "# Clean component store\nDism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase\n# Temp + recycle bin\nRemove-Item \"$env:TEMP\\*\" -Recurse -Force -ErrorAction SilentlyContinue\nClear-RecycleBin -Force"
+  }
+]
 '@
 
 function ConvertTo-StorageArray {

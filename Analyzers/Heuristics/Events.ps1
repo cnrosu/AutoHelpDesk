@@ -12,30 +12,48 @@ $eventsModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'Events'
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Authentication.ps1')
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Vpn.ps1')
 
+# Structured remediation steps derived from the legacy block:
+# - The "Events (Log Health)" heading and symptoms sentence become a text step with a title.
+# - Each action sentence maps to a text step that introduces the related PowerShell snippet.
+# - The fenced code samples become code steps that keep the same commands and language.
 $script:EventsLogHealthRemediation = @'
-Events (Log Health)
-
-Symptoms: Event logs unreadable; high error/warning rates; GP Operational errors.
-Fix
-
-Ensure the Windows Event Log service is healthy:
-
-```powershell
-Get-Service EventLog | Restart-Service
-```
-
-Increase log size (clear only if stakeholders approve):
-
-```powershell
-wevtutil sl System /ms:67108864
-wevtutil sl Application /ms:67108864
-```
-
-Validate:
-
-```powershell
-Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }
-```
+[
+  {
+    "type": "text",
+    "title": "Events (Log Health)",
+    "content": "Symptoms: Event logs unreadable; high error/warning rates; GP Operational errors."
+  },
+  {
+    "type": "text",
+    "title": "Restart Windows Event Log service",
+    "content": "Ensure the Windows Event Log service is healthy."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-Service EventLog | Restart-Service"
+  },
+  {
+    "type": "text",
+    "title": "Increase log size",
+    "content": "Clear only if stakeholders approve before resizing."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "wevtutil sl System /ms:67108864\nwevtutil sl Application /ms:67108864"
+  },
+  {
+    "type": "text",
+    "title": "Validate log health",
+    "content": "Confirm the System and Application logs respond without errors."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }"
+  }
+]
 '@
 
 function ConvertTo-LogView {

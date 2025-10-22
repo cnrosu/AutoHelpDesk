@@ -1,29 +1,40 @@
 if (-not $script:HardwareBatteryRemediation) {
+    # Structured remediation mapping:
+    # - Markdown headings convert to titled text steps.
+    # - Replacement guidance stays a text step before power policy commands.
+    # - The policy script and validation snippet remain code steps with escaped literals.
     $script:HardwareBatteryRemediation = @'
-**Symptoms:** Query errors; poor health titles.
-
-**Fix (device)**
-
-Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity.
-
-Apply power policy to reduce wear/thermals on laptops:
-
-```powershell
-$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
-& $powercfg /setactive SCHEME_BALANCED
-& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
-& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-& $powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-```
-
-**Validate**
-
-```powershell
-$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
-$output = Join-Path $env:TEMP 'battery.html'
-& $powercfg /batteryreport /output $output
-Write-Host "Battery report exported to $output"
-```
+[
+  {
+    "type": "text",
+    "title": "Symptoms",
+    "content": "Query errors; poor health titles."
+  },
+  {
+    "type": "text",
+    "title": "Fix (device)",
+    "content": "Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity."
+  },
+  {
+    "type": "text",
+    "content": "Apply a balanced power policy to reduce wear and thermals on laptops."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$powercfg = Join-Path $env:WINDIR 'System32\\powercfg.exe'\n& $powercfg /setactive SCHEME_BALANCED\n& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5\n& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85\n& $powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85"
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Generate a battery report to confirm configuration changes."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$powercfg = Join-Path $env:WINDIR 'System32\\powercfg.exe'\n$output = Join-Path $env:TEMP 'battery.html'\n& $powercfg /batteryreport /output $output\nWrite-Host \"Battery report exported to $output\""
+  }
+]
 '@
 }
 

@@ -183,17 +183,27 @@ function Invoke-NetworkFirewallProfileAnalysis {
     $errorCheckId = 'fw.profile.error'
     $unparsedCheckId = 'fw.profile.unparsed'
 
+    # Structured remediation mapping:
+    # - Heading and collection note become text steps.
+    # - Baseline fix label precedes the PowerShell commands.
     $profileCollectorRemediation = @'
-Firewall Profile Collector / Data Missing
-
-Treat this as a collection pre-req: rerun the collector from an elevated PowerShell session and confirm the Windows Firewall service (mpssvc) is running.
-
-Baseline fix:
-
-```powershell
-Set-NetFirewallProfile -All -Enabled True
-Get-Service mpssvc | Set-Service -StartupType Automatic
-```
+[
+  {
+    "type": "text",
+    "title": "Firewall Profile Collector / Data Missing",
+    "content": "Treat this as a collection prerequisite: rerun the collector from an elevated PowerShell session and confirm the Windows Firewall service (mpssvc) is running."
+  },
+  {
+    "type": "text",
+    "title": "Baseline fix",
+    "content": "Re-enable firewall profiles and set the Windows Firewall service to start automatically."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-NetFirewallProfile -All -Enabled True\nGet-Service mpssvc | Set-Service -StartupType Automatic"
+  }
+]
 '@
 
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall.profile'

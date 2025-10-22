@@ -1,13 +1,24 @@
 $script:DhcpAnalyzerFailureExplanation = 'The DHCP diagnostics failed to run, so AutoHelpDesk cannot confirm lease or server health.'
+# Structured remediation mapping:
+# - Initial instruction becomes a text step describing the restart and renewal.
+# - Commands remain a code step.
+# - Follow-up driver guidance is a concluding text step.
 $script:DhcpAnalyzerFailureRemediation = @'
-Restart the DHCP Client service and renew the lease to restore analyzer telemetry, then update the network adapter drivers if failures persist.
-
-```powershell
-Restart-Service Dhcp
-ipconfig /renew
-```
-
-Install the latest network adapter drivers from the vendor if the service keeps failing.
+[
+  {
+    "type": "text",
+    "content": "Restart the DHCP Client service and renew the lease to restore analyzer telemetry; update network adapter drivers if failures persist."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Restart-Service Dhcp\nipconfig /renew"
+  },
+  {
+    "type": "text",
+    "content": "Install the latest network adapter drivers from the vendor if the service keeps failing."
+  }
+]
 '@
 
 function Get-DhcpAnalyzerDisplayName {
