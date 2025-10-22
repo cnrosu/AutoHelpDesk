@@ -204,53 +204,67 @@ function Invoke-SystemPendingRebootChecks {
     }
 
     $signalOrder = @('CBS.RebootPending', 'CBS.SessionsPending', 'WU.RebootRequired', 'MSI.InProgress', 'PFRO.HasEntries', 'RenamePending')
-    $signalLineParts = [System.Collections.Generic.List[string]]::new()
+    $signalsMap = [ordered]@{}
     foreach ($name in $signalOrder) {
-        $value = Get-SignalValue -Name $name
-        $signalLineParts.Add(('{0}={1}' -f $name, $(if ($value) { 'True' } else { 'False' }))) | Out-Null
-    }
-    if ($pfroTotal -gt 0) {
-        $signalLineParts.Add(('PFRO.Total={0}' -f $pfroTotal)) | Out-Null
+        $signalsMap[$name] = Get-SignalValue -Name $name
     }
 
-    $evidenceLines = [System.Collections.Generic.List[string]]::new()
-    if ($summary) {
-        $evidenceLines.Add('Summary: {0}' -f $summary) | Out-Null
+    $countsMap = [ordered]@{
+        'PFRO.Total' = $pfroTotal
     }
-    if ($signalLineParts.Count -gt 0) {
-        $evidenceLines.Add('Signals: {0}' -f ($signalLineParts -join '; ')) | Out-Null
+
+    $triggerSummary = [ordered]@{
+        High  = @($highTriggerNames | Where-Object { $_ })
+        Other = @($additionalTriggerTexts | Where-Object { $_ })
+    }
+
+    $evidencePayload = [ordered]@{
+        Triggers = $triggerSummary
+        Signals  = $signalsMap
+        Counts   = $countsMap
     }
 
     if ($pfroSample.Count -gt 0) {
-        $sampleCount = $pfroSample.Count
-        $displayTotal = if ($pfroTotal -gt 0) { $pfroTotal } else { $sampleCount }
-        $sampleHeader = 'PFRO.Sample ({0}/{1}):' -f ($sampleCount), ($displayTotal)
-        $evidenceLines.Add($sampleHeader) | Out-Null
-        foreach ($item in $pfroSample) {
-            $evidenceLines.Add($item) | Out-Null
+        $displayTotal = if ($pfroTotal -gt 0) { $pfroTotal } else { $pfroSample.Count }
+        $evidencePayload['PFROSample'] = [ordered]@{
+            Count        = $pfroSample.Count
+            DisplayTotal = $displayTotal
+            Entries      = @($pfroSample)
         }
     }
 
     if ($renamePending -and $renameDetails) {
+        $renameEvidence = [ordered]@{}
         $active = if ($renameDetails.PSObject.Properties['ActiveName']) { [string]$renameDetails.ActiveName } else { $null }
         $pending = if ($renameDetails.PSObject.Properties['PendingName']) { [string]$renameDetails.PendingName } else { $null }
         if ($active -or $pending) {
-            $activeDisplay = if ($active) { $active } else { '(unknown)' }
-            $pendingDisplay = if ($pending) { $pending } else { '(unknown)' }
-            $evidenceLines.Add(('ComputerName (Active)={0}; (Pending)={1}' -f $activeDisplay, $pendingDisplay)) | Out-Null
+            $renameEvidence['ComputerName'] = [ordered]@{
+                Active  = if ($active) { $active } else { '(unknown)' }
+                Pending = if ($pending) { $pending } else { '(unknown)' }
+            }
         }
         $tcpActive = if ($renameDetails.PSObject.Properties['TcpipHostname']) { [string]$renameDetails.TcpipHostname } else { $null }
         $tcpPending = if ($renameDetails.PSObject.Properties['TcpipPendingName']) { [string]$renameDetails.TcpipPendingName } else { $null }
         if ($tcpActive -or $tcpPending) {
-            $tcpActiveDisplay = if ($tcpActive) { $tcpActive } else { '(unknown)' }
-            $tcpPendingDisplay = if ($tcpPending) { $tcpPending } else { '(unknown)' }
-            $evidenceLines.Add(('TCP/IP Hostname (Current)={0}; (Pending)={1}' -f $tcpActiveDisplay, $tcpPendingDisplay)) | Out-Null
+            $renameEvidence['TcpipHostname'] = [ordered]@{
+                Current = if ($tcpActive) { $tcpActive } else { '(unknown)' }
+                Pending = if ($tcpPending) { $tcpPending } else { '(unknown)' }
+            }
+        }
+
+        if ($renameEvidence.Count -gt 0) {
+            $evidencePayload['RenameDetails'] = $renameEvidence
         }
     }
 
     if ($collectedAt) {
-        $evidenceLines.Add('CollectedAtUtc: {0}' -f $collectedAt) | Out-Null
+        $evidencePayload['CollectedAtUtc'] = $collectedAt
     }
+
+    $evidenceLines = @(
+        'Pending reboot evidence (JSON):',
+        ($evidencePayload | ConvertTo-Json -Depth 6)
+    )
 
     $remediationSteps = [System.Collections.Generic.List[string]]::new()
     $remediationSteps.Add('Restart the device at the next maintenance window to complete servicing/updates.') | Out-Null
@@ -267,27 +281,22 @@ function Invoke-SystemPendingRebootChecks {
         $remediationSteps.Add('For rename scenarios, confirm device rename policies complete after restart.') | Out-Null
     }
 
-    $cardData = [ordered]@{
-        CollectedAtUtc = $collectedAt
-        Signals        = @{}
-        Counts         = @{}
-        PFROSample     = $pfroSample
-        RenameDetails  = $renameDetails
+    $remediationText = $null
+    $uniqueRemediationSteps = $remediationSteps | Select-Object -Unique
+    if ($uniqueRemediationSteps.Count -gt 0) {
+        $remediationText = ($uniqueRemediationSteps | ForEach-Object { '- {0}' -f $_ }) -join "`n"
+    }
+
+    $issueParams = @{
+        CategoryResult = $Result
         Severity       = $severity
-        SummaryTriggers = [ordered]@{
-            High  = @($highTriggerNames)
-            Other = $additionalTriggerTexts
-        }
+        Title          = $title
+        Evidence       = $evidenceLines
+        Subcategory    = 'Pending Reboot'
     }
 
-    foreach ($name in $signalOrder) {
-        $cardData.Signals[$name] = Get-SignalValue -Name $name
-    }
-    $cardData.Counts['PFRO.Total'] = $pfroTotal
+    if ($summary) { $issueParams['Explanation'] = $summary.Trim() }
+    if ($remediationText) { $issueParams['Remediation'] = $remediationText }
 
-    if ($summary) {
-        $cardData['Summary'] = $summary
-    }
-
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence (($evidenceLines | Where-Object { $_ }) -join "`n") -Subcategory 'Pending Reboot' -Remediation (($remediationSteps | Select-Object -Unique) -join ' ') -Data $cardData
+    Add-CategoryIssue @issueParams
 }
