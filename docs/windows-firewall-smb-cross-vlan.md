@@ -1,6 +1,9 @@
 ## Summary
 AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that allow unrestricted remote addresses because they enable cross-VLAN propagation. This scenario illustrates how a single permissive rule on TCP 135/139/445 can let ransomware traverse network segments. Use the steps below to gather evidence, validate exposure, and tighten access without breaking legitimate workflows.
 
+### What might be outdated
+- Microsoft has adjusted Remote Assistance defaults in recent Windows 11 releases, so verify the rule is enabled and scoped broadly before assuming it mirrors older Windows 10 behavior.
+
 ## Signals to Collect
 - `$smbRules = Get-NetFirewallRule | Where-Object { $_.DisplayName -match 'File and Printer Sharing|SMB|LanmanServer' } | Where-Object Enabled -eq True` → Enumerate enabled SMB-related firewall rules.
 - `$addr = $smbRules | Get-NetFirewallAddressFilter` → Retrieve address filters applied to each SMB rule.
@@ -16,11 +19,13 @@ AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that al
 1. Restrict SMB-related rules to the **Domain** profile and limit remote addresses to trusted local subnets or management networks.
 2. Harden NTLM and disable guest/anonymous access in accordance with the Windows security baseline to prevent unauthenticated traversal if a rule must stay open.
 3. Implement upstream VLAN ACLs or firewall policies to block SMB ports between user segments unless explicitly required.
-4. Publish a runbook for technicians detailing how to request temporary access without creating broad permanent rules.
-5. Re-run AutoHelpDesk firewall collectors to confirm inbound SMB rules now show restricted scopes.
+4. If you run Windows Server 2022 or Windows 11 Enterprise, evaluate **SMB over QUIC** so remote users can reach file shares securely without opening TCP 445 through intermediate firewalls.
+5. Publish a runbook for technicians detailing how to request temporary access without creating broad permanent rules.
+6. Re-run AutoHelpDesk firewall collectors to confirm inbound SMB rules now show restricted scopes.
 
 ## References
 - `docs/windows-firewall-smb-cross-vlan.md`
+- Microsoft Learn — [Plan and deploy SMB over QUIC](https://learn.microsoft.com/windows-server/storage/file-server/smb-over-quic) (updated 2023-11-15).
 
 # Windows Firewall SMB/NetBIOS exposure example
 
