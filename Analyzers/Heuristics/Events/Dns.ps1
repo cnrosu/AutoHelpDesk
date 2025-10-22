@@ -151,23 +151,12 @@ function Invoke-EventsDnsChecks {
         }
     }
 
-    $evidence = [ordered]@{
-        occurrences24h = [int]$occurrences
-        sampleNames    = $sampleNamesList.ToArray()
-        servers        = $serversList.ToArray()
-        lastUtc        = $lastUtcString
-    }
-
-    if ($tags.Count -gt 0) { $evidence['tags'] = $tags }
-
     Write-HeuristicDebug -Source 'Events/Dns' -Message 'DNS timeouts heuristic triggered' -Data ([ordered]@{
         Groups      = $flagged.Count
         Occurrences = $occurrences
         LastUtc     = $lastUtcString
         Tags        = $tags
     })
-
-    $evidenceJson = $evidence | ConvertTo-Json -Depth 5 -Compress
 
     $bucketed = @()
     if ($flagged.Count -gt 0) {
@@ -182,14 +171,24 @@ function Invoke-EventsDnsChecks {
         }
     }
 
+    $evidence = [ordered]@{
+        area           = 'Events'
+        kind           = $kind
+        windowMinutes  = $WindowMinutes
+        occurrences24h = [int]$occurrences
+        lastUtc        = $lastUtcString
+        servers        = $serversList.ToArray()
+        sampleNames    = $sampleNamesList.ToArray()
+        buckets        = @($bucketed)
+    }
+
+    if ($tags.Count -gt 0) { $evidence['tags'] = $tags }
+
+    $evidenceJson = $evidence | ConvertTo-Json -Depth 6
+
     $title = 'DNS resolution timeouts observed'
     $subcat = 'Networking / DNS'
     $kind = 'DNS'
 
-    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidenceJson -Subcategory $subcat -Data ([ordered]@{
-        Area          = 'Events'
-        Kind          = $kind
-        WindowMinutes = $WindowMinutes
-        Buckets       = @($bucketed)
-    })
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidenceJson -Subcategory $subcat
 }
