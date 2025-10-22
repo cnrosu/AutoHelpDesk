@@ -2248,7 +2248,18 @@ netsh winhttp reset proxy
                     if ($machineCerts.Count -gt 0) {
                         $evidence['FirstCertificate'] = if ($machineCerts[0].PSObject.Properties['Subject']) { [string]$machineCerts[0].Subject } else { 'n/a' }
                     }
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory
+                    $remediation = @(
+                        'Fix (machine EAP-TLS)',
+                        '',
+                        '1. Ensure a valid machine certificate exists under Local Computer\Personal\Certificates.',
+                        '2. If one is missing, enroll the device through Intune SCEP/PKCS or Group Policy auto-enrollment.',
+                        '3. Confirm wired 802.1X status:',
+                        '```powershell',
+                        'netsh lan show interfaces',
+                        'certutil -store -enterprise MY',
+                        '```'
+                    ) -join [Environment]::NewLine
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory -Remediation $remediation
                 } else {
                     foreach ($cert in $validCerts) {
                         if (-not $cert.PSObject.Properties['NotAfter'] -or -not $cert.NotAfter) { continue }
