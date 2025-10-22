@@ -1,6 +1,16 @@
 ## Summary
 AutoHelpDesk’s Microsoft Store heuristic reviews package presence, licensing services, network reachability, and diagnostic output to determine whether the storefront is functional. This checklist gives technicians a consistent order of operations to gather evidence and remediate issues without unnecessary reinstalls. Applying the steps also satisfies analyzer requirements for Store troubleshooting artifacts.
 
+### Quick fixes
+Run these elevated commands before deeper triage to repair the Store cache, source metadata, and package state:
+
+1. `wsreset.exe`
+2. `winget source reset --force msstore`
+3. ```powershell
+   Get-AppxPackage -AllUsers Microsoft.WindowsStore | Reset-AppxPackage
+   ```
+   Windows 11 24H2 and newer support `Reset-AppxPackage`; use this prior to full re-registration.
+
 ## Signals to Collect
 - `Get-Service ClipSVC, InstallService, DoSvc` → Capture the health of core Microsoft Store and Delivery Optimization services.
 - `Get-WinEvent -LogName "Microsoft-Windows-AppXDeploymentServer/Operational" -MaxEvents 200` → Review recent AppX deployment events for failures.
@@ -52,7 +62,7 @@ Get-Service -Name ClipSVC, wlidsvc | Select-Object Name, Status, StartType
 | **Windows Update & Delivery Optimization** | Store apps use Windows Update infrastructure. Stopped update services cause Store download failures. | Check:<br/>```powershell
 Get-Service -Name wuauserv, bits, DoSvc | Select-Object Name, Status, StartType
 ```
-All services must be running. Restart them if they are stuck in `Stopping`.
+All services must be running. Restart them if they are stuck in `Stopping`. If downloads stay throttled, review Delivery Optimization peer settings in Intune or Group Policy (**Computer Configuration > Administrative Templates > Windows Components > Delivery Optimization**).
 | **System time, region, and SSL** | Incorrect clock or region breaks secure channel handshakes. | Run:<br/>```powershell
 Get-Service W32Time
 w32tm /query /status
@@ -99,6 +109,7 @@ Entra Joined devices often have the **Windows Time** service stopped; that is ex
 3. On managed networks, confirm SSL inspection is disabled for the Store CDN. If
    inspection is mandatory, ensure the device trusts the inspection root
    certificate.
+4. When AppContainer network isolation policies are enforced, allow the Microsoft Store and `StoreTransportHost` containers outbound access to Store CDN FQDNs so cached firewall rules do not silently block traffic.
 
 ## 5. Run built-in diagnostics
 
@@ -111,9 +122,14 @@ Entra Joined devices often have the **Windows Time** service stopped; that is ex
    Review the generated HTML report for store cache, licensing, or service
    warnings. It also validates background intelligent transfer service (BITS)
    jobs.
-2. Flush the Store cache with `wsreset.exe`. A successful run opens the Store
-   automatically; if it exits immediately with an error, the cache folder has
-   permission problems.
+2. Flush the Store cache with `wsreset.exe`. Follow with a source reset and package repair if catalog downloads continue to fail:
+
+   ```powershell
+   winget source reset --force msstore
+   Get-AppxPackage -AllUsers Microsoft.WindowsStore | Reset-AppxPackage
+   ```
+
+   A successful run of `wsreset.exe` opens the Store automatically; if any command exits immediately with an error, capture the message for escalation and verify the user has administrative rights.
 
 ## 6. Inspect application logs
 
@@ -130,7 +146,13 @@ Entra Joined devices often have the **Windows Time** service stopped; that is ex
 
 ## 7. Repair the Store installation (only after evidence gathering)
 
-1. Re-register the Store package for all users:
+1. On Windows 11 24H2 or later, reset the Store package state without reinstalling:
+
+   ```powershell
+   Get-AppxPackage -AllUsers Microsoft.WindowsStore | Reset-AppxPackage
+   ```
+
+   Older builds that lack `Reset-AppxPackage` require a full re-registration for all users:
 
    ```powershell
    Get-AppxPackage -AllUsers Microsoft.WindowsStore | Foreach-Object {
