@@ -54,6 +54,11 @@ Confirm-SecureBootUEFI
 Get-CimInstance -ClassName Win32_Tpm -Namespace root\cimv2\Security\MicrosoftTpm | Format-List *
 ```
 
+> **Note:** Some consumer-grade Windows editions surface the feature as
+> **Device Encryption** instead of the full BitLocker control panel, but the
+> underlying technology is still BitLocker. These commands return the same
+> telemetry regardless of which experience the device shows.
+
 If the OS drive reports `FullyEncrypted` and `ProtectionStatus` shows `On`, the
 alert should clear after the next data collection. Any other state indicates the
 drive needs remediation.
