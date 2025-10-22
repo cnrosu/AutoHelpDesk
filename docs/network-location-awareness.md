@@ -20,8 +20,24 @@ The services analyzer tracks the Network Location Awareness (NLA) service becaus
 3. Inspect the `NlaSvc` service for crash loops or manual stoppages and ensure it runs under the expected startup configuration.
 4. After applying fixes, re-run the collectors to confirm profile stability and a healthy NLA service state.
 
+## Windows 11 profile evaluation notes
+Older troubleshooting guides that recommend editing `ProfileName` keys in `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles` are outdated for Windows 10 and 11.
+Windows 11 still bases NLA decisions on the authenticated domain state and the default IPv4/IPv6 routes.
+When the default route points to an unauthenticated network, Windows falls back to Public even if the registry is forced.
+Technicians should verify domain reachability, gateway health, and credential providers before assuming NLA is broken.
+Documenting which route NLA selected helps correlate profile flips with VPN or metered links.
+
+## Supported override options
+Use `Set-NetConnectionProfile` to temporarily correct a misclassified interface after confirming the network is trusted.
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Ethernet" -NetworkCategory Private
+```
+Group Policy objects that enforce a firewall profile override the cmdlet within the next background refresh, so coordinate with the domain admin before making the change.
+Re-run the collectors after applying the supported override to confirm the profile persisted.
+
 ## References
 - `docs/network-location-awareness.md`
+- Microsoft Learn: [Set-NetConnectionProfile](https://learn.microsoft.com/powershell/module/netconnection/set-netconnectionprofile)
 
 # Network Location Awareness service heuristic
 
