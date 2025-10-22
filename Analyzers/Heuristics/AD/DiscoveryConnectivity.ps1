@@ -1,41 +1,74 @@
-$script:AdDiscoveryConnectivityRemediation = @'
-Active Directory Health
-DNS Discovery / Discovery / Connectivity / SYSVOL
-
-Symptoms (cards): SRV records not resolvable; no DC candidates; can't reach DC ports; SYSVOL/NETLOGON unreachable.
-Triage
-
-Verify domain suffix & DNS:
-
-```powershell
+$script:AdDiscoveryConnectivityRemediation = @(
+    @{
+        type    = 'note'
+        title   = 'Scenario overview'
+        content = 'Active Directory health: DNS discovery, domain discovery, connectivity, and SYSVOL reachability issues.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Symptoms'
+        content = 'SRV records not resolvable, no domain controller candidates, failed DC port tests, or SYSVOL/NETLOGON share access errors.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Verify domain suffix and DNS'
+        content = 'Confirm the device domain and DNS discovery by resolving SRV records and testing required ports.'
+    }
+    @{
+        type    = 'code'
+        title   = 'DNS discovery checks'
+        lang    = 'powershell'
+        content = @"
 $domain = (Get-CimInstance Win32_ComputerSystem).Domain
 Resolve-DnsName -Type SRV _ldap._tcp.dc._msdcs.$domain
 Resolve-DnsName $domain
 Test-NetConnection -ComputerName (Get-ADDomainController -Discover -ErrorAction SilentlyContinue).HostName -Port 389,445,88,135,3268
-```
-
-Check secure channel & time (see below).
-Fix
-
-Point client DNS to AD DCs only (no public resolvers on domain members):
-
-```powershell
+"@.Trim()
+    }
+    @{
+        type    = 'note'
+        content = 'Also verify secure channel status and time synchronization as part of discovery triage.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Point DNS to domain controllers'
+        content = 'Ensure domain members use only AD DNS servers (no public resolvers) before re-running discovery.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Set DNS servers to AD resolvers'
+        lang    = 'powershell'
+        content = @"
 Get-DnsClientServerAddress -AddressFamily IPv4 |
   Where-Object { $_.ServerAddresses -notcontains '10.x.x.x' } |
   ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses @('10.x.x.x','10.y.y.y') }
-```
-
-Restore SYSVOL access:
-\\<domain>\SYSVOL should open; if not, check DFS Namespace/DFS Replication service state on DCs and site connectivity.
-
-Firewall in path: ensure branch firewalls allow Kerberos/LDAP/SMB to DCs.
-Validate
-
-```powershell
+"@.Trim()
+    }
+    @{
+        type    = 'text'
+        title   = 'Restore SYSVOL access'
+        content = '\\<domain>\SYSVOL should open; if it fails, review DFS Namespace and DFS Replication service health on DCs along with site connectivity.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Open firewall paths'
+        content = 'Ensure branch firewalls permit Kerberos, LDAP, and SMB flows between clients and domain controllers.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Validate domain connectivity'
+        content = 'After fixes, re-run nltest and confirm SYSVOL availability.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Validation commands'
+        lang    = 'powershell'
+        content = @"
 nltest /dsgetdc:<yourdomain>
 Test-Path \$env:USERDNSDOMAIN\SYSVOL
-```
-'@
+"@.Trim()
+    }
+) | ConvertTo-Json -Depth 5
 
 function Add-AdDiscoveryFindings {
     param(

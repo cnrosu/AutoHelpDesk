@@ -1,7 +1,15 @@
-$script:CriticalServiceAutostartRemediation = @'
-Bring these core network services back online and set them to start automatically so DNS, RPC, SMB, printing, proxy discovery, and background transfers can recover:
-
-```powershell
+if (-not $script:CriticalServiceAutostartRemediation) {
+    $script:CriticalServiceAutostartRemediationSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Restore core network services'
+            content = 'Bring these services back online and set Automatic start so DNS, RPC, SMB, printing, proxy discovery, and background transfers recover.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Start essential services'
+            lang    = 'powershell'
+            content = @"
 'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |
   ForEach-Object {
     if (Get-Service $_ -ErrorAction SilentlyContinue) {
@@ -9,34 +17,68 @@ Bring these core network services back online and set them to start automaticall
       Start-Service $_ -ErrorAction SilentlyContinue
     }
   }
-```
+"@.Trim()
+        }
+        @{
+            type    = 'note'
+            content = 'If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet.'
+        }
+    )
+    $script:CriticalServiceAutostartRemediation = $script:CriticalServiceAutostartRemediationSteps | ConvertTo-Json -Depth 5
+}
 
-If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet.
-'@
-
-$script:BitsJobQueueRemediation = @'
-If BITS jobs keep failing after the service is running, review and reset the queue:
-
-```cmd
+if (-not $script:BitsJobQueueRemediation) {
+    $script:BitsJobQueueRemediationSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Inspect and reset BITS queue'
+            content = 'Review queued jobs and reset the Background Intelligent Transfer Service if failures persist.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Reset BITS jobs'
+            lang    = 'cmd'
+            content = @"
 bitsadmin /list /allusers /verbose
 bitsadmin /reset /allusers
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'After the reset, requeue managed deployments through Intune, WSUS, or Windows Update so downloads resume.'
+        }
+    )
+    $script:BitsJobQueueRemediation = $script:BitsJobQueueRemediationSteps | ConvertTo-Json -Depth 5
+}
 
-Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume.
-'@
+$bitsFailureSteps = @()
+if ($script:CriticalServiceAutostartRemediationSteps) { $bitsFailureSteps += $script:CriticalServiceAutostartRemediationSteps }
+if ($script:BitsJobQueueRemediationSteps) { $bitsFailureSteps += $script:BitsJobQueueRemediationSteps }
+$script:BitsJobFailureRemediation = $bitsFailureSteps | ConvertTo-Json -Depth 5
 
-$script:BitsJobFailureRemediation = $script:CriticalServiceAutostartRemediation + "`n`n" + $script:BitsJobQueueRemediation
-
-$script:WorkstationSpoolerDisableRemediation = @'
-If this workstation does not require printing, disable the Print Spooler to remove the PrintNightmare attack surface:
-
-```powershell
+if (-not $script:WorkstationSpoolerDisableRemediation) {
+    $script:WorkstationSpoolerDisableRemediationSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Disable Print Spooler when not required'
+            content = 'If the workstation does not need printing, disable the Print Spooler to remove the PrintNightmare attack surface.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Disable spooler service'
+            lang    = 'powershell'
+            content = @"
 Stop-Service -Name Spooler -Force
 Set-Service -Name Spooler -StartupType Disabled
-```
-
-Re-enable the spooler only when printing is required and the device is patched.
-'@
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Re-enable the spooler only when printing is required and the device is fully patched.'
+        }
+    )
+    $script:WorkstationSpoolerDisableRemediation = $script:WorkstationSpoolerDisableRemediationSteps | ConvertTo-Json -Depth 5
+}
 
 function Invoke-ServiceCheckWindowsSearch {
     param(

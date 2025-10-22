@@ -1,15 +1,23 @@
-$script:WdacSmartAppControlRemediation = @'
-Fix (pick one)
-
-- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.
-- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period.
-
-Validate with:
-
-```powershell
+$script:WdacSmartAppControlRemediation = @(
+    @{
+        type    = 'text'
+        title   = 'Enable Smart App Control or WDAC'
+        content = 'In Windows Security > App & browser control turn Smart App Control to Evaluation then On, or deploy an Intune WDAC policy for managed devices.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Move WDAC from audit to enforcement'
+        content = 'Pilot an allow-list WDAC policy in audit mode, review events, then switch the policy to enforce mode after the burn-in period.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Validate device guard status'
+        lang    = 'powershell'
+        content = @"
 Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -Class Win32_DeviceGuard
-```
-'@
+"@.Trim()
+    }
+) | ConvertTo-Json -Depth 5
 
 function Invoke-SecurityTpmChecks {
     param(
@@ -156,15 +164,22 @@ function Invoke-SecurityAttackSurfaceChecks {
 
     $asrMissingTitle = 'ASR policy data missing, so Attack Surface Reduction enforcement is unknown.'
     $asrMissingExplanation = 'Without ASR telemetry, technicians cannot confirm whether Attack Surface Reduction rules are blocking malicious Office behaviors.'
-    $asrMissingRemediation = @'
-Attack Surface Reduction (ASR) data missing / policy gap
-
-Fix (Intune > Endpoint security > Attack surface reduction): deploy your ASR baseline (Block Office child processes; Block Win32 API calls; etc.).
-Validate
-```powershell
+    $asrMissingSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Deploy ASR baseline'
+            content = 'In Intune Endpoint security > Attack surface reduction, apply the organization''s ASR baseline (Block Office child processes, Block Win32 API calls, etc.).'
+        }
+        @{
+            type    = 'code'
+            title   = 'Validate ASR rule state'
+            lang    = 'powershell'
+            content = @"
 Get-MpPreference | Select-Object AttackSurfaceReductionRules_Ids, AttackSurfaceReductionRules_Actions
-```
-'@
+"@.Trim()
+        }
+    )
+    $asrMissingRemediation = $asrMissingSteps | ConvertTo-Json -Depth 5
 
     $asrArtifact = Get-AnalyzerArtifact -Context $Context -Name 'asr'
     Write-HeuristicDebug -Source 'Security' -Message 'Resolved ASR artifact' -Data ([ordered]@{
@@ -344,26 +359,26 @@ Get-MpPreference | Select-Object AttackSurfaceReductionRules_Ids, AttackSurfaceR
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $asrMissingTitle -Subcategory 'Attack Surface Reduction' -Explanation $asrMissingExplanation -Remediation $asrMissingRemediation -Evidence 'ASR collector artifact missing from diagnostics.'
     }
 
-    $exploitProtectionRemediation = @'
-[
-  {
-    "title": "Stage the hardened Exploit Protection policy",
-    "content": "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and make it available on the affected machine (e.g., C:\\Policies\\ExploitProtection.xml)."
-  },
-  {
-    "title": "Apply the enterprise policy (PowerShell)",
-    "type": "code",
-    "lang": "powershell",
-    "content": "Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml"
-  },
-  {
-    "title": "Confirm system-wide mitigations",
-    "type": "code",
-    "lang": "powershell",
-    "content": "Get-ProcessMitigation -System"
-  }
-]
-'@
+    $exploitProtectionSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Stage the hardened policy'
+            content = "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and place it on the affected machine (for example, C:\\Policies\\ExploitProtection.xml)."
+        }
+        @{
+            type    = 'code'
+            title   = 'Apply enterprise policy'
+            lang    = 'powershell'
+            content = 'Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml'
+        }
+        @{
+            type    = 'code'
+            title   = 'Confirm system mitigations'
+            lang    = 'powershell'
+            content = 'Get-ProcessMitigation -System'
+        }
+    )
+    $exploitProtectionRemediation = $exploitProtectionSteps | ConvertTo-Json -Depth 5
 
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
     if ($exploitArtifact) {

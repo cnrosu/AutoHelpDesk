@@ -1,27 +1,52 @@
-$script:StorageHealthAndSpaceRemediation = @'
-Storage disk health and free space recovery
-
-Checks
-
-```powershell
+$script:StorageHealthAndSpaceSteps = @(
+    @{
+        type    = 'note'
+        title   = 'Scenario'
+        content = 'Storage disk health and free space recovery guidance.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Run health and capacity checks'
+        content = 'Inspect physical disks and volumes before remediation.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Disk and volume checks'
+        lang    = 'powershell'
+        content = @"
 Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage
-Get-Volume | Sort SizeRemaining | Ft DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto
-```
-
-Fix
-
-- Degraded disks: replace disk; if USB/NVMe enclosure, update bridge firmware.
-- SMART unavailable: re-run as admin; ensure NVMe/RAID vendor drivers installed.
-- Low space (automatable):
-
-```powershell
+Get-Volume | Sort SizeRemaining | Format-Table DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto
+"@.Trim()
+    }
+    @{
+        type    = 'text'
+        title   = 'Degraded disks'
+        content = 'Replace failing disks; for USB or NVMe enclosures, update bridge firmware before redeploying.'
+    }
+    @{
+        type    = 'text'
+        title   = 'SMART unavailable'
+        content = 'Re-run checks with administrative privileges and ensure NVMe or RAID vendor drivers are installed to expose SMART data.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Low disk space'
+        content = 'Automate cleanup tasks to reclaim space before expanding storage.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Cleanup commands'
+        lang    = 'powershell'
+        content = @"
 # Clean component store
 Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
 # Temp + recycle bin
 Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 Clear-RecycleBin -Force
-```
-'@
+"@.Trim()
+    }
+)
+$script:StorageHealthAndSpaceRemediation = $script:StorageHealthAndSpaceSteps | ConvertTo-Json -Depth 5
 
 function ConvertTo-StorageArray {
     param($Value)
