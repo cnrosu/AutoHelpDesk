@@ -400,13 +400,13 @@ function Invoke-SecurityAttackSurfaceChecks {
         @{
             type    = 'text'
             title   = 'Stage the hardened policy'
-            content = "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and place it on the affected machine (for example, C:\\Policies\\ExploitProtection.xml)."
+            content = "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and place it on the affected machine (for example, C:\Policies\ExploitProtection.xml)."
         }
         @{
             type    = 'code'
             title   = 'Apply enterprise policy'
             lang    = 'powershell'
-            content = 'Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml'
+            content = 'Set-ProcessMitigation -PolicyFilePath C:\Policies\ExploitProtection.xml'
         }
         @{
             type    = 'code'
