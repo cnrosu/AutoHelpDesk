@@ -120,26 +120,56 @@ function Add-AdTimeFindings {
     }
 
     if ($timeSkewHigh -and $timeSkewEvidence) {
-        $evidence = $timeSkewEvidence
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Kerberos/time skew detected (authentication may fail)' -Evidence $evidence -Subcategory 'Time Service' -Remediation (Get-AdKerberosSecureChannelTimeRemediation) -Data @{
-            Area = 'AD/Time'
-            Kind = 'TimeSkew'
-            Time = @{
-                TimeSkewHigh = $timeSkewHigh
-                ClientType   = $clientType
-                SourceName   = $sourceName
-                Peers        = $peerEntries
-                ManualPeers  = $manualPeers
-            }
-        
-            Discovery = @{
-                CandidateHosts     = $CandidateHosts
-                CandidateAddresses = $CandidateAddresses
-                DomainName         = $DomainName
-                DomainJoined       = $DomainJoined
-                DomainRoleInt      = $DomainRoleInt
-            }
+        $evidenceLines = @()
+        $evidenceLines += $timeSkewEvidence
+
+        if ($clientTypeNormalized) {
+            $evidenceLines += "Client type: $clientTypeNormalized"
+        } elseif ($clientType) {
+            $evidenceLines += "Client type (raw): $clientType"
         }
+
+        if ($sourceName) {
+            $evidenceLines += "Current source: $sourceName"
+        } elseif ($sourceRaw) {
+            $evidenceLines += "Current source (raw): $sourceRaw"
+        }
+
+        $formatList = {
+            param(
+                [string]$Label,
+                $Values
+            )
+
+            $list = @()
+            if ($null -ne $Values) {
+                if ($Values -is [System.Collections.IEnumerable] -and -not ($Values -is [string])) {
+                    $list = @($Values | Where-Object { $_ })
+                } elseif ($Values -ne $null) {
+                    $list = @($Values)
+                }
+            }
+
+            if ($list.Count -gt 0) {
+                $list = $list | Sort-Object -Unique
+                $formatted = ConvertTo-Json -InputObject $list -Compress
+            } else {
+                $formatted = '[]'
+            }
+
+            return ("{0}: {1}" -f $Label, $formatted)
+        }
+
+        $evidenceLines += & $formatList 'Configured peers' $peerEntries
+        $evidenceLines += & $formatList 'Manual peers' $manualPeers
+        $evidenceLines += & $formatList 'Candidate domain controllers' $CandidateHosts
+        $evidenceLines += & $formatList 'Candidate addresses' $CandidateAddresses
+
+        if ($DomainName) { $evidenceLines += "Domain: $DomainName" }
+        if ($DomainJoined -ne $null) { $evidenceLines += "Domain joined: $DomainJoined" }
+        if ($DomainRoleInt -ne $null) { $evidenceLines += "Domain role (raw): $DomainRoleInt" }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Kerberos/time skew detected (authentication may fail)' -Evidence $evidenceLines -Explanation 'Clock skew beyond Kerberos tolerance blocks logons and trust operations until the system time is corrected.' -Subcategory 'Time Service' -Area 'AD/Time' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
     }
 
     [pscustomobject]@{
