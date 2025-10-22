@@ -89,19 +89,50 @@ function Add-AdDiscoveryFindings {
         Add-CategoryNormal -CategoryResult $Result -Title 'GOOD AD/DNS (SRV resolves)' -Evidence $dcEvidence -Subcategory 'DNS Discovery'
     } else {
         $srvErrors = $srvLookups | Where-Object { $_ -and $_.Succeeded -ne $true }
-        $evidence = ($srvErrors | ForEach-Object {
+        $srvErrorText = ($srvErrors | ForEach-Object {
                 if ($_.Error) { "{0}: {1}" -f $_.Query, $_.Error } else { "{0}: no records" -f $_.Query }
             }) -join '; '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidence -Subcategory 'DNS Discovery' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
-            Area = 'AD/DiscoveryConnectivity'
-            Kind = 'SrvLookup'
-            Discovery = @{
-                SrvLookups         = $Discovery.SrvLookups
-                SrvSuccess         = $srvSuccess
-                CandidateHosts     = $candidateHosts
-                CandidateAddresses = $candidateAddresses
+        $evidenceLines = @()
+        if (-not [string]::IsNullOrWhiteSpace($srvErrorText)) { $evidenceLines += $srvErrorText }
+
+        $hostEvidence = $candidateHosts | Sort-Object -Unique
+        if ($hostEvidence -and $hostEvidence.Count -gt 0) {
+            $evidenceLines += ("Candidate hosts: {0}" -f ($hostEvidence -join ', '))
+        }
+
+        $addressValues = @()
+        foreach ($addressEntry in $candidateAddresses) {
+            if (-not $addressEntry) { continue }
+            if ($addressEntry -is [System.Collections.IEnumerable] -and -not ($addressEntry -is [string])) {
+                foreach ($nested in $addressEntry) {
+                    if ($nested) { $addressValues += [string]$nested }
+                }
+            } else {
+                $addressValues += [string]$addressEntry
             }
         }
+        $addressEvidence = $addressValues | Sort-Object -Unique
+        if ($addressEvidence -and $addressEvidence.Count -gt 0) {
+            $evidenceLines += ("Candidate addresses: {0}" -f ($addressEvidence -join ', '))
+        }
+
+        $srvLookupSnapshots = @()
+        foreach ($entry in $srvLookups) {
+            if (-not $entry) { continue }
+            try {
+                $srvLookupSnapshots += ($entry | ConvertTo-Json -Depth 6 -Compress)
+            } catch {
+                $srvLookupSnapshots += ($entry | Out-String).Trim()
+            }
+        }
+        if ($srvLookupSnapshots.Count -gt 0) {
+            $evidenceLines += 'SRV lookup snapshots:'
+            $evidenceLines += $srvLookupSnapshots
+        }
+
+        if ($evidenceLines.Count -eq 0) { $evidenceLines = $null }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'AD SRV records not resolvable, so Active Directory is unreachable.' -Evidence $evidenceLines -Subcategory 'DNS Discovery' -Area 'AD/DiscoveryConnectivity' -Explanation 'Discovery context: SRV lookup failures prevented locating domain controllers. Candidate host/address details and raw lookup snapshots are attached.' -Remediation $script:AdDiscoveryConnectivityRemediation
     }
 
     if (-not $srvSuccess -and -not $nltestSuccess -and $Discovery) {
@@ -115,17 +146,51 @@ function Add-AdDiscoveryFindings {
             elseif ($Discovery.DcList.Output) { Add-StringFragment -Builder $evidenceBuilder -Fragment ("dclist output: {0}" -f ($Discovery.DcList.Output -join ' | ')) }
         }
         $evidenceText = $evidenceBuilder.ToString()
-        $nltestEvidence = if ($candidates -and $candidates.Count -gt 0) { $candidates -join ', ' } else { $evidenceText }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No reachable DC candidates were discovered.' -Evidence $nltestEvidence -Subcategory 'Discovery' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
-            Area = 'AD/DiscoveryConnectivity'
-            Kind = 'NltestDiscovery'
-            Discovery = @{
-                NltestSuccess     = $nltestSuccess
-                Candidates        = $candidates
-                CandidateHosts    = $candidateHosts
-                CandidateAddresses = $candidateAddresses
+        $evidenceLines = @()
+        if ($candidates -and $candidates.Count -gt 0) {
+            $evidenceLines += ("Candidate hosts discovered: {0}" -f (($candidates | Sort-Object -Unique) -join ', '))
+        }
+
+        if ($candidateHosts -and $candidateHosts.Count -gt 0) {
+            $evidenceLines += ("Candidate hostnames (raw): {0}" -f (($candidateHosts | Sort-Object -Unique) -join ', '))
+        }
+
+        $candidateAddressLines = @()
+        foreach ($addressEntry in $candidateAddresses) {
+            if (-not $addressEntry) { continue }
+            if ($addressEntry -is [System.Collections.IEnumerable] -and -not ($addressEntry -is [string])) {
+                foreach ($nested in $addressEntry) {
+                    if ($nested) { $candidateAddressLines += [string]$nested }
+                }
+            } else {
+                $candidateAddressLines += [string]$addressEntry
             }
         }
+        if ($candidateAddressLines.Count -gt 0) {
+            $evidenceLines += ("Candidate addresses: {0}" -f (($candidateAddressLines | Sort-Object -Unique) -join ', '))
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($evidenceText)) { $evidenceLines += $evidenceText }
+
+        if ($Discovery.DsGetDc) {
+            try {
+                $evidenceLines += ('dsgetdc snapshot: ' + ($Discovery.DsGetDc | ConvertTo-Json -Depth 6 -Compress))
+            } catch {
+                $evidenceLines += ('dsgetdc snapshot: ' + (($Discovery.DsGetDc | Out-String).Trim()))
+            }
+        }
+
+        if ($Discovery.DcList) {
+            try {
+                $evidenceLines += ('dclist snapshot: ' + ($Discovery.DcList | ConvertTo-Json -Depth 6 -Compress))
+            } catch {
+                $evidenceLines += ('dclist snapshot: ' + (($Discovery.DcList | Out-String).Trim()))
+            }
+        }
+
+        if ($evidenceLines.Count -eq 0) { $evidenceLines = $null }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'No reachable DC candidates were discovered.' -Evidence $evidenceLines -Subcategory 'Discovery' -Area 'AD/DiscoveryConnectivity' -Explanation 'Discovery context: NLTEST/DC locator calls returned no reachable domain controllers. Candidate discovery snapshots are attached.' -Remediation $script:AdDiscoveryConnectivityRemediation
     }
 
     [pscustomobject]@{
@@ -213,6 +278,34 @@ function Add-AdConnectivityFindings {
         }
     }
 
+    $portSummaries = @()
+    foreach ($host in ($portMap.Keys | Sort-Object)) {
+        $ports = $portMap[$host]
+        if (-not $ports) { continue }
+        $portStates = @()
+        foreach ($port in ($ports.Keys | Sort-Object)) {
+            $state = if ($ports[$port]) { 'open' } else { 'blocked' }
+            $portStates += ("{0}={1}" -f $port, $state)
+        }
+        if ($portStates.Count -gt 0) {
+            $portSummaries += ("{0}: {1}" -f $host, ($portStates -join ', '))
+        }
+    }
+
+    $shareSummaries = @()
+    foreach ($shareEntry in ($shareMap.Keys | Sort-Object)) {
+        $shares = $shareMap[$shareEntry]
+        if (-not $shares) { continue }
+        $shareStates = @()
+        foreach ($shareName in ($shares.Keys | Sort-Object)) {
+            $state = if ($shares[$shareName]) { 'accessible' } else { 'blocked' }
+            $shareStates += ("{0}={1}" -f $shareName, $state)
+        }
+        if ($shareStates.Count -gt 0) {
+            $shareSummaries += ("{0}: {1}" -f $shareEntry, ($shareStates -join ', '))
+        }
+    }
+
     $testsWithoutErrors = 0
     if ($reachTests) {
         foreach ($test in $reachTests) {
@@ -222,33 +315,55 @@ function Add-AdConnectivityFindings {
 
     $allPortsTested = $portMap.Count -gt 0
     if ($Candidates.Count -gt 0 -and $allPortsTested -and $fullyReachableHosts.Count -eq 0 -and $testsWithoutErrors -gt 0) {
-        $evidenceText = ($portMap.Keys | Sort-Object) -join ', '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence $evidenceText -Subcategory 'Connectivity' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
-            Area = 'AD/DiscoveryConnectivity'
-            Kind = 'PortReachability'
-            Connectivity = @{
-                PortMap             = $portMap
-                FullyReachableHosts = $fullyReachableHosts
-                ReachableWithShares = $reachableWithShares
-                SharesFailingHosts  = $sharesFailingHosts
-                TestsWithoutErrors  = $testsWithoutErrors
-                AllPortsTested      = $allPortsTested
-                Candidates          = $candidates
-            }
+        $evidenceLines = @()
+        $candidateSummary = $Candidates | Sort-Object -Unique
+        if ($candidateSummary -and $candidateSummary.Count -gt 0) {
+            $evidenceLines += ("Candidates tested: {0}" -f ($candidateSummary -join ', '))
         }
+
+        if ($portSummaries.Count -gt 0) {
+            $evidenceLines += 'Port test results by host:'
+            $evidenceLines += $portSummaries
+        }
+
+        if ($reachableWithShares.Count -gt 0) {
+            $evidenceLines += ("Hosts with port + share access: {0}" -f (($reachableWithShares | Sort-Object -Unique) -join ', '))
+        } else {
+            $evidenceLines += 'Hosts with port + share access: none'
+        }
+
+        if ($sharesFailingHosts.Count -gt 0) {
+            $evidenceLines += ("Hosts failing SYSVOL/NETLOGON after port success: {0}" -f (($sharesFailingHosts | Sort-Object -Unique) -join ', '))
+        }
+
+        $evidenceLines += ("Tests without errors: {0}" -f $testsWithoutErrors)
+        $evidenceLines += ("All required ports tested: {0}" -f $allPortsTested)
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Cannot reach any DC on required ports, so Active Directory is unreachable.' -Evidence $evidenceLines -Subcategory 'Connectivity' -Area 'AD/DiscoveryConnectivity' -Explanation 'Connectivity context: all port probes against candidate domain controllers failed for required LDAP/Kerberos/SMB endpoints. Port maps and share follow-ups are summarized.' -Remediation $script:AdDiscoveryConnectivityRemediation
     }
 
     if ($sharesFailingHosts.Count -gt 0) {
-        $sharesEvidence = ($sharesFailingHosts | Sort-Object -Unique) -join ', '
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence $sharesEvidence -Subcategory 'SYSVOL' -Remediation $script:AdDiscoveryConnectivityRemediation -Data @{
-            Area = 'AD/DiscoveryConnectivity'
-            Kind = 'SysvolNetlogon'
-            Sysvol = @{
-                SharesFailingHosts  = $sharesFailingHosts
-                ReachableWithShares = $reachableWithShares
-                FullyReachableHosts = $fullyReachableHosts
-            }
+        $sharesEvidenceLines = @()
+        $sharesEvidenceLines += ("Hosts failing SYSVOL/NETLOGON: {0}" -f (($sharesFailingHosts | Sort-Object -Unique) -join ', '))
+
+        if ($reachableWithShares.Count -gt 0) {
+            $sharesEvidenceLines += ("Hosts with successful share access: {0}" -f (($reachableWithShares | Sort-Object -Unique) -join ', '))
+        } else {
+            $sharesEvidenceLines += 'Hosts with successful share access: none'
         }
+
+        if ($fullyReachableHosts.Count -gt 0) {
+            $sharesEvidenceLines += ("Hosts with required ports open: {0}" -f (($fullyReachableHosts | Sort-Object -Unique) -join ', '))
+        } else {
+            $sharesEvidenceLines += 'Hosts with required ports open: none'
+        }
+
+        if ($shareSummaries.Count -gt 0) {
+            $sharesEvidenceLines += 'Share test results by host:'
+            $sharesEvidenceLines += $shareSummaries
+        }
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title "Domain shares unreachable (DFS/DNS/auth), so SYSVOL/NETLOGON can't deliver GPOs." -Evidence $sharesEvidenceLines -Subcategory 'SYSVOL' -Area 'AD/DiscoveryConnectivity' -Explanation 'Connectivity context: SYSVOL/NETLOGON share checks failed even when required ports were reachable. Share probes by host are summarized.' -Remediation $script:AdDiscoveryConnectivityRemediation
     }
 
     [pscustomobject]@{
