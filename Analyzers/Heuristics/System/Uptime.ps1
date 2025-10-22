@@ -94,6 +94,38 @@ function Format-UptimeBoolean {
     return 'False'
 }
 
+function ConvertTo-UptimeEvidenceBlock {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Title,
+        $Data
+    )
+
+    if ($null -eq $Data) { return $null }
+
+    $json = $null
+    try {
+        $json = $Data | ConvertTo-Json -Depth 6
+    } catch {
+        $json = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($json)) {
+        $text = [string]$Data
+        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+        return "{0}`n{1}" -f $Title, $text.Trim()
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add($Title) | Out-Null
+    foreach ($line in ($json -split "`r?`n")) {
+        if ($null -eq $line) { continue }
+        $lines.Add($line) | Out-Null
+    }
+
+    return ($lines -join "`n")
+}
+
 function ConvertTo-UptimeHumanizedTime {
     param([int64]$Seconds)
 
@@ -314,8 +346,6 @@ function Invoke-SystemUptimeFastStartup {
         $evidenceLines.Insert(0, 'Fast Startup signals indicate shutdown is already performing a cold boot.') | Out-Null
     }
 
-    $evidenceArray = $evidenceLines.ToArray()
-
     if ($fastStartupEffective -eq $true) {
         $title = 'Fast Startup is enabled: Shutdown does not cold boot'
         $explanation = 'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.'
@@ -326,21 +356,35 @@ function Invoke-SystemUptimeFastStartup {
             HiberfilePresent = $hiberfilePresent
         }
 
-        $data = [ordered]@{
-            BusinessImpact = 'Kernel state persists across shutdown, inflating uptime and delaying fixes that require a true restart.'
-            Signals        = $signals
+        $signalSummary = ConvertTo-UptimeEvidenceBlock -Title 'Fast Startup signals (JSON)' -Data $signals
+        if ($signalSummary) {
+            $evidenceLines.Add($signalSummary) | Out-Null
         }
 
-        $data['Recommendations'] = @(
+        $recommendations = @(
             'Disable Fast Startup so Shutdown performs a cold boot.',
             'Schedule a weekly Restart policy to refresh kernel state.',
             'Communicate to users: use Restart after driver/Windows updates.'
         )
 
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Explanation $explanation -Evidence $evidenceArray -Subcategory 'Fast Startup' -Data $data
+        $issueArguments = @{
+            CategoryResult = $Result
+            Severity       = 'high'
+            Title          = $title
+            Explanation    = $explanation
+            Evidence       = $evidenceLines.ToArray()
+            Subcategory    = 'Fast Startup'
+        }
+
+        $remediationText = ($recommendations -join ' ')
+        if (-not [string]::IsNullOrWhiteSpace($remediationText)) {
+            $issueArguments['Remediation'] = $remediationText
+        }
+
+        Add-CategoryIssue @issueArguments
     } else {
         $title = 'Fast Startup is inactive, so shutdown performs a cold boot.'
-        Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidenceArray -Subcategory 'Fast Startup'
+        Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence ($evidenceLines.ToArray()) -Subcategory 'Fast Startup'
     }
 }
 
@@ -432,7 +476,7 @@ function Invoke-SystemLongUptime {
         $evidenceLines.Add("FastStartupEffective: $(Format-UptimeBoolean $Summary.FastStartupEffective)") | Out-Null
     }
 
-    $data = [ordered]@{
+    $uptimeSignals = [ordered]@{
         EffectiveSinceUtc        = $effectiveSinceIso
         EffectiveUptimeSeconds   = $effectiveSeconds
         UsedKernelUptimeFallback = $usedKernelFallback
@@ -442,7 +486,7 @@ function Invoke-SystemLongUptime {
     }
 
     if ($thresholdReached -ne $null) {
-        $data['TriggeredThresholdDays'] = $thresholdReached
+        $uptimeSignals['TriggeredThresholdDays'] = $thresholdReached
     }
 
     $businessImpact = $null
@@ -509,10 +553,32 @@ function Invoke-SystemLongUptime {
         $severity = 'info'
     }
 
-    $data['BusinessImpact'] = $businessImpact
-    if ($recommendations) { $data['Recommendations'] = $recommendations }
+    if ($explanation) {
+        $evidenceLines.Insert(0, $explanation) | Out-Null
+    }
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title 'Restart is required in all high/critical instances, medium is restart is strongly recommended, low is restart if you are experiencing issues' -Explanation $explanation -Evidence ($evidenceLines.ToArray()) -Subcategory 'Uptime' -Data $data
+    $signalSummary = ConvertTo-UptimeEvidenceBlock -Title 'Uptime metrics (JSON)' -Data $uptimeSignals
+    if ($signalSummary) {
+        $evidenceLines.Add($signalSummary) | Out-Null
+    }
+
+    $issueArguments = @{
+        CategoryResult = $Result
+        Severity       = $severity
+        Title          = 'Restart is required in all high/critical instances, medium is restart is strongly recommended, low is restart if you are experiencing issues'
+        Explanation    = if ($businessImpact) { $businessImpact } else { $explanation }
+        Evidence       = $evidenceLines.ToArray()
+        Subcategory    = 'Uptime'
+    }
+
+    if ($recommendations) {
+        $remediationText = ($recommendations -join ' ')
+        if (-not [string]::IsNullOrWhiteSpace($remediationText)) {
+            $issueArguments['Remediation'] = $remediationText
+        }
+    }
+
+    Add-CategoryIssue @issueArguments
 }
 
 function Invoke-SystemUptimeChecks {
