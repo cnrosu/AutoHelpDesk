@@ -29,7 +29,7 @@ function Add-AdKerberosFindings {
             Add-StringFragment -Builder $evidencePartsBuilder -Fragment ("Expected realm: {0}" -f $KerberosInfo.Parsed.TgtRealm)
         }
         if ($NoDcReachable) { Add-StringFragment -Builder $evidencePartsBuilder -Fragment 'likely off network' }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidencePartsBuilder.ToString() -Subcategory 'Kerberos'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidencePartsBuilder.ToString() -Subcategory 'Kerberos' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
     }
 
     if ($failureCount -gt 0) {
@@ -42,7 +42,7 @@ function Add-AdKerberosFindings {
         }
 
         $failureSummary = ($failureSummaryParts -join ', ')
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ("Kerberos failures detected: {0}" -f $failureSummary) -Evidence $failureSummary -Subcategory 'Kerberos' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ("Kerberos failures detected: {0}" -f $failureSummary) -Evidence $failureSummary -Subcategory 'Kerberos' -Remediation (Get-AdKerberosSecureChannelTimeRemediation) -Data @{
             Area = 'AD/Kerberos'
             Kind = 'KerberosFailures'
             Kerberos = @{

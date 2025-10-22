@@ -80,7 +80,7 @@ function Invoke-IntuneHeuristic-PushNotificationQuickSync {
     }
 
     if ($serviceAuto) {
-        $title = 'Intune push wake prerequisites are ready: StartType={0}; Status={1}; LastStartError={2}.' -f $serviceStartTypeText, $statusText, $lastStartError
+        $title = 'Intune push wake prerequisites are ready'
         Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidenceLines -Subcategory 'Enrollment & Connectivity'
     }
 }

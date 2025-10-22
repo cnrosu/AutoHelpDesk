@@ -649,6 +649,17 @@ function Invoke-NetworkHeuristics {
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
         Found = [bool]$networkArtifact
     })
+
+    $ipConfigurationRemediation = @(
+        'Run these commands from an elevated PowerShell session to review IPv4 settings and quickly apply a static configuration if the adapter is missing addressing:',
+        '',
+        '```powershell',
+        'Get-NetIPConfiguration',
+        '# Set static quickly (if needed)',
+        'New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.50 -PrefixLength 24 -DefaultGateway 192.168.1.1',
+        'Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1.2',
+        '```'
+    ) -join "`n"
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
         Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network payload' -Data ([ordered]@{
@@ -668,6 +679,21 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($arpEntries.Count -gt 0 -and $gatewayInventory) {
+            $arpCacheSpoofingRemediation = @'
+Immediate containment (endpoint):
+```
+arp -d *
+# Pin default gateway by static ARP (temporary, only for incident containment)
+# netsh interface ipv4 add neighbors "Ethernet" 192.168.1.1 00-11-22-33-44-55
+```
+
+Network fix: Enable DHCP Snooping, Dynamic ARP Inspection on switches; investigate rogue bridges.
+
+Validate
+```
+Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'
+```
+'@
             $gatewayMap = @{}
             $localMacs = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
             $localIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -770,7 +796,7 @@ function Invoke-NetworkHeuristics {
             if ($unexpected.Count -gt 0) {
                 $gatewayText = ($observedGatewayEntries | Where-Object { $_.NormalizedMac -and ($unexpected -contains $_.NormalizedMac) } | ForEach-Object { "{0}→{1}" -f $_.Gateway, $_.NormalizedMac } | Sort-Object)
                 $evidence = if ($gatewayText) { $gatewayText -join '; ' } else { $unexpected -join ', ' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $duplicateGatewayMacs = @()
@@ -786,7 +812,7 @@ function Invoke-NetworkHeuristics {
 
             if ($duplicateGatewayMacs.Count -gt 0) {
                 $evidence = ($duplicateGatewayMacs | ForEach-Object { "{0} used by {1}" -f $_.Mac, ($_.Gateways -join ', ') }) -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $suspiciousOuiMap = @{
@@ -815,7 +841,7 @@ function Invoke-NetworkHeuristics {
 
             if ($suspiciousEntries.Count -gt 0) {
                 $evidence = $suspiciousEntries -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $broadcastEntries = @()
@@ -958,7 +984,7 @@ function Invoke-NetworkHeuristics {
 
             if ($localMacAlerts.Count -gt 0) {
                 $evidence = $localMacAlerts -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $observedGatewayData = New-Object System.Collections.Generic.List[object]
@@ -1201,9 +1227,25 @@ function Invoke-NetworkHeuristics {
             }
         }
 
+        $rogueRouterRemediation = @'
+Endpoint containment (if IPv6 not required temporarily):
+
+```powershell
+Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6
+```
+
+Or disable router discovery per interface:
+
+```cmd
+netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
+```
+
+Network fix: Enforce RA Guard on access ports.
+'@
+
         if ($unexpectedRouterMacs.Count -gt 0) {
             $evidence = ($unexpectedRouterMacs | Sort-Object -Unique) -join ', '
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($observedRouterMacs.Count -gt 1) {
@@ -1217,7 +1259,7 @@ function Invoke-NetworkHeuristics {
             }
 
             $evidence = ($evidenceParts | Where-Object { $_ }) -join '; '
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($Context) {
@@ -1251,18 +1293,18 @@ function Invoke-NetworkHeuristics {
             if ($ipText -match 'IPv4 Address') {
                 Add-CategoryNormal -CategoryResult $result -Title 'IPv4 addressing detected' -Subcategory 'IP Configuration'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
         if ($payload -and $payload.Route) {
             $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
             if ($routeText -notmatch '0\.0\.0\.0') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Data (& $createConnectivityData $connectivityContext)
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
     }
 
     if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
@@ -1359,6 +1401,21 @@ function Invoke-NetworkHeuristics {
     }
 
     $lldpSubcategory = 'Switch Port Mapping'
+    $lldpRemediation = @'
+**Endpoint**
+
+Ensure the LLDP service is available and started:
+
+```powershell
+# Ensure LLDP service available/started (Windows LLDP service: "lldpsvc")
+Set-Service lldpsvc -StartupType Automatic
+Start-Service lldpsvc
+```
+
+**Infrastructure**
+
+Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispatches.
+'@
     $lldpArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-lldp'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-lldp artifact' -Data ([ordered]@{
         Found = [bool]$lldpArtifact
@@ -1383,7 +1440,7 @@ function Invoke-NetworkHeuristics {
         })
 
         if ($neighborCount -eq 0) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
         } else {
             $neighborMap = @{}
             foreach ($neighbor in $lldpNeighbors) {
@@ -1457,7 +1514,7 @@ function Invoke-NetworkHeuristics {
                         if ($expected.PSObject.Properties['ExpectedLabel'] -and $expected.ExpectedLabel -and -not $evidence.Contains('ExpectedPort')) { $evidence['ExpectedLabel'] = [string]$expected.ExpectedLabel }
                         if ($expected.PSObject.Properties['Source'] -and $expected.Source) { $evidence['InventorySource'] = [string]$expected.Source }
 
-                        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory
+                        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("Adapter {0} lacks LLDP neighbor data, so {1} cannot be verified and mispatches may go unnoticed." -f $alias, $expectedLabel) -Evidence $evidence -Subcategory $lldpSubcategory -Remediation $lldpRemediation
                         continue
                     }
 
@@ -1532,15 +1589,15 @@ function Invoke-NetworkHeuristics {
                         elseif ($selectedNeighbor.PSObject.Properties['NeighborPortDescription'] -and $selectedNeighbor.NeighborPortDescription) { $evidence['ObservedPort'] = [string]$selectedNeighbor.NeighborPortDescription }
                         if ($selectedNeighbor.PSObject.Properties['Source'] -and $selectedNeighbor.Source) { $evidence['ObservationSource'] = [string]$selectedNeighbor.Source }
 
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port." -f $alias, $observedDisplay, $expectedDisplay) -Evidence $evidence -Subcategory $lldpSubcategory
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("Adapter {0} is patched to {1} instead of documented {2}, so cabling records are wrong and technicians may troubleshoot the wrong switch port." -f $alias, $observedDisplay, $expectedDisplay) -Evidence $evidence -Subcategory $lldpSubcategory -Remediation $lldpRemediation
                     }
                 }
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Switch port inventory missing, so LLDP data cannot confirm wiring and mispatches may linger.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP collector missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
     }
 
     $dnsArtifact = Get-AnalyzerArtifact -Context $Context -Name 'dns'
@@ -1630,7 +1687,30 @@ function Invoke-NetworkHeuristics {
 
             if ($primaryErrors.Count -gt 0) {
                 $details = $primaryErrors | Select-Object -First 3
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation @'
+Endpoint fixes:
+
+Detect failing lookups to confirm DNS resolution status.
+```powershell
+$names = 'autodiscover.outlook.com','enterpriseenrollment.windows.net','enterpriseregistration.windows.net'
+$names | % { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
+```
+
+Set the NIC to corporate DNS resolvers before re-running Autodiscover tests.
+```powershell
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 10.0.0.10,10.0.0.11
+```
+
+Re-register the host A record after adjusting DNS client settings.
+```powershell
+ipconfig /registerdns
+```
+
+For M365 Autodiscover (Exchange Online), publish `autodiscover.<yourdomain>` as a CNAME to `autodiscover.outlook.com`, then verify Exchange reachability.
+```powershell
+Test-NetConnection outlook.office365.com -Port 443
+```
+'@ -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
@@ -1846,14 +1926,27 @@ function Invoke-NetworkHeuristics {
         $connectivityContext.Outlook = if ($payload -and $payload.PSObject.Properties['Connectivity']) { $payload.Connectivity } else { $null }
         if ($payload -and $payload.Connectivity) {
             $conn = $payload.Connectivity
-                if ($conn.PSObject.Properties['TcpTestSucceeded']) {
-                    if (-not $conn.TcpTestSucceeded) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Data (& $createConnectivityData $connectivityContext)
-                    } else {
-                        Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
+            $proxyRemediation = @'
+Recommended actions:
+1. Kill stale proxy settings before retrying Outlook connectivity.
+2. Disable the user WinINET proxy:
+```cmd
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f
+```
+3. Reset the WinHTTP proxy:
+```cmd
+netsh winhttp reset proxy
+```
+4. Verify `netsh winhttp show proxy` reports Direct access and confirm Outlook connects.
+'@
+            if ($conn.PSObject.Properties['TcpTestSucceeded']) {
+                if (-not $conn.TcpTestSucceeded) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
                 }
             } elseif ($conn.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
@@ -2155,7 +2248,18 @@ function Invoke-NetworkHeuristics {
                     if ($machineCerts.Count -gt 0) {
                         $evidence['FirstCertificate'] = if ($machineCerts[0].PSObject.Properties['Subject']) { [string]$machineCerts[0].Subject } else { 'n/a' }
                     }
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory
+                    $remediation = @(
+                        'Fix (machine EAP-TLS)',
+                        '',
+                        '1. Ensure a valid machine certificate exists under Local Computer\Personal\Certificates.',
+                        '2. If one is missing, enroll the device through Intune SCEP/PKCS or Group Policy auto-enrollment.',
+                        '3. Confirm wired 802.1X status:',
+                        '```powershell',
+                        'netsh lan show interfaces',
+                        'certutil -store -enterprise MY',
+                        '```'
+                    ) -join [Environment]::NewLine
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No valid machine certificate is installed, so wired 802.1X authentication cannot succeed.' -Evidence $evidence -Subcategory $wiredSubcategory -Remediation $remediation
                 } else {
                     foreach ($cert in $validCerts) {
                         if (-not $cert.PSObject.Properties['NotAfter'] -or -not $cert.NotAfter) { continue }
@@ -2755,7 +2859,12 @@ function Invoke-NetworkHeuristics {
                 Interface = $interfaceEvidence
             }
             if ($apEvidence) { $fallbackEvidence['AccessPoint'] = $apEvidence }
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory
+            $fallbackExplanation = 'Client stayed on WPA2 even though the AP offers WPA3, so traffic keeps weaker encryption that is easier to attack.'
+            $fallbackRemediation = @(
+                'Configure SSIDs as WPA3-SAE (Personal) or WPA3-Enterprise where the client fleet supports it; otherwise separate legacy devices on their own SSID.',
+                'Force the client to prefer WPA3 by "forget network" then re-join, and update the wireless NIC drivers.'
+            ) -join "`n"
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory -Explanation $fallbackExplanation -Remediation $fallbackRemediation
         }
     }
 

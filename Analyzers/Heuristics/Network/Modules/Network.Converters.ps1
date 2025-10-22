@@ -183,6 +183,19 @@ function Invoke-NetworkFirewallProfileAnalysis {
     $errorCheckId = 'fw.profile.error'
     $unparsedCheckId = 'fw.profile.unparsed'
 
+    $profileCollectorRemediation = @'
+Firewall Profile Collector / Data Missing
+
+Treat this as a collection pre-req: rerun the collector from an elevated PowerShell session and confirm the Windows Firewall service (mpssvc) is running.
+
+Baseline fix:
+
+```powershell
+Set-NetFirewallProfile -All -Enabled True
+Get-Service mpssvc | Set-Service -StartupType Automatic
+```
+'@
+
     $artifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall.profile'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall.profile artifact' -Data ([ordered]@{
         Found = [bool]$artifact
@@ -202,7 +215,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     }
 
     if (-not $artifact) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile collector missing, so firewall enforcement is unknown until the firewall profile collector runs.' -Subcategory $subcategory -CheckId $collectorMissingCheckId -Remediation $profileCollectorRemediation
         return
     }
 
@@ -213,7 +226,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     })
 
     if (-not $payload) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile data missing, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $errorCheckId
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Firewall profile data missing, so firewall enforcement is unknown.' -Subcategory $subcategory -CheckId $errorCheckId -Remediation $profileCollectorRemediation
         return
     }
 

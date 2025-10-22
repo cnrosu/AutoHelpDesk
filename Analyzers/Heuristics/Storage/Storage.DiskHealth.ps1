@@ -43,7 +43,7 @@ function Invoke-StorageDiskHealthEvaluation {
                 Disks    = $diskData.ToArray()
             }
 
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Disks reporting degraded health, indicating failing disks.' -Evidence ($details -join "`n") -Subcategory 'Disk Health' -Data $issueData
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Disks reporting degraded health, indicating failing disks.' -Evidence ($details -join "`n") -Subcategory 'Disk Health' -Remediation $script:StorageHealthAndSpaceRemediation -Data $issueData
         } else {
             Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Disk health reports healthy' -Subcategory 'Disk Health'
         }
@@ -65,7 +65,7 @@ function Invoke-StorageDiskHealthEvaluation {
                 Hostname = $env:COMPUTERNAME
                 Errors   = $errorDetails
             }
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Disk health unavailable, so failing disks may go unnoticed.' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health' -Data $issueData
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Disk health unavailable, so failing disks may go unnoticed.' -Evidence ($errorDetails -join "`n") -Subcategory 'Disk Health' -Remediation $script:StorageHealthAndSpaceRemediation -Data $issueData
         }
     }
 }

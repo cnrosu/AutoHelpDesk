@@ -12,6 +12,32 @@ $eventsModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'Events'
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Authentication.ps1')
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Vpn.ps1')
 
+$script:EventsLogHealthRemediation = @'
+Events (Log Health)
+
+Symptoms: Event logs unreadable; high error/warning rates; GP Operational errors.
+Fix
+
+Ensure the Windows Event Log service is healthy:
+
+```powershell
+Get-Service EventLog | Restart-Service
+```
+
+Increase log size (clear only if stakeholders approve):
+
+```powershell
+wevtutil sl System /ms:67108864
+wevtutil sl Application /ms:67108864
+```
+
+Validate:
+
+```powershell
+Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }
+```
+'@
+
 function ConvertTo-LogView {
     param(
         $Node
@@ -96,7 +122,7 @@ function Invoke-EventsHeuristics {
                 }
 
                 if ($errorEvidence) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $errorEvidence -Subcategory $logSubcategory
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title ("{0} Event Log: Unable to read {0} event log, so noisy or unhealthy logs may be hidden." -f $logName) -Evidence $errorEvidence -Subcategory $logSubcategory -Remediation $script:EventsLogHealthRemediation
                     continue
                 }
 
@@ -109,14 +135,14 @@ function Invoke-EventsHeuristics {
 
                     if ($logName -eq 'GroupPolicy') {
                         if ($errorCount -gt 0) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Group Policy Operational log errors detected, indicating noisy or unhealthy logs.' -Evidence ("Errors: {0}" -f $errorCount) -Subcategory $logSubcategory -Remediation $script:EventsLogHealthRemediation
                         }
                     } else {
                         if ($errorCount -gt 20) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample), indicating noisy or unhealthy logs." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("{0} log shows many errors ({1} in recent sample), indicating noisy or unhealthy logs." -f $logName, $errorCount) -Evidence ("Errors recorded: {0}" -f $errorCount) -Subcategory $logSubcategory -Remediation $script:EventsLogHealthRemediation
                         }
                         if ($warnCount -gt 40) {
-                            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log, indicating noisy or unhealthy logs." -f $logName) -Subcategory $logSubcategory
+                            Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("Many warnings in {0} log, indicating noisy or unhealthy logs." -f $logName) -Subcategory $logSubcategory -Remediation $script:EventsLogHealthRemediation
                         }
                     }
                 }
