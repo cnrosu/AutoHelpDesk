@@ -258,7 +258,7 @@ function Get-NetworkDnsJoinContext {
         $needsInternalZones = $true
     } elseif ($azureJoined) {
         $joinCategory = 'AzureAd'
-        $joinTitle = 'Azure AD-joined'
+        $joinTitle = 'Entra Joined'
     }
 
     return [pscustomobject]@{

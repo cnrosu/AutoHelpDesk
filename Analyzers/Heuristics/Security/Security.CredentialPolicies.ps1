@@ -114,7 +114,7 @@ function Invoke-SecurityCredentialManagementChecks {
                 $adActive = [bool]$lapsDetection.ActiveDirectoryActive
                 $anyActive = $azureActive -or $adActive
 
-                if ($azureActive) { $statusLabels.Add('Entra (Azure AD)') }
+                if ($azureActive) { $statusLabels.Add('Entra ID') }
                 if ($adActive) { $statusLabels.Add('Active Directory') }
                 if ($legacyEnabled) {
                     $statusLabels.Add('Legacy LAPS (AdmPwd)')

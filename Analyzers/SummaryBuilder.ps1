@@ -212,7 +212,7 @@ function Format-DeviceState {
     $domainLabel = if ($Domain) { $Domain } else { 'Unknown domain' }
     if ($IsAzureAdJoined) {
         $tenantLabel = if ($AzureAdTenant) { $AzureAdTenant } else { $domainLabel }
-        return "Azure AD joined ($tenantLabel)"
+        return "Entra Joined ($tenantLabel)"
     }
 
     return "Not domain joined (Domain: $domainLabel)"

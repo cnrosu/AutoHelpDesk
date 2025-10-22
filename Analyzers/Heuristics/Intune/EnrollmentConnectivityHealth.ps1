@@ -1,6 +1,6 @@
 <#!
 .SYNOPSIS
-    Evaluates Azure AD join, PRT, time sync, and conditional access signals for Intune enrollment health.
+    Evaluates Entra join, PRT, time sync, and conditional access signals for Intune enrollment health.
 #>
 
 function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
@@ -63,12 +63,12 @@ function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
 
     if ($hasAzureSignal) {
         if (-not $isAzureJoined) {
-            $reasons.Add('the device is not Azure AD joined') | Out-Null
+            $reasons.Add('the device is not Entra joined') | Out-Null
             $needsFinding = $true
             $severity = 'medium'
         }
     } else {
-        $dataGaps.Add('Azure AD join status was not collected') | Out-Null
+        $dataGaps.Add('Entra join status was not collected') | Out-Null
     }
 
     if ($hasPrt -eq $false) {
@@ -103,13 +103,13 @@ function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
 
     if (-not $needsFinding) {
         if ($isAzureJoined -and $hasPrt -eq $true) {
-            Add-CategoryNormal -CategoryResult $Result -Title 'Device is Azure AD joined with a valid Primary Refresh Token and healthy time sync for Intune enrollment.' -Subcategory 'Enrollment & Connectivity'
+            Add-CategoryNormal -CategoryResult $Result -Title 'Device is Entra Joined with a valid Primary Refresh Token and healthy time sync for Intune enrollment.' -Subcategory 'Enrollment & Connectivity'
         } elseif ($isAzureJoined -and $hasPrt -eq $null) {
-            Add-CategoryNormal -CategoryResult $Result -Title 'Device is Azure AD joined and time sync appears healthy; PRT status was not reported.' -Subcategory 'Enrollment & Connectivity'
+            Add-CategoryNormal -CategoryResult $Result -Title 'Device is Entra Joined and time sync appears healthy; PRT status was not reported.' -Subcategory 'Enrollment & Connectivity'
         }
 
         if ($dataGaps.Count -gt 0) {
-            $gapTitle = 'Intune diagnostics were incomplete, so Azure AD join signals were unavailable.'
+            $gapTitle = 'Intune diagnostics were incomplete, so Entra join signals were unavailable.'
             Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gapTitle -Subcategory 'Enrollment & Connectivity'
         }
         return
@@ -146,7 +146,7 @@ function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
         TokenFailures2h = $recentTokenFailures
     }
 
-    $remediation = 'Review Azure AD join and MDM enrollment status, clear stale Workplace joins, verify outbound access to Microsoft enrollment endpoints, and assign the Enable automatic MDM enrollment (user scope) policy with proxy exclusions for Microsoft MDM URLs.'
+    $remediation = 'Review Entra join posture and MDM enrollment status, clear stale Workplace joins, verify outbound access to Microsoft enrollment endpoints, and assign the Enable automatic MDM enrollment (user scope) policy with proxy exclusions for Microsoft MDM URLs.'
     $remediationScript = @(
         '```powershell',
         '# Check join & MDM',
@@ -164,7 +164,7 @@ function Invoke-IntuneHeuristic-EnrollmentConnectivityHealth {
     Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidence -Subcategory 'Enrollment & Connectivity' -Remediation $remediation -RemediationScript $remediationScript
 
     if ($dataGaps.Count -gt 0) {
-        $gapTitle = 'Intune diagnostics were incomplete, so Azure AD join signals were unavailable.'
+        $gapTitle = 'Intune diagnostics were incomplete, so Entra join signals were unavailable.'
         Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title $gapTitle -Subcategory 'Enrollment & Connectivity'
     }
 }

@@ -130,11 +130,11 @@ The sections below summarize every analyzer category and the heuristics it curre
 - **User Account Control** – Confirms secure UAC prompts and raises high-severity issues when the configuration is insecure.
 
 ### Intune
-- **Enrollment & Connectivity** – Flags devices that cannot register with Intune because Azure AD join, Primary Refresh Token availability, time synchronization, or conditional access policy blocks prevent service connectivity, and escalates when repeated token failures compound a CA block.
+- **Enrollment & Connectivity** – Flags devices that cannot register with Intune because Entra ID join status, Primary Refresh Token availability, time synchronization, or conditional access policy blocks prevent service connectivity, and escalates when repeated token failures compound a CA block.
 
 ### Active Directory
-- **Collection** – Emits informational findings when AD diagnostics are missing or when domain checks are not applicable (for example, Azure AD–joined devices).
-- **Discovery** – Distinguishes Azure AD–only joins and raises critical issues when no domain controllers are discovered.
+- **Collection** – Emits informational findings when AD diagnostics are missing or when domain checks are not applicable (for example, Entra Joined devices).
+- **Discovery** – Distinguishes Entra ID–only joins and raises critical issues when no domain controllers are discovered.
 - **DNS Discovery** – Flags SRV lookup failures that prevent domain controller discovery and records normals when AD DNS records resolve.
 - **Connectivity** – Raises critical issues when DC port tests fail, medium issues when SYSVOL/NETLOGON shares are unreachable, and records normals when controllers respond with shares available.
 - **SYSVOL** – Highlights medium issues when domain shares are unreachable, signalling that GPOs cannot replicate.
