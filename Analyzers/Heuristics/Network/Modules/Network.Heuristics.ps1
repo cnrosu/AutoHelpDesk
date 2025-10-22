@@ -1926,14 +1926,27 @@ Test-NetConnection outlook.office365.com -Port 443
         $connectivityContext.Outlook = if ($payload -and $payload.PSObject.Properties['Connectivity']) { $payload.Connectivity } else { $null }
         if ($payload -and $payload.Connectivity) {
             $conn = $payload.Connectivity
-                if ($conn.PSObject.Properties['TcpTestSucceeded']) {
-                    if (-not $conn.TcpTestSucceeded) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Data (& $createConnectivityData $connectivityContext)
-                    } else {
-                        Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
+            $proxyRemediation = @'
+Recommended actions:
+1. Kill stale proxy settings before retrying Outlook connectivity.
+2. Disable the user WinINET proxy:
+```cmd
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f
+```
+3. Reset the WinHTTP proxy:
+```cmd
+netsh winhttp reset proxy
+```
+4. Verify `netsh winhttp show proxy` reports Direct access and confirm Outlook connects.
+'@
+            if ($conn.PSObject.Properties['TcpTestSucceeded']) {
+                if (-not $conn.TcpTestSucceeded) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
+                } else {
+                    Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
                 }
             } elseif ($conn.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
