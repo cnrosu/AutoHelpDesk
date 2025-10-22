@@ -1262,17 +1262,40 @@ function New-IssueCardHtml {
       }
 
       if ([string]::IsNullOrWhiteSpace($codeBlockHtml)) {
-        $codeId = 'remediation-' + ([guid]::NewGuid().ToString('N'))
-        $codeHtml = Encode-Html $scriptContent
-        $buttonLabel = Encode-Html 'Copy PowerShell'
+        # Fallback: render with the same code-card toolbar used elsewhere
+        $codeId       = 'remediation-' + ([guid]::NewGuid().ToString('N'))
+        $codeHtml     = Encode-Html $scriptContent
+        $copyLabel    = Encode-Html 'Copy'
         $successLabel = Encode-Html 'Copied!'
         $failureLabel = Encode-Html 'Copy failed'
-        $fallback = @"
-<div class='report-remediation__code'>
-  <button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button>
-  <pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre>
+        $badgeLabel   = Encode-Html 'PowerShell'
+
+        $toolbar = @"
+<div class='code-toolbar' role='toolbar' aria-label='Code toolbar'>
+  <div class='code-toolbar__meta'>
+    <span class='lang-badge'>$badgeLabel</span>
+  </div>
+  <div class='code-actions'>
+    <button class='btn' type='button'
+            data-copy='#$codeId'
+            data-copy-target='#$codeId'
+            data-copy-label='$copyLabel'
+            data-copy-success='$successLabel'
+            data-copy-failure='$failureLabel'>$copyLabel</button>
+    <button class='btn' type='button' data-theme-toggle='true'>Theme</button>
+  </div>
 </div>
 "@
+
+        $fallback = @"
+<div class='report-remediation__code'>
+  <div class='code-card'>
+    $toolbar
+    <pre class='line-numbers'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre>
+  </div>
+</div>
+"@
+
         [void]$remediationBuilder.Append($fallback)
       } else {
         [void]$remediationBuilder.Append("<div class='report-remediation__code'>$codeBlockHtml</div>")
