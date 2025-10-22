@@ -558,18 +558,469 @@ function Invoke-NetworkHeuristics {
     }
 
     $createConnectivityData = {
-        param($ctx)
+        param(
+            $ctx,
+            [string[]]$Sections
+        )
 
-        return @{
-            Area      = 'Network'
-            Kind      = 'Connectivity'
-            Interfaces = if ($ctx.Interfaces) { $ctx.Interfaces } else { @() }
-            Dns       = $ctx.Dns
-            Gateway   = $ctx.Gateway
-            Proxy     = $ctx.Proxy
-            Vpn       = $ctx.Vpn
-            Outlook   = $ctx.Outlook
+        if (-not $ctx) { return $null }
+
+        $requested = $null
+        if ($Sections -and $Sections.Count -gt 0) {
+            $requested = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($section in $Sections) {
+                if ($section) { $null = $requested.Add([string]$section) }
+            }
+            if ($requested.Count -eq 0) { $requested = $null }
         }
+
+        $sections = New-Object System.Collections.Generic.List[string]
+
+        $includeSection = {
+            param([string]$Name)
+
+            if (-not $requested) { return $true }
+            return $requested.Contains($Name)
+        }
+
+        $appendSection = {
+            param(
+                [string]$Name,
+                [System.Collections.IEnumerable]$Lines
+            )
+
+            if (-not $Lines) { return }
+            $collected = @()
+            foreach ($line in $Lines) {
+                if ($null -eq $line) { continue }
+                $text = [string]$line
+                if (-not $text) { continue }
+                $collected += $text
+            }
+            if ($collected.Count -eq 0) { return }
+            if ($sections.Count -gt 0) { $sections.Add('') | Out-Null }
+            $sections.Add("$Name:") | Out-Null
+            foreach ($line in $collected) {
+                $sections.Add("  $line") | Out-Null
+            }
+        }
+
+        $formatList = {
+            param(
+                [System.Collections.IEnumerable]$Values,
+                [int]$Max = 3
+            )
+
+            if ($Max -lt 1) { $Max = 1 }
+            if (-not $Values) { return 'none' }
+            $collected = @()
+            foreach ($value in $Values) {
+                if ($null -eq $value) { continue }
+                $text = [string]$value
+                if (-not $text) { continue }
+                $collected += $text
+            }
+            if ($collected.Count -eq 0) { return 'none' }
+            if ($collected.Count -le $Max) { return ($collected -join ', ') }
+            $prefix = ($collected[0..($Max - 1)] -join ', ')
+            $remaining = $collected.Count - $Max
+            return ('{0} (+{1} more)' -f $prefix, $remaining)
+        }
+
+        $dnsServersByInterface = @{}
+        $clientServerEntries = @()
+        $dnsPolicies = @()
+        $dnsResolutionEntries = @()
+        $dnsAutodiscoverEntries = @()
+        $dnsLatencyEntry = $null
+
+        if ($ctx.PSObject -and $ctx.PSObject.Properties['Dns'] -and $ctx.Dns) {
+            $dnsContext = $ctx.Dns
+            if ($dnsContext.PSObject -and $dnsContext.PSObject.Properties['ClientServers'] -and $dnsContext.ClientServers) {
+                $clientServerEntries = ConvertTo-NetworkArray $dnsContext.ClientServers
+            }
+            if ($dnsContext.PSObject -and $dnsContext.PSObject.Properties['ClientPolicies'] -and $dnsContext.ClientPolicies) {
+                $dnsPolicies = ConvertTo-NetworkArray $dnsContext.ClientPolicies
+            }
+            if ($dnsContext.PSObject -and $dnsContext.PSObject.Properties['Resolution'] -and $dnsContext.Resolution) {
+                $dnsResolutionEntries = ConvertTo-NetworkArray $dnsContext.Resolution
+            }
+            if ($dnsContext.PSObject -and $dnsContext.PSObject.Properties['Autodiscover'] -and $dnsContext.Autodiscover) {
+                $dnsAutodiscoverEntries = ConvertTo-NetworkArray $dnsContext.Autodiscover
+            }
+            if ($dnsContext.PSObject -and $dnsContext.PSObject.Properties['Latency']) {
+                $dnsLatencyEntry = $dnsContext.Latency
+            }
+        }
+
+        foreach ($entry in $clientServerEntries) {
+            if (-not $entry) { continue }
+            if ($entry.PSObject.Properties['Error'] -and $entry.Error) { continue }
+            $alias = if ($entry.PSObject.Properties['InterfaceAlias'] -and $entry.InterfaceAlias) { [string]$entry.InterfaceAlias } else { 'Interface' }
+            $addresses = ConvertTo-NetworkArray $entry.ServerAddresses
+            $addressList = @()
+            foreach ($addr in $addresses) {
+                if ($null -eq $addr) { continue }
+                $addrText = [string]$addr
+                if (-not $addrText) { continue }
+                if (-not $addressList -or -not ($addressList -contains $addrText)) { $addressList += $addrText }
+            }
+            if (-not $dnsServersByInterface.ContainsKey($alias)) { $dnsServersByInterface[$alias] = @() }
+            foreach ($addr in $addressList) {
+                if (-not ($dnsServersByInterface[$alias] -contains $addr)) { $dnsServersByInterface[$alias] += $addr }
+            }
+        }
+
+        if (& $includeSection 'Interfaces') {
+            $interfaceLines = @()
+            if ($ctx.PSObject -and $ctx.PSObject.Properties['Interfaces'] -and $ctx.Interfaces -and $ctx.Interfaces.Count -gt 0) {
+                foreach ($iface in $ctx.Interfaces) {
+                    if (-not $iface) { continue }
+                    $alias = $null
+                    if ($iface.PSObject -and $iface.PSObject.Properties['Name'] -and $iface.Name) { $alias = [string]$iface.Name }
+                    if (-not $alias -and $iface.PSObject -and $iface.PSObject.Properties['Description'] -and $iface.Description) { $alias = [string]$iface.Description }
+                    if (-not $alias) { $alias = 'Interface' }
+
+                    $status = 'Unknown'
+                    if ($iface.PSObject -and $iface.PSObject.Properties['Status'] -and $iface.Status) {
+                        $status = [string]$iface.Status
+                    } elseif ($iface.PSObject -and $iface.PSObject.Properties['IsUp']) {
+                        $status = (if ($iface.IsUp) { 'Up' } else { 'Down' })
+                    }
+
+                    $ipv4Values = @()
+                    if ($iface.PSObject -and $iface.PSObject.Properties['IPv4'] -and $iface.IPv4) {
+                        foreach ($item in $iface.IPv4) {
+                            if ($item) { $ipv4Values += [string]$item }
+                        }
+                    }
+
+                    $ipv6Values = @()
+                    if ($iface.PSObject -and $iface.PSObject.Properties['IPv6'] -and $iface.IPv6) {
+                        foreach ($item in $iface.IPv6) {
+                            if ($item) { $ipv6Values += [string]$item }
+                        }
+                    }
+
+                    $gatewayValues = @()
+                    if ($iface.PSObject -and $iface.PSObject.Properties['Gateways'] -and $iface.Gateways) {
+                        foreach ($item in $iface.Gateways) {
+                            if ($item) { $gatewayValues += [string]$item }
+                        }
+                    }
+
+                    $lineParts = @()
+                    $lineParts += "Status=$status"
+                    $lineParts += "IPv4=" + (& $formatList $ipv4Values 2)
+                    $lineParts += "IPv6=" + (& $formatList $ipv6Values 2)
+                    $lineParts += "Gateway=" + (& $formatList $gatewayValues 2)
+
+                    if ($dnsServersByInterface.ContainsKey($alias)) {
+                        $lineParts += "DNS=" + (& $formatList $dnsServersByInterface[$alias] 3)
+                    } elseif ($clientServerEntries -and $clientServerEntries.Count -gt 0) {
+                        $lineParts += 'DNS=not reported'
+                    }
+
+                    $interfaceLines += ('{0}: {1}' -f $alias, ($lineParts -join '; '))
+                }
+            } else {
+                $interfaceLines += 'No interface inventory collected.'
+            }
+
+            & $appendSection 'Interfaces' $interfaceLines
+        }
+
+        if (& $includeSection 'DnsServers') {
+            $dnsServerLines = @()
+            if ($clientServerEntries -and $clientServerEntries.Count -gt 0) {
+                $processedServers = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($entry in $clientServerEntries) {
+                    if (-not $entry) { continue }
+                    $alias = if ($entry.PSObject.Properties['InterfaceAlias'] -and $entry.InterfaceAlias) { [string]$entry.InterfaceAlias } else { 'Interface' }
+                    if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+                        $dnsServerLines += ('{0}: Error - {1}' -f $alias, [string]$entry.Error)
+                        continue
+                    }
+                    if (-not $processedServers.Add($alias)) { continue }
+                    if ($dnsServersByInterface.ContainsKey($alias)) {
+                        $dnsServerLines += ('{0}: {1}' -f $alias, (& $formatList $dnsServersByInterface[$alias] 3))
+                    } else {
+                        $dnsServerLines += ('{0}: none reported' -f $alias)
+                    }
+                }
+            } else {
+                $dnsServerLines += 'No DNS server inventory collected.'
+            }
+
+            & $appendSection 'DNS Servers' $dnsServerLines
+        }
+
+        if (& $includeSection 'DnsPolicies') {
+            $policyLines = @()
+            if ($dnsPolicies -and $dnsPolicies.Count -gt 0) {
+                foreach ($policy in $dnsPolicies) {
+                    if (-not $policy) { continue }
+                    $alias = if ($policy.PSObject.Properties['InterfaceAlias'] -and $policy.InterfaceAlias) { [string]$policy.InterfaceAlias } else { 'Interface' }
+                    $suffix = if ($policy.PSObject.Properties['ConnectionSpecificSuffix'] -and $policy.ConnectionSpecificSuffix) { [string]$policy.ConnectionSpecificSuffix } else { 'none' }
+                    $registerText = 'Register=Unknown'
+                    if ($policy.PSObject.Properties['RegisterThisConnectionsAddress']) {
+                        if ($policy.RegisterThisConnectionsAddress -eq $true) { $registerText = 'Register=Yes' }
+                        elseif ($policy.RegisterThisConnectionsAddress -eq $false) { $registerText = 'Register=No' }
+                    }
+                    $useSuffixText = 'UseSuffix=Unknown'
+                    if ($policy.PSObject.Properties['UseSuffixWhenRegistering']) {
+                        if ($policy.UseSuffixWhenRegistering -eq $true) { $useSuffixText = 'UseSuffix=Yes' }
+                        elseif ($policy.UseSuffixWhenRegistering -eq $false) { $useSuffixText = 'UseSuffix=No' }
+                    }
+                    $policyLines += ('{0}: Suffix={1}; {2}; {3}' -f $alias, $suffix, $registerText, $useSuffixText)
+                }
+            } else {
+                $policyLines += 'No DNS policy data collected.'
+            }
+
+            & $appendSection 'DNS Policies' $policyLines
+        }
+
+        if (& $includeSection 'DnsResolution') {
+            $resolutionLines = @()
+            $failureCount = 0
+            if ($dnsResolutionEntries -and $dnsResolutionEntries.Count -gt 0) {
+                foreach ($entry in $dnsResolutionEntries) {
+                    if (-not $entry) { continue }
+                    $name = if ($entry.PSObject.Properties['Name'] -and $entry.Name) { [string]$entry.Name } else { 'Lookup' }
+                    $statusParts = @()
+                    $isFailure = $false
+                    if ($entry.PSObject.Properties['Success']) {
+                        if ($entry.Success -eq $false) { $isFailure = $true }
+                    }
+                    if (-not $entry.PSObject.Properties['Success'] -and $entry.PSObject.Properties['Error'] -and $entry.Error) {
+                        $isFailure = $true
+                    }
+                    if ($isFailure) {
+                        $failureCount++
+                        if ($entry.PSObject.Properties['Error'] -and $entry.Error) { $statusParts += [string]$entry.Error }
+                        elseif ($entry.PSObject.Properties['Success'] -and $entry.Success -eq $false) { $statusParts += 'Resolution failed' }
+                        $addresses = @()
+                        if ($entry.PSObject.Properties['Addresses'] -and $entry.Addresses) {
+                            foreach ($addr in (ConvertTo-NetworkArray $entry.Addresses)) {
+                                if ($addr) { $addresses += [string]$addr }
+                            }
+                        }
+                        if ($addresses.Count -gt 0) { $statusParts += 'Answers=' + (& $formatList $addresses 3) }
+                        if ($statusParts.Count -eq 0) { $statusParts += 'Resolution failed' }
+                        $resolutionLines += ('{0}: {1}' -f $name, ($statusParts -join '; '))
+                    }
+                }
+            }
+
+            if ($failureCount -eq 0) {
+                if (-not $dnsResolutionEntries -or $dnsResolutionEntries.Count -eq 0) {
+                    $resolutionLines += 'No DNS resolution data collected.'
+                } else {
+                    $resolutionLines += 'All DNS lookups succeeded.'
+                }
+            }
+
+            & $appendSection 'DNS Resolution' $resolutionLines
+        }
+
+        if (& $includeSection 'DnsLatency') {
+            $latencyLines = @()
+            if ($dnsLatencyEntry) {
+                if ($dnsLatencyEntry -is [psobject]) {
+                    $remote = $null
+                    if ($dnsLatencyEntry.PSObject.Properties['RemoteAddress'] -and $dnsLatencyEntry.RemoteAddress) {
+                        $remote = ConvertTo-NetworkAddressString $dnsLatencyEntry.RemoteAddress
+                    }
+                    if (-not $remote) { $remote = 'DNS server' }
+                    if ($dnsLatencyEntry.PSObject.Properties['PingSucceeded']) {
+                        $status = if ($dnsLatencyEntry.PingSucceeded -eq $true) { 'succeeded' } elseif ($dnsLatencyEntry.PingSucceeded -eq $false) { 'failed' } else { 'unknown' }
+                        $latencyLines += ('Ping to {0} {1}.' -f $remote, $status)
+                    }
+                    if ($dnsLatencyEntry.PSObject.Properties['Average'] -and $dnsLatencyEntry.Average) {
+                        $latencyLines += ('Average latency: {0}' -f [string]$dnsLatencyEntry.Average)
+                    }
+                    if ($dnsLatencyEntry.PSObject.Properties['Error'] -and $dnsLatencyEntry.Error) {
+                        $latencyLines += ('Error: {0}' -f [string]$dnsLatencyEntry.Error)
+                    }
+                } else {
+                    $latencyLines += [string]$dnsLatencyEntry
+                }
+            } else {
+                $latencyLines += 'No DNS latency test data collected.'
+            }
+
+            & $appendSection 'DNS Latency' $latencyLines
+        }
+
+        if (& $includeSection 'Autodiscover') {
+            $autodiscoverLines = @()
+            if ($dnsAutodiscoverEntries -and $dnsAutodiscoverEntries.Count -gt 0) {
+                foreach ($entry in $dnsAutodiscoverEntries) {
+                    if (-not $entry) { continue }
+                    $query = if ($entry.PSObject.Properties['Query'] -and $entry.Query) { [string]$entry.Query } else { 'Lookup' }
+                    $source = if ($entry.PSObject.Properties['DomainSource'] -and $entry.DomainSource) { [string]$entry.DomainSource } else { $null }
+                    $label = if ($source) { '{0} [{1}]' -f $query, $source } else { $query }
+                    $statusParts = @()
+                    $successStateKnown = $false
+                    if ($entry.PSObject.Properties['Success']) {
+                        $successStateKnown = $true
+                        if ($entry.Success -eq $true) {
+                            $targets = New-Object System.Collections.Generic.List[string]
+                            if ($entry.PSObject.Properties['Targets'] -and $entry.Targets) {
+                                foreach ($target in (ConvertTo-NetworkArray $entry.Targets)) {
+                                    if ($target) { $targets.Add([string]$target) | Out-Null }
+                                }
+                            }
+                            if ($entry.PSObject.Properties['Records'] -and $entry.Records) {
+                                foreach ($record in (ConvertTo-NetworkArray $entry.Records)) {
+                                    if (-not $record) { continue }
+                                    if ($record.PSObject.Properties['Target'] -and $record.Target) { $targets.Add([string]$record.Target) | Out-Null }
+                                    elseif ($record.PSObject.Properties['Address'] -and $record.Address) { $targets.Add([string]$record.Address) | Out-Null }
+                                    elseif ($record.PSObject.Properties['Data'] -and $record.Data) { $targets.Add([string]$record.Data) | Out-Null }
+                                }
+                            }
+                            if ($targets.Count -gt 0) {
+                                $statusParts += 'Targets=' + (& $formatList $targets 3)
+                            } else {
+                                $statusParts += 'Success'
+                            }
+                        } elseif ($entry.Success -eq $false) {
+                            if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+                                $statusParts += 'Error: ' + [string]$entry.Error
+                            } else {
+                                $statusParts += 'Lookup failed'
+                            }
+                        }
+                    }
+                    if (-not $successStateKnown -and $entry.PSObject.Properties['Error'] -and $entry.Error) {
+                        $statusParts += 'Error: ' + [string]$entry.Error
+                    }
+                    if ($statusParts.Count -eq 0) { $statusParts += 'Status unknown' }
+                    $autodiscoverLines += ('{0}: {1}' -f $label, ($statusParts -join '; '))
+                }
+            } else {
+                $autodiscoverLines += 'No Autodiscover lookup data collected.'
+            }
+
+            & $appendSection 'Autodiscover' $autodiscoverLines
+        }
+
+        if (& $includeSection 'Proxy') {
+            $proxyLines = @()
+            if ($ctx.PSObject -and $ctx.PSObject.Properties['Proxy'] -and $ctx.Proxy) {
+                $proxyContext = $ctx.Proxy
+                if ($proxyContext.PSObject -and $proxyContext.PSObject.Properties['Internet'] -and $proxyContext.Internet) {
+                    $internet = $proxyContext.Internet
+                    $userLine = 'User Proxy: '
+                    if ($internet.PSObject -and $internet.PSObject.Properties['ProxyEnable'] -and $internet.ProxyEnable -eq 1) {
+                        $userLine += 'Enabled'
+                    } else {
+                        $userLine += 'Disabled'
+                    }
+                    if ($internet.PSObject -and $internet.PSObject.Properties['ProxyServer'] -and $internet.ProxyServer) {
+                        $userLine += (' ({0})' -f [string]$internet.ProxyServer)
+                    }
+                    if ($internet.PSObject -and $internet.PSObject.Properties['AutoDetect'] -and $internet.AutoDetect -eq 1) {
+                        $userLine += '; AutoDetect=On'
+                    }
+                    if ($internet.PSObject -and $internet.PSObject.Properties['AutoConfigURL'] -and $internet.AutoConfigURL) {
+                        $userLine += ('; PAC={0}' -f [string]$internet.AutoConfigURL)
+                    }
+                    $proxyLines += $userLine
+                }
+                if ($proxyContext.PSObject -and $proxyContext.PSObject.Properties['WinHttp'] -and $proxyContext.WinHttp) {
+                    $winHttpLines = ConvertTo-NetworkArray $proxyContext.WinHttp
+                    $joinedWinHttp = $null
+                    if ($winHttpLines -and $winHttpLines.Count -gt 0) {
+                        $joinedWinHttp = ($winHttpLines | ForEach-Object { [string]$_ }) -join ' '
+                    } elseif ($proxyContext.WinHttp -is [string]) {
+                        $joinedWinHttp = [string]$proxyContext.WinHttp
+                    }
+                    if ($joinedWinHttp) {
+                        $proxyLines += ('WinHTTP: {0}' -f $joinedWinHttp.Trim())
+                    }
+                }
+            }
+            if ($proxyLines.Count -eq 0) { $proxyLines += 'No proxy configuration collected.' }
+
+            & $appendSection 'Proxy' $proxyLines
+        }
+
+        if (& $includeSection 'Outlook') {
+            $outlookLines = @()
+            if ($ctx.PSObject -and $ctx.PSObject.Properties['Outlook'] -and $ctx.Outlook) {
+                $outlook = $ctx.Outlook
+                if ($outlook.PSObject) {
+                    $remote = $null
+                    if ($outlook.PSObject.Properties['RemoteAddress'] -and $outlook.RemoteAddress) {
+                        $remote = ConvertTo-NetworkAddressString $outlook.RemoteAddress
+                    }
+                    if (-not $remote -and $outlook.PSObject.Properties['TargetResourceName'] -and $outlook.TargetResourceName) {
+                        $remote = [string]$outlook.TargetResourceName
+                    }
+                    if (-not $remote) { $remote = 'Remote host' }
+                    if ($outlook.PSObject.Properties['TcpTestSucceeded']) {
+                        $status = if ($outlook.TcpTestSucceeded -eq $true) { 'succeeded' } elseif ($outlook.TcpTestSucceeded -eq $false) { 'failed' } else { 'unknown' }
+                        $outlookLines += ('TCP test to {0} {1}.' -f $remote, $status)
+                    }
+                    if ($outlook.PSObject.Properties['Latency'] -and $outlook.Latency) {
+                        $outlookLines += ('Latency: {0}' -f [string]$outlook.Latency)
+                    }
+                    if ($outlook.PSObject.Properties['Error'] -and $outlook.Error) {
+                        $outlookLines += ('Error: {0}' -f [string]$outlook.Error)
+                    }
+                }
+            }
+            if ($outlookLines.Count -eq 0) { $outlookLines += 'No Outlook connectivity data collected.' }
+
+            & $appendSection 'Outlook' $outlookLines
+        }
+
+        if (& $includeSection 'Gateway') {
+            $gatewayLines = @()
+            if ($ctx.PSObject -and $ctx.PSObject.Properties['Gateway'] -and $ctx.Gateway) {
+                $gatewayContext = $ctx.Gateway
+                if ($gatewayContext.PSObject -and $gatewayContext.PSObject.Properties['Alerts'] -and $gatewayContext.Alerts) {
+                    foreach ($alert in $gatewayContext.Alerts) {
+                        if ($alert) { $gatewayLines += [string]$alert }
+                    }
+                }
+                if ($gatewayLines.Count -eq 0 -and $gatewayContext.PSObject -and $gatewayContext.PSObject.Properties['Observed'] -and $gatewayContext.Observed) {
+                    foreach ($observed in $gatewayContext.Observed) {
+                        if (-not $observed) { continue }
+                        $address = if ($observed.PSObject.Properties['Address'] -and $observed.Address) { [string]$observed.Address } elseif ($observed.PSObject.Properties['Gateway'] -and $observed.Gateway) { [string]$observed.Gateway } else { 'Gateway' }
+                        $mac = if ($observed.PSObject.Properties['Mac'] -and $observed.Mac) { [string]$observed.Mac } else { 'unknown MAC' }
+                        $interfaces = @()
+                        if ($observed.PSObject.Properties['Interfaces'] -and $observed.Interfaces) {
+                            foreach ($iface in $observed.Interfaces) {
+                                if ($iface) { $interfaces += [string]$iface }
+                            }
+                        }
+                        $gatewayLines += ('{0}: MAC {1}; Interfaces={2}' -f $address, $mac, (& $formatList $interfaces 3))
+                    }
+                }
+            }
+            if ($gatewayLines.Count -eq 0) { $gatewayLines += 'No gateway context collected.' }
+
+            & $appendSection 'Gateway' $gatewayLines
+        }
+
+        if (& $includeSection 'Vpn') {
+            $vpnLines = @()
+            if ($ctx.PSObject -and $ctx.PSObject.Properties['Vpn'] -and $ctx.Vpn) {
+                $vpn = $ctx.Vpn
+                if ($vpn.PSObject -and $vpn.PSObject.Properties['Category'] -and $vpn.Category) {
+                    $vpnLines += ('VPN Category: {0}' -f [string]$vpn.Category)
+                }
+            }
+            if ($vpnLines.Count -eq 0) { $vpnLines += 'No VPN diagnostics collected.' }
+
+            & $appendSection 'VPN' $vpnLines
+        }
+
+        if ($sections.Count -eq 0) { return $null }
+        return ($sections -join "`n").Trim()
     }
 
     $devicePartOfDomain = $null
@@ -1293,18 +1744,21 @@ Network fix: Enforce RA Guard on access ports.
             if ($ipText -match 'IPv4 Address') {
                 Add-CategoryNormal -CategoryResult $result -Title 'IPv4 addressing detected' -Subcategory 'IP Configuration'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
+                $connectivitySummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Remediation $ipConfigurationRemediation -Explanation $connectivitySummary
             }
         }
 
         if ($payload -and $payload.Route) {
             $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
             if ($routeText -notmatch '0\.0\.0\.0') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
+                $connectivitySummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Remediation $ipConfigurationRemediation -Explanation $connectivitySummary
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
+        $connectivitySummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Remediation $ipConfigurationRemediation -Explanation $connectivitySummary
     }
 
     if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
@@ -1621,7 +2075,8 @@ Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispa
             $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
                 $names = $failures.Name
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')) -Subcategory 'DNS Resolution' -Data (& $createConnectivityData $connectivityContext)
+                $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsResolution','DnsLatency','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')) -Subcategory 'DNS Resolution' -Explanation $dnsSummary
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'DNS lookups succeeded' -Subcategory 'DNS Resolution'
             }
@@ -1633,12 +2088,14 @@ Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispa
                 $remoteAddress = ConvertTo-NetworkAddressString $latency.RemoteAddress
                 if (-not $remoteAddress) { $remoteAddress = 'DNS server' }
                 if (-not $latency.PingSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to DNS {0} failed, showing DNS resolution is failing.' -f $remoteAddress) -Subcategory 'Latency' -Data (& $createConnectivityData $connectivityContext)
+                    $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsResolution','DnsLatency','Proxy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Ping to DNS {0} failed, showing DNS resolution is failing.' -f $remoteAddress) -Subcategory 'Latency' -Explanation $dnsSummary
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title ('Ping to DNS {0} succeeded' -f $remoteAddress) -Subcategory 'Latency'
                 }
             } elseif ($latency -is [string] -and $latency -match 'Request timed out') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Latency test reported timeouts, showing DNS resolution is failing.' -Subcategory 'Latency' -Data (& $createConnectivityData $connectivityContext)
+                $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsResolution','DnsLatency','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Latency test reported timeouts, showing DNS resolution is failing.' -Subcategory 'Latency' -Explanation $dnsSummary
             }
         }
 
@@ -1687,7 +2144,7 @@ Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispa
 
             if ($primaryErrors.Count -gt 0) {
                 $details = $primaryErrors | Select-Object -First 3
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation @'
+                $autodiscoverRemediation = @'
 Endpoint fixes:
 
 Detect failing lookups to confirm DNS resolution status.
@@ -1710,7 +2167,9 @@ For M365 Autodiscover (Exchange Online), publish `autodiscover.<yourdomain>` as 
 ```powershell
 Test-NetConnection outlook.office365.com -Port 443
 ```
-'@ -Data (& $createConnectivityData $connectivityContext)
+'@
+                $autodiscoverSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Autodiscover','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation $autodiscoverRemediation -Explanation $autodiscoverSummary
             }
         }
 
@@ -1730,7 +2189,8 @@ Test-NetConnection outlook.office365.com -Port 443
 
             foreach ($entry in $entries) {
                 if ($entry -and $entry.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.' -Evidence $entry.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                    $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate DNS servers, so name resolution may fail on domain devices.' -Evidence $entry.Error -Subcategory 'DNS Client' -Explanation $dnsSummary
                     continue
                 }
 
@@ -1784,12 +2244,14 @@ Test-NetConnection outlook.office365.com -Port 443
             }
 
             if ($missingInterfaces.Count -gt 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Adapters missing DNS servers: {0}, so name resolution may fail on domain devices.' -f ($missingInterfaces -join ', ')) -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('Adapters missing DNS servers: {0}, so name resolution may fail on domain devices.' -f ($missingInterfaces -join ', ')) -Subcategory 'DNS Client' -Explanation $dnsSummary
             }
 
             if ($ignoredPseudo.Count -gt 0) {
                 $pseudoTitle = "Ignored {0} pseudo/virtual adapters (loopback/ICS/Hyper-V) without DNS — not used for normal name resolution." -f $ignoredPseudo.Count
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $pseudoTitle -Evidence ($ignoredPseudo -join ', ') -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title $pseudoTitle -Evidence ($ignoredPseudo -join ', ') -Subcategory 'DNS Client' -Explanation $dnsSummary
             }
 
             if ($publicServers.Count -gt 0) {
@@ -1860,29 +2322,34 @@ Test-NetConnection outlook.office365.com -Port 443
                     'NRPT/VPN Coverage' = ('{0}' -f $coverageText)
                 }
 
-                $data = [ordered]@{
-                    'Join.DomainName'           = $dnsJoinContext.DomainName
-                    'Join.JoinCategory'         = $dnsJoinContext.JoinCategory
-                    'Join.JoinTitle'            = $dnsJoinContext.JoinTitle
-                    'Join.DomainJoined'         = $dnsJoinContext.DomainJoined
-                    'Join.AzureAdJoined'        = $dnsJoinContext.AzureAdJoined
-                    'Join.SecureChannel'        = $secureChannelText
-                    'Network.Context'           = $networkContextInfo.Label
-                    'Network.Ssid'              = $networkContextInfo.Ssid
-                    'Network.DefaultGateway'    = $networkContextInfo.Gateway
-                    'Dns.Servers'               = $allServers
-                    'Dns.PublicServers'         = $uniquePublic
-                    'Dns.PrivateServersPresent' = $hasInternalDns
-                    'Dns.SearchSuffixList'      = $suffixList
-                    'Dns.InternalZones'         = $internalZones
-                    'Dns.NrptVpnCoverage'       = $hasCoverage
-                    'Dns.NeedsInternalZones'    = $needsInternalZones
-                }
-
                 $remediation = Get-NetworkDnsRemediation -JoinContext $dnsJoinContext -NeedsInternalZones $needsInternalZones -NetworkContext $networkContextInfo
                 $title = 'DNS: Public resolvers detected on {0} device in {1} → {2}' -f $dnsJoinContext.JoinTitle, $networkContextInfo.Label, $severityTitle
 
-                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Explanation $summary -Subcategory 'DNS Client' -Remediation $remediation -Data $data
+                $domainJoinedText = if ($dnsJoinContext.DomainJoined -eq $true) { 'Yes' } elseif ($dnsJoinContext.DomainJoined -eq $false) { 'No' } else { 'Unknown' }
+                $azureJoinedText = if ($dnsJoinContext.AzureAdJoined -eq $true) { 'Yes' } elseif ($dnsJoinContext.AzureAdJoined -eq $false) { 'No' } else { 'Unknown' }
+                $needsInternalZonesText = if ($needsInternalZones) { 'Yes' } else { 'No' }
+                $privateCoverageText = if ($hasInternalDns) { 'Yes' } else { 'No' }
+                $allServersText = if ($allServers -and $allServers.Count -gt 0) { $allServers -join ', ' } else { 'none' }
+                $publicServersText = if ($uniquePublic -and $uniquePublic.Count -gt 0) { $uniquePublic -join ', ' } else { 'none' }
+
+                $detailLines = @(
+                    'Identity: Domain={0}; Join={1}; DomainJoined={2}; AzureAD={3}; SecureChannel={4}' -f $domainLabel, $dnsJoinContext.JoinTitle, $domainJoinedText, $azureJoinedText, $secureChannelText,
+                    'Network: Context={0}; SSID={1}; Gateway={2}' -f $networkContextInfo.Label, $ssidText, $gatewayText,
+                    'DNS Servers: {0}' -f $allServersText,
+                    'Public Resolvers: {0}' -f $publicServersText,
+                    'Private Resolver Coverage: {0}' -f $privateCoverageText,
+                    'Search Suffixes: {0}' -f $suffixText,
+                    'Internal Zones: {0}' -f $internalZoneText,
+                    'NRPT/VPN Coverage: {0}; Needs Internal Zones: {1}' -f $coverageText, $needsInternalZonesText
+                )
+
+                $detailedSummary = $detailLines -join "`n"
+                $extendedExplanation = $summary
+                if ($detailedSummary) {
+                    $extendedExplanation = ($summary, '', $detailedSummary) -join "`n"
+                }
+
+                Add-CategoryIssue -CategoryResult $result -Severity $severity -Title $title -Evidence $evidence -Explanation $extendedExplanation -Subcategory 'DNS Client' -Remediation $remediation
             } elseif (-not $loopbackOnly) {
                 Add-CategoryNormal -CategoryResult $result -Title 'Private DNS servers detected' -Subcategory 'DNS Client'
             }
@@ -1892,7 +2359,8 @@ Test-NetConnection outlook.office365.com -Port 443
             $policies = ConvertTo-NetworkArray $payload.ClientPolicies
             foreach ($policy in $policies) {
                 if ($policy -and $policy.Error) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.' -Evidence $policy.Error -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                    $policySummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsPolicies','Proxy'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS client policy query failed, so name resolution policy issues may be hidden and cause failures.' -Evidence $policy.Error -Subcategory 'DNS Client' -Explanation $policySummary
                     continue
                 }
 
@@ -1905,13 +2373,15 @@ Test-NetConnection outlook.office365.com -Port 443
                 if ($policy.PSObject.Properties['RegisterThisConnectionsAddress']) {
                     $register = $policy.RegisterThisConnectionsAddress
                     if ($register -eq $false -and $devicePartOfDomain -eq $true) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("DNS registration disabled on {0}, so name resolution may fail on domain devices." -f $alias) -Evidence 'RegisterThisConnectionsAddress = False' -Subcategory 'DNS Client' -Data (& $createConnectivityData $connectivityContext)
+                        $policySummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsPolicies','Proxy'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title ("DNS registration disabled on {0}, so name resolution may fail on domain devices." -f $alias) -Evidence 'RegisterThisConnectionsAddress = False' -Subcategory 'DNS Client' -Explanation $policySummary
                     }
                 }
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS diagnostics not collected, so latency and name resolution issues may be missed.' -Subcategory 'DNS Resolution' -Data (& $createConnectivityData $connectivityContext)
+        $dnsSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','DnsPolicies','Proxy'
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'DNS diagnostics not collected, so latency and name resolution issues may be missed.' -Subcategory 'DNS Resolution' -Explanation $dnsSummary
     }
 
     $outlookArtifact = Get-AnalyzerArtifact -Context $Context -Name 'outlook-connectivity'
@@ -1941,12 +2411,14 @@ netsh winhttp reset proxy
 '@
             if ($conn.PSObject.Properties['TcpTestSucceeded']) {
                 if (-not $conn.TcpTestSucceeded) {
-                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
+                    $outlookSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy','Outlook'
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Explanation $outlookSummary
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
                 }
             } elseif ($conn.Error) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
+                $outlookSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Proxy','Outlook'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Unable to test Outlook connectivity, leaving potential loss of access to Exchange Online unverified.' -Evidence $conn.Error -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Explanation $outlookSummary
             }
         }
 
@@ -1977,12 +2449,14 @@ netsh winhttp reset proxy
                         Add-CategoryNormal -CategoryResult $result -Title ("Autodiscover healthy for {0}" -f $domain) -Evidence $targetText -Subcategory 'Autodiscover DNS'
                     } else {
                         $severity = if ($devicePartOfDomain -eq $true) { 'medium' } else { 'low' }
-                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online." -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                        $autodiscoverSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Autodiscover','Proxy'
+                        Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover for {0} targets {1}, so mail setup may fail for Exchange Online." -f $domain, $targetText) -Evidence 'Expected autodiscover.outlook.com for Exchange Online onboarding.' -Subcategory 'Autodiscover DNS' -Explanation $autodiscoverSummary
                     }
                 } elseif ($autoRecord.Success -eq $false) {
                     $severity = if ($devicePartOfDomain -eq $true) { 'high' } else { 'medium' }
                     $evidence = if ($autoRecord.Error) { $autoRecord.Error } else { "Lookup failed for autodiscover.$domain" }
-                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}, so mail setup may fail." -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                    $autodiscoverSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Autodiscover','Proxy'
+                    Add-CategoryIssue -CategoryResult $result -Severity $severity -Title ("Autodiscover lookup failed for {0}, so mail setup may fail." -f $domain) -Evidence $evidence -Subcategory 'Autodiscover DNS' -Explanation $autodiscoverSummary
                 }
 
                 $dnsWarningLabels = @('EnterpriseRegistration','EnterpriseEnrollment')
@@ -1992,7 +2466,8 @@ netsh winhttp reset proxy
                     if ($additional.Label -eq 'Autodiscover') { continue }
                     if ($dnsWarningLabels -notcontains $additional.Label) { continue }
                     if ($additional.Success -eq $false -and $additional.Error) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}, so mail setup may fail." -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS' -Data (& $createConnectivityData $connectivityContext)
+                        $autodiscoverSummary = & $createConnectivityData $connectivityContext 'Interfaces','DnsServers','Autodiscover','Proxy'
+                        Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ("{0} record missing for {1}, so mail setup may fail." -f $additional.Label, $domain) -Evidence $additional.Error -Subcategory 'Autodiscover DNS' -Explanation $autodiscoverSummary
                     }
                 }
             }
@@ -2078,7 +2553,8 @@ netsh winhttp reset proxy
         if ($payload -and $payload.Internet) {
             $internet = $payload.Internet
             if ($internet.ProxyEnable -eq 1 -and $internet.ProxyServer) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('User proxy enabled: {0}' -f $internet.ProxyServer) -Subcategory 'Proxy Configuration' -Data (& $createConnectivityData $connectivityContext)
+                $proxySummary = & $createConnectivityData $connectivityContext 'Proxy','Interfaces','DnsServers'
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title ('User proxy enabled: {0}' -f $internet.ProxyServer) -Subcategory 'Proxy Configuration' -Explanation $proxySummary
             } elseif ($internet.ProxyEnable -eq 0) {
                 Add-CategoryNormal -CategoryResult $result -Title 'User proxy disabled' -Subcategory 'Proxy Configuration'
             }
@@ -2089,7 +2565,8 @@ netsh winhttp reset proxy
             if ($winHttpText -match 'Direct access') {
                 Add-CategoryNormal -CategoryResult $result -Title 'WinHTTP proxy: Direct access' -Subcategory 'Proxy Configuration'
             } elseif ($winHttpText) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration' -Data (& $createConnectivityData $connectivityContext)
+                $proxySummary = & $createConnectivityData $connectivityContext 'Proxy','Interfaces','DnsServers'
+                Add-CategoryIssue -CategoryResult $result -Severity 'info' -Title 'WinHTTP proxy configured' -Evidence $winHttpText -Subcategory 'Proxy Configuration' -Explanation $proxySummary
             }
         }
     }
@@ -2809,35 +3286,34 @@ netsh winhttp reset proxy
                     $passphraseClassesArray = @()
                     if ($classesUsed) { $passphraseClassesArray = @($classesUsed) }
 
-                    $data = [ordered]@{
-                        Category                    = 'Network/Security'
-                        Subcategory                 = 'Wi-Fi'
-                        SSID                        = $ssid
-                        SecurityMethod              = $encryptionDisplay
-                        Cipher                      = $cipherText
-                        PMF                         = $pmfStatus
-                        TransitionMode              = [bool]$transitionDetected
-                        WPS                         = $wpsBool
-                        'Passphrase.EntropyBits'    = [double]$entropyBits
-                        'Passphrase.Length'         = $passphraseLengthNumeric
-                        'Passphrase.Classes'        = $passphraseClassesArray
-                        'Passphrase.PatternPenalty' = [bool]$patternPenaltyApplied
-                        'Passphrase.FinalRating'    = $passphraseRatingLabel
-                        'Scores.E'                  = [int]$encryptionScore
-                        'Scores.P'                  = [int]$passphraseScore
-                        Severity                    = $finalSeverity
-                    }
-                    if (-not $data['Cipher']) {
-                        if ($cipherText) { $data['Cipher'] = $cipherText } else { $data['Cipher'] = 'Unknown' }
-                    }
-
                     $recommendations = 'Recommended Actions (priority order):' + "`n" + (@(
                         'Prefer WPA3-Personal (SAE) or WPA2/3-Enterprise (802.1X) with PMF Required.',
                         'If remaining on PSK: enforce >=16 truly random characters (target >=96-bit entropy), rotate PSK, disable WPS.',
                         'If transition mode is required for legacy, isolate legacy devices on a separate SSID/VLAN with stricter egress controls and plan a deprecation timeline.'
                     ) -join "`n")
 
-                    Add-CategoryIssue -CategoryResult $result -Severity $severityLower -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $recommendations -Explanation $summary -Data $data
+                    $transitionSummary = if ($transitionDetected) { 'On' } else { 'Off' }
+                    $wpsSummary = if ($wpsStatus) { $wpsStatus } else { 'Unknown' }
+                    $cipherSummary = if ($cipherText) { $cipherText } else { 'Unknown' }
+                    $passphraseLengthDisplay = if ($lengthValue -ne $null) { [string]$lengthValue } else { 'Unknown' }
+                    $patternPenaltyText = if ($patternPenaltyApplied) { 'Yes' } else { 'No' }
+                    $ssidDisplay = if ($ssid) { $ssid } else { 'Unknown SSID' }
+
+                    $wifiSummaryLines = @(
+                        'Category: Network/Security; Subcategory: Wi-Fi',
+                        'SSID: {0}' -f $ssidDisplay,
+                        'Security: {0}; Cipher: {1}; PMF: {2}; Transition Mode: {3}; WPS: {4}' -f $encryptionDisplay, $cipherSummary, $pmfStatus, $transitionSummary, $wpsSummary,
+                        'Passphrase: Rating={0}; Length={1}; EntropyBits={2}; Classes={3}; PatternPenalty={4}' -f $passphraseRatingLabel, $passphraseLengthDisplay, $entropyDisplay, $classesDisplay, $patternPenaltyText,
+                        'Scores: Encryption(E)={0}; Passphrase(P)={1}; Severity={2}' -f $encryptionScore, $passphraseScore, $finalSeverity
+                    )
+
+                    $wifiSummary = $wifiSummaryLines -join "`n"
+                    $extendedSummary = $summary
+                    if ($wifiSummary) {
+                        $extendedSummary = ($summary, '', $wifiSummary) -join "`n"
+                    }
+
+                    Add-CategoryIssue -CategoryResult $result -Severity $severityLower -Title $title -Evidence $evidence -Subcategory $subcategory -Remediation $recommendations -Explanation $extendedSummary
                     }
                 }
             }
