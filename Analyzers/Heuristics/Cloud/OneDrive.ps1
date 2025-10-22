@@ -110,7 +110,7 @@ function Invoke-OneDriveHeuristic {
         }
 
         if ($policy.DisablePersonalSync -eq 1) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Personal OneDrive accounts are blocked by policy, so users can only sync work accounts.' -Evidence 'HKLM\\SOFTWARE\\Policies\\Microsoft\\OneDrive\\DisablePersonalSync=1' -Subcategory 'OneDrive' -Remediation 'Use a work account or request a policy exception if personal sync is required.'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'info' -Title 'Personal OneDrive accounts are blocked by policy, so users can only sync work accounts.' -Evidence 'HKLM:\SOFTWARE\Policies\Microsoft\OneDrive\DisablePersonalSync=1' -Subcategory 'OneDrive' -Remediation 'Use a work account or request a policy exception if personal sync is required.'
         }
     }
 
