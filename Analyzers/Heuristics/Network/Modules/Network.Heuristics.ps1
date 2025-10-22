@@ -2859,7 +2859,12 @@ netsh winhttp reset proxy
                 Interface = $interfaceEvidence
             }
             if ($apEvidence) { $fallbackEvidence['AccessPoint'] = $apEvidence }
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory
+            $fallbackExplanation = 'Client stayed on WPA2 even though the AP offers WPA3, so traffic keeps weaker encryption that is easier to attack.'
+            $fallbackRemediation = @(
+                'Configure SSIDs as WPA3-SAE (Personal) or WPA3-Enterprise where the client fleet supports it; otherwise separate legacy devices on their own SSID.',
+                'Force the client to prefer WPA3 by "forget network" then re-join, and update the wireless NIC drivers.'
+            ) -join "`n"
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'AP supports WPA3 but client connected as WPA2' -Evidence $fallbackEvidence -Subcategory $subcategory -Explanation $fallbackExplanation -Remediation $fallbackRemediation
         }
     }
 
