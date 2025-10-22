@@ -15,8 +15,8 @@ AutoHelpDesk inspects inbound Remote Desktop firewall rules to ensure the Public
 - `Security/RDP/NLADisabled`
 
 ## Remediation
-1. Disable or remove RDP firewall rules that apply to the Public profile, or scope them strictly to Domain/Private networks and trusted address ranges.
-2. Enable Network Level Authentication by setting `UserAuthentication` to `1` on the `RDP-Tcp` listener and verifying clients support NLA.
+1. Disable or remove RDP firewall rules that apply to the Public profile, or scope them strictly to Domain/Private networks and trusted address ranges; only keep TCP/3389 open on Public in tightly controlled kiosk or test scenarios.
+2. Enable Network Level Authentication by setting `UserAuthentication` to `1` on the `RDP-Tcp` listener and verifying clients support NLA; the `Network Security: Restrict clients allowed to remotely connect using Remote Desktop Services` policy can narrow account access but is not a substitute for blocking Public-profile traffic.
 3. Re-run AutoHelpDesk collectors to confirm RDP is not exposed on Public networks and that NLA remains enforced.
 
 ## References
@@ -32,7 +32,7 @@ AutoHelpDesk inspects inbound Remote Desktop firewall rules to ensure the Public
 > **Impact (plain English):** When Remote Desktop firewall rules stay open on the Public profile, anyone on an untrusted network can reach the device and hammer it with Remote Desktop password guesses.
 
 ## Why this matters
-Windows treats the Public profile as the least-trusted network tier (coffee shops, hotels, guest Wi-Fi, etc.). Allowing Remote Desktop Protocol (RDP) through that profile exposes the host directly to unsolicited login attempts from anyone on the same network segment or, if the device is directly connected to the internet, from the entire internet. Attackers routinely scan for open RDP endpoints and brute-force passwords; leaving the Public profile open greatly increases the risk of compromise.
+Windows treats the Public profile as the least-trusted network tier (coffee shops, hotels, guest Wi-Fi, etc.). Allowing Remote Desktop Protocol (RDP) through that profile exposes the host directly to unsolicited login attempts from anyone on the same network segment or, if the device is directly connected to the internet, from the entire internet. Attackers routinely scan for open RDP endpoints and brute-force passwords; leaving the Public profile open greatly increases the risk of compromise. Unless you're managing a locked-down kiosk or short-lived test scenario with compensating controls, keep inbound RDP closed on the Public profile.
 
 ## Typical causes
 - Remote Desktop Manager (Devolutions RDM) automatically creating rules that include the Public profile during installation.
@@ -40,7 +40,7 @@ Windows treats the Public profile as the least-trusted network tier (coffee shop
 - Administrators manually enabling the Public profile to "fix" a connection issue without realizing the security implications.
 
 ## How to remediate
-1. **Restrict the firewall scope:** Edit the affected firewall rules in Windows Defender Firewall with Advanced Security so they apply only to the **Domain** and/or **Private** profiles, not Public. If you truly need RDP on Public networks, restrict the rule's remote IP addresses to trusted ranges.
+1. **Restrict the firewall scope:** Edit the affected firewall rules in Windows Defender Firewall with Advanced Security so they apply only to the **Domain** and/or **Private** profiles, not Public. If you truly need RDP on Public networks, restrict the rule's remote IP addresses to trusted ranges. Scoping the rule to `LocalSubnet` still lets other guests on a shared network reach the host, so treat that configuration as exposed.
 2. **Review Remote Desktop Manager settings:** Within Devolutions RDM, ensure its JetSoCat tunnels and helper services are not configured to listen on broad interfaces when unnecessary.
 3. **Consider conditional access:** Use a VPN or remote access gateway instead of exposing RDP directly. This keeps RDP closed on untrusted networks while still allowing remote support.
 4. **Monitor sign-in attempts:** Check the Windows Security event log (Event ID 4625) and Remote Desktop Manager audit logs for signs of brute-force attempts after tightening the firewall rules.
