@@ -348,6 +348,8 @@ function Invoke-SecurityAntivirusPostureChecks {
     $title = $null
     $severity = 'info'
     $remediation = $null
+    $cardKind = 'issue'
+    $normalMessage = $null
 
     if ($defenderActiveWithStaleSignatures) {
         $severity = 'high'
@@ -456,9 +458,9 @@ Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false
         $title = 'Endpoint AV: Third-party active but Defender signature status unknown'
         $explanation = 'Defender is passive but its signature currency is unknown, so technicians should confirm fallback definitions are updating.'
     } elseif ($thirdPartyActiveCount -eq 0 -and $defenderActive -eq $true -and $signatureCurrent -eq $true) {
-        $severity = 'info'
+        $cardKind = 'normal'
         $title = 'Endpoint AV: Defender active with current signatures'
-        $explanation = 'Microsoft Defender is actively protecting the device with current signatures and no conflicting third-party engines.'
+        $normalMessage = 'Microsoft Defender is actively protecting the device with current signatures and no conflicting third-party engines.'
     } elseif ($thirdPartyActiveCount -eq 0 -and $defenderActive -eq $true -and $signatureCurrent -eq $null) {
         $severity = 'medium'
         $title = 'Endpoint AV: Defender active but signature status unknown'
@@ -469,5 +471,13 @@ Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false
         $explanation = 'Antivirus telemetry was incomplete, so technicians should verify which engine is protecting the device.'
     }
 
-    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence ($evidenceLines.ToArray()) -Explanation $explanation -Subcategory 'Antivirus' -Remediation $remediation
+    if ($cardKind -eq 'normal') {
+        if ($normalMessage) {
+            $evidenceLines.Insert(0, $normalMessage)
+        }
+
+        Add-CategoryNormal -CategoryResult $CategoryResult -Title $title -Evidence ($evidenceLines.ToArray()) -Subcategory 'Antivirus'
+    } else {
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence ($evidenceLines.ToArray()) -Explanation $explanation -Subcategory 'Antivirus' -Remediation $remediation
+    }
 }
