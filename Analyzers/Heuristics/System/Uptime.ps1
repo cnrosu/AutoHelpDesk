@@ -458,6 +458,12 @@ function Invoke-SystemLongUptime {
     }
 
     $humanUptime = ConvertTo-UptimeHumanizedTime -Seconds $effectiveSeconds
+    $issueTitle = if ($humanUptime) {
+        "The system uptime is $humanUptime"
+    }
+    else {
+        'The system uptime is unknown'
+    }
 
     $evidenceLines = New-Object System.Collections.Generic.List[string]
     $evidenceLines.Add("EffectiveSince (UTC): {0}" -f $(if ($effectiveSinceIso) { $effectiveSinceIso } else { 'Unknown' })) | Out-Null
@@ -565,7 +571,7 @@ function Invoke-SystemLongUptime {
     $issueArguments = @{
         CategoryResult = $Result
         Severity       = $severity
-        Title          = 'Restart is required in all high/critical instances, medium is restart is strongly recommended, low is restart if you are experiencing issues'
+        Title          = $issueTitle
         Explanation    = if ($businessImpact) { $businessImpact } else { $explanation }
         Evidence       = $evidenceLines.ToArray()
         Subcategory    = 'Uptime'
