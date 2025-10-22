@@ -110,7 +110,7 @@ function Invoke-SecurityAntivirusPostureChecks {
         $securityCenter = $payload.SecurityCenter
     }
 
-    # Structured remediation mapping:
+Nlear    # Structured remediation mapping:
     # - Restore instruction -> text step leading into the startup commands.
     # - WMI repair guidance becomes a separate text + code pair.
     $serviceSignalRemediation = @'
@@ -358,39 +358,76 @@ function Invoke-SecurityAntivirusPostureChecks {
         if ($gapReason -eq 'RealtimeDisabled') {
             $title = 'Endpoint AV: Defender real-time protection disabled and no third-party AV'
             $explanation = 'No antivirus engine is actively scanning the device, leaving it exposed until Defender real-time protection is restored or a third-party agent registers.'
-            $remediation = @'
-Re-enable Microsoft Defender protections to restore active scanning:
-```powershell
+            $remediationSteps = @(
+                @{
+                    type    = 'text'
+                    title   = 'Re-enable Defender real-time protection'
+                    content = 'Turn Microsoft Defender real-time protection back on so the device regains active scanning.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Restore core Defender protections'
+                    lang    = 'powershell'
+                    content = @"
 Set-MpPreference -DisableRealtimeMonitoring $false
 Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent SendSafeSamples
-```
-Turn behavior monitoring, IOAV, and script scanning back on:
-```powershell
-Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false
-```
-Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot turn it back on when disabled.
-Validate Defender service health afterward:
-```powershell
-Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected
-```
-'@
+"@.Trim()
+                }
+                @{
+                    type    = 'text'
+                    title   = 'Re-enable behavioral defenses'
+                    content = 'Turn behavior monitoring, IOAV, and script scanning back on to close inspection gaps.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Re-enable behavioral protections'
+                    lang    = 'powershell'
+                    content = 'Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false'
+                }
+                @{
+                    type    = 'note'
+                    content = 'Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot re-enable it when disabled.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Validate Defender health'
+                    lang    = 'powershell'
+                    content = 'Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected'
+                }
+            )
+            $remediation = $remediationSteps | ConvertTo-Json -Depth 5
         } else {
             $title = 'Endpoint AV: No active AV detected (Defender passive; no third-party)'
             $explanation = 'No antivirus engine is actively scanning the device, leaving it exposed until Defender is activated or a third-party agent registers.'
-            $remediation = @'
-Decide whether a third-party antivirus should stay primary; if Defender must protect this device, exit passive mode and re-enable protections:
-```powershell
+            $remediationSteps = @(
+                @{
+                    type    = 'text'
+                    title   = 'Choose the primary antivirus'
+                    content = 'Decide whether a third-party antivirus will stay primary; if Defender must protect this device, leave passive mode and re-enable protections.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Activate Defender protections'
+                    lang    = 'powershell'
+                    content = @"
 Set-MpPreference -ForcePassiveMode 0
 Set-MpPreference -DisableRealtimeMonitoring $false
 Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent SendSafeSamples
 Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false
-```
-Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot turn it back on when disabled.
-Validate Defender service health afterward:
-```powershell
-Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected
-```
-'@
+"@.Trim()
+                }
+                @{
+                    type    = 'note'
+                    content = 'Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot re-enable it when disabled.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Validate Defender health'
+                    lang    = 'powershell'
+                    content = 'Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected'
+                }
+            )
+            $remediation = $remediationSteps | ConvertTo-Json -Depth 5
         }
     } elseif ($defenderPassiveWithStaleSignatures) {
         $severity = 'medium'

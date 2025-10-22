@@ -396,26 +396,26 @@ function Invoke-SecurityAttackSurfaceChecks {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title $asrMissingTitle -Subcategory 'Attack Surface Reduction' -Explanation $asrMissingExplanation -Remediation $asrMissingRemediation -Evidence 'ASR collector artifact missing from diagnostics.'
     }
 
-    $exploitProtectionRemediation = @'
-[
-  {
-    "title": "Stage the hardened Exploit Protection policy",
-    "content": "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and make it available on the affected machine (e.g., C:\\Policies\\ExploitProtection.xml)."
-  },
-  {
-    "title": "Apply the enterprise policy (PowerShell)",
-    "type": "code",
-    "lang": "powershell",
-    "content": "Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml"
-  },
-  {
-    "title": "Confirm system-wide mitigations",
-    "type": "code",
-    "lang": "powershell",
-    "content": "Get-ProcessMitigation -System"
-  }
-]
-'@
+    $exploitProtectionSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Stage the hardened policy'
+            content = "Export the organization's approved Exploit Protection XML from a hardened reference endpoint and place it on the affected machine (for example, C:\\Policies\\ExploitProtection.xml)."
+        }
+        @{
+            type    = 'code'
+            title   = 'Apply enterprise policy'
+            lang    = 'powershell'
+            content = 'Set-ProcessMitigation -PolicyFilePath C:\\Policies\\ExploitProtection.xml'
+        }
+        @{
+            type    = 'code'
+            title   = 'Confirm system mitigations'
+            lang    = 'powershell'
+            content = 'Get-ProcessMitigation -System'
+        }
+    )
+    $exploitProtectionRemediation = $exploitProtectionSteps | ConvertTo-Json -Depth 5
 
     $exploitArtifact = Get-AnalyzerArtifact -Context $Context -Name 'exploit-protection'
     if ($exploitArtifact) {

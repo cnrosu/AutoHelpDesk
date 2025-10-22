@@ -650,16 +650,25 @@ function Invoke-NetworkHeuristics {
         Found = [bool]$networkArtifact
     })
 
-    $ipConfigurationRemediation = @(
-        'Run these commands from an elevated PowerShell session to review IPv4 settings and quickly apply a static configuration if the adapter is missing addressing:',
-        '',
-        '```powershell',
-        'Get-NetIPConfiguration',
-        '# Set static quickly (if needed)',
-        'New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.50 -PrefixLength 24 -DefaultGateway 192.168.1.1',
-        'Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1.2',
-        '```'
-    ) -join "`n"
+    $ipConfigurationRemediationSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Review IPv4 configuration'
+            content = 'Use an elevated PowerShell session to inspect current addressing and confirm whether the adapter is missing configuration.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Inspect and set IPv4 settings'
+            lang    = 'powershell'
+            content = @"
+Get-NetIPConfiguration
+# Set static quickly (if needed)
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.50 -PrefixLength 24 -DefaultGateway 192.168.1.1
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1.2
+"@.Trim()
+        }
+    )
+    $ipConfigurationRemediation = $ipConfigurationRemediationSteps | ConvertTo-Json -Depth 5
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
         Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network payload' -Data ([ordered]@{
@@ -1683,6 +1692,60 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($payload -and $payload.Autodiscover) {
+            $autodiscoverRemediationSteps = @(
+                @{
+                    type    = 'text'
+                    title   = 'Endpoint fixes'
+                    content = 'Confirm Autodiscover name resolution and reset client DNS configuration before retesting.'
+                }
+                @{
+                    type    = 'text'
+                    content = 'Detect failing lookups to confirm DNS resolution status for key Autodiscover endpoints.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Test Autodiscover-related lookups'
+                    lang    = 'powershell'
+                    content = @"
+$names = 'autodiscover.outlook.com','enterpriseenrollment.windows.net','enterpriseregistration.windows.net'
+$names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
+"@.Trim()
+                }
+                @{
+                    type    = 'text'
+                    title   = 'Reset DNS servers to corporate resolvers'
+                    content = 'Point the NIC at corporate DNS resolvers before re-running Autodiscover tests.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Set DNS servers'
+                    lang    = 'powershell'
+                    content = 'Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 10.0.0.10,10.0.0.11'
+                }
+                @{
+                    type    = 'text'
+                    title   = 'Re-register host A record'
+                    content = 'After adjusting DNS client settings, re-register the host record to refresh DNS entries.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Re-register DNS'
+                    lang    = 'cmd'
+                    content = 'ipconfig /registerdns'
+                }
+                @{
+                    type    = 'text'
+                    title   = 'Validate Exchange Online Autodiscover'
+                    content = 'For Microsoft 365, ensure `autodiscover.<yourdomain>` is a CNAME to `autodiscover.outlook.com` and verify connectivity.'
+                }
+                @{
+                    type    = 'code'
+                    title   = 'Test Exchange Online connectivity'
+                    lang    = 'powershell'
+                    content = 'Test-NetConnection outlook.office365.com -Port 443'
+                }
+            )
+            $autodiscoverRemediation = $autodiscoverRemediationSteps | ConvertTo-Json -Depth 5
             $entries = ConvertTo-NetworkArray $payload.Autodiscover
             $primaryErrors = New-Object System.Collections.Generic.List[string]
 
