@@ -6,6 +6,8 @@ function Invoke-SecurityMeasuredBootChecks {
         $CategoryResult
     )
 
+    $secureBootRemediation = 'Enable Secure Boot in UEFI firmware. Ensure the device is enrolled in Microsoft Intune (MDM) so health attestation queries can run. On UEFI systems, rerun Confirm-SecureBootUEFI to confirm Secure Boot state.'
+
     $measuredBootArtifact = Get-AnalyzerArtifact -Context $Context -Name 'measured-boot'
     Write-HeuristicDebug -Source 'Security' -Message 'Resolved measured boot artifact' -Data ([ordered]@{
         Found = [bool]$measuredBootArtifact
@@ -25,7 +27,7 @@ function Invoke-SecurityMeasuredBootChecks {
                 $pcrHandled = $true
                 $volumeData = $bitlockerSection.Volumes
                 if ($volumeData -and $volumeData.PSObject -and $volumeData.PSObject.Properties['Error'] -and $volumeData.Error) {
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding query failed, so boot integrity attestation cannot be confirmed.' -Evidence $volumeData.Error -Subcategory 'Measured Boot'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding query failed, so boot integrity attestation cannot be confirmed.' -Evidence $volumeData.Error -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                 } else {
                     $volumes = ConvertTo-List $volumeData
                     $pcrEvidence = [System.Collections.Generic.List[string]]::new()
@@ -76,13 +78,13 @@ function Invoke-SecurityMeasuredBootChecks {
                     if ($pcrEvidence.Count -gt 0) {
                         Add-CategoryNormal -CategoryResult $CategoryResult -Title 'BitLocker PCR bindings captured for TPM-protected volumes.' -Evidence ($pcrEvidence.ToArray() -join "`n") -Subcategory 'Measured Boot'
                     } else {
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                     }
                 }
             }
 
             if (-not $pcrHandled) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'BitLocker PCR binding data unavailable, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
             }
 
             $attestationHandled = $false
@@ -90,7 +92,7 @@ function Invoke-SecurityMeasuredBootChecks {
                 $attestationHandled = $true
                 $attestation = $measuredPayload.Attestation
                 if ($attestation -and $attestation.PSObject.Properties['Error'] -and $attestation.Error) {
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation query failed (MDM required), so remote health attestations cannot be confirmed.' -Evidence $attestation.Error -Subcategory 'Measured Boot'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation query failed (MDM required), so remote health attestations cannot be confirmed.' -Evidence $attestation.Error -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                 } else {
                     $events = @()
                     if ($attestation -and $attestation.PSObject.Properties['Events']) {
@@ -124,13 +126,13 @@ function Invoke-SecurityMeasuredBootChecks {
                             $noEventEvidence = 'Log: ' + [string]$attestation.LogName + ' returned 0 events.'
                         }
 
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.' -Evidence $noEventEvidence -Subcategory 'Measured Boot'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.' -Evidence $noEventEvidence -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                     }
                 }
             }
 
             if (-not $attestationHandled) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.' -Subcategory 'Measured Boot'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot attestation events missing (MDM required), so remote health attestations cannot be confirmed.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
             }
 
             $secureBootHandled = $false
@@ -138,7 +140,7 @@ function Invoke-SecurityMeasuredBootChecks {
                 $secureBootHandled = $true
                 $secureBoot = $measuredPayload.SecureBoot
                 if ($secureBoot -and $secureBoot.PSObject.Properties['Error'] -and $secureBoot.Error) {
-                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Evidence $secureBoot.Error -Subcategory 'Measured Boot'
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Evidence $secureBoot.Error -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                 } else {
                     $enabled = $null
                     if ($secureBoot -and $secureBoot.PSObject.Properties['Enabled']) {
@@ -148,20 +150,20 @@ function Invoke-SecurityMeasuredBootChecks {
                     if ($enabled -eq $true) {
                         Add-CategoryNormal -CategoryResult $CategoryResult -Title 'Secure Boot confirmed by firmware.' -Evidence 'Confirm-SecureBootUEFI returned True.' -Subcategory 'Measured Boot'
                     } elseif ($enabled -eq $false) {
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Secure Boot reported disabled, so firmware integrity checks are bypassed.' -Evidence 'Confirm-SecureBootUEFI returned False.' -Subcategory 'Measured Boot'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'Secure Boot reported disabled, so firmware integrity checks are bypassed.' -Evidence 'Confirm-SecureBootUEFI returned False.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                     } else {
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Subcategory 'Measured Boot'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
                     }
                 }
             }
 
             if (-not $secureBootHandled) {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Subcategory 'Measured Boot'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Secure Boot confirmation unavailable, so firmware integrity checks cannot be verified.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot artifact missing expected structure, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot artifact missing expected structure, so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot artifact not collected (MDM required), so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Measured boot artifact not collected (MDM required), so boot integrity attestation cannot be confirmed.' -Subcategory 'Measured Boot' -Remediation $secureBootRemediation
     }
 }
