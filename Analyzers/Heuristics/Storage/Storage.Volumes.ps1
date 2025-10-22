@@ -25,11 +25,11 @@ function Get-VolumeThreshold {
     )
 
     $defaults = @{
-        WarnPercent        = 0.20
+        WarnPercent        = 0
         WarnAbsolute       = 50
-        CritPercent        = 0.10
+        CritPercent        = 0
         CritAbsolute       = 25
-        CriticalPercent    = 0.04
+        CriticalPercent    = 0
         CriticalAbsolute   = 10
     }
 
@@ -43,19 +43,7 @@ function Get-VolumeThreshold {
     $label = if ($Volume.FileSystemLabel) { [string]$Volume.FileSystemLabel } else { '' }
 
     $profile = $defaults.Clone()
-    if ($driveLetter -eq 'C') {
-        $profile.Description = 'System volume thresholds'
-    } elseif ($label -match '(?i)data|archive|backup') {
-        $profile.WarnPercent       = [double]([math]::Max($profile.WarnPercent * 0.75, 0.12))
-        $profile.WarnAbsolute      = [double]([math]::Max($profile.WarnAbsolute * 0.6, 30))
-        $profile.CritPercent       = [double]([math]::Max($profile.CritPercent * 0.8, 0.08))
-        $profile.CritAbsolute      = [double]([math]::Max($profile.CritAbsolute * 0.7, 18))
-        $profile.CriticalPercent   = [double]([math]::Max($profile.CriticalPercent * 0.7, 0.03))
-        $profile.CriticalAbsolute  = [double]([math]::Max($profile.CriticalAbsolute * 0.6, 10))
-        $profile.Description       = 'Data/archive volume thresholds'
-    } else {
-        $profile.Description = 'Standard workstation thresholds'
-    }
+    $profile.Description = 'Absolute free space thresholds (50/25/10 GB)'
 
     if ($Config -and $Config.Volumes) {
         $volumeOverrides = ConvertTo-StorageArray $Config.Volumes
@@ -76,9 +64,13 @@ function Get-VolumeThreshold {
         }
     }
 
-    $warnFloor     = [math]::Max($SizeGB * $profile.WarnPercent, $profile.WarnAbsolute)
-    $critFloor     = [math]::Max($SizeGB * $profile.CritPercent, $profile.CritAbsolute)
-    $criticalFloor = [math]::Max($SizeGB * $profile.CriticalPercent, $profile.CriticalAbsolute)
+    $profile.WarnPercent = 0
+    $profile.CritPercent = 0
+    $profile.CriticalPercent = 0
+
+    $warnFloor     = [double]$profile.WarnAbsolute
+    $critFloor     = [double]$profile.CritAbsolute
+    $criticalFloor = [double]$profile.CriticalAbsolute
 
     return [pscustomobject]@{
         WarnFloorGB      = [math]::Round($warnFloor,2)
@@ -219,54 +211,44 @@ function Invoke-StorageVolumeEvaluation {
             }
             $volumeContextJson = $volumeContext | ConvertTo-Json -Depth 6
 
-            $critPercent = $threshold.CritPercent * 100
-            $warnPercent = $threshold.WarnPercent * 100
-            $criticalPercent = $threshold.CriticalPercent * 100
             $freePctRounded = [math]::Round($freePct,1)
-            $warnPercentRounded = [math]::Round($warnPercent,1)
-            $critPercentRounded = [math]::Round($critPercent,1)
-            $criticalPercentRounded = [math]::Round($criticalPercent,1)
-            $thresholdFloorsLine = "Threshold floors (GB): Warning={0}, High-risk={1}, Critical={2}" -f $threshold.WarnFloorGB, $threshold.CritFloorGB, $threshold.CriticalFloorGB
-            $thresholdPercentLine = "Threshold percentages: Warning={0}%, High-risk={1}%, Critical={2}%" -f $warnPercentRounded, $critPercentRounded, $criticalPercentRounded
+            $thresholdFloorsLine = "Absolute threshold floors (GB): Warning={0}, High-risk={1}, Critical={2}" -f $threshold.WarnFloorGB, $threshold.CritFloorGB, $threshold.CriticalFloorGB
             $thresholdProfileLine = "Threshold profile: {0}" -f $threshold.Description
 
-            if ($freeGb -le $threshold.CriticalFloorGB -or $freePct -le $criticalPercent) {
+            if ($freeGb -le $threshold.CriticalFloorGB) {
                 $evidenceLines = @(
                     "Hostname: $hostname",
                     "Volume descriptor: $volumeDisplay",
                     $thresholdProfileLine,
                     "Free space: {0} GB of {1} GB ({2}% free)." -f $freeGb, $sizeGb, $freePctRounded,
-                    "Threshold breach: below critical floor of {0} GB or {1}%." -f $threshold.CriticalFloorGB, $criticalPercentRounded,
+                    "Threshold breach: below critical floor of {0} GB." -f $threshold.CriticalFloorGB,
                     $thresholdFloorsLine,
-                    $thresholdPercentLine,
                     'Context JSON:',
                     $volumeContextJson
                 )
                 $evidence = $evidenceLines -join "`n"
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Remediation $script:StorageHealthAndSpaceRemediation
-            } elseif ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
+            } elseif ($freeGb -le $threshold.CritFloorGB) {
                 $evidenceLines = @(
                     "Hostname: $hostname",
                     "Volume descriptor: $volumeDisplay",
                     $thresholdProfileLine,
                     "Free space: {0} GB of {1} GB ({2}% free)." -f $freeGb, $sizeGb, $freePctRounded,
-                    "Threshold breach: below high-risk floor of {0} GB or {1}%." -f $threshold.CritFloorGB, $critPercentRounded,
+                    "Threshold breach: below high-risk floor of {0} GB." -f $threshold.CritFloorGB,
                     $thresholdFloorsLine,
-                    $thresholdPercentLine,
                     'Context JSON:',
                     $volumeContextJson
                 )
                 $evidence = $evidenceLines -join "`n"
                 Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Remediation $script:StorageHealthAndSpaceRemediation
-            } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
+            } elseif ($freeGb -le $threshold.WarnFloorGB) {
                 $evidenceLines = @(
                     "Hostname: $hostname",
                     "Volume descriptor: $volumeDisplay",
                     $thresholdProfileLine,
                     "Free space: {0} GB of {1} GB ({2}% free)." -f $freeGb, $sizeGb, $freePctRounded,
-                    "Threshold warning: at or below warning floor of {0} GB or {1}%." -f $threshold.WarnFloorGB, $warnPercentRounded,
+                    "Threshold warning: at or below warning floor of {0} GB." -f $threshold.WarnFloorGB,
                     $thresholdFloorsLine,
-                    $thresholdPercentLine,
                     'Context JSON:',
                     $volumeContextJson
                 )
