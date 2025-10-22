@@ -25,9 +25,9 @@ AutoHelpDesk inspects inbound Remote Desktop firewall rules to ensure the Public
 # Understanding the "Remote Desktop firewall rules allow the Public profile" card
 
 ## What the card is telling you
-- **Analyzer**: Security → Windows Firewall
+- **Analyzer**: Security → Windows Defender Firewall
 - **Severity**: High
-- **Detection**: The analyzer found one or more Windows Firewall rules for Remote Desktop Manager components (`Devolutions RDM` and `Devolutions Jetsocat`) that are enabled for the **Public** firewall profile on the device.
+- **Detection**: The analyzer found one or more Windows Defender Firewall rules for Remote Desktop Manager components (`Devolutions RDM` and `Devolutions Jetsocat`) that are enabled for the **Public** firewall profile on the device.
 
 > **Impact (plain English):** When Remote Desktop firewall rules stay open on the Public profile, anyone on an untrusted network can reach the device and hammer it with Remote Desktop password guesses.
 

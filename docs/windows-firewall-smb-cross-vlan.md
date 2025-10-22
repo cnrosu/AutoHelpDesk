@@ -22,7 +22,7 @@ AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that al
 ## References
 - `docs/windows-firewall-smb-cross-vlan.md`
 
-# Windows Firewall SMB/NetBIOS exposure example
+# Windows Defender Firewall SMB/NetBIOS exposure example
 
 **Impact (for issue card): A ransomware infection on a guest VLAN could traverse the open firewall rule to reach the finance file server and encrypt shared documents.**
 
