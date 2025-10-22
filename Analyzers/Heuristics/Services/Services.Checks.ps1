@@ -15,11 +15,11 @@ If any service is missing entirely, repair Windows components or reinstall the f
 '@
 
 $script:BitsJobQueueRemediation = @'
-If BITS jobs keep failing after the service is running, review and reset the queue:
+If BITS jobs keep failing after the service is running, review and reset the queue with PowerShell:
 
-```cmd
-bitsadmin /list /allusers /verbose
-bitsadmin /reset /allusers
+```powershell
+Get-BitsTransfer -AllUsers | Format-Table -AutoSize Id, DisplayName, JobState, OwnerName
+Get-BitsTransfer -AllUsers | Remove-BitsTransfer -Confirm:$false
 ```
 
 Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume.

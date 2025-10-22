@@ -1236,8 +1236,8 @@ Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6
 
 Or disable router discovery per interface:
 
-```cmd
-netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
+```powershell
+Set-NetIPInterface -InterfaceAlias 'Ethernet' -AddressFamily IPv6 -RouterDiscovery Disabled
 ```
 
 Network fix: Enforce RA Guard on access ports.
@@ -1930,14 +1930,18 @@ Test-NetConnection outlook.office365.com -Port 443
 Recommended actions:
 1. Kill stale proxy settings before retrying Outlook connectivity.
 2. Disable the user WinINET proxy:
-```cmd
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f
+```powershell
+Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 0
+Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -ErrorAction SilentlyContinue
 ```
 3. Reset the WinHTTP proxy:
-```cmd
-netsh winhttp reset proxy
+```powershell
+& netsh.exe winhttp reset proxy
 ```
-4. Verify `netsh winhttp show proxy` reports Direct access and confirm Outlook connects.
+4. Verify WinHTTP reports Direct access and confirm Outlook connects:
+```powershell
+& netsh.exe winhttp show proxy
+```
 '@
             if ($conn.PSObject.Properties['TcpTestSucceeded']) {
                 if (-not $conn.TcpTestSucceeded) {
