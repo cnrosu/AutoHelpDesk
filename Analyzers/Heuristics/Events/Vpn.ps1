@@ -160,16 +160,6 @@ function Invoke-EventsVpnAuthenticationChecks {
         $eventEvidence.Add([pscustomobject]$entry) | Out-Null
     }
 
-    $evidence = [ordered]@{
-        events       = $eventEvidence
-        windowDays   = 7
-        totalMatches = $matches.Count
-    }
-
-    if ($connectionSummaries.Count -gt 0) {
-        $evidence['vpnProfiles'] = ($connectionSummaries | Select-Object -First 5)
-    }
-
     $bucketed = @()
     if ($matches.Count -gt 0) {
         $grouped = $matches | Group-Object -Property { '{0}|{1}' -f $_.EventId, $_.MatchType }
@@ -198,10 +188,26 @@ function Invoke-EventsVpnAuthenticationChecks {
     $subcat = 'VPN / IKE'
     $kind = 'VPN'
 
-    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Evidence $evidence -Subcategory $subcat -Data ([ordered]@{
-        Area          = 'Events'
-        Kind          = $kind
-        WindowMinutes = $WindowMinutes
-        Buckets       = @($bucketed)
-    })
+    $summaryEvidence = [ordered]@{
+        area          = 'Events'
+        kind          = $kind
+        windowDays    = 7
+        windowMinutes = $WindowMinutes
+        totalMatches  = $matches.Count
+        events        = $eventEvidence
+    }
+
+    if ($connectionSummaries.Count -gt 0) {
+        $summaryEvidence['vpnProfiles'] = ($connectionSummaries | Select-Object -First 5)
+    }
+
+    $evidenceLines = New-Object System.Collections.Generic.List[string]
+    $evidenceLines.Add(($summaryEvidence | ConvertTo-Json -Depth 6 -Compress)) | Out-Null
+
+    if ($bucketed.Count -gt 0) {
+        $bucketEvidence = @{ eventBuckets = $bucketed }
+        $evidenceLines.Add(($bucketEvidence | ConvertTo-Json -Depth 6 -Compress)) | Out-Null
+    }
+
+    Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title $title -Evidence $evidenceLines -Subcategory $subcat
 }
