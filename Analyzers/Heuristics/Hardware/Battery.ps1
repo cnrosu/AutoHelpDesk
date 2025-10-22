@@ -1,30 +1,43 @@
 if (-not $script:HardwareBatteryRemediation) {
-    $script:HardwareBatteryRemediation = @'
-**Symptoms:** Query errors; poor health titles.
-
-**Fix (device)**
-
-Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity.
-
-Apply power policy to reduce wear/thermals on laptops:
-
-```powershell
-$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
-& $powercfg /setactive SCHEME_BALANCED
-& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
-& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-& $powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-```
-
-**Validate**
-
-```powershell
-$powercfg = Join-Path $env:WINDIR 'System32\powercfg.exe'
-$output = Join-Path $env:TEMP 'battery.html'
-& $powercfg /batteryreport /output $output
-Write-Host "Battery report exported to $output"
-```
-'@
+    $script:HardwareBatteryRemediation = @(
+        @{
+            type    = 'note'
+            title   = 'Symptoms'
+            content = 'Battery health queries are failing or reporting poor health titles.'
+        }
+        @{
+            type    = 'text'
+            title   = 'Replace degraded batteries'
+            content = 'Recommend battery replacement when FullChargeCapacity is below 70% of DesignCapacity.'
+        }
+        @{
+            type    = 'text'
+            title   = 'Reduce wear on laptops'
+            content = 'Apply a balanced power policy to reduce thermal load and extend battery life.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Apply balanced power policy'
+            lang    = 'cmd'
+            content = @"
+powercfg /setactive SCHEME_BALANCED
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            title   = 'Validate results'
+            content = 'Generate a fresh battery report after adjustments to confirm improvements.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Generate battery report'
+            lang    = 'cmd'
+            content = 'powercfg /batteryreport /output %temp%\battery.html'
+        }
+    ) | ConvertTo-Json -Depth 5
 }
 
 function Get-BatteryDesignCapacity {

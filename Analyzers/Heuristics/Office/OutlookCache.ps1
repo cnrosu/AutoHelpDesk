@@ -27,18 +27,34 @@ function Invoke-OutlookCacheHeuristic {
             $largeCaches = $payload.Caches | Where-Object { $_.Length -gt 25GB }
             if ($largeCaches.Count -gt 0) {
                 $names = $largeCaches | Select-Object -ExpandProperty FullName -First 5
-                $remediation = @(
-                    'Options',
-                    '- Reduce "Cached Exchange Mode" horizon (e.g., 3–12 months).',
-                    '- Compact OST: File > Account Settings > Data Files > Settings > Compact Now.',
-                    '',
-                    'Script (close Outlook first)',
-                    '```powershell',
-                    '# List OSTs >10GB',
-                    'Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Outlook" -Filter *.ost | Where Length -gt 10GB |',
-                    "    Select Name, @{n='GB';e={[math]::Round($_.Length/1GB,1)}}",
-                    '```'
-                ) -join "`n"
+                $remediationSteps = @(
+                    @{
+                        type    = 'text'
+                        title   = 'Reduce cache horizon'
+                        content = 'Lower the "Cached Exchange Mode" sync window (for example, to 3–12 months) to shrink oversized OST files.'
+                    }
+                    @{
+                        type    = 'text'
+                        title   = 'Compact large OST files'
+                        content = 'In Outlook go to File > Account Settings > Data Files > Settings > Compact Now to reclaim space.'
+                    }
+                    @{
+                        type    = 'note'
+                        content = 'Close Outlook before running remediation scripts so files can be changed.'
+                    }
+                    @{
+                        type    = 'code'
+                        title   = 'List OST files larger than 10GB'
+                        lang    = 'powershell'
+                        content = @"
+# List OSTs >10GB
+Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Outlook" -Filter *.ost |
+    Where-Object Length -gt 10GB |
+    Select-Object Name, @{Name='GB';Expression={[math]::Round($_.Length/1GB,1)}}
+"@.Trim()
+                    }
+                )
+                $remediation = $remediationSteps | ConvertTo-Json -Depth 5
 
                 Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Large Outlook cache files detected, so oversized OST caches can slow Outlook performance.' -Evidence ($names -join "`n") -Subcategory 'Outlook Cache' -Remediation $remediation
             } elseif ($payload.Caches.Count -gt 0) {

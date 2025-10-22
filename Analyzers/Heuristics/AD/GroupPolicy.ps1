@@ -1,24 +1,34 @@
-$script:GroupPolicyRemediation = @'
-Group Policy
-Symptoms: GP event log unreadable; SYSVOL access errors; GP processing failures.
-
-Fix (endpoint)
-
-```powershell
+$script:GroupPolicyRemediation = @(
+    @{
+        type    = 'note'
+        title   = 'Scope'
+        content = 'Group Policy remediation for unreadable logs, SYSVOL access errors, and processing failures.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Repair endpoint policy logging'
+        lang    = 'powershell'
+        content = @"
 wevtutil sl "Microsoft-Windows-GroupPolicy/Operational" /e:true
 gpupdate /force
-```
-
-Fix (infra)
-Ensure DCs replicate SYSVOL/NETLOGON; fix DFSR backlog; remove stale GPOs; eliminate WMI filters that fail.
-
-Validate
-
-```powershell
-Get-WinEvent -LogName "Microsoft-Windows-GroupPolicy/Operational" -Max 20
-```
-Run `rsop.msc` to confirm policy results.
-'@
+"@.Trim()
+    }
+    @{
+        type    = 'text'
+        title   = 'Fix domain infrastructure'
+        content = 'Ensure domain controllers replicate SYSVOL/NETLOGON, clear DFSR backlog, remove stale GPOs, and eliminate failing WMI filters.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Validate Group Policy operational log'
+        lang    = 'powershell'
+        content = 'Get-WinEvent -LogName "Microsoft-Windows-GroupPolicy/Operational" -Max 20'
+    }
+    @{
+        type    = 'text'
+        content = 'Run `rsop.msc` to confirm policy results after remediation.'
+    }
+) | ConvertTo-Json -Depth 5
 
 function Add-AdGroupPolicyFindings {
     param(

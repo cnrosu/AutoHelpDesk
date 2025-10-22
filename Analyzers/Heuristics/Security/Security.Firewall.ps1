@@ -1,10 +1,14 @@
-$script:SecurityFirewallBaselineRemediation = @'
-Security — Windows Firewall
-Profiles disabled / Rule inventory failed / RDP exposed on Public / SMB exposed
-
-Immediate baseline
-
-```powershell
+$script:SecurityFirewallBaselineRemediation = @(
+    @{
+        type    = 'note'
+        title   = 'Scenario'
+        content = 'Security — Windows Firewall baseline for disabled profiles, failed inventories, or exposed RDP/SMB services.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Restore baseline firewall rules'
+        lang    = 'powershell'
+        content = @"
 # Enable all profiles
 Set-NetFirewallProfile -All -Enabled True
 
@@ -21,15 +25,23 @@ Get-NetFirewallRule | Where-Object { $_.DisplayName -match "NetBIOS|mDNS|LLMNR" 
 # Scope SMB to local subnet (example)
 Get-NetFirewallRule | Where-Object { $_.DisplayName -match "File and Printer Sharing" } |
   Set-NetFirewallRule -RemoteAddress LocalSubnet
-```
-
-Validate
-
-```powershell
+"@.Trim()
+    }
+    @{
+        type    = 'text'
+        title   = 'Validate firewall state'
+        content = 'Confirm profiles and remote desktop rules after applying the baseline.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Validation commands'
+        lang    = 'powershell'
+        content = @"
 Get-NetFirewallProfile | Format-Table Name,Enabled
 Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Format-Table DisplayName,Profile,Enabled
-```
-'@
+"@.Trim()
+    }
+) | ConvertTo-Json -Depth 5
 
 function Get-FirewallTokenList {
     param($Value)

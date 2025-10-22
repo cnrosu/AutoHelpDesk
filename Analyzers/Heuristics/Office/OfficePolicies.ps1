@@ -17,79 +17,155 @@ function Invoke-OfficePoliciesHeuristic {
         Found = [bool]$policiesArtifact
     })
 
-    $macroPolicyRemediation = @'
-Deploy the Intune or Group Policy setting "Block macros from running in Office files from the Internet" for Word, Excel, and PowerPoint so MOTW content cannot run.
-The policy writes the following registry values:
-
-```reg
+    $macroPolicySteps = @(
+        @{
+            type    = 'text'
+            title   = 'Deploy macro blocking policy'
+            content = 'Deploy the Intune or Group Policy setting "Block macros from running in Office files from the Internet" for Word, Excel, and PowerPoint so MOTW content cannot run.'
+        }
+        @{
+            type    = 'text'
+            content = 'The policy writes the following registry values:'
+        }
+        @{
+            type    = 'code'
+            title   = 'Required registry values'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Word\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\Excel\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\PowerPoint\Security\blockcontentexecutionfrominternet=1
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Leave `DisableTrustBarNotificationsFromUnsignedMacros` at 0 so Office shows the Trust Bar, then open a Mark-of-the-Web document to confirm it is blocked or only opens in Protected View.'
+        }
+    )
+    $macroPolicyRemediation = $macroPolicySteps | ConvertTo-Json -Depth 5
 
-Leave `DisableTrustBarNotificationsFromUnsignedMacros` at 0 so Office shows the Trust Bar, then open a Mark-of-the-Web document to confirm it is blocked or only opens in Protected View.
-'@
-
-    $macroPolicyDataRemediation = @'
-Re-run the Office policy collector or inspect the device manually to confirm macro blocking is enforced.
-Apply the "Block macros from running in Office files from the Internet" policy for Word, Excel, and PowerPoint so MOTW content cannot run.
-
-```reg
+    $macroPolicyDataSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Collect policy data again'
+            content = 'Re-run the Office policy collector or inspect the device manually to confirm macro blocking is enforced.'
+        }
+        @{
+            type    = 'text'
+            content = 'Apply the "Block macros from running in Office files from the Internet" policy for Word, Excel, and PowerPoint so MOTW content cannot run.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Verify registry values'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Word\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\Excel\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\PowerPoint\Security\blockcontentexecutionfrominternet=1
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Leave `DisableTrustBarNotificationsFromUnsignedMacros` at 0 and validate with a Mark-of-the-Web document to ensure it is blocked or only opens in Protected View.'
+        }
+    )
+    $macroPolicyDataRemediation = $macroPolicyDataSteps | ConvertTo-Json -Depth 5
 
-Leave `DisableTrustBarNotificationsFromUnsignedMacros` at 0 and validate with a Mark-of-the-Web document to ensure it is blocked or only opens in Protected View.
-'@
-
-    $trustBarRemediation = @'
-Re-enable Trust Bar notifications by leaving `DisableTrustBarNotificationsFromUnsignedMacros` unset or 0 in user policy.
-Deploy the "Block macros from running in Office files from the Internet" policy for Word, Excel, and PowerPoint so MOTW content cannot run.
-
-```reg
+    $trustBarSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Restore Trust Bar prompts'
+            content = 'Re-enable Trust Bar notifications by leaving `DisableTrustBarNotificationsFromUnsignedMacros` unset or 0 in user policy.'
+        }
+        @{
+            type    = 'text'
+            content = 'Deploy the "Block macros from running in Office files from the Internet" policy for Word, Excel, and PowerPoint so MOTW content cannot run.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Confirm macro blocking registry values'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Word\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\Excel\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\PowerPoint\Security\blockcontentexecutionfrominternet=1
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Open a Mark-of-the-Web document to confirm Office shows the Trust Bar and blocks or sandboxes the file.'
+        }
+    )
+    $trustBarRemediation = $trustBarSteps | ConvertTo-Json -Depth 5
 
-Open a Mark-of-the-Web document to confirm Office shows the Trust Bar and blocks or sandboxes the file.
-'@
-
-    $trustBarDataRemediation = @'
-Re-run the Office policy collector or review the device's policy results to confirm Trust Bar prompts are enabled.
-Keep `DisableTrustBarNotificationsFromUnsignedMacros` unset or 0 and deploy macro blocking for Word, Excel, and PowerPoint so MOTW content cannot run.
-
-```reg
+    $trustBarDataSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Confirm Trust Bar data'
+            content = "Re-run the Office policy collector or review the device's policy results to confirm Trust Bar prompts are enabled."
+        }
+        @{
+            type    = 'text'
+            content = 'Keep `DisableTrustBarNotificationsFromUnsignedMacros` unset or 0 and deploy macro blocking for Word, Excel, and PowerPoint so MOTW content cannot run.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Required registry values'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Word\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\Excel\Security\blockcontentexecutionfrominternet=1
 HKCU\Software\Microsoft\Office\16.0\PowerPoint\Security\blockcontentexecutionfrominternet=1
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Open a Mark-of-the-Web document to confirm Office shows the Trust Bar and blocks or sandboxes the file.'
+        }
+    )
+    $trustBarDataRemediation = $trustBarDataSteps | ConvertTo-Json -Depth 5
 
-Open a Mark-of-the-Web document to confirm Office shows the Trust Bar and blocks or sandboxes the file.
-'@
-
-    $protectedViewRemediation = @'
-Re-enable Protected View for attachments through Intune or Group Policy so MOTW content opens in the sandbox.
-Set the following registry value:
-
-```reg
+    $protectedViewSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Re-enable Protected View for attachments'
+            content = 'Re-enable Protected View for attachments through Intune or Group Policy so MOTW content opens in the sandbox.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Required registry value'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Common\Trust Center\DisableAttachmentsInPV=0
-```
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Open a Mark-of-the-Web attachment to confirm it opens in Protected View instead of editing mode.'
+        }
+    )
+    $protectedViewRemediation = $protectedViewSteps | ConvertTo-Json -Depth 5
 
-Open a Mark-of-the-Web attachment to confirm it opens in Protected View instead of editing mode.
-'@
-
-    $protectedViewDataRemediation = @'
-Re-run the Office policy collector or inspect the device manually to confirm Protected View is enforced for attachments.
-Set the following registry value through Intune or Group Policy:
-
-```reg
+    $protectedViewDataSteps = @(
+        @{
+            type    = 'text'
+            title   = 'Collect Protected View policy data'
+            content = 'Re-run the Office policy collector or inspect the device manually to confirm Protected View is enforced for attachments.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Required registry value'
+            lang    = 'reg'
+            content = @"
 HKCU\Software\Microsoft\Office\16.0\Common\Trust Center\DisableAttachmentsInPV=0
-```
-
-Open a Mark-of-the-Web attachment to verify it opens in Protected View instead of editing mode.
-'@
+"@.Trim()
+        }
+        @{
+            type    = 'text'
+            content = 'Open a Mark-of-the-Web attachment to verify it opens in Protected View instead of editing mode.'
+        }
+    )
+    $protectedViewDataRemediation = $protectedViewDataSteps | ConvertTo-Json -Depth 5
 
     if ($policiesArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $policiesArtifact)

@@ -12,31 +12,50 @@ $eventsModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'Events'
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Authentication.ps1')
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Vpn.ps1')
 
-$script:EventsLogHealthRemediation = @'
-Events (Log Health)
-
-Symptoms: Event logs unreadable; high error/warning rates; GP Operational errors.
-Fix
-
-Ensure the Windows Event Log service is healthy:
-
-```powershell
-Get-Service EventLog | Restart-Service
-```
-
-Increase log size (clear only if stakeholders approve):
-
-```powershell
+$script:EventsLogHealthRemediationSteps = @(
+    @{
+        type    = 'note'
+        title   = 'Scenario'
+        content = 'Event log health recovery for unreadable logs, high error/warning rates, or Group Policy Operational errors.'
+    }
+    @{
+        type    = 'text'
+        title   = 'Restart Windows Event Log service'
+        content = 'Ensure the EventLog service is healthy before reviewing log data.'
+    }
+    @{
+        type    = 'code'
+        title   = 'Restart EventLog service'
+        lang    = 'powershell'
+        content = 'Get-Service EventLog | Restart-Service'
+    }
+    @{
+        type    = 'text'
+        title   = 'Increase log capacity'
+        content = 'Resize System and Application logs (clear contents only with stakeholder approval).'
+    }
+    @{
+        type    = 'code'
+        title   = 'Grow log size'
+        lang    = 'powershell'
+        content = @"
 wevtutil sl System /ms:67108864
 wevtutil sl Application /ms:67108864
-```
-
-Validate:
-
-```powershell
-Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }
-```
-'@
+"@.Trim()
+    }
+    @{
+        type    = 'text'
+        title   = 'Validate log access'
+        content = 'List key logs after remediation to confirm they can be read.'
+    }
+    @{
+        type    = 'code'
+        title   = 'List System and Application logs'
+        lang    = 'powershell'
+        content = "Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }"
+    }
+)
+$script:EventsLogHealthRemediation = $script:EventsLogHealthRemediationSteps | ConvertTo-Json -Depth 5
 
 function ConvertTo-LogView {
     param(
