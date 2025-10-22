@@ -110,13 +110,25 @@ function Invoke-SecurityAntivirusPostureChecks {
         $securityCenter = $payload.SecurityCenter
     }
 
+    $serviceSignalRemediation = @'
+Restore Windows Security Center reporting so Defender posture can be collected:
+```powershell
+Set-Service wscsvc -StartupType Automatic
+Restart-Service wscsvc
+```
+If Security Center still fails, verify and repair WMI (use with caution):
+```powershell
+winmgmt /verifyrepository
+```
+'@
+
     if (-not $securityCenter) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Security Center inventory missing' -Explanation 'Windows Security Center inventory was unavailable, so technicians cannot confirm which antivirus engine is active.' -Subcategory 'Antivirus'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Security Center inventory missing' -Explanation 'Windows Security Center inventory was unavailable, so technicians cannot confirm which antivirus engine is active.' -Subcategory 'Antivirus' -Remediation $serviceSignalRemediation
         return
     }
 
     if ($securityCenter.PSObject.Properties['Error'] -and $securityCenter.Error) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Security Center query failed' -Evidence $securityCenter.Error -Explanation 'Windows Security Center inventory failed to load, so technicians cannot confirm which antivirus engine is active.' -Subcategory 'Antivirus'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Security Center query failed' -Evidence $securityCenter.Error -Explanation 'Windows Security Center inventory failed to load, so technicians cannot confirm which antivirus engine is active.' -Subcategory 'Antivirus' -Remediation $serviceSignalRemediation
         return
     }
 
@@ -126,12 +138,12 @@ function Invoke-SecurityAntivirusPostureChecks {
     }
 
     if (-not $defenderStatus) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Defender status unavailable' -Explanation 'Microsoft Defender status data was unavailable, so technicians cannot determine whether Defender is active or passive.' -Subcategory 'Antivirus'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Defender status unavailable' -Explanation 'Microsoft Defender status data was unavailable, so technicians cannot determine whether Defender is active or passive.' -Subcategory 'Antivirus' -Remediation $serviceSignalRemediation
         return
     }
 
     if ($defenderStatus.PSObject.Properties['Error'] -and $defenderStatus.Error) {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Defender status query failed' -Evidence $defenderStatus.Error -Explanation 'Microsoft Defender status could not be read, so technicians cannot determine whether Defender is active or passive.' -Subcategory 'Antivirus'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Defender status query failed' -Evidence $defenderStatus.Error -Explanation 'Microsoft Defender status could not be read, so technicians cannot determine whether Defender is active or passive.' -Subcategory 'Antivirus' -Remediation $serviceSignalRemediation
         return
     }
 
@@ -320,6 +332,7 @@ function Invoke-SecurityAntivirusPostureChecks {
     $explanation = $null
     $title = $null
     $severity = 'info'
+    $remediation = $null
 
     if ($defenderActiveWithStaleSignatures) {
         $severity = 'high'
@@ -330,9 +343,39 @@ function Invoke-SecurityAntivirusPostureChecks {
         if ($gapReason -eq 'RealtimeDisabled') {
             $title = 'Endpoint AV: Defender real-time protection disabled and no third-party AV'
             $explanation = 'No antivirus engine is actively scanning the device, leaving it exposed until Defender real-time protection is restored or a third-party agent registers.'
+            $remediation = @'
+Re-enable Microsoft Defender protections to restore active scanning:
+```powershell
+Set-MpPreference -DisableRealtimeMonitoring $false
+Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent SendSafeSamples
+```
+Turn behavior monitoring, IOAV, and script scanning back on:
+```powershell
+Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false
+```
+Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot turn it back on when disabled.
+Validate Defender service health afterward:
+```powershell
+Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected
+```
+'@
         } else {
             $title = 'Endpoint AV: No active AV detected (Defender passive; no third-party)'
             $explanation = 'No antivirus engine is actively scanning the device, leaving it exposed until Defender is activated or a third-party agent registers.'
+            $remediation = @'
+Decide whether a third-party antivirus should stay primary; if Defender must protect this device, exit passive mode and re-enable protections:
+```powershell
+Set-MpPreference -ForcePassiveMode 0
+Set-MpPreference -DisableRealtimeMonitoring $false
+Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent SendSafeSamples
+Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false
+```
+Tamper Protection must be enabled from Intune or the Windows Security app; PowerShell cannot turn it back on when disabled.
+Validate Defender service health afterward:
+```powershell
+Get-MpComputerStatus | Select AMServiceEnabled, RealTimeProtectionEnabled, IsTamperProtected
+```
+'@
         }
     } elseif ($defenderPassiveWithStaleSignatures) {
         $severity = 'medium'
@@ -374,5 +417,5 @@ function Invoke-SecurityAntivirusPostureChecks {
         $explanation = 'Antivirus telemetry was incomplete, so technicians should verify which engine is protecting the device.'
     }
 
-    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence ($evidenceLines.ToArray()) -Explanation $explanation -Subcategory 'Antivirus'
+    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence ($evidenceLines.ToArray()) -Explanation $explanation -Subcategory 'Antivirus' -Remediation $remediation
 }
