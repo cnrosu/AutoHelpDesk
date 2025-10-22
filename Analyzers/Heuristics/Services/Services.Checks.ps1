@@ -445,8 +445,8 @@ function Invoke-ServiceCheckAutomaticInventory {
     }
 
     if ($stoppedAuto.Count -gt 0) {
-        $failedServices = $stoppedAuto
-        $topStoppedAuto = $failedServices | Select-Object -First 5
+        $failedServices = @($stoppedAuto)
+        $topStoppedAuto = @($failedServices | Select-Object -First 5)
         $summary = [System.Collections.Generic.List[string]]::new()
         foreach ($service in $topStoppedAuto) {
             $serviceState = if ($service.State) { $service.State } elseif ($service.Status) { $service.Status } else { 'Unknown' }
@@ -485,11 +485,27 @@ function Invoke-ServiceCheckAutomaticInventory {
                     else { $null }
                 } }
 
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence ($summary -join "`n") -Subcategory 'Service Inventory' -Data @{
-            Area = 'Services'
-            Kind = 'ServiceHealth'
-            Services = $serviceDataProjection
+        $evidenceLines = [System.Collections.Generic.List[string]]::new()
+        $null = $evidenceLines.Add('Top impacted services:')
+        foreach ($line in $summary) {
+            $null = $evidenceLines.Add(" - $line")
         }
+
+        if ($failedServices.Count -gt $topStoppedAuto.Count) {
+            $null = $evidenceLines.Add('')
+            $null = $evidenceLines.Add(("Additional services affected: {0}" -f ($failedServices.Count - $topStoppedAuto.Count)))
+        }
+
+        $serviceDetailsJson = $serviceDataProjection | ConvertTo-Json -Depth 4
+        if ($serviceDetailsJson) {
+            $null = $evidenceLines.Add('')
+            $null = $evidenceLines.Add('Full service snapshot:')
+            $null = $evidenceLines.Add($serviceDetailsJson)
+        }
+
+        $evidenceText = $evidenceLines -join "`n"
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Automatic services not running, indicating outages in critical services.' -Evidence $evidenceText -Subcategory 'Service Inventory'
     } else {
         Add-CategoryNormal -CategoryResult $Result -Title 'Automatic services running' -Subcategory 'Service Inventory'
     }
