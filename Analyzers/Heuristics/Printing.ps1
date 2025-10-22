@@ -109,8 +109,8 @@ function Invoke-PrintingHeuristics {
                 if ($connection.PSObject.Properties['PortMonitor']) { $connectionMonitor = [string]$connection.PortMonitor }
                 if ($connection.PSObject.Properties['Hosts'] -and $connection.Hosts) {
                     $connectionHosts = @()
-                    foreach ($host in (ConvertTo-PrintingArray $connection.Hosts)) {
-                        if ($host) { $connectionHosts += [string]$host }
+                    foreach ($connectionHost in (ConvertTo-PrintingArray $connection.Hosts)) {
+                        if ($connectionHost) { $connectionHosts += [string]$connectionHost }
                     }
                 }
             }
