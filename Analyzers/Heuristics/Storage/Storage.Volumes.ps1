@@ -224,13 +224,13 @@ function Invoke-StorageVolumeEvaluation {
             $criticalPercent = $threshold.CriticalPercent * 100
             if ($freeGb -le $threshold.CriticalFloorGB -or $freePct -le $criticalPercent) {
                 $evidence = "Free {0} GB ({1}%); critical floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CriticalFloorGB, [math]::Round($criticalPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'critical' -Title ("Volume {0} nearly out of space ({1} GB remaining), causing imminent system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Remediation $script:StorageHealthAndSpaceRemediation -Data $issueData
             } elseif ($freeGb -le $threshold.CritFloorGB -or $freePct -le $critPercent) {
                 $evidence = "Free {0} GB ({1}%); high-risk floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.CritFloorGB, [math]::Round($critPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ("Volume {0} critically low on space ({1} GB remaining), risking system or storage failures." -f $volumeDisplay, $freeGb) -Evidence $evidence -Subcategory 'Free Space' -Remediation $script:StorageHealthAndSpaceRemediation -Data $issueData
             } elseif ($freeGb -le $threshold.WarnFloorGB -or $freePct -le $warnPercent) {
                 $evidence = "Free {0} GB ({1}%); warning floor {2} GB or {3}%" -f $freeGb, [math]::Round($freePct,1), $threshold.WarnFloorGB, [math]::Round($warnPercent,1)
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space' -Data $issueData
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ("Volume {0} approaching capacity, risking system or storage failures." -f $volumeDisplay) -Evidence $evidence -Subcategory 'Free Space' -Remediation $script:StorageHealthAndSpaceRemediation -Data $issueData
             } else {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title ("Volume {0} has {1}% free" -f $volumeDisplay, [math]::Round($freePct,1)) -Subcategory 'Free Space'
             }

@@ -115,13 +115,13 @@ function Add-AdTimeFindings {
                 $evidencePieces += ("Peers: {0}" -f (($suspiciousPeers | Sort-Object -Unique) -join ', '))
             }
             if (-not $evidencePieces) { $evidencePieces += 'Manual time source detected.' }
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Domain time misconfigured (manual NTP), so Active Directory cannot control system time.' -Evidence ($evidencePieces -join '; ') -Subcategory 'Time Synchronization'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Domain time misconfigured (manual NTP), so Active Directory cannot control system time.' -Evidence ($evidencePieces -join '; ') -Subcategory 'Time Synchronization' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
         }
     }
 
     if ($timeSkewHigh -and $timeSkewEvidence) {
         $evidence = $timeSkewEvidence
-        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Kerberos/time skew detected (authentication may fail)' -Evidence $evidence -Subcategory 'Time Service' -Data @{
+        Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Kerberos/time skew detected (authentication may fail)' -Evidence $evidence -Subcategory 'Time Service' -Remediation (Get-AdKerberosSecureChannelTimeRemediation) -Data @{
             Area = 'AD/Time'
             Kind = 'TimeSkew'
             Time = @{

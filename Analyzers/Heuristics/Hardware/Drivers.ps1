@@ -556,7 +556,26 @@ function Invoke-HardwareDriverChecks {
         $issueCount++
     } elseif ($billboardError) {
         $evidence = "{0}: {1}" -f $billboardSource, $billboardError
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Billboard device query failed, so USB-C display diagnostics are incomplete.' -Evidence $evidence -Subcategory 'Display'
+        $remediation = @'
+**Symptoms:** Driver inventory missing or failed, problem devices, Bluetooth gaps, or USB-C billboard query failed.
+
+**Fix**
+
+```powershell
+# Rebuild driver inventory & attempt inbox updates
+pnputil /scan-devices
+
+# Optional: try Windows Update driver
+Get-PnpDevice | Where Status -ne 'OK' | ForEach-Object { pnputil /disable-device $_.InstanceId; pnputil /enable-device $_.InstanceId }
+
+# Bluetooth service baseline
+Set-Service bthserv -StartupType Automatic
+Restart-Service bthserv
+```
+
+**Policy:** Prefer vendor-provided drivers via WUfB for Drivers or Intune Driver Updates (modern).
+'@
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Billboard device query failed, so USB-C display diagnostics are incomplete.' -Evidence $evidence -Subcategory 'Display' -Remediation $remediation
         $issueCount++
     }
 

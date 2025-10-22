@@ -649,6 +649,17 @@ function Invoke-NetworkHeuristics {
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network artifact' -Data ([ordered]@{
         Found = [bool]$networkArtifact
     })
+
+    $ipConfigurationRemediation = @(
+        'Run these commands from an elevated PowerShell session to review IPv4 settings and quickly apply a static configuration if the adapter is missing addressing:',
+        '',
+        '```powershell',
+        'Get-NetIPConfiguration',
+        '# Set static quickly (if needed)',
+        'New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.50 -PrefixLength 24 -DefaultGateway 192.168.1.1',
+        'Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1.2',
+        '```'
+    ) -join "`n"
     if ($networkArtifact) {
         $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $networkArtifact)
         Write-HeuristicDebug -Source 'Network' -Message 'Evaluating network payload' -Data ([ordered]@{
@@ -668,6 +679,21 @@ function Invoke-NetworkHeuristics {
         }
 
         if ($arpEntries.Count -gt 0 -and $gatewayInventory) {
+            $arpCacheSpoofingRemediation = @'
+Immediate containment (endpoint):
+```
+arp -d *
+# Pin default gateway by static ARP (temporary, only for incident containment)
+# netsh interface ipv4 add neighbors "Ethernet" 192.168.1.1 00-11-22-33-44-55
+```
+
+Network fix: Enable DHCP Snooping, Dynamic ARP Inspection on switches; investigate rogue bridges.
+
+Validate
+```
+Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'
+```
+'@
             $gatewayMap = @{}
             $localMacs = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
             $localIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -770,7 +796,7 @@ function Invoke-NetworkHeuristics {
             if ($unexpected.Count -gt 0) {
                 $gatewayText = ($observedGatewayEntries | Where-Object { $_.NormalizedMac -and ($unexpected -contains $_.NormalizedMac) } | ForEach-Object { "{0}→{1}" -f $_.Gateway, $_.NormalizedMac } | Sort-Object)
                 $evidence = if ($gatewayText) { $gatewayText -join '; ' } else { $unexpected -join ', ' }
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'Gateway MAC address changed, so users could be routed through an untrusted device.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $duplicateGatewayMacs = @()
@@ -786,7 +812,7 @@ function Invoke-NetworkHeuristics {
 
             if ($duplicateGatewayMacs.Count -gt 0) {
                 $evidence = ($duplicateGatewayMacs | ForEach-Object { "{0} used by {1}" -f $_.Mac, ($_.Gateways -join ', ') }) -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple gateways share the same MAC, so traffic may be hijacked by a spoofing bridge.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $suspiciousOuiMap = @{
@@ -815,7 +841,7 @@ function Invoke-NetworkHeuristics {
 
             if ($suspiciousEntries.Count -gt 0) {
                 $evidence = $suspiciousEntries -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Gateway resolved to a suspicious vendor MAC, so users may be redirected through a malicious host.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $broadcastEntries = @()
@@ -958,7 +984,7 @@ function Invoke-NetworkHeuristics {
 
             if ($localMacAlerts.Count -gt 0) {
                 $evidence = $localMacAlerts -join '; '
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache'
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Host MAC responds for multiple IPs, so neighbors may lose connectivity to their addresses.' -Evidence $evidence -Subcategory 'ARP Cache' -Remediation $arpCacheSpoofingRemediation
             }
 
             $observedGatewayData = New-Object System.Collections.Generic.List[object]
@@ -1201,9 +1227,25 @@ function Invoke-NetworkHeuristics {
             }
         }
 
+        $rogueRouterRemediation = @'
+Endpoint containment (if IPv6 not required temporarily):
+
+```powershell
+Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6
+```
+
+Or disable router discovery per interface:
+
+```cmd
+netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
+```
+
+Network fix: Enforce RA Guard on access ports.
+'@
+
         if ($unexpectedRouterMacs.Count -gt 0) {
             $evidence = ($unexpectedRouterMacs | Sort-Object -Unique) -join ', '
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($observedRouterMacs.Count -gt 1) {
@@ -1217,7 +1259,7 @@ function Invoke-NetworkHeuristics {
             }
 
             $evidence = ($evidenceParts | Where-Object { $_ }) -join '; '
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($Context) {
@@ -1251,18 +1293,18 @@ function Invoke-NetworkHeuristics {
             if ($ipText -match 'IPv4 Address') {
                 Add-CategoryNormal -CategoryResult $result -Title 'IPv4 addressing detected' -Subcategory 'IP Configuration'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No IPv4 configuration found, so connectivity will fail without valid addressing.' -Evidence 'ipconfig /all output did not include IPv4 details.' -Subcategory 'IP Configuration' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
         if ($payload -and $payload.Route) {
             $routeText = if ($payload.Route -is [string[]]) { $payload.Route -join "`n" } else { [string]$payload.Route }
             if ($routeText -notmatch '0\.0\.0\.0') {
-                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Routing table missing default route, so outbound connectivity will fail.' -Evidence 'route print output did not include 0.0.0.0/0.' -Subcategory 'Routing' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
             }
         }
     } else {
-        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Data (& $createConnectivityData $connectivityContext)
+        Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network base diagnostics not collected, so connectivity failures may go undetected.' -Subcategory 'Collection' -Remediation $ipConfigurationRemediation -Data (& $createConnectivityData $connectivityContext)
     }
 
     if ($adapterLinkInventory -and $adapterLinkInventory.Map -and $adapterLinkInventory.Map.Keys.Count -gt 0) {
