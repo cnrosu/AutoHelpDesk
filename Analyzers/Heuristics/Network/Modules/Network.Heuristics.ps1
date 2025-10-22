@@ -1687,7 +1687,30 @@ Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispa
 
             if ($primaryErrors.Count -gt 0) {
                 $details = $primaryErrors | Select-Object -First 3
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Data (& $createConnectivityData $connectivityContext)
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation @'
+Endpoint fixes:
+
+Detect failing lookups to confirm DNS resolution status.
+```powershell
+$names = 'autodiscover.outlook.com','enterpriseenrollment.windows.net','enterpriseregistration.windows.net'
+$names | % { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
+```
+
+Set the NIC to corporate DNS resolvers before re-running Autodiscover tests.
+```powershell
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 10.0.0.10,10.0.0.11
+```
+
+Re-register the host A record after adjusting DNS client settings.
+```powershell
+ipconfig /registerdns
+```
+
+For M365 Autodiscover (Exchange Online), publish `autodiscover.<yourdomain>` as a CNAME to `autodiscover.outlook.com`, then verify Exchange reachability.
+```powershell
+Test-NetConnection outlook.office365.com -Port 443
+```
+'@ -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
