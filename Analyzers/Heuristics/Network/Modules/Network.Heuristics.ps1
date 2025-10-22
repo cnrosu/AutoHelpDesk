@@ -1216,9 +1216,25 @@ Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'
             }
         }
 
+        $rogueRouterRemediation = @'
+Endpoint containment (if IPv6 not required temporarily):
+
+```powershell
+Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6
+```
+
+Or disable router discovery per interface:
+
+```cmd
+netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
+```
+
+Network fix: Enforce RA Guard on access ports.
+'@
+
         if ($unexpectedRouterMacs.Count -gt 0) {
             $evidence = ($unexpectedRouterMacs | Sort-Object -Unique) -join ', '
-            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'IPv6 router MAC changed, so clients may follow rogue router advertisements unless RA Guard blocks them.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($observedRouterMacs.Count -gt 1) {
@@ -1232,7 +1248,7 @@ Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'
             }
 
             $evidence = ($evidenceParts | Where-Object { $_ }) -join '; '
-            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing'
+            Add-CategoryIssue -CategoryResult $result -Severity 'medium' -Title 'Multiple IPv6 router MACs detected, so rogue router advertisements may hijack clients unless RA Guard is enforced.' -Evidence $evidence -Subcategory 'IPv6 Routing' -Remediation $rogueRouterRemediation
         }
 
         if ($Context) {
