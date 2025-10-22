@@ -27,7 +27,7 @@ AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that al
 - `docs/windows-firewall-smb-cross-vlan.md`
 - Microsoft Learn — [Plan and deploy SMB over QUIC](https://learn.microsoft.com/windows-server/storage/file-server/smb-over-quic) (updated 2023-11-15).
 
-# Windows Firewall SMB/NetBIOS exposure example
+# Windows Defender Firewall SMB/NetBIOS exposure example
 
 **Impact (for issue card): A ransomware infection on a guest VLAN could traverse the open firewall rule to reach the finance file server and encrypt shared documents.**
 
