@@ -255,6 +255,77 @@ function Invoke-SystemMicrosoftStoreChecks {
 
     $evidence = $evidenceLines -join "`n"
 
+    $storeRemediationSteps = @(
+        @{
+            type    = 'code'
+            title   = 'Run Microsoft Store quick repair commands'
+            lang    = 'powershell'
+            content = @'
+wsreset.exe
+if (Get-Command winget -ErrorAction SilentlyContinue) {
+    winget source reset --force msstore
+}
+if (Get-Command Reset-AppxPackage -ErrorAction SilentlyContinue) {
+    Get-AppxPackage -AllUsers Microsoft.WindowsStore | Reset-AppxPackage
+}
+'@
+        }
+        @{
+            type    = 'code'
+            title   = 'Re-register or reinstall the Microsoft Store package'
+            lang    = 'powershell'
+            content = @'
+$packages = Get-AppxPackage -AllUsers Microsoft.WindowsStore -ErrorAction SilentlyContinue
+if ($packages) {
+    foreach ($pkg in $packages) {
+        if ($pkg.InstallLocation) {
+            Add-AppxPackage -DisableDevelopmentMode -Register "$(Join-Path -Path $pkg.InstallLocation -ChildPath 'AppXManifest.xml')"
+        }
+    }
+} else {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id 9WZDNCRFJBMP -s msstore
+    } else {
+        Write-Warning 'Winget is not available; download the Microsoft Store AppX bundle from Microsoft and install it manually.'
+    }
+}
+'@
+        }
+        @{
+            type    = 'note'
+            title   = 'If re-registration fails'
+            content = 'Run `sfc /scannow` and `DISM /Online /Cleanup-Image /RestoreHealth`, then retry the Store registration command.'
+        }
+        @{
+            type    = 'code'
+            title   = 'Ensure Microsoft Store services are enabled and running'
+            lang    = 'powershell'
+            content = @'
+$services = Get-Service -Name ClipSVC, InstallService, DoSvc -ErrorAction SilentlyContinue
+foreach ($svc in $services) {
+    if ($svc.StartType -eq 'Disabled') {
+        Set-Service -Name $svc.Name -StartupType Manual -ErrorAction SilentlyContinue
+    }
+    if ($svc.Status -ne 'Running') {
+        Start-Service -Name $svc.Name -ErrorAction SilentlyContinue
+    }
+}
+Get-Service -Name ClipSVC, InstallService, DoSvc | Select-Object Name, Status, StartType
+'@
+        }
+        @{
+            type    = 'note'
+            title   = 'Allow Microsoft Store network endpoints'
+            content = 'If the device uses a proxy, firewall, or SSL inspection, allow Store CDN FQDNs like storeedgefd.dsx.mp.microsoft.com, dl.delivery.mp.microsoft.com, and *.msedge.net. Confirm `Test-NetConnection <endpoint> -Port 443` succeeds after updating the rules.'
+        }
+        @{
+            type    = 'text'
+            title   = 'Validate Microsoft Store functionality'
+            content = 'Reboot after repairs, launch Microsoft Store, and download a free app to confirm installs succeed. Rerun AutoHelpDesk collectors to ensure the "Microsoft Store functional checks" card clears.'
+        }
+    )
+    $storeRemediation = $storeRemediationSteps | ConvertTo-Json -Depth 5
+
     if ($highReasons.Count -gt 0) {
         $reasonText = ($highReasons + $mediumReasons) -join "`n"
         $summaryLine = 'Microsoft Store cannot operate because required components are missing or misconfigured, blocking app installs and updates for users.'
@@ -265,7 +336,7 @@ function Invoke-SystemMicrosoftStoreChecks {
         } elseif ($highReasons | Where-Object { $_ -like 'Critical service*' }) {
             $summaryLine = 'Microsoft Store background services are disabled or stopped, so app downloads and updates will fail for users.'
         }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store' -Remediation $storeRemediation
     } elseif ($mediumReasons.Count -gt 0) {
         $reasonText = $mediumReasons -join "`n"
         $summaryLine = 'Microsoft Store has configuration issues that may disrupt app downloads or updates for users.'
@@ -278,7 +349,7 @@ function Invoke-SystemMicrosoftStoreChecks {
         } elseif ($mediumReasons | Where-Object { $_ -like 'At least two Microsoft Store endpoints failed*' }) {
             $summaryLine = 'Microsoft Store cannot reach required Microsoft endpoints, so users may see download and sign-in failures.'
         }
-        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Microsoft Store functional checks failing' -Evidence (($summaryLine, '', $reasonText, '', $evidence) -join "`n") -Subcategory 'Microsoft Store' -Remediation $storeRemediation
     } else {
         $totalReachability = if ($knownEndpoints -gt 0) { $knownEndpoints } elseif ($reachability -and ($reachability.Count -gt 0)) { $reachability.Count } else { 0 }
         $tcpSummary = if ($totalReachability -gt 0) { "$successfulTcp/$totalReachability" } else { "$successfulTcp/?" }
