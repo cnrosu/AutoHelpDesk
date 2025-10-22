@@ -1050,6 +1050,102 @@ function ConvertTo-RemediationHtml {
   return ConvertTo-LegacyRemediationHtml -Text $Text
 }
 
+function ConvertTo-EvidenceHtml {
+  param(
+    [string]$Text
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+
+  $normalized = $Text -replace "`r`n?", "`n"
+  $lines = $normalized -split "`n", -1, 'simplematch'
+
+  $segments = New-Object System.Collections.Generic.List[pscustomobject]
+  $textBuilder = New-Object System.Text.StringBuilder
+  [System.Collections.Generic.List[string]]$listItems = $null
+  $hasList = $false
+
+  for ($i = 0; $i -lt $lines.Length; $i++) {
+    $line = $lines[$i]
+
+    if ($line -match '^[\s\t]*[-*]\s+') {
+      if ($textBuilder.Length -gt 0) {
+        $textSegment = $textBuilder.ToString()
+        if (-not [string]::IsNullOrWhiteSpace($textSegment)) {
+          $segments.Add([pscustomobject]@{ Type = 'text'; Text = $textSegment }) | Out-Null
+        }
+        [void]$textBuilder.Clear()
+      }
+
+      if (-not $listItems) {
+        $listItems = New-Object System.Collections.Generic.List[string]
+      }
+
+      $itemText = [regex]::Replace($line, '^[\s\t]*[-*]\s+', '')
+      $itemText = $itemText.Trim()
+      if (-not [string]::IsNullOrWhiteSpace($itemText)) {
+        $listItems.Add($itemText) | Out-Null
+        $hasList = $true
+      }
+      continue
+    }
+
+    if ($listItems -and $listItems.Count -gt 0) {
+      $segments.Add([pscustomobject]@{ Type = 'list'; Items = $listItems.ToArray() }) | Out-Null
+      $listItems = $null
+    }
+
+    if ($line.Length -eq 0) {
+      [void]$textBuilder.AppendLine('')
+    } elseif ($textBuilder.Length -gt 0) {
+      [void]$textBuilder.AppendLine($line)
+    } else {
+      [void]$textBuilder.Append($line)
+    }
+  }
+
+  if ($listItems -and $listItems.Count -gt 0) {
+    $segments.Add([pscustomobject]@{ Type = 'list'; Items = $listItems.ToArray() }) | Out-Null
+  }
+
+  if ($textBuilder.Length -gt 0) {
+    $textSegment = $textBuilder.ToString()
+    if (-not [string]::IsNullOrWhiteSpace($textSegment)) {
+      $segments.Add([pscustomobject]@{ Type = 'text'; Text = $textSegment }) | Out-Null
+    }
+  }
+
+  if (-not $hasList -or $segments.Count -eq 0) {
+    $encoded = Encode-Html $Text
+    return "<pre class='report-pre'>$encoded</pre>"
+  }
+
+  $builder = [System.Text.StringBuilder]::new()
+  foreach ($segment in $segments) {
+    if ($segment.Type -eq 'list') {
+      $items = $segment.Items
+      if (-not $items) { continue }
+      [void]$builder.Append("<ul class='report-evidence__list'>")
+      foreach ($item in $items) {
+        $encodedItem = Encode-Html $item
+        [void]$builder.Append("<li>$encodedItem</li>")
+      }
+      [void]$builder.Append('</ul>')
+    } elseif ($segment.Type -eq 'text') {
+      $encodedSegment = Encode-Html $segment.Text
+      [void]$builder.Append("<pre class='report-pre'>$encodedSegment</pre>")
+    }
+  }
+
+  $result = $builder.ToString()
+  if ([string]::IsNullOrWhiteSpace($result)) {
+    $encoded = Encode-Html $Text
+    return "<pre class='report-pre'>$encoded</pre>"
+  }
+
+  return $result
+}
+
 function New-IssueCardHtml {
   param(
     [pscustomobject]$Entry
@@ -1223,8 +1319,12 @@ function New-IssueCardHtml {
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Entry.Evidence)) {
-    $evidenceHtml = Encode-Html $Entry.Evidence
-    [void]$bodyBuilder.Append("<details class='report-evidence'><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details>")
+    $evidenceContent = ConvertTo-EvidenceHtml -Text $Entry.Evidence
+    if ([string]::IsNullOrWhiteSpace($evidenceContent)) {
+      $fallback = Encode-Html $Entry.Evidence
+      $evidenceContent = "<pre class='report-pre'>$fallback</pre>"
+    }
+    [void]$bodyBuilder.Append("<details class='report-evidence'><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'>$evidenceContent</div></details>")
   }
 
   if (-not [string]::IsNullOrWhiteSpace($troubleshootingHtml)) {
@@ -1347,8 +1447,12 @@ function New-GoodCardHtml {
   $cardBuilder = [System.Text.StringBuilder]::new()
   [void]$cardBuilder.Append("<details class='report-card report-card--$cardClass'><summary><span class='report-badge report-badge--$cardClass'>$badgeHtml</span><span class='report-card__summary-text'>$summaryText</span></summary>")
 
-  $evidenceHtml = Encode-Html $Entry.Evidence
-  [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'><pre class='report-pre'>$evidenceHtml</pre></div></details></div>")
+  $evidenceContent = ConvertTo-EvidenceHtml -Text $Entry.Evidence
+  if ([string]::IsNullOrWhiteSpace($evidenceContent)) {
+    $fallback = Encode-Html $Entry.Evidence
+    $evidenceContent = "<pre class='report-pre'>$fallback</pre>"
+  }
+  [void]$cardBuilder.Append("<div class='report-card__body'><details class='report-evidence' open><summary class='report-evidence__summary'>Evidence</summary><div class='report-evidence__body'>$evidenceContent</div></details></div>")
 
   [void]$cardBuilder.Append("</details>")
   return $cardBuilder.ToString()

@@ -376,6 +376,27 @@ details.report-card[open] > summary {
   margin: 0;
 }
 
+.report-evidence__body .report-evidence__list {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.report-evidence__body .report-evidence__list li {
+  margin: 0.25rem 0;
+}
+
+.report-card--critical .report-evidence__body .report-evidence__list {
+  color: var(--color-state-critical-text);
+}
+
+.report-evidence__body .report-evidence__list + .report-evidence__list,
+.report-evidence__body .report-evidence__list + .report-pre,
+.report-evidence__body .report-pre + .report-evidence__list {
+  margin-top: 0.5rem;
+}
+
 .report-remediation__summary {
   margin: 0;
   padding: var(--space-sm) var(--space-md);
