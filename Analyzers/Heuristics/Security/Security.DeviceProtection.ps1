@@ -133,17 +133,17 @@ function Invoke-SecurityKernelDmaChecks {
                 return
             }
             'Off' {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection disabled, so DMA attacks via peripherals remain possible while locked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection disabled, so DMA attacks via peripherals remain possible while locked.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA' -Remediation 'On modern hardware, enable in BIOS (IOMMU/VT-d). For older devices, mitigate with BitLocker and lock-screen DMA protections.'
                 return
             }
             'NotSupported' {
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection not supported on this OS, leaving locked devices exposed to DMA attacks from peripherals.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection not supported on this OS, leaving locked devices exposed to DMA attacks from peripherals.' -Evidence $dmaEvidence -Subcategory 'Kernel DMA' -Remediation 'On modern hardware, enable in BIOS (IOMMU/VT-d). For older devices, mitigate with BitLocker and lock-screen DMA protections.'
                 return
             }
         }
     }
 
-    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Subcategory 'Kernel DMA'
+    Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Kernel DMA protection unknown, leaving potential DMA attacks via peripherals unchecked.' -Subcategory 'Kernel DMA' -Remediation 'On modern hardware, enable in BIOS (IOMMU/VT-d). For older devices, mitigate with BitLocker and lock-screen DMA protections.'
 }
 
 function Invoke-SecurityAttackSurfaceChecks {
