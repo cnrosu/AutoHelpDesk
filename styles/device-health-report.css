@@ -451,53 +451,90 @@ details.report-card[open] > summary {
 }
 
 .report-remediation__code {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
 }
 
 .report-remediation__code .report-pre {
   margin: 0;
+  padding-top: calc(var(--space-lg) + var(--space-sm));
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border-subtle);
+  border-left: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface-muted);
 }
 
 .report-copy-button {
-  align-self: flex-start;
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
   display: inline-flex;
   align-items: center;
   gap: var(--space-xxs);
   padding: var(--space-xxs) var(--space-sm);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--color-border-subtle);
-  background-color: var(--color-surface);
-  color: var(--color-heading);
   font-size: 0.85rem;
   font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  z-index: 1;
 }
 
-.report-copy-button:hover {
+.report-copy-button,
+.code-actions button[data-copy-target] {
+  border: 1px solid var(--color-heading);
   background-color: var(--color-heading);
   color: #ffffff;
-  border-color: var(--color-heading);
+  font-weight: 600;
+  cursor: pointer;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.report-copy-button:focus-visible {
-  outline: 2px solid var(--color-heading);
+.report-copy-button:hover,
+.code-actions button[data-copy-target]:hover {
+  background-color: #e85521;
+  border-color: #e85521;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.report-copy-button:focus-visible,
+.code-actions button[data-copy-target]:focus-visible {
+  outline: 2px solid #ffffff;
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(255, 99, 40, 0.35);
 }
 
-.report-copy-button.is-success {
+button[data-copy-target].is-success {
   background-color: var(--color-state-good-border);
   border-color: var(--color-state-good-border);
   color: #ffffff;
+  transform: none;
 }
 
-.report-copy-button.is-error {
+button[data-copy-target].is-error {
   background-color: var(--color-state-bad-border);
   border-color: var(--color-state-bad-border);
   color: #ffffff;
+  transform: none;
+}
+
+button[data-copy-target].is-success:hover,
+button[data-copy-target].is-success:focus-visible {
+  background-color: var(--color-state-good-border);
+  border-color: var(--color-state-good-border);
+  color: #ffffff;
+  transform: none;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), 0 0 0 4px rgba(67, 160, 71, 0.35);
+}
+
+button[data-copy-target].is-error:hover,
+button[data-copy-target].is-error:focus-visible {
+  background-color: var(--color-state-bad-border);
+  border-color: var(--color-state-bad-border);
+  color: #ffffff;
+  transform: none;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), 0 0 0 4px rgba(211, 47, 47, 0.35);
 }
 
 .report-section {

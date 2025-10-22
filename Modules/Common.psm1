@@ -1267,7 +1267,12 @@ function New-IssueCardHtml {
         $buttonLabel = Encode-Html 'Copy PowerShell'
         $successLabel = Encode-Html 'Copied!'
         $failureLabel = Encode-Html 'Copy failed'
-        $fallback = "<div class='report-remediation__code'><button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button><pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre></div>"
+        $fallback = @"
+<div class='report-remediation__code'>
+  <button type='button' class='report-copy-button' data-copy-target='#$codeId' data-copy-success='$successLabel' data-copy-failure='$failureLabel'>$buttonLabel</button>
+  <pre class='report-pre'><code id='$codeId' class='language-powershell'>$codeHtml</code></pre>
+</div>
+"@
         [void]$remediationBuilder.Append($fallback)
       } else {
         [void]$remediationBuilder.Append("<div class='report-remediation__code'>$codeBlockHtml</div>")
