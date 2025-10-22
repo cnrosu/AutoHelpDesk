@@ -331,25 +331,22 @@ function Invoke-SystemOperatingSystemChecks {
                 $supportVerb = if ($nowOffset.Date -gt $eolOffset.Date) { 'ended' } else { 'ends' }
                 $evidence = "Detected operating system: {0}. {1} support {2} on {3} ({4})." -f $description, $supportAudience, $supportVerb, $dateText, $supportStatus.SupportLabel
 
+                $detailLines = @()
+                if ($caption) { $detailLines += "Caption: $caption" }
+                if ($build) { $detailLines += "Build: $build" }
+                if ($os.Edition) { $detailLines += "Edition: $($os.Edition)" }
+                if ($os.OSArchitecture) { $detailLines += "Architecture: $($os.OSArchitecture)" }
+                if ($versionLabel) { $detailLines += "Version label: $versionLabel" }
+                if ($supportStatus.Release) { $detailLines += "Release: $($supportStatus.Release)" }
+                if ($supportAudience) { $detailLines += "Support audience: $supportAudience" }
+                if ($supportStatus.SupportLabel) { $detailLines += "Support phase: $($supportStatus.SupportLabel)" }
+                if ($supportStatus.DateString) { $detailLines += "Support end: $($supportStatus.DateString)" }
+                if ($detailLines.Count -gt 0) {
+                    $evidence = "{0}`n`nDetails:`n{1}" -f $evidence, ($detailLines -join "`n")
+                }
+
                 if ($nowOffset.Date -gt $eolOffset.Date) {
-                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported, so Microsoft no longer ships fixes or security updates.' -Evidence $evidence -Subcategory 'Operating System' -Data @{
-                        Area = 'System/OS'
-                        Kind = 'OsSupport'
-                        OS   = @{
-                            Caption       = $caption
-                            Build         = $build
-                            Edition       = $os.Edition
-                            Architecture  = $os.OSArchitecture
-                            VersionLabel  = $versionLabel
-                            Release       = $supportStatus.Release
-                            IsWin11       = $true
-                            SupportPolicy = @{
-                                Audience = $supportAudience
-                                Phase    = $supportStatus.SupportLabel
-                                EndDate  = $supportStatus.DateString
-                            }
-                        }
-                    }
+                    Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported, so Microsoft no longer ships fixes or security updates.' -Evidence $evidence -Area 'System/OS' -Subcategory 'Operating System'
                 } else {
                     $title = "Operating system supported until {0}: {1}" -f $dateText, $description
                     Add-CategoryNormal -CategoryResult $Result -Title $title -Evidence $evidence -Subcategory 'Operating System'
@@ -367,18 +364,19 @@ function Invoke-SystemOperatingSystemChecks {
             if ($unsupportedMatch.Success) {
                 $versionLabel = $unsupportedMatch.Groups[1].Value
                 $evidence = "Detected operating system: {0}. Microsoft support for Windows {1} has ended; upgrade to Windows 11." -f $description, $versionLabel
-                Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported, so Microsoft no longer ships fixes or security updates.' -Evidence $evidence -Subcategory 'Operating System' -Data @{
-                    Area = 'System/OS'
-                    Kind = 'OsSupport'
-                    OS = @{
-                        Caption = $caption
-                        Build   = $build
-                        Edition = $os.Edition
-                        Architecture = $os.OSArchitecture
-                        VersionLabel = $versionLabel
-                        IsWin11 = ($captionLower -match 'windows\s+11')
-                    }
+
+                $detailLines = @()
+                if ($caption) { $detailLines += "Caption: $caption" }
+                if ($build) { $detailLines += "Build: $build" }
+                if ($os.Edition) { $detailLines += "Edition: $($os.Edition)" }
+                if ($os.OSArchitecture) { $detailLines += "Architecture: $($os.OSArchitecture)" }
+                if ($versionLabel) { $detailLines += "Version label: Windows $versionLabel" }
+                $detailLines += 'Support timeline: Ended (no further security updates)'
+                if ($detailLines.Count -gt 0) {
+                    $evidence = "{0}`n`nDetails:`n{1}" -f $evidence, ($detailLines -join "`n")
                 }
+
+                Add-CategoryIssue -CategoryResult $Result -Severity 'critical' -Title 'Operating system unsupported, so Microsoft no longer ships fixes or security updates.' -Evidence $evidence -Area 'System/OS' -Subcategory 'Operating System'
             } else {
                 Add-CategoryCheck -CategoryResult $Result -Name 'Operating system' -Status $description
             }
