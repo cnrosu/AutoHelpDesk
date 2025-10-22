@@ -1,47 +1,36 @@
-$script:SecurityFirewallBaselineRemediation = @(
-    @{
-        type    = 'note'
-        title   = 'Scenario'
-        content = 'Security — Windows Firewall baseline for disabled profiles, failed inventories, or exposed RDP/SMB services.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Restore baseline firewall rules'
-        lang    = 'powershell'
-        content = @"
-# Enable all profiles
-Set-NetFirewallProfile -All -Enabled True
-
-# Restrict RDP exposure to Domain/Private; block Public
-Get-NetFirewallRule -DisplayGroup "Remote Desktop" |
-  Set-NetFirewallRule -Profile Domain,Private -Enabled True
-Get-NetFirewallRule -DisplayGroup "Remote Desktop" |
-  Where-Object { $_.Profile -match "Public" } | Disable-NetFirewallRule
-
-# Hygiene: block NetBIOS discovery on Public
-Get-NetFirewallRule | Where-Object { $_.DisplayName -match "NetBIOS|mDNS|LLMNR" } |
-  Where-Object { $_.Profile -match "Public" } | Disable-NetFirewallRule
-
-# Scope SMB to local subnet (example)
-Get-NetFirewallRule | Where-Object { $_.DisplayName -match "File and Printer Sharing" } |
-  Set-NetFirewallRule -RemoteAddress LocalSubnet
-"@.Trim()
-    }
-    @{
-        type    = 'text'
-        title   = 'Validate firewall state'
-        content = 'Confirm profiles and remote desktop rules after applying the baseline.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Validation commands'
-        lang    = 'powershell'
-        content = @"
-Get-NetFirewallProfile | Format-Table Name,Enabled
-Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Format-Table DisplayName,Profile,Enabled
-"@.Trim()
-    }
-) | ConvertTo-Json -Depth 5
+# Structured remediation mapping:
+# - Heading and scenario list become a text step with title.
+# - Baseline section translates into a text intro plus a code step retaining comments.
+# - Validation heading maps to a text step, followed by the verification commands.
+$script:SecurityFirewallBaselineRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Security — Windows Firewall",
+    "content": "Profiles disabled / Rule inventory failed / RDP exposed on Public / SMB exposed"
+  },
+  {
+    "type": "text",
+    "title": "Immediate baseline",
+    "content": "Apply this baseline to re-enable profiles, limit RDP, and scope SMB exposure."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "# Enable all profiles\nSet-NetFirewallProfile -All -Enabled True\n\n# Restrict RDP exposure to Domain/Private; block Public\nGet-NetFirewallRule -DisplayGroup \"Remote Desktop\" |\n  Set-NetFirewallRule -Profile Domain,Private -Enabled True\nGet-NetFirewallRule -DisplayGroup \"Remote Desktop\" |\n  Where-Object { $_.Profile -match \"Public\" } | Disable-NetFirewallRule\n\n# Hygiene: block NetBIOS discovery on Public\nGet-NetFirewallRule | Where-Object { $_.DisplayName -match \"NetBIOS|mDNS|LLMNR\" } |\n  Where-Object { $_.Profile -match \"Public\" } | Disable-NetFirewallRule\n\n# Scope SMB to local subnet (example)\nGet-NetFirewallRule | Where-Object { $_.DisplayName -match \"File and Printer Sharing\" } |\n  Set-NetFirewallRule -RemoteAddress LocalSubnet"
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Confirm profiles are enabled and RDP rules are scoped correctly."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-NetFirewallProfile | Format-Table Name,Enabled\nGet-NetFirewallRule -DisplayGroup \"Remote Desktop\" | Format-Table DisplayName,Profile,Enabled"
+  }
+]
+'@
 
 function Get-FirewallTokenList {
     param($Value)

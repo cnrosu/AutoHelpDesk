@@ -1,52 +1,32 @@
-$script:StorageHealthAndSpaceSteps = @(
-    @{
-        type    = 'note'
-        title   = 'Scenario'
-        content = 'Storage disk health and free space recovery guidance.'
-    }
-    @{
-        type    = 'text'
-        title   = 'Run health and capacity checks'
-        content = 'Inspect physical disks and volumes before remediation.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Disk and volume checks'
-        lang    = 'powershell'
-        content = @"
-Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage
-Get-Volume | Sort SizeRemaining | Format-Table DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto
-"@.Trim()
-    }
-    @{
-        type    = 'text'
-        title   = 'Degraded disks'
-        content = 'Replace failing disks; for USB or NVMe enclosures, update bridge firmware before redeploying.'
-    }
-    @{
-        type    = 'text'
-        title   = 'SMART unavailable'
-        content = 'Re-run checks with administrative privileges and ensure NVMe or RAID vendor drivers are installed to expose SMART data.'
-    }
-    @{
-        type    = 'text'
-        title   = 'Low disk space'
-        content = 'Automate cleanup tasks to reclaim space before expanding storage.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Cleanup commands'
-        lang    = 'powershell'
-        content = @"
-# Clean component store
-Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
-# Temp + recycle bin
-Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-Clear-RecycleBin -Force
-"@.Trim()
-    }
-)
-$script:StorageHealthAndSpaceRemediation = $script:StorageHealthAndSpaceSteps | ConvertTo-Json -Depth 5
+# Structured remediation steps derived from the legacy block:
+# - The heading becomes a text step that summarizes when to use the playbook.
+# - The "Checks" section turns into a code step listing the discovery commands.
+# - The bullet list under "Fix" is captured as a text step with newline-separated guidance.
+# - The cleanup script stays a code step with comments preserved.
+$script:StorageHealthAndSpaceRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Storage disk health and free space recovery",
+    "content": "Run these checks and fixes to address disk health warnings and low free space."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage\nGet-Volume | Sort SizeRemaining | Format-Table DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto"
+  },
+  {
+    "type": "text",
+    "title": "Fix",
+    "content": "- Degraded disks: replace the disk; if using a USB/NVMe enclosure, update the bridge firmware.\n- SMART unavailable: re-run as admin and ensure NVMe/RAID vendor drivers are installed.\n- Low space (automatable): run the cleanup script."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "# Clean component store\nDism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase\n# Temp + recycle bin\nRemove-Item \"$env:TEMP\\*\" -Recurse -Force -ErrorAction SilentlyContinue\nClear-RecycleBin -Force"
+  }
+]
+'@
 
 function ConvertTo-StorageArray {
     param($Value)

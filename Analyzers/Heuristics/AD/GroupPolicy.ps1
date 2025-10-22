@@ -1,34 +1,46 @@
-$script:GroupPolicyRemediation = @(
-    @{
-        type    = 'note'
-        title   = 'Scope'
-        content = 'Group Policy remediation for unreadable logs, SYSVOL access errors, and processing failures.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Repair endpoint policy logging'
-        lang    = 'powershell'
-        content = @"
-wevtutil sl "Microsoft-Windows-GroupPolicy/Operational" /e:true
-gpupdate /force
-"@.Trim()
-    }
-    @{
-        type    = 'text'
-        title   = 'Fix domain infrastructure'
-        content = 'Ensure domain controllers replicate SYSVOL/NETLOGON, clear DFSR backlog, remove stale GPOs, and eliminate failing WMI filters.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Validate Group Policy operational log'
-        lang    = 'powershell'
-        content = 'Get-WinEvent -LogName "Microsoft-Windows-GroupPolicy/Operational" -Max 20'
-    }
-    @{
-        type    = 'text'
-        content = 'Run `rsop.msc` to confirm policy results after remediation.'
-    }
-) | ConvertTo-Json -Depth 5
+# Structured remediation mapping:
+# - Heading and symptom sentence -> text step summarizing the issue.
+# - Endpoint fix header and commands -> text + code steps.
+# - Infrastructure fix paragraph -> text step.
+# - Validation instructions -> text + code steps followed by a note for RSOP.
+$script:GroupPolicyRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Group Policy",
+    "content": "Symptoms: GP event log unreadable; SYSVOL access errors; GP processing failures."
+  },
+  {
+    "type": "text",
+    "title": "Fix (endpoint)",
+    "content": "Enable the Group Policy Operational log and force a policy refresh."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "wevtutil sl \"Microsoft-Windows-GroupPolicy/Operational\" /e:true\ngpupdate /force"
+  },
+  {
+    "type": "text",
+    "title": "Fix (infra)",
+    "content": "Ensure DCs replicate SYSVOL/NETLOGON, clear DFSR backlog, remove stale GPOs, and eliminate failing WMI filters."
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Review recent Group Policy Operational events."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-WinEvent -LogName \"Microsoft-Windows-GroupPolicy/Operational\" -Max 20"
+  },
+  {
+    "type": "note",
+    "content": "Run rsop.msc to confirm resultant policy settings."
+  }
+]
+'@
 
 function Add-AdGroupPolicyFindings {
     param(

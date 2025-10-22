@@ -12,50 +12,49 @@ $eventsModuleRoot = Join-Path -Path $PSScriptRoot -ChildPath 'Events'
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Authentication.ps1')
 . (Join-Path -Path $eventsModuleRoot -ChildPath 'Vpn.ps1')
 
-$script:EventsLogHealthRemediationSteps = @(
-    @{
-        type    = 'note'
-        title   = 'Scenario'
-        content = 'Event log health recovery for unreadable logs, high error/warning rates, or Group Policy Operational errors.'
-    }
-    @{
-        type    = 'text'
-        title   = 'Restart Windows Event Log service'
-        content = 'Ensure the EventLog service is healthy before reviewing log data.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Restart EventLog service'
-        lang    = 'powershell'
-        content = 'Get-Service EventLog | Restart-Service'
-    }
-    @{
-        type    = 'text'
-        title   = 'Increase log capacity'
-        content = 'Resize System and Application logs (clear contents only with stakeholder approval).'
-    }
-    @{
-        type    = 'code'
-        title   = 'Grow log size'
-        lang    = 'powershell'
-        content = @"
-wevtutil sl System /ms:67108864
-wevtutil sl Application /ms:67108864
-"@.Trim()
-    }
-    @{
-        type    = 'text'
-        title   = 'Validate log access'
-        content = 'List key logs after remediation to confirm they can be read.'
-    }
-    @{
-        type    = 'code'
-        title   = 'List System and Application logs'
-        lang    = 'powershell'
-        content = "Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }"
-    }
-)
-$script:EventsLogHealthRemediation = $script:EventsLogHealthRemediationSteps | ConvertTo-Json -Depth 5
+# Structured remediation steps derived from the legacy block:
+# - The "Events (Log Health)" heading and symptoms sentence become a text step with a title.
+# - Each action sentence maps to a text step that introduces the related PowerShell snippet.
+# - The fenced code samples become code steps that keep the same commands and language.
+$script:EventsLogHealthRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Events (Log Health)",
+    "content": "Symptoms: Event logs unreadable; high error/warning rates; GP Operational errors."
+  },
+  {
+    "type": "text",
+    "title": "Restart Windows Event Log service",
+    "content": "Ensure the Windows Event Log service is healthy."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-Service EventLog | Restart-Service"
+  },
+  {
+    "type": "text",
+    "title": "Increase log size",
+    "content": "Clear only if stakeholders approve before resizing."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "wevtutil sl System /ms:67108864\nwevtutil sl Application /ms:67108864"
+  },
+  {
+    "type": "text",
+    "title": "Validate log health",
+    "content": "Confirm the System and Application logs respond without errors."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-WinEvent -ListLog * | Where-Object { $_.LogName -in 'System','Application' }"
+  }
+]
+'@
 
 function ConvertTo-LogView {
     param(

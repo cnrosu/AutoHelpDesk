@@ -1,23 +1,24 @@
-$script:WdacSmartAppControlRemediation = @(
-    @{
-        type    = 'text'
-        title   = 'Enable Smart App Control or WDAC'
-        content = 'In Windows Security > App & browser control turn Smart App Control to Evaluation then On, or deploy an Intune WDAC policy for managed devices.'
-    }
-    @{
-        type    = 'text'
-        title   = 'Move WDAC from audit to enforcement'
-        content = 'Pilot an allow-list WDAC policy in audit mode, review events, then switch the policy to enforce mode after the burn-in period.'
-    }
-    @{
-        type    = 'code'
-        title   = 'Validate device guard status'
-        lang    = 'powershell'
-        content = @"
-Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -Class Win32_DeviceGuard
-"@.Trim()
-    }
-) | ConvertTo-Json -Depth 5
+# Structured remediation mapping:
+# - Fix options become a text step with newline bullets.
+# - Validation prompt becomes a text step leading into the code sample.
+$script:WdacPolicyEnforcementRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Fix (pick one)",
+    "content": "- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.\n- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period."
+  },
+  {
+    "type": "text",
+    "content": "Validate enforcement state with Device Guard signals."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -Class Win32_DeviceGuard"
+  }
+]
+'@
 
 $script:SacOffNoWdacRemediation = @'
 [
@@ -188,22 +189,34 @@ function Invoke-SecurityAttackSurfaceChecks {
 
     $asrMissingTitle = 'ASR policy data missing, so Attack Surface Reduction enforcement is unknown.'
     $asrMissingExplanation = 'Without ASR telemetry, technicians cannot confirm whether Attack Surface Reduction rules are blocking malicious Office behaviors.'
-    $asrMissingSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Deploy ASR baseline'
-            content = 'In Intune Endpoint security > Attack surface reduction, apply the organization''s ASR baseline (Block Office child processes, Block Win32 API calls, etc.).'
-        }
-        @{
-            type    = 'code'
-            title   = 'Validate ASR rule state'
-            lang    = 'powershell'
-            content = @"
-Get-MpPreference | Select-Object AttackSurfaceReductionRules_Ids, AttackSurfaceReductionRules_Actions
-"@.Trim()
-        }
-    )
-    $asrMissingRemediation = $asrMissingSteps | ConvertTo-Json -Depth 5
+    # Structured remediation mapping for missing ASR data:
+    # - Heading becomes a text step that highlights the gap.
+    # - Fix directive remains a text step with console navigation guidance.
+    # - Validation block stays a code step with the MpPreference command.
+    $asrMissingRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Attack Surface Reduction (ASR) data missing / policy gap",
+    "content": "Collectors lacked ASR policy output, so confirm baseline deployment."
+  },
+  {
+    "type": "text",
+    "title": "Fix",
+    "content": "Intune > Endpoint security > Attack surface reduction: deploy your ASR baseline (Block Office child processes; Block Win32 API calls; etc.)."
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Confirm ASR rules and actions from Defender preferences."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-MpPreference | Select-Object AttackSurfaceReductionRules_Ids, AttackSurfaceReductionRules_Actions"
+  }
+]
+'@
 
     $asrArtifact = Get-AnalyzerArtifact -Context $Context -Name 'asr'
     Write-HeuristicDebug -Source 'Security' -Message 'Resolved ASR artifact' -Data ([ordered]@{

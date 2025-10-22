@@ -688,40 +688,38 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1
         }
 
         if ($arpEntries.Count -gt 0 -and $gatewayInventory) {
-            $arpCacheSpoofingSteps = @(
-                @{
-                    type    = 'text'
-                    title   = 'Immediate containment (endpoint)'
-                    content = 'Flush poisoned ARP entries and, if needed, temporarily pin the default gateway during incident response.'
-                }
-                @{
-                    type    = 'code'
-                    title   = 'Clear ARP cache and optionally pin gateway'
-                    lang    = 'cmd'
-                    content = @"
-arp -d *
-# Pin default gateway by static ARP (temporary, only for incident containment)
-# netsh interface ipv4 add neighbors "Ethernet" 192.168.1.1 00-11-22-33-44-55
-"@.Trim()
-                }
-                @{
-                    type    = 'text'
-                    title   = 'Network hardening'
-                    content = 'Enable DHCP Snooping and Dynamic ARP Inspection on switches and investigate rogue bridges.'
-                }
-                @{
-                    type    = 'text'
-                    title   = 'Validate resolved neighbors'
-                    content = 'Check the ARP neighbor table after containment to confirm only expected gateway entries remain.'
-                }
-                @{
-                    type    = 'code'
-                    title   = 'Validate ARP neighbors'
-                    lang    = 'powershell'
-                    content = "Get-NetNeighbor -State Reachable | Where-Object IPAddress -like '192.168.*'"
-                }
-            )
-            $arpCacheSpoofingRemediation = $arpCacheSpoofingSteps | ConvertTo-Json -Depth 5
+            # Structured remediation mapping for ARP spoofing:
+            # - Endpoint containment heading becomes a text step introducing the flush/pin commands.
+            # - Switch/network guidance maps to a note.
+            # - Validation heading and command translate to text + code steps.
+            $arpCacheSpoofingRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Immediate containment (endpoint)",
+    "content": "Flush the ARP cache and optionally pin the default gateway temporarily for containment."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "arp -d *\n# Pin default gateway by static ARP (temporary, only for incident containment)\n# netsh interface ipv4 add neighbors \"Ethernet\" 192.168.1.1 00-11-22-33-44-55"
+  },
+  {
+    "type": "note",
+    "content": "Network fix: Enable DHCP Snooping and Dynamic ARP Inspection on switches; investigate rogue bridges."
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Check the neighbor table for expected gateway addresses."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-NetNeighbor -State Reachable | ? IPAddress -like '192.168.*'"
+  }
+]
+'@
             $gatewayMap = @{}
             $localMacs = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
             $localIps = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -1255,36 +1253,37 @@ arp -d *
             }
         }
 
-        $rogueRouterSteps = @(
-            @{
-                type    = 'text'
-                title   = 'Endpoint containment (when IPv6 can be paused)'
-                content = 'Temporarily disable IPv6 bindings to stop rogue router advertisements while investigating.'
-            }
-            @{
-                type    = 'code'
-                title   = 'Disable IPv6 stack bindings'
-                lang    = 'powershell'
-                content = 'Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6'
-            }
-            @{
-                type    = 'text'
-                title   = 'Alternative per-interface containment'
-                content = 'Disable router discovery on specific interfaces if IPv6 must remain enabled elsewhere.'
-            }
-            @{
-                type    = 'code'
-                title   = 'Disable router discovery on interface'
-                lang    = 'cmd'
-                content = 'netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled'
-            }
-            @{
-                type    = 'text'
-                title   = 'Network hardening'
-                content = 'Enforce RA Guard on access switch ports to block rogue IPv6 router advertisements.'
-            }
-        )
-        $rogueRouterRemediation = $rogueRouterSteps | ConvertTo-Json -Depth 5
+        # Structured remediation mapping for rogue IPv6 routers:
+        # - Each containment option becomes a text + code pair.
+        # - The long-term network fix remains a note emphasizing RA Guard.
+        $rogueRouterRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Endpoint containment (temporary)",
+    "content": "If IPv6 is not required temporarily, disable the IPv6 stack."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Disable-NetAdapterBinding -Name \"*\" -ComponentID ms_tcpip6"
+  },
+  {
+    "type": "text",
+    "title": "Per-interface alternative",
+    "content": "Disable router discovery on affected adapters while investigating."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-NetIPInterface -InterfaceAlias 'Ethernet' -AddressFamily IPv6 -RouterDiscovery Disabled"
+  },
+  {
+    "type": "note",
+    "content": "Network fix: Enforce RA Guard on access ports."
+  }
+]
+'@
 
         if ($unexpectedRouterMacs.Count -gt 0) {
             $evidence = ($unexpectedRouterMacs | Sort-Object -Unique) -join ', '
@@ -1444,29 +1443,28 @@ arp -d *
     }
 
     $lldpSubcategory = 'Switch Port Mapping'
-    $lldpSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Endpoint action'
-            content = 'Ensure the LLDP service (lldpsvc) exists and is running so neighbor data is collected.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Start LLDP service'
-            lang    = 'powershell'
-            content = @"
-# Ensure LLDP service available/started (Windows LLDP service: "lldpsvc")
-Set-Service lldpsvc -StartupType Automatic
-Start-Service lldpsvc
-"@.Trim()
-        }
-        @{
-            type    = 'text'
-            title   = 'Infrastructure action'
-            content = 'Populate switch inventory, compare LLDP neighbors with the CMDB, and correct any mispatched connections.'
-        }
-    )
-    $lldpRemediation = $lldpSteps | ConvertTo-Json -Depth 5
+    # Structured remediation mapping for LLDP gaps:
+    # - Endpoint actions become text + code steps.
+    # - Infrastructure guidance remains a text step describing switch validation.
+    $lldpRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Endpoint",
+    "content": "Ensure the LLDP service (lldpsvc) is available and started."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "# Ensure LLDP service available/started (Windows LLDP service: \"lldpsvc\")\nSet-Service lldpsvc -StartupType Automatic\nStart-Service lldpsvc"
+  },
+  {
+    "type": "text",
+    "title": "Infrastructure",
+    "content": "Populate switch inventory, compare LLDP neighbors to the CMDB, and correct mispatches."
+  }
+]
+'@
     $lldpArtifact = Get-AnalyzerArtifact -Context $Context -Name 'network-lldp'
     Write-HeuristicDebug -Source 'Network' -Message 'Resolved network-lldp artifact' -Data ([ordered]@{
         Found = [bool]$lldpArtifact
@@ -1792,7 +1790,50 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
 
             if ($primaryErrors.Count -gt 0) {
                 $details = $primaryErrors | Select-Object -First 3
-                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation $autodiscoverRemediation -Data (& $createConnectivityData $connectivityContext)
+                # Structured remediation mapping for Autodiscover failures:
+                # - Endpoint fixes heading becomes a text step, followed by text/code pairs for each action.
+                # - The Exchange Online guidance remains a text step referencing the CNAME requirement.
+                Add-CategoryIssue -CategoryResult $result -Severity 'low' -Title 'Autodiscover DNS queries failed, so missing or invalid records can cause mail setup failures.' -Evidence ($details -join "`n") -Subcategory 'DNS Autodiscover' -Remediation @'
+[
+  {
+    "type": "text",
+    "title": "Endpoint fixes",
+    "content": "Detect failing lookups to confirm DNS resolution status."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$names = 'autodiscover.outlook.com','enterpriseenrollment.windows.net','enterpriseregistration.windows.net'\n$names | % { Resolve-DnsName $_ -ErrorAction SilentlyContinue }"
+  },
+  {
+    "type": "text",
+    "content": "Set the NIC to corporate DNS resolvers before re-running Autodiscover tests."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-DnsClientServerAddress -InterfaceAlias \"Ethernet\" -ServerAddresses 10.0.0.10,10.0.0.11"
+  },
+  {
+    "type": "text",
+    "content": "Re-register the host A record after adjusting DNS client settings."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "ipconfig /registerdns"
+  },
+  {
+    "type": "text",
+    "content": "For M365 Autodiscover (Exchange Online), publish autodiscover.<yourdomain> as a CNAME to autodiscover.outlook.com, then verify Exchange reachability."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Test-NetConnection outlook.office365.com -Port 443"
+  }
+]
+'@ -Data (& $createConnectivityData $connectivityContext)
             }
         }
 
@@ -2006,36 +2047,50 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
             HasPayload = [bool]$payload
         })
         $connectivityContext.Outlook = if ($payload -and $payload.PSObject.Properties['Connectivity']) { $payload.Connectivity } else { $null }
-            if ($payload -and $payload.Connectivity) {
-                $conn = $payload.Connectivity
-                $proxySteps = @(
-                    @{
-                        type    = 'text'
-                        title   = 'Clear stale proxy settings'
-                        content = 'Remove user-mode and WinHTTP proxy configuration before retrying Outlook connectivity tests.'
-                    }
-                    @{
-                        type    = 'code'
-                        title   = 'Disable WinINET proxy'
-                        lang    = 'cmd'
-                        content = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f'
-                    }
-                    @{
-                        type    = 'code'
-                        title   = 'Reset WinHTTP proxy'
-                        lang    = 'cmd'
-                        content = 'netsh winhttp reset proxy'
-                    }
-                    @{
-                        type    = 'text'
-                        title   = 'Validate direct access'
-                        content = 'Run `netsh winhttp show proxy` and confirm it reports Direct access, then retry Outlook connectivity.'
-                    }
-                )
-                $proxyRemediation = $proxySteps | ConvertTo-Json -Depth 5
-                if ($conn.PSObject.Properties['TcpTestSucceeded']) {
-                    if (-not $conn.TcpTestSucceeded) {
-                        Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
+        if ($payload -and $payload.Connectivity) {
+            $conn = $payload.Connectivity
+            # Structured remediation mapping for Outlook proxy resets:
+            # - Numbered instructions become sequential text steps.
+            # - Each command block remains a code step with escaped registry paths.
+            $proxyRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Recommended actions",
+    "content": "Kill stale proxy settings before retrying Outlook connectivity."
+  },
+  {
+    "type": "text",
+    "content": "Disable the user WinINET proxy."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyEnable -Value 0\nRemove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyServer -ErrorAction SilentlyContinue"
+  },
+  {
+    "type": "text",
+    "content": "Reset the WinHTTP proxy."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "& netsh.exe winhttp reset proxy"
+  },
+  {
+    "type": "text",
+    "content": "Verify WinHTTP reports Direct access and confirm Outlook connects."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "& netsh.exe winhttp show proxy"
+  }
+]
+'@
+            if ($conn.PSObject.Properties['TcpTestSucceeded']) {
+                if (-not $conn.TcpTestSucceeded) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title "Outlook HTTPS connectivity failed, so Outlook can't connect to Exchange Online." -Evidence ('TcpTestSucceeded reported False for {0}' -f $conn.RemoteAddress) -Subcategory 'Outlook Connectivity' -Remediation $proxyRemediation -Data (& $createConnectivityData $connectivityContext)
                 } else {
                     Add-CategoryNormal -CategoryResult $result -Title 'Outlook HTTPS connectivity succeeded' -Subcategory 'Outlook Connectivity'
                 }

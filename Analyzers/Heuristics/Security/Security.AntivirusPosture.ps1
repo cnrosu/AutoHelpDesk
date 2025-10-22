@@ -110,33 +110,32 @@ function Invoke-SecurityAntivirusPostureChecks {
         $securityCenter = $payload.SecurityCenter
     }
 
-    $serviceSignalSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Restore Windows Security Center'
-            content = 'Set the Security Center (wscsvc) service to Automatic and restart it so Defender posture data can be collected.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Restart Security Center'
-            lang    = 'powershell'
-            content = @"
-Set-Service wscsvc -StartupType Automatic
-Restart-Service wscsvc
-"@.Trim()
-        }
-        @{
-            type    = 'text'
-            content = 'If Security Center still fails, verify and repair WMI carefully before rerunning the collector.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Verify WMI repository'
-            lang    = 'powershell'
-            content = 'winmgmt /verifyrepository'
-        }
-    )
-    $serviceSignalRemediation = $serviceSignalSteps | ConvertTo-Json -Depth 5
+Nlear    # Structured remediation mapping:
+    # - Restore instruction -> text step leading into the startup commands.
+    # - WMI repair guidance becomes a separate text + code pair.
+    $serviceSignalRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Restore Windows Security Center reporting",
+    "content": "Ensure the Security Center service starts automatically so Defender posture can be collected."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Set-Service wscsvc -StartupType Automatic\nRestart-Service wscsvc"
+  },
+  {
+    "type": "text",
+    "content": "If Security Center still fails, verify and repair WMI (use with caution)."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "winmgmt /verifyrepository"
+  }
+]
+'@
 
     if (-not $securityCenter) {
         Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Endpoint AV: Security Center inventory missing' -Explanation 'Windows Security Center inventory was unavailable, so technicians cannot confirm which antivirus engine is active.' -Subcategory 'Antivirus' -Remediation $serviceSignalRemediation

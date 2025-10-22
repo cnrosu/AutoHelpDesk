@@ -1,43 +1,41 @@
 if (-not $script:HardwareBatteryRemediation) {
-    $script:HardwareBatteryRemediation = @(
-        @{
-            type    = 'note'
-            title   = 'Symptoms'
-            content = 'Battery health queries are failing or reporting poor health titles.'
-        }
-        @{
-            type    = 'text'
-            title   = 'Replace degraded batteries'
-            content = 'Recommend battery replacement when FullChargeCapacity is below 70% of DesignCapacity.'
-        }
-        @{
-            type    = 'text'
-            title   = 'Reduce wear on laptops'
-            content = 'Apply a balanced power policy to reduce thermal load and extend battery life.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Apply balanced power policy'
-            lang    = 'cmd'
-            content = @"
-powercfg /setactive SCHEME_BALANCED
-powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
-powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
-"@.Trim()
-        }
-        @{
-            type    = 'text'
-            title   = 'Validate results'
-            content = 'Generate a fresh battery report after adjustments to confirm improvements.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Generate battery report'
-            lang    = 'cmd'
-            content = 'powercfg /batteryreport /output %temp%\battery.html'
-        }
-    ) | ConvertTo-Json -Depth 5
+    # Structured remediation mapping:
+    # - Markdown headings convert to titled text steps.
+    # - Replacement guidance stays a text step before power policy commands.
+    # - The policy script and validation snippet remain code steps with escaped literals.
+    $script:HardwareBatteryRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Symptoms",
+    "content": "Query errors; poor health titles."
+  },
+  {
+    "type": "text",
+    "title": "Fix (device)",
+    "content": "Recommend battery replacement if FullChargeCapacity < 70% of DesignCapacity."
+  },
+  {
+    "type": "text",
+    "content": "Apply a balanced power policy to reduce wear and thermals on laptops."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$powercfg = Join-Path $env:WINDIR 'System32\\powercfg.exe'\n& $powercfg /setactive SCHEME_BALANCED\n& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5\n& $powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85\n& $powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85"
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Generate a battery report to confirm configuration changes."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$powercfg = Join-Path $env:WINDIR 'System32\\powercfg.exe'\n$output = Join-Path $env:TEMP 'battery.html'\n& $powercfg /batteryreport /output $output\nWrite-Host \"Battery report exported to $output\""
+  }
+]
+'@
 }
 
 function Get-BatteryDesignCapacity {

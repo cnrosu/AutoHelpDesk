@@ -1,84 +1,70 @@
-if (-not $script:CriticalServiceAutostartRemediation) {
-    $script:CriticalServiceAutostartRemediationSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Restore core network services'
-            content = 'Bring these services back online and set Automatic start so DNS, RPC, SMB, printing, proxy discovery, and background transfers recover.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Start essential services'
-            lang    = 'powershell'
-            content = @"
-'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |
-  ForEach-Object {
-    if (Get-Service $_ -ErrorAction SilentlyContinue) {
-      Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue
-      Start-Service $_ -ErrorAction SilentlyContinue
-    }
+# Structured remediation mapping:
+# - Intro sentence -> text step highlighting the service recovery goal.
+# - Script block -> code step retaining the pipeline and indentation.
+# - Final guidance about missing services -> text step.
+$script:CriticalServiceAutostartRemediation = @'
+[
+  {
+    "type": "text",
+    "content": "Bring these core network services back online and set them to start automatically so DNS, RPC, SMB, printing, proxy discovery, and background transfers can recover."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "'Dnscache','NlaSvc','LanmanWorkstation','RpcSs','Spooler','WinHttpAutoProxySvc','BITS' |\n  ForEach-Object {\n    if (Get-Service $_ -ErrorAction SilentlyContinue) {\n      Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue\n      Start-Service $_ -ErrorAction SilentlyContinue\n    }\n  }"
+  },
+  {
+    "type": "text",
+    "content": "If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet."
   }
-"@.Trim()
-        }
-        @{
-            type    = 'note'
-            content = 'If any service is missing entirely, repair Windows components or reinstall the feature before rerunning the snippet.'
-        }
-    )
-    $script:CriticalServiceAutostartRemediation = $script:CriticalServiceAutostartRemediationSteps | ConvertTo-Json -Depth 5
-}
+]
+'@
 
-if (-not $script:BitsJobQueueRemediation) {
-    $script:BitsJobQueueRemediationSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Inspect and reset BITS queue'
-            content = 'Review queued jobs and reset the Background Intelligent Transfer Service if failures persist.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Reset BITS jobs'
-            lang    = 'cmd'
-            content = @"
-bitsadmin /list /allusers /verbose
-bitsadmin /reset /allusers
-"@.Trim()
-        }
-        @{
-            type    = 'text'
-            content = 'After the reset, requeue managed deployments through Intune, WSUS, or Windows Update so downloads resume.'
-        }
-    )
-    $script:BitsJobQueueRemediation = $script:BitsJobQueueRemediationSteps | ConvertTo-Json -Depth 5
-}
+# Structured remediation mapping:
+# - Problem sentence -> text step introducing the queue reset.
+# - Command list -> code step.
+# - Follow-up sentence -> text step reminding to requeue deployments.
+$script:BitsJobQueueRemediation = @'
+[
+  {
+    "type": "text",
+    "content": "If BITS jobs keep failing after the service is running, review and reset the queue with PowerShell."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-BitsTransfer -AllUsers | Format-Table -AutoSize Id, DisplayName, JobState, OwnerName\nGet-BitsTransfer -AllUsers | Remove-BitsTransfer -Confirm:$false"
+  },
+  {
+    "type": "text",
+    "content": "Requeue managed deployments afterwards through Intune, WSUS, or Windows Update so downloads resume."
+  }
+]
+'@
 
-$bitsFailureSteps = @()
-if ($script:CriticalServiceAutostartRemediationSteps) { $bitsFailureSteps += $script:CriticalServiceAutostartRemediationSteps }
-if ($script:BitsJobQueueRemediationSteps) { $bitsFailureSteps += $script:BitsJobQueueRemediationSteps }
-$script:BitsJobFailureRemediation = $bitsFailureSteps | ConvertTo-Json -Depth 5
+$script:BitsJobFailureRemediation = $script:CriticalServiceAutostartRemediation + "`n`n" + $script:BitsJobQueueRemediation
 
-if (-not $script:WorkstationSpoolerDisableRemediation) {
-    $script:WorkstationSpoolerDisableRemediationSteps = @(
-        @{
-            type    = 'text'
-            title   = 'Disable Print Spooler when not required'
-            content = 'If the workstation does not need printing, disable the Print Spooler to remove the PrintNightmare attack surface.'
-        }
-        @{
-            type    = 'code'
-            title   = 'Disable spooler service'
-            lang    = 'powershell'
-            content = @"
-Stop-Service -Name Spooler -Force
-Set-Service -Name Spooler -StartupType Disabled
-"@.Trim()
-        }
-        @{
-            type    = 'text'
-            content = 'Re-enable the spooler only when printing is required and the device is fully patched.'
-        }
-    )
-    $script:WorkstationSpoolerDisableRemediation = $script:WorkstationSpoolerDisableRemediationSteps | ConvertTo-Json -Depth 5
-}
+# Structured remediation mapping:
+# - Intro sentence -> text step that frames why to disable the spooler.
+# - Commands -> code step.
+# - Reminder sentence -> text step covering when to re-enable.
+$script:WorkstationSpoolerDisableRemediation = @'
+[
+  {
+    "type": "text",
+    "content": "If this workstation does not require printing, disable the Print Spooler to remove the PrintNightmare attack surface."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Stop-Service -Name Spooler -Force\nSet-Service -Name Spooler -StartupType Disabled"
+  },
+  {
+    "type": "text",
+    "content": "Re-enable the spooler only when printing is required and the device is patched."
+  }
+]
+'@
 
 function Invoke-ServiceCheckWindowsSearch {
     param(
