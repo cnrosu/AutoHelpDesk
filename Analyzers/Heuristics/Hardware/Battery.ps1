@@ -8,7 +8,7 @@ if (-not $script:HardwareBatteryRemediation) {
   {
     "type": "text",
     "title": "Symptoms",
-    "content": "Query errors; poor health titles."
+    "content": "Shorter unplugged runtime; frequent charging.\nBattery % drops faster than expected or jumps.\nBattery saver kicks in earlier; performance throttles on battery.\nUnexpected sleep/shutdown on battery under load (often at 10–20%)."
   },
   {
     "type": "text",
