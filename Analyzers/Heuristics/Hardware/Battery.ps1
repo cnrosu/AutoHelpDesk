@@ -343,6 +343,16 @@ function Invoke-HardwareBatteryChecks {
         $issueCount++
     }
 
+    if ($batteryEntryCount -eq 0) {
+        Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'No battery entries detected in payload' -Data ([ordered]@{
+            ErrorCount = $batteryErrors.Count
+        })
+
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'info' -Title 'Battery data was not found.' -Evidence 'root\wmi battery classes did not return any data.' -Subcategory 'Battery' -Explanation 'No battery sensors reported metrics, so technicians cannot confirm whether a battery is installed or healthy.' -Remediation $script:HardwareBatteryRemediation
+        $issueCount++
+        return $issueCount
+    }
+
     $batteryIndex = 0
     foreach ($battery in $batteryEntries) {
         if (-not $battery) { continue }
