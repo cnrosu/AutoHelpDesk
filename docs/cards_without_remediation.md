@@ -12,12 +12,6 @@ The table is sorted by file path to mirror the repository layout.
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L65) | Active Directory Health \ Group Policy | Unable to read Group Policy event log, so device policy failures may be hidden. | 65 |
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L79) | Active Directory Health \ Group Policy | Group Policy errors accessing SYSVOL/NETLOGON, so device policies aren't applied. | 79 |
 | [Analyzers/Heuristics/AD/GroupPolicy.ps1](../Analyzers/Heuristics/AD/GroupPolicy.ps1#L91) | Active Directory Health \ Group Policy | Group Policy processing failures detected, so device policies aren't applied. | 91 |
-| [Analyzers/Heuristics/AD/Kerberos.ps1](../Analyzers/Heuristics/AD/Kerberos.ps1#L32) | Active Directory Health \ Kerberos | $title | 32 |
-| [Analyzers/Heuristics/AD/Kerberos.ps1](../Analyzers/Heuristics/AD/Kerberos.ps1#L45) | Active Directory Health \ Kerberos | ("Kerberos failures detected: {0}" -f $failureSummary) | 45 |
-| [Analyzers/Heuristics/AD/SecureChannel.ps1](../Analyzers/Heuristics/AD/SecureChannel.ps1#L25) | Active Directory Health \ Secure Channel | Secure channel verification failed to run, so machine trust status is unknown. | 25 |
-| [Analyzers/Heuristics/AD/SecureChannel.ps1](../Analyzers/Heuristics/AD/SecureChannel.ps1#L30) | Active Directory Health \ Secure Channel | Broken machine secure channel, blocking domain authentication. | 30 |
-| [Analyzers/Heuristics/AD/Time.ps1](../Analyzers/Heuristics/AD/Time.ps1#L118) | Active Directory Health \ Time Synchronization | Domain time misconfigured (manual NTP), so Active Directory cannot control system time. | 118 |
-| [Analyzers/Heuristics/AD/Time.ps1](../Analyzers/Heuristics/AD/Time.ps1#L124) | Active Directory Health \ Time Service | Kerberos/time skew detected (authentication may fail) | 124 |
 | [Analyzers/Heuristics/Events.ps1](../Analyzers/Heuristics/Events.ps1#L147) | Events \ Collection | Event log artifact missing, so noisy or unhealthy logs may be hidden. | 147 |
 | [Analyzers/Heuristics/Events/Authentication.ps1](../Analyzers/Heuristics/Events/Authentication.ps1#L231) | Events \ Authentication | $title | 231 |
 | [Analyzers/Heuristics/Events/Authentication.ps1](../Analyzers/Heuristics/Events/Authentication.ps1#L576) | Events \ Authentication | Repeated account lockouts (possibly from another host/session) | 576 |

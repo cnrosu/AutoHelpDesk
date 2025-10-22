@@ -22,12 +22,12 @@ function Add-AdSecureChannelFindings {
             }
         }
         if ($scTest -and $scTest.Succeeded -eq $false -and $scTest.Error) {
-            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Secure channel verification failed to run, so machine trust status is unknown.' -Evidence $scTest.Error -Subcategory 'Secure Channel'
+            Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title 'Secure channel verification failed to run, so machine trust status is unknown.' -Evidence $scTest.Error -Subcategory 'Secure Channel' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
         }
     }
 
     if ($scBroken) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Broken machine secure channel, blocking domain authentication.' -Subcategory 'Secure Channel'
+        Add-CategoryIssue -CategoryResult $Result -Severity 'high' -Title 'Broken machine secure channel, blocking domain authentication.' -Subcategory 'Secure Channel' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
     }
 
     [pscustomobject]@{
