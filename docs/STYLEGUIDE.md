@@ -10,6 +10,13 @@ The verb part of the name identifies the action that the cmdlet performs. The no
 the name identifies the entity on which the action is performed. For example, the `Get-Command`
 cmdlet retrieves all the commands that are registered in PowerShell.
 
+## Terminology Guardrails
+
+Keep product references and UI labels aligned with what technicians see today to avoid confusion.
+
+- Use Microsoft Entra ID (not Azure AD) and Windows LAPS (modern) unless explicitly describing legacy experiences.
+- Label copy buttons in code samples as **Copy**; never “Copy PowerShell.”
+
 ## Canonical Snippets
 
 Use these PowerShell snippets as the starting point for new AutoHelpDesk components.

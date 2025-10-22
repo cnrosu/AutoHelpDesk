@@ -12,6 +12,9 @@ Doc PRs must leave written guidance clearer than they found it, align with live 
 - Every new or modified section includes context for technicians or end users in no more than five sentences.
 - Screenshots or examples older than 180 days are either refreshed or explicitly dated.
 - Reviewer feedback left within one business day is acknowledged or resolved within the next business day.
+- Keep terminology aligned with current product names so technicians aren’t asked to interpret retired branding.
+  - Use Microsoft Entra ID (not Azure AD) and Windows LAPS (modern) unless explicitly describing legacy experiences.
+  - Label copy buttons in code samples as **Copy**; never “Copy PowerShell.”
 
 ### Signals
 - Markdown, reStructuredText, or HTML files changed without accompanying code updates.
