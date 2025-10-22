@@ -117,12 +117,6 @@ function Invoke-EventsNetlogonTrustChecks {
     $eventIdSet = $recentMatches | ForEach-Object { $_.Id } | Where-Object { $_ } | Sort-Object -Unique
     $lastEvent = $recentMatches | Sort-Object TimeUtc -Descending | Select-Object -First 1
 
-    $evidence = [ordered]@{
-        eventIdSet = @($eventIdSet)
-        count      = $recentMatches.Count
-        lastUtc    = if ($lastEvent -and $lastEvent.TimeUtc) { $lastEvent.TimeUtc.ToString('o') } else { $null }
-    }
-
     $severity = 'medium'
     $hasAuthFailures = Test-EventsHasAuthenticationFailuresElsewhere -Authentication $Authentication
     if ($olderMatches.Count -gt 0 -and $hasAuthFailures) {
@@ -136,20 +130,18 @@ function Invoke-EventsNetlogonTrustChecks {
         EventIds    = @($eventIdSet)
     })
 
-    $evidenceJson = $evidence | ConvertTo-Json -Depth 4 -Compress
-
     $bucketed = @()
     if ($recentMatches.Count -gt 0) {
         $grouped = $recentMatches | Group-Object -Property Id
         $bucketed = foreach ($group in ($grouped | Sort-Object Count -Descending)) {
             $samples = foreach ($sample in ($group.Group | Sort-Object TimeUtc -Descending | Select-Object -First 5)) {
-                [pscustomobject]@{
+                [ordered]@{
                     TimeCreated = if ($sample.TimeUtc) { $sample.TimeUtc.ToString('o') } else { $null }
                     Provider    = $sample.Provider
                 }
             }
 
-            [pscustomobject]@{
+            [ordered]@{
                 Id           = $group.Name
                 Count        = $group.Count
                 SampleEvents = @($samples)
@@ -157,14 +149,20 @@ function Invoke-EventsNetlogonTrustChecks {
         }
     }
 
+    $kind = 'Netlogon'
     $title = 'Netlogon secure channel / domain reachability issues'
     $subcat = 'Netlogon/LSA (Domain Join)'
-    $kind = 'Netlogon'
+    $evidence = [ordered]@{
+        area          = 'Events'
+        kind          = $kind
+        windowMinutes = $WindowMinutes
+        eventIdSet    = @($eventIdSet)
+        count         = $recentMatches.Count
+        lastUtc       = if ($lastEvent -and $lastEvent.TimeUtc) { $lastEvent.TimeUtc.ToString('o') } else { $null }
+        buckets       = @($bucketed)
+    }
 
-    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidenceJson -Subcategory $subcat -Data ([ordered]@{
-        Area          = 'Events'
-        Kind          = $kind
-        WindowMinutes = $WindowMinutes
-        Buckets       = @($bucketed)
-    })
+    $evidenceJson = $evidence | ConvertTo-Json -Depth 6 -Compress
+
+    Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title $title -Evidence $evidenceJson -Subcategory $subcat
 }
