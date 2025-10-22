@@ -220,15 +220,54 @@ function Get-AnalyzerArtifact {
         $lookupKeys.Add($builder.ToString()) | Out-Null
     }
 
+    $candidateData = [ordered]@{
+        Requested  = $Name
+        Candidates = if ($lookupKeys.Count -gt 0) { $lookupKeys -join ', ' } else { '(none)' }
+    }
+    Write-HeuristicDebug -Source 'ArtifactLookup' -Message 'Resolved artifact lookup candidates.' -Data $candidateData
+
     $entries = $null
     foreach ($candidate in $lookupKeys) {
         if ($Context.Artifacts.ContainsKey($candidate)) {
             $entries = $Context.Artifacts[$candidate]
+            $entryList = if ($entries -is [System.Collections.IEnumerable] -and -not ($entries -is [string])) {
+                @($entries | Where-Object { $_ })
+            } else {
+                @($entries)
+            }
+            $paths = @($entryList | ForEach-Object {
+                    if ($_ -and $_.PSObject.Properties['Path']) { $_.Path }
+                } | Where-Object { $_ })
+            $matchData = [ordered]@{
+                Requested = $Name
+                Matched   = $candidate
+                Count     = if ($entryList) { $entryList.Count } else { 0 }
+                Paths     = if ($paths) { $paths -join '; ' } else { '(none)' }
+            }
+            Write-HeuristicDebug -Source 'ArtifactLookup' -Message 'Artifact lookup matched candidate.' -Data $matchData
             break
         }
     }
 
-    if (-not $entries) { return $null }
+    if (-not $entries) {
+        $availableKeys = @()
+        if ($Context -and $Context.Artifacts) {
+            try {
+                $availableKeys = @($Context.Artifacts.Keys | Sort-Object)
+            } catch {
+                $availableKeys = @()
+            }
+        }
+
+        $missingData = [ordered]@{
+            Requested      = $Name
+            Candidates     = if ($lookupKeys.Count -gt 0) { $lookupKeys -join ', ' } else { '(none)' }
+            AvailableCount = if ($Context -and $Context.Artifacts) { $Context.Artifacts.Count } else { 0 }
+            AvailableKeys  = if ($availableKeys) { $availableKeys -join ', ' } else { '(none)' }
+        }
+        Write-HeuristicDebug -Source 'ArtifactLookup' -Message 'Artifact lookup produced no matches.' -Data $missingData
+        return $null
+    }
 
     if ($entries.Count -gt 1) { return $entries }
     return $entries[0]
