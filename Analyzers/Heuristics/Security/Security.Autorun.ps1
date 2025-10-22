@@ -1,3 +1,37 @@
+$script:SecurityAutorunPoliciesRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "What’s happening",
+    "content": "{{Title}}"
+  },
+  {
+    "type": "text",
+    "title": "Harden AutoPlay via policy",
+    "content": "In Group Policy Management Editor, go to Computer Configuration → Administrative Templates → Windows Components → AutoPlay Policies. Set \"Turn off AutoPlay\" to Enabled for All drives and set \"Default behavior for AutoRun\" to Enabled with Prevent AutoRun applications. Link the policy to affected devices and trigger a policy refresh."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "$path = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer'\nNew-Item -Path $path -Force | Out-Null\nNew-ItemProperty -Path $path -Name 'NoDriveTypeAutoRun' -PropertyType DWord -Value 0x000000FF -Force | Out-Null\nNew-ItemProperty -Path $path -Name 'NoAutoRun' -PropertyType DWord -Value 0x00000001 -Force | Out-Null"
+  },
+  {
+    "type": "note",
+    "content": "Also enforce the same values under HKCU for multi-user or VDI scenarios so signed-in users cannot re-enable AutoPlay."
+  },
+  {
+    "type": "text",
+    "title": "Validate",
+    "content": "Run gpupdate /force or reboot, then confirm the registry values report 0xFF for NoDriveTypeAutoRun and 1 for NoAutoRun."
+  },
+  {
+    "type": "code",
+    "lang": "powershell",
+    "content": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer' -Name NoDriveTypeAutoRun, NoAutoRun | Format-List"
+  }
+]
+'@
+
 function Invoke-SecurityAutorunChecks {
     param(
         [Parameter(Mandatory)]
@@ -125,7 +159,7 @@ function Invoke-SecurityAutorunChecks {
                 }
                 $detailText = if ($statusParts.Count -gt 0) { $statusParts -join '; ' } else { 'values not hardened' }
                 $title = "Autorun/Autoplay policies not hardened ({0}), allowing removable media autorun." -f $detailText
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidenceText -Subcategory 'Autorun Policies' -CheckId 'Security/AutorunPolicies'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title $title -Evidence $evidenceText -Subcategory 'Autorun Policies' -CheckId 'Security/AutorunPolicies' -Remediation $script:SecurityAutorunPoliciesRemediation
             }
         } else {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'Autorun policy artifact missing expected structure, so removable media autorun defenses are unknown.' -Subcategory 'Autorun Policies'
