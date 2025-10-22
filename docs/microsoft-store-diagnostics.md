@@ -69,7 +69,7 @@ w32tm /query /status
 Get-Date
 Get-WinSystemLocale
 ```
-Entra Joined devices often have the **Windows Time** service stopped; that is expected if `Get-Service W32Time` shows a `Disabled` start type. In that case, compare `Get-Date` with a reliable time source or the **Settings > Time & language** pane. Whatever the configuration, the clock must be accurate and the locale should match the user's Microsoft account region.
+Microsoft Entra joined devices often have the **Windows Time** service stopped; that is expected if `Get-Service W32Time` shows a `Disabled` start type. In that case, compare `Get-Date` with a reliable time source or the **Settings > Time & language** pane. Whatever the configuration, the clock must be accurate and the locale should match the user's Microsoft account region.
 
 ## 2. Rule out Microsoft-side outages
 

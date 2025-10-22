@@ -1,10 +1,10 @@
 ---
-title: LAPS and Password Rotation Guidance for Entra Joined Devices
+title: LAPS and Password Rotation Guidance for Microsoft Entra Joined Devices
 ms.date: 2025-05-15
-description: Best practices for using LAPS or compensating password-rotation controls on Entra joined Windows devices managed with Intune.
+description: Best practices for using LAPS or compensating password-rotation controls on Microsoft Entra joined Windows devices managed with Microsoft Intune.
 ---
 ## Summary
-Entra joined endpoints still maintain local administrator accounts, so static credentials remain a lateral-movement risk without automated rotation. This doc explains why Windows LAPS (or equivalent tooling) must remain in scope for cloud-managed devices and how to justify compensating controls when LAPS cannot be deployed. Applying the guidance keeps AutoHelpDesk heuristics satisfied and reduces credential-reuse exposure.
+Microsoft Entra joined endpoints still maintain local administrator accounts, so static credentials remain a lateral-movement risk without automated rotation. This doc explains why Windows LAPS (or equivalent tooling) must remain in scope for cloud-managed devices and how to justify compensating controls when LAPS cannot be deployed. Applying the guidance keeps AutoHelpDesk heuristics satisfied and reduces credential-reuse exposure.
 
 ## Signals to Collect
 - `Get-LocalUser -Name "Administrator"` (or targeted admin account) → Confirm the local admin account exists when policy requires rotation coverage.
@@ -30,23 +30,23 @@ Entra joined endpoints still maintain local administrator accounts, so static cr
 ## References
 - `docs/azuread-laps-best-practices.md`
 
-# LAPS and Password Rotation Guidance for Entra Joined Devices
+# LAPS and Password Rotation Guidance for Microsoft Entra Joined Devices
 
-Joining devices to Entra ID and managing them with Intune do not automatically provide per-device password rotation for local administrator accounts.
+Joining devices to Microsoft Entra ID (formerly Azure Active Directory) and managing them with Microsoft Intune (Intune) do not automatically provide per-device password rotation for local administrator accounts.
 Organizations that rely on static or manually managed local admin credentials should still deploy Windows LAPS (or equivalent controls) to prevent password reuse risks flagged by credential management analyzers.
 
-## Why LAPS Still Matters on Entra Joined Devices
+## Why LAPS Still Matters on Microsoft Entra Joined Devices
 
-- **Local administrators still exist.** Entra ID device administrators, break-glass local accounts, and users manually added to the local *Administrators* group all receive local admin rights even on cloud-only devices.
+- **Local administrators still exist.** Microsoft Entra ID device administrators, break-glass local accounts, and users manually added to the local *Administrators* group all receive local admin rights even on cloud-only devices.
 - **Static passwords remain exploitable.** Without a rotation mechanism, any local account with admin rights can be harvested and reused across machines, enabling lateral movement.
 - **Analyzer expectations.** AutoHelpDesk raises a high-severity issue when it cannot see LAPS/PLAP footprints because static credentials remain an unmanaged risk.
 
 ## Recommended Controls for the Scenario Described
 
-1. **Deploy Windows LAPS where possible.** Configure Windows LAPS policy via Intune to rotate the built-in Administrator (or a custom local admin) password on a defined cadence and escrow secrets in Microsoft Entra ID.
+1. **Deploy Windows LAPS where possible.** Configure Windows LAPS policy via Microsoft Intune to rotate the built-in Administrator (or a custom local admin) password on a defined cadence and escrow secrets in Microsoft Entra ID.
 2. **Scope local admin membership tightly.** Keep day-to-day users out of the *Administrators* group. Instead, require just-in-time elevation (e.g., Endpoint Privilege Management or local admin password on demand).
 3. **Rotate any standing local admin credentials.** If business requirements demand a permanent local admin (for break-glass or support), store its password in a managed vault and rotate it at least every 30 days—more frequently if feasible.
-4. **Enable auditing and alerting.** Monitor Entra ID sign-ins for Device Administrator assignments and track local group changes to detect drift that would reintroduce unmanaged admins.
+4. **Enable auditing and alerting.** Monitor Microsoft Entra ID sign-ins for Device Administrator assignments and track local group changes to detect drift that would reintroduce unmanaged admins.
 5. **Document compensating controls when LAPS cannot be deployed.** If you rely solely on Windows Hello for Business, Conditional Access, or Privileged Identity Management, record how those controls prevent password reuse and include justification for audit purposes.
 
 ### Data sources collected
@@ -59,7 +59,7 @@ These artifacts are bundled into the `laps_localadmin` analyzer payload that the
 
 ### Interpretation logic
 
-- The heuristic marks **LAPS/PLAP as deployed** when any collected policy shows an enabled flag (`*Enabled = 1`) or a populated backup directory (Entra ID, Active Directory, or custom key escrow) indicating passwords are being rotated and escrowed.
+- The heuristic marks **LAPS/PLAP as deployed** when any collected policy shows an enabled flag (`*Enabled = 1`) or a populated backup directory (Microsoft Entra ID, Active Directory, or custom key escrow) indicating passwords are being rotated and escrowed.
 - When no policy keys are present or all enabled flags are unset, the heuristic raises a **high-severity** issue titled **"LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords."** The evidence section mirrors the raw registry values to help confirm whether policies are missing or simply misconfigured.
 - Separate security heuristics review the administrator inventory. If a standing local admin exists without rotation controls or its `LastPasswordSet` is stale, those checks emit additional medium/high findings to highlight the persistent account risk.
 
@@ -67,7 +67,7 @@ These artifacts are bundled into the `laps_localadmin` analyzer payload that the
 
 | Issue card title | Triggering data | Impact statement | Remediation guidance |
 | --- | --- | --- | --- |
-| **LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.** | No Windows LAPS or legacy AdmPwd policy shows an enabled flag or backup target. | Attackers who capture a static local admin password can reuse it across devices to gain full control. | Deploy Windows LAPS via Intune or re-enable the legacy AdmPwd policy so administrator passwords rotate and are escrowed in Microsoft Entra ID or Active Directory. |
+| **LAPS/PLAP not detected, allowing unmanaged or reused local admin passwords.** | No Windows LAPS or legacy AdmPwd policy shows an enabled flag or backup target. | Attackers who capture a static local admin password can reuse it across devices to gain full control. | Deploy Windows LAPS via Microsoft Intune or re-enable the legacy AdmPwd policy so administrator passwords rotate and are escrowed in Microsoft Entra ID or Active Directory. |
 | **Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM and password appears persistent.** | Local Administrators inventory finds an enabled local account with `PasswordNeverExpires` or a stale `LastPasswordSet`, and no rotation tooling is detected. | A local admin account that never changes its password gives attackers a long-lived backdoor on every device where it exists. | Remove the standing account if possible, or pair it with Windows LAPS/privileged access management that rotates the password on a defined schedule. |
 | **Local admin risk: No rotation/escrow control. Standing local admin detected; no LAPS/PAM but password not stale.** | Local admin exists and lacks rotation tooling, though `LastPasswordSet` is recent. | Even a recently changed local admin password can be harvested and reused until it rotates automatically. | Keep the account only if required, and enforce automatic rotation using LAPS or a privileged access platform. |
 | **Local admin present: LAPS/PAM in place. Rotation/escrow control detected (Windows LAPS/AdmPwd or PAM/JIT).** | A local admin is present but LAPS or another rotation control is detected. | When rotation controls run correctly, a standing admin account has far less chance of being reused by attackers. | Monitor LAPS health and ensure escrow destinations remain reachable so password rotations continue without failure. |
@@ -75,10 +75,10 @@ These artifacts are bundled into the `laps_localadmin` analyzer payload that the
 
 ## Answering the Original Questions
 
-- **Does LAPS/PLAP apply?** Yes. LAPS (or equivalent automated rotation) is still recommended even on Entra joined, Intune-managed devices whenever any local admin credential could persist.
-- **What should be done?** Implement Windows LAPS policy through Intune, minimize permanent admin membership, and ensure any remaining local admin passwords are rotated and escrowed.
+- **Does LAPS/PLAP apply?** Yes. LAPS (or equivalent automated rotation) is still recommended even on Microsoft Entra joined, Intune-managed devices whenever any local admin credential could persist.
+- **What should be done?** Implement Windows LAPS policy through Microsoft Intune, minimize permanent admin membership, and ensure any remaining local admin passwords are rotated and escrowed.
 - **Is Windows Hello enough?** No. Biometric sign-in secures user authentication but does not rotate or escrow local admin passwords; it should be layered with LAPS or just-in-time admin solutions.
 
 ## Summary for Technicians
 
-Missing LAPS/PLAP on Entra joined endpoints leaves standing local admin credentials unrotated, which attackers can reuse across devices; deploy Windows LAPS or document equally strong rotation controls to close this gap.
+Missing LAPS/PLAP on Microsoft Entra joined endpoints leaves standing local admin credentials unrotated, which attackers can reuse across devices; deploy Windows LAPS or document equally strong rotation controls to close this gap.
