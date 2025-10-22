@@ -42,17 +42,36 @@ function Add-AdKerberosFindings {
         }
 
         $failureSummary = ($failureSummaryParts -join ', ')
-        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ("Kerberos failures detected: {0}" -f $failureSummary) -Evidence $failureSummary -Subcategory 'Kerberos' -Remediation (Get-AdKerberosSecureChannelTimeRemediation) -Data @{
-            Area = 'AD/Kerberos'
-            Kind = 'KerberosFailures'
-            Kerberos = @{
-                NoDcReachable = $NoDcReachable
-                TimeSkewHigh  = $TimeSkewHigh
-                FailureCount  = $failureCount
-                FailureEvents = $failureEvents
-                Summary       = $failureSummary
+        $evidenceLines = [System.Collections.Generic.List[string]]::new()
+        $null = $evidenceLines.Add(("Failure summary: {0}" -f $failureSummary))
+        $null = $evidenceLines.Add(("Total failure events: {0}" -f $failureCount))
+        $null = $evidenceLines.Add(("No DC reachable: {0}" -f ([bool]$NoDcReachable)))
+        $null = $evidenceLines.Add(("Time skew high: {0}" -f ([bool]$TimeSkewHigh)))
+
+        if ($failureEvents -and $failureEvents.Count -gt 0) {
+            $sampleCount = [System.Math]::Min(3, $failureEvents.Count)
+            $eventSamples = $failureEvents | Select-Object -First $sampleCount
+            $eventSamplesJson = $null
+            try {
+                $eventSamplesJson = $eventSamples | ConvertTo-Json -Depth 6
+            } catch {
+                $eventSamplesJson = $null
+            }
+
+            if ($eventSamplesJson) {
+                $null = $evidenceLines.Add(("Event samples:`n{0}" -f $eventSamplesJson))
+            } else {
+                foreach ($sample in $eventSamples) {
+                    $sampleText = ($sample | Out-String).Trim()
+                    if (-not [string]::IsNullOrWhiteSpace($sampleText)) {
+                        $null = $evidenceLines.Add(("Event sample: {0}" -f $sampleText))
+                    }
+                }
             }
         }
+
+        $explanation = ('Kerberos authentication attempts failed {0} times ({1}). Domain controller reachable flag: {2}. Time skew high: {3}.' -f $failureCount, $failureSummary, [bool]$NoDcReachable, [bool]$TimeSkewHigh)
+        Add-CategoryIssue -CategoryResult $Result -Severity $severity -Title ("Kerberos failures detected: {0}" -f $failureSummary) -Evidence ($evidenceLines.ToArray()) -Explanation $explanation -Subcategory 'Kerberos' -Area 'AD/Kerberos' -Remediation (Get-AdKerberosSecureChannelTimeRemediation)
     }
 
     [pscustomobject]@{
