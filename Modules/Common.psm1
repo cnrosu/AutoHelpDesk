@@ -880,6 +880,29 @@ function ConvertTo-StructuredRemediationHtml {
   }
 
   $builder = [System.Text.StringBuilder]::new()
+  $getListItemText = $null
+  $getListItemText = {
+    param($value)
+
+    if ($null -eq $value) { return $null }
+
+    if (($value -is [System.Collections.IEnumerable]) -and -not ($value -is [string])) {
+      $segments = New-Object System.Collections.Generic.List[string]
+      foreach ($segment in $value) {
+        $segmentText = & $getListItemText $segment
+        if (-not [string]::IsNullOrWhiteSpace($segmentText)) {
+          $segments.Add($segmentText) | Out-Null
+        }
+      }
+
+      if ($segments.Count -eq 0) { return $null }
+      return [string]::Join(' ', $segments.ToArray())
+    }
+
+    $stringValue = [string]$value
+    if ([string]::IsNullOrWhiteSpace($stringValue)) { return $null }
+    return Resolve-RemediationTemplateText -Value $stringValue -Context $contextTable
+  }
   $index = 0
   foreach ($rawStep in $Steps) {
     $index++
@@ -909,9 +932,16 @@ function ConvertTo-StructuredRemediationHtml {
       $title = Resolve-RemediationTemplateText -Value $step.title -Context $contextTable
     }
 
+    $rawContent = $null
     $content = $null
+    $contentCollection = $null
     if ($step.PSObject.Properties['content']) {
-      $content = Resolve-RemediationTemplateText -Value $step.content -Context $contextTable
+      $rawContent = $step.content
+      if (($rawContent -is [System.Collections.IEnumerable]) -and -not ($rawContent -is [string])) {
+        $contentCollection = $rawContent
+      } elseif ($null -ne $rawContent) {
+        $content = Resolve-RemediationTemplateText -Value ([string]$rawContent) -Context $contextTable
+      }
     }
 
     $classList = @('rem-step')
@@ -959,6 +989,50 @@ function ConvertTo-StructuredRemediationHtml {
           [void]$builder.Append("<div class='code-card'>$toolbar<pre$preClasses><code class='language-$langClass' id='$codeId'>$encodedCode</code></pre></div>")
         } else {
           [void]$builder.Append($codeBlockHtml)
+        }
+      }
+      'list' {
+        $itemsSource = $null
+        if ($step.PSObject.Properties['items']) {
+          $itemsSource = $step.items
+        } elseif ($contentCollection) {
+          $itemsSource = $contentCollection
+        }
+
+        $listBuilder = [System.Text.StringBuilder]::new()
+        if ($itemsSource) {
+          foreach ($item in $itemsSource) {
+            if ($null -eq $item) { continue }
+
+            $itemText = $null
+            if ($item -is [psobject]) {
+              if ($item.PSObject.Properties['content']) {
+                $itemText = & $getListItemText $item.content
+              } elseif ($item.PSObject.Properties['text']) {
+                $itemText = & $getListItemText $item.text
+              } else {
+                $itemText = & $getListItemText ([string]$item)
+              }
+            } else {
+              $itemText = & $getListItemText $item
+            }
+
+            if ([string]::IsNullOrWhiteSpace($itemText)) { continue }
+
+            $encodedItem = Encode-Html $itemText
+            $encodedItem = [regex]::Replace($encodedItem, '\\r?\\n', '<br>')
+            [void]$listBuilder.Append("<li>$encodedItem</li>")
+          }
+        }
+
+        if ($listBuilder.Length -gt 0) {
+          [void]$builder.Append("<ul class='rem-list'>")
+          [void]$builder.Append($listBuilder.ToString())
+          [void]$builder.Append('</ul>')
+        } elseif (-not [string]::IsNullOrWhiteSpace($content)) {
+          $encoded = Encode-Html $content
+          $encoded = [regex]::Replace($encoded, '\\r?\\n', '<br>')
+          [void]$builder.Append("<p class='rem-text report-remediation__text'>$encoded</p>")
         }
       }
       'note' {
