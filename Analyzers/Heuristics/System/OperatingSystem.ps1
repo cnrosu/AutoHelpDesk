@@ -11,7 +11,7 @@ function Get-Windows11SupportData {
     try {
         $resolvedPath = (Resolve-Path -LiteralPath $relativePath -ErrorAction Stop).ProviderPath
     } catch {
-        Write-HeuristicError -Source 'System/OS' -Message 'Windows 11 support policy file not found' -Data ([ordered]@{
+        Write-HeuristicDebug -Source 'System/OS' -Message 'Windows 11 support policy file not found' -Data ([ordered]@{
             RequestedPath = $relativePath
         })
         return $null
@@ -21,7 +21,7 @@ function Get-Windows11SupportData {
         $rawJson = Get-Content -LiteralPath $resolvedPath -Raw -ErrorAction Stop
         $parsed = $rawJson | ConvertFrom-Json -ErrorAction Stop
     } catch {
-        Write-HeuristicError -Source 'System/OS' -Message 'Failed reading Windows 11 support policy file' -Data ([ordered]@{
+        Write-HeuristicDebug -Source 'System/OS' -Message 'Failed reading Windows 11 support policy file' -Data ([ordered]@{
             Path = $resolvedPath
             Error = $_.Exception.Message
         })
@@ -59,14 +59,14 @@ function Get-Windows11SupportData {
                 try {
                     $tzInfo = [System.TimeZoneInfo]::FindSystemTimeZoneById($fallbackMap[$timeZoneId])
                 } catch {
-                    Write-HeuristicError -Source 'System/OS' -Message 'Unable to resolve Windows 11 support timezone (fallback failed)' -Data ([ordered]@{
+                    Write-HeuristicDebug -Source 'System/OS' -Message 'Unable to resolve Windows 11 support timezone (fallback failed)' -Data ([ordered]@{
                         RequestedId = $timeZoneId
                         FallbackId = $fallbackMap[$timeZoneId]
                         Error = $_.Exception.Message
                     })
                 }
             } else {
-                Write-HeuristicError -Source 'System/OS' -Message 'Unable to resolve Windows 11 support timezone' -Data ([ordered]@{
+                Write-HeuristicDebug -Source 'System/OS' -Message 'Unable to resolve Windows 11 support timezone' -Data ([ordered]@{
                     RequestedId = $timeZoneId
                     Error = $_.Exception.Message
                 })

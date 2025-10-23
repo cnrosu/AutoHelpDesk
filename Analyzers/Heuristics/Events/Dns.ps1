@@ -14,7 +14,7 @@ function Invoke-EventsDnsChecks {
     if (-not $DnsClient) { return }
 
     if ($DnsClient.PSObject.Properties['Error'] -and $DnsClient.Error) {
-        Write-HeuristicError -Source 'Events/Dns' -Message 'DNS client event query reported error' -Data ([ordered]@{ Error = $DnsClient.Error })
+        Write-HeuristicDebug -Source 'Events/Dns' -Message 'DNS client event query reported error' -Data ([ordered]@{ Error = $DnsClient.Error })
         return
     }
 

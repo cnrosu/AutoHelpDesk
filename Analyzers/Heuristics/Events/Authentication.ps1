@@ -26,7 +26,7 @@ function Test-EventsHasAuthenticationFailuresElsewhere {
             }
         }
     } catch {
-        Write-HeuristicError -Source 'Events/Auth' -Message 'Failed to evaluate authentication failure signals' -Data ([ordered]@{ Error = $_.Exception.Message })
+        Write-HeuristicDebug -Source 'Events/Auth' -Message 'Failed to evaluate authentication failure signals' -Data ([ordered]@{ Error = $_.Exception.Message })
     }
 
     return $false
