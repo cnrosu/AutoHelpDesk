@@ -101,7 +101,8 @@ function Invoke-DhcpAnalyzers {
         return
     }
 
-    $analyzerRoot = Join-Path -Path $PSScriptRoot -ChildPath 'DHCP'
+    $networkRoot = Split-Path -Path $PSScriptRoot -Parent
+    $analyzerRoot = Join-Path -Path $networkRoot -ChildPath 'DHCP'
     if (-not (Test-Path -LiteralPath $analyzerRoot)) {
         Write-Host ("DHCP analyzers skipped: analyzer root '{0}' not found." -f $analyzerRoot)
         return
