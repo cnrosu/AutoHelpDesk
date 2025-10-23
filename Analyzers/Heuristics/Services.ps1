@@ -42,6 +42,20 @@ function Get-ServicesArtifactPaths {
     return $paths
 }
 
+function New-ServicesCheckTrackerRecord {
+    param(
+        [bool]$Ran,
+        [Nullable[int]]$Findings,
+        [string]$SkipReason
+    )
+
+    return [pscustomobject]@{
+        Ran        = $Ran
+        Findings   = $Findings
+        SkipReason = $SkipReason
+    }
+}
+
 function Invoke-ServicesCheckWithLog {
     param(
         [Parameter(Mandatory)]$Result,
@@ -52,10 +66,12 @@ function Invoke-ServicesCheckWithLog {
         [string]$SkipReason
     )
 
-    if (-not $Tracker.ContainsKey($Name)) { $Tracker[$Name] = 0 }
+    if (-not $Tracker.ContainsKey($Name)) {
+        $Tracker[$Name] = New-ServicesCheckTrackerRecord -Ran $false -Findings 0 -SkipReason $null
+    }
 
     if ($PSBoundParameters.ContainsKey('SkipReason') -and -not [string]::IsNullOrWhiteSpace($SkipReason)) {
-        $Tracker[$Name] = "skip: $SkipReason"
+        $Tracker[$Name] = New-ServicesCheckTrackerRecord -Ran $false -Findings $null -SkipReason $SkipReason
         Write-HeuristicDebug -Source 'Services' -Message ("Skipped {0}; reason: {1}" -f $Name, $SkipReason)
         return
     }
@@ -72,7 +88,7 @@ function Invoke-ServicesCheckWithLog {
     $normalDelta = $normalsAfter - $normalsBefore
     $findings = $issueDelta + $normalDelta
 
-    $Tracker[$Name] = $findings
+    $Tracker[$Name] = New-ServicesCheckTrackerRecord -Ran $true -Findings $findings -SkipReason $null
     Write-HeuristicDebug -Source 'Services' -Message ("Ran {0}; finding(s): {1}" -f $Name, $findings) -Data ([ordered]@{
         Issues  = $issueDelta
         Normals = $normalDelta
@@ -438,9 +454,28 @@ function Invoke-ServicesHeuristics {
     $checkSummary = New-Object System.Collections.Generic.List[string]
     foreach ($check in $checkOrder) {
         if ($checkTracker.ContainsKey($check)) {
-            $checkSummary.Add(("{0}={1}" -f $check, $checkTracker[$check])) | Out-Null
+            $entry = $checkTracker[$check]
+
+            if ($entry -is [pscustomobject]) {
+                $hasSkipReason = $entry.PSObject.Properties['SkipReason'] -and -not [string]::IsNullOrWhiteSpace([string]$entry.SkipReason)
+                $hasRanProperty = $entry.PSObject.Properties['Ran']
+                $hasFindingsProperty = $entry.PSObject.Properties['Findings']
+
+                if ($hasSkipReason) {
+                    $checkSummary.Add(("{0}=skip: {1}" -f $check, $entry.SkipReason)) | Out-Null
+                } elseif ($hasRanProperty -and ($entry.Ran -eq $true)) {
+                    $findingsValue = if ($hasFindingsProperty -and $null -ne $entry.Findings) { $entry.Findings } else { 0 }
+                    $checkSummary.Add(("{0}=ran (findings: {1})" -f $check, $findingsValue)) | Out-Null
+                } elseif ($hasRanProperty) {
+                    $checkSummary.Add(("{0}=not-run" -f $check)) | Out-Null
+                } else {
+                    $checkSummary.Add(("{0}={1}" -f $check, $entry)) | Out-Null
+                }
+            } else {
+                $checkSummary.Add(("{0}={1}" -f $check, $entry)) | Out-Null
+            }
         } else {
-            $checkSummary.Add(("{0}=0" -f $check)) | Out-Null
+            $checkSummary.Add(("{0}=not-run" -f $check)) | Out-Null
         }
     }
     Write-HeuristicDebug -Source 'Services' -Message ('Checks executed: {0}' -f ($checkSummary -join ', '))
