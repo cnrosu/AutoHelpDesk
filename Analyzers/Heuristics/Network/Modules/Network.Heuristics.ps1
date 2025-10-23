@@ -1489,7 +1489,150 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1
         })
 
         if ($neighborCount -eq 0) {
-            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Subcategory $lldpSubcategory -Remediation $lldpRemediation
+            $collectorSourceSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+            $collectorSources = New-Object System.Collections.Generic.List[string]
+            $collectorErrorSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+            $collectorErrors = New-Object System.Collections.Generic.List[string]
+
+            $addCollectorSource = {
+                param([string]$Label)
+
+                if ([string]::IsNullOrWhiteSpace($Label)) { return }
+                if ($collectorSourceSet.Add($Label)) { $collectorSources.Add($Label) | Out-Null }
+            }
+
+            $addCollectorError = {
+                param([string]$Label, [string]$ErrorText)
+
+                if ([string]::IsNullOrWhiteSpace($ErrorText)) { return }
+                $labelText = if ([string]::IsNullOrWhiteSpace($Label)) { 'LLDP' } else { $Label }
+                $message = ('{0}: {1}' -f $labelText, $ErrorText)
+                if ($collectorErrorSet.Add($message)) { $collectorErrors.Add($message) | Out-Null }
+            }
+
+            $extractErrorMessage = {
+                param($Value)
+
+                if (-not $Value) { return $null }
+
+                if ($Value -is [System.Collections.IDictionary]) {
+                    if ($Value.Contains('Error') -and $Value['Error']) { return [string]$Value['Error'] }
+                } elseif ($Value.PSObject) {
+                    if ($Value.PSObject.Properties['Error'] -and $Value.Error) { return [string]$Value.Error }
+                }
+
+                return $null
+            }
+
+            if ($lldpPayload -and $lldpPayload.PSObject.Properties['Sources'] -and $lldpPayload.Sources) {
+                $sourcesValue = $lldpPayload.Sources
+
+                if ($sourcesValue -is [System.Collections.IDictionary]) {
+                    foreach ($key in $sourcesValue.Keys) {
+                        if (-not $key) { continue }
+
+                        $label = [string]$key
+                        & $addCollectorSource $label
+
+                        $entry = $sourcesValue[$key]
+                        if (-not $entry) { continue }
+
+                        $entryError = & $extractErrorMessage $entry
+                        if ($entryError) { & $addCollectorError $label $entryError }
+
+                        if ($entry -is [System.Collections.IEnumerable] -and -not ($entry -is [string]) -and -not ($entry -is [System.Collections.IDictionary])) {
+                            foreach ($item in $entry) {
+                                if (-not $item) { continue }
+
+                                $itemLabel = $label
+                                if ($item -is [System.Collections.IDictionary]) {
+                                    if ($item.Contains('Command') -and $item['Command']) { $itemLabel = ('{0} ({1})' -f $label, [string]$item['Command']) }
+                                } elseif ($item.PSObject) {
+                                    if ($item.PSObject.Properties['Command'] -and $item.Command) { $itemLabel = ('{0} ({1})' -f $label, [string]$item.Command) }
+                                }
+
+                                $itemError = & $extractErrorMessage $item
+                                if ($itemError) { & $addCollectorError $itemLabel $itemError }
+                            }
+                        }
+                    }
+                } elseif ($sourcesValue -is [System.Collections.IEnumerable] -and -not ($sourcesValue -is [string])) {
+                    foreach ($entry in $sourcesValue) {
+                        if (-not $entry) { continue }
+
+                        $label = $null
+                        if ($entry -is [string]) {
+                            $label = [string]$entry
+                            & $addCollectorSource $label
+                            continue
+                        }
+
+                        if ($entry -is [System.Collections.IDictionary]) {
+                            $dictLabel = $null
+                            if ($entry.Contains('Source') -and $entry['Source']) {
+                                $dictLabel = [string]$entry['Source']
+                                & $addCollectorSource $dictLabel
+                            }
+                            $entryError = & $extractErrorMessage $entry
+                            if ($entryError) { & $addCollectorError $dictLabel $entryError }
+                        } elseif ($entry.PSObject) {
+                            $objectLabel = $null
+                            if ($entry.PSObject.Properties['Source'] -and $entry.Source) {
+                                $objectLabel = [string]$entry.Source
+                                & $addCollectorSource $objectLabel
+                            }
+                            $entryError = & $extractErrorMessage $entry
+                            if ($entryError) { & $addCollectorError $objectLabel $entryError }
+                        }
+                    }
+                } else {
+                    $singleLabel = $null
+                    if ($lldpPayload.PSObject.Properties['Source'] -and $lldpPayload.Source) {
+                        $singleLabel = [string]$lldpPayload.Source
+                    } elseif ($sourcesValue -is [string]) {
+                        $singleLabel = [string]$sourcesValue
+                    }
+                    if (-not $singleLabel) { $singleLabel = 'LLDP' }
+                    & $addCollectorSource $singleLabel
+
+                    $singleError = & $extractErrorMessage $sourcesValue
+                    if ($singleError) { & $addCollectorError $singleLabel $singleError }
+                }
+            }
+
+            $sourceCount = $collectorSources.Count
+            $sourceDetail = if ($sourceCount -gt 0) { 'sources: ' + ($collectorSources -join ', ') } else { 'no LLDP sources were detected' }
+
+            $evidenceList = New-Object System.Collections.Generic.List[string]
+            $evidenceList.Add(('network-lldp payload reported 0 neighbor entries ({0}).' -f $sourceDetail)) | Out-Null
+
+            if ($collectorErrors.Count -gt 0) {
+                foreach ($error in $collectorErrors) {
+                    if ($error) { $evidenceList.Add(('Collector error: {0}' -f $error)) | Out-Null }
+                }
+            }
+
+            if ($expectationCount -gt 0) {
+                $expectationSourceSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+                $expectationSources = New-Object System.Collections.Generic.List[string]
+
+                if ($switchPortExpectations -and $switchPortExpectations.PSObject.Properties['Sources'] -and $switchPortExpectations.Sources) {
+                    foreach ($item in (ConvertTo-NetworkArray $switchPortExpectations.Sources)) {
+                        if (-not $item) { continue }
+                        $text = [string]$item
+                        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+                        if ($expectationSourceSet.Add($text)) { $expectationSources.Add($text) | Out-Null }
+                    }
+                }
+
+                if ($expectationSources.Count -gt 0) {
+                    $evidenceList.Add(('Switch inventory provided {0} documented port mappings from {1}.' -f $expectationCount, ($expectationSources -join ', '))) | Out-Null
+                } else {
+                    $evidenceList.Add(('Switch inventory provided {0} documented port mappings.' -f $expectationCount)) | Out-Null
+                }
+            }
+
+            Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'LLDP neighbors missing, so switch port documentation cannot be verified and mispatches may go unnoticed.' -Evidence ($evidenceList.ToArray()) -Subcategory $lldpSubcategory -Remediation $lldpRemediation
         } else {
             $neighborMap = @{}
             foreach ($neighbor in $lldpNeighbors) {
