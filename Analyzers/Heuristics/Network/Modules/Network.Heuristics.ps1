@@ -3204,7 +3204,7 @@ certutil -store -enterprise MY
         try {
             $vpnCategory = Invoke-NetworkVpnAnalysis -Context $Context
         } catch {
-            Write-HeuristicError -Source 'Network' -Message 'Invoke-NetworkVpnAnalysis failed' -Data ([ordered]@{ Error = $_.Exception.Message })
+            Write-HeuristicDebug -Source 'Network' -Message 'Invoke-NetworkVpnAnalysis failed' -Data ([ordered]@{ Error = $_.Exception.Message })
         }
     }
 

@@ -5,7 +5,7 @@
 
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
-function Format-HtmlLogMessage {
+function Write-HtmlDebug {
     param(
         [Parameter(Mandatory)]
         [string]$Stage,
@@ -13,14 +13,12 @@ function Format-HtmlLogMessage {
         [Parameter(Mandatory)]
         [string]$Message,
 
-        [hashtable]$Data,
-
-        [bool]$IncludeData = $false
+        [hashtable]$Data
     )
 
     $formatted = "HTML [{0}] {1}" -f $Stage, $Message
 
-    if ($IncludeData -and $Data) {
+    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
         $detailEntries = $Data.GetEnumerator() | Sort-Object Name
         $details = [System.Collections.Generic.List[string]]::new()
         foreach ($entry in $detailEntries) {
@@ -36,39 +34,7 @@ function Format-HtmlLogMessage {
         }
     }
 
-    return $formatted
-}
-
-function Write-HtmlDebug {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Stage,
-
-        [Parameter(Mandatory)]
-        [string]$Message,
-
-        [hashtable]$Data
-    )
-
-    $includeData = $PSBoundParameters.ContainsKey('Data') -and $Data
-    $formatted = Format-HtmlLogMessage -Stage $Stage -Message $Message -Data $Data -IncludeData:$includeData
     Write-Verbose $formatted
-}
-
-function Write-HtmlError {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Stage,
-
-        [Parameter(Mandatory)]
-        [string]$Message,
-
-        [hashtable]$Data
-    )
-
-    $includeData = $PSBoundParameters.ContainsKey('Data') -and $Data
-    $formatted = Format-HtmlLogMessage -Stage $Stage -Message $Message -Data $Data -IncludeData:$includeData
-    Write-Error -Message $formatted
 }
 
 function Get-SourceLogData {
@@ -673,13 +639,13 @@ function Get-FailedCollectorReports {
     $failures = New-Object System.Collections.Generic.List[pscustomobject]
 
     if (-not $Context) {
-        Write-HtmlError -Stage 'FailedReports' -Message 'No analyzer context supplied; skipping collector evaluation.'
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'No analyzer context supplied; skipping collector evaluation.'
         return $failures
     }
 
     $summaryArtifact = Get-AnalyzerArtifact -Context $Context -Name 'collection-summary'
     if (-not $summaryArtifact) {
-        Write-HtmlError -Stage 'FailedReports' -Message 'Collection summary artifact unavailable; assuming no failures.'
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'Collection summary artifact unavailable; assuming no failures.'
     }
 
     if ($summaryArtifact -and $summaryArtifact.Data -and $summaryArtifact.Data.PSObject.Properties['Results']) {
@@ -718,7 +684,7 @@ function Get-FailedCollectorReports {
                         Details = $detail
                         Path    = $scriptPath
                     }) | Out-Null
-                Write-HtmlError -Stage 'FailedReports' -Message 'Collector execution failed.' -Data @{ Collector = $displayName; Path = $scriptPath }
+                Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector execution failed.' -Data @{ Collector = $displayName; Path = $scriptPath }
                 continue
             }
 
@@ -730,7 +696,7 @@ function Get-FailedCollectorReports {
                             Details = 'Collector did not return a path or payload reference.'
                             Path    = $scriptPath
                         }) | Out-Null
-                    Write-HtmlError -Stage 'FailedReports' -Message 'Collector succeeded but returned no output.' -Data @{ Collector = $displayName; Path = $scriptPath }
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector succeeded but returned no output.' -Data @{ Collector = $displayName; Path = $scriptPath }
                     continue
                 }
 
@@ -759,12 +725,12 @@ function Get-FailedCollectorReports {
                             Details = $detailText
                             Path    = $scriptPath
                         }) | Out-Null
-                    Write-HtmlError -Stage 'FailedReports' -Message 'Collector output references missing files.' -Data @{ Collector = $displayName; Missing = ($missing -join ', ') }
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Collector output references missing files.' -Data @{ Collector = $displayName; Missing = ($missing -join ', ') }
                 }
             }
         }
     } else {
-        Write-HtmlError -Stage 'FailedReports' -Message 'Collection summary missing result entries.'
+        Write-HtmlDebug -Stage 'FailedReports' -Message 'Collection summary missing result entries.'
     }
 
     if ($Context.Artifacts) {
@@ -788,7 +754,7 @@ function Get-FailedCollectorReports {
                             Details = [string]$data.Error
                             Path    = $path
                         }) | Out-Null
-                    Write-HtmlError -Stage 'FailedReports' -Message 'Artifact parsing failed.' -Data @{ Key = $key; Path = $path }
+                    Write-HtmlDebug -Stage 'FailedReports' -Message 'Artifact parsing failed.' -Data @{ Key = $key; Path = $path }
                     continue
                 }
 
@@ -813,7 +779,7 @@ function Get-FailedCollectorReports {
                                 Details = 'Captured file contained no payload.'
                                 Path    = $path
                             }) | Out-Null
-                        Write-HtmlError -Stage 'FailedReports' -Message 'Artifact payload empty.' -Data @{ Key = $key; Path = $path }
+                        Write-HtmlDebug -Stage 'FailedReports' -Message 'Artifact payload empty.' -Data @{ Key = $key; Path = $path }
                     }
                 }
             }

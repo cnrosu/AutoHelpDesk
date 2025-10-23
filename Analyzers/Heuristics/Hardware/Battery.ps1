@@ -266,7 +266,7 @@ function Invoke-HardwareBatteryChecks {
                     ResultCount = $designCapacityResults.Count
                 })
             } catch {
-                Write-HeuristicError -Source 'Hardware/Battery' -Message 'Failed querying system design capacity fallback' -Data ([ordered]@{
+                Write-HeuristicDebug -Source 'Hardware/Battery' -Message 'Failed querying system design capacity fallback' -Data ([ordered]@{
                     Error = $_.Exception.Message
                 })
                 $designCapacityResults = @()
