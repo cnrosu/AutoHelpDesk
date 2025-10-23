@@ -2292,7 +2292,14 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
             if ($interfaceError) {
                 Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'netsh failed to enumerate wired interfaces, so 802.1X status is unknown.' -Evidence $interfaceError -Subcategory $wiredSubcategory
             } elseif ($interfaces.Count -eq 0) {
-                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'No wired interfaces reported by netsh, so 802.1X status is unknown.' -Subcategory $wiredSubcategory
+                $interfaceEvidence = $null
+                if ($interfaceLines -and $interfaceLines.Count -gt 0) {
+                    $interfaceEvidence = [ordered]@{ 'netsh lan show interfaces' = $interfaceLines }
+                }
+                if (-not $interfaceEvidence) {
+                    $interfaceEvidence = 'netsh lan show interfaces returned no interface entries.'
+                }
+                Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'No wired interfaces reported by netsh, so 802.1X status is unknown.' -Evidence $interfaceEvidence -Subcategory $wiredSubcategory
             } else {
                 foreach ($interface in $interfaces) {
                     if (-not $interface) { continue }
