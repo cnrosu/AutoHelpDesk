@@ -880,6 +880,116 @@ function ConvertTo-StructuredRemediationHtml {
   }
 
   $builder = [System.Text.StringBuilder]::new()
+  $getListItemText = $null
+  $getListItemText = {
+    param($value)
+
+    if ($null -eq $value) { return $null }
+
+    if (($value -is [System.Collections.IEnumerable]) -and -not ($value -is [string])) {
+      $segments = New-Object System.Collections.Generic.List[string]
+      foreach ($segment in $value) {
+        $segmentText = & $getListItemText $segment
+        if (-not [string]::IsNullOrWhiteSpace($segmentText)) {
+          $segments.Add($segmentText) | Out-Null
+        }
+      }
+
+      if ($segments.Count -eq 0) { return $null }
+      return [string]::Join(' ', $segments.ToArray())
+    }
+
+    $stringValue = [string]$value
+    if ([string]::IsNullOrWhiteSpace($stringValue)) { return $null }
+    return Resolve-RemediationTemplateText -Value $stringValue -Context $contextTable
+  }
+
+  $renderListItems = $null
+  $renderListItems = {
+    param(
+      $items,
+      [switch]$IsNested
+    )
+
+    if ($null -eq $items) { return $null }
+
+    $materialized = New-Object System.Collections.Generic.List[object]
+    if (($items -is [string]) -or -not ($items -is [System.Collections.IEnumerable])) {
+      $materialized.Add($items) | Out-Null
+    } else {
+      foreach ($entry in $items) {
+        $materialized.Add($entry) | Out-Null
+      }
+    }
+
+    if ($materialized.Count -eq 0) { return $null }
+
+    $itemBuilder = [System.Text.StringBuilder]::new()
+
+    foreach ($item in $materialized) {
+      if ($null -eq $item) { continue }
+
+      $text = $null
+      $nestedHtml = $null
+
+      if ($item -is [psobject]) {
+        $childItems = $null
+        if ($item.PSObject.Properties['items']) {
+          $rawChildren = $item.items
+          if (($rawChildren -is [System.Collections.IEnumerable]) -and -not ($rawChildren -is [string])) {
+            $childItems = $rawChildren
+          }
+        }
+
+        $textSource = $null
+        if ($item.PSObject.Properties['content']) {
+          $textSource = $item.content
+        } elseif ($item.PSObject.Properties['text']) {
+          $textSource = $item.text
+        } elseif ($item.PSObject.Properties['title']) {
+          $textSource = $item.title
+        } elseif ($item.PSObject.Properties['label']) {
+          $textSource = $item.label
+        }
+
+        if ($null -ne $textSource) {
+          $text = & $getListItemText $textSource
+        } elseif (-not $childItems) {
+          $base = $item.PSObject.BaseObject
+          if (($base -is [string]) -or ($base -is [ValueType])) {
+            $text = & $getListItemText $base
+          }
+        }
+
+        if ($childItems) {
+          $nestedHtml = & $renderListItems $childItems -IsNested
+        }
+      } else {
+        $text = & $getListItemText $item
+      }
+
+      if ([string]::IsNullOrWhiteSpace($text) -and [string]::IsNullOrWhiteSpace($nestedHtml)) { continue }
+
+      $encodedText = $null
+      if (-not [string]::IsNullOrWhiteSpace($text)) {
+        $encodedText = Encode-Html $text
+        $encodedText = [regex]::Replace($encodedText, '\\r?\\n', '<br>')
+      }
+
+      $liBuilder = [System.Text.StringBuilder]::new()
+      [void]$liBuilder.Append('<li>')
+      if ($encodedText) { [void]$liBuilder.Append($encodedText) }
+      if ($nestedHtml) { [void]$liBuilder.Append($nestedHtml) }
+      [void]$liBuilder.Append('</li>')
+      [void]$itemBuilder.Append($liBuilder.ToString())
+    }
+
+    if ($itemBuilder.Length -eq 0) { return $null }
+
+    $classAttr = " class='rem-list'"
+    if ($IsNested) { $classAttr = " class='rem-list rem-list--nested'" }
+    return "<ul$classAttr>$($itemBuilder.ToString())</ul>"
+  }
   $index = 0
   foreach ($rawStep in $Steps) {
     $index++
@@ -909,9 +1019,16 @@ function ConvertTo-StructuredRemediationHtml {
       $title = Resolve-RemediationTemplateText -Value $step.title -Context $contextTable
     }
 
+    $rawContent = $null
     $content = $null
+    $contentCollection = $null
     if ($step.PSObject.Properties['content']) {
-      $content = Resolve-RemediationTemplateText -Value $step.content -Context $contextTable
+      $rawContent = $step.content
+      if (($rawContent -is [System.Collections.IEnumerable]) -and -not ($rawContent -is [string])) {
+        $contentCollection = $rawContent
+      } elseif ($null -ne $rawContent) {
+        $content = Resolve-RemediationTemplateText -Value ([string]$rawContent) -Context $contextTable
+      }
     }
 
     $classList = @('rem-step')
@@ -959,6 +1076,27 @@ function ConvertTo-StructuredRemediationHtml {
           [void]$builder.Append("<div class='code-card'>$toolbar<pre$preClasses><code class='language-$langClass' id='$codeId'>$encodedCode</code></pre></div>")
         } else {
           [void]$builder.Append($codeBlockHtml)
+        }
+      }
+      'list' {
+        $itemsSource = $null
+        if ($step.PSObject.Properties['items']) {
+          $itemsSource = $step.items
+        } elseif ($contentCollection) {
+          $itemsSource = $contentCollection
+        }
+
+        $listHtml = $null
+        if ($itemsSource) {
+          $listHtml = & $renderListItems $itemsSource
+        }
+
+        if ($listHtml) {
+          [void]$builder.Append($listHtml)
+        } elseif (-not [string]::IsNullOrWhiteSpace($content)) {
+          $encoded = Encode-Html $content
+          $encoded = [regex]::Replace($encoded, '\\r?\\n', '<br>')
+          [void]$builder.Append("<p class='rem-text report-remediation__text'>$encoded</p>")
         }
       }
       'note' {
