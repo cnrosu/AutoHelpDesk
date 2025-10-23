@@ -1,3 +1,28 @@
+$script:PowerShellLoggingRemediation = @'
+[
+  {
+    "type": "list",
+    "title": "Enable PowerShell logging policies",
+    "items": [
+      "Computer Configuration → Administrative Templates → Windows Components → Windows PowerShell.",
+      "Set \"Turn on PowerShell Script Block Logging\" to Enabled.",
+      "Set \"Turn on Module Logging\" to Enabled and include monitored modules (for broad coverage, add *).",
+      "Enable \"Turn on PowerShell Transcription\" and target a secured transcript output folder."
+    ]
+  },
+  {
+    "type": "code",
+    "title": "Configure locally via registry (run as admin)",
+    "lang": "powershell",
+    "content": "New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Force | Out-Null\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name EnableModuleLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name ModuleNames -Value @('*') -Type MultiString\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name EnableTranscripting -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name OutputDirectory -Value 'C:\\Logs\\PowerShellTranscripts' -Type String"
+  },
+  {
+    "type": "note",
+    "content": "After enabling the policies, restart PowerShell sessions (or reboot) so script activity is recorded, update the OutputDirectory value for your secure storage location, and monitor transcripts for sensitive data."
+  }
+]
+'@
+
 function Invoke-SecurityCredentialManagementChecks {
     param(
         [Parameter(Mandatory)]
@@ -254,16 +279,46 @@ function Invoke-SecurityPolicyChecks {
             $transcriptionEnabled = $false
             $evidenceLines = [System.Collections.Generic.List[string]]::new()
             foreach ($policy in (ConvertTo-List $payload.Policies)) {
-                if (-not $policy -or -not $policy.Values) { continue }
+                if (-not $policy) { continue }
+
+                $policyPath = if ($policy.PSObject.Properties['Path'] -and $policy.Path) { [string]$policy.Path } else { 'Unknown policy path' }
+
+                if ($policy.PSObject.Properties['Error'] -and $policy.Error) {
+                    $evidenceLines.Add(("- Error reading {0}: {1}" -f $policyPath, $policy.Error)) | Out-Null
+                    continue
+                }
+
+                if (-not $policy.PSObject.Properties['Values'] -or -not $policy.Values) {
+                    $evidenceLines.Add(("- No registry values returned from {0}." -f $policyPath)) | Out-Null
+                    continue
+                }
+
                 foreach ($prop in $policy.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
-                    $evidenceLines.Add(("{0} ({1}): {2}" -f $prop.Name, $policy.Path, $prop.Value))
+                    $rawValue = $prop.Value
+                    if (($rawValue -is [System.Collections.IEnumerable]) -and -not ($rawValue -is [string])) {
+                        $stringValues = @()
+                        foreach ($entry in $rawValue) {
+                            if ($null -eq $entry) { continue }
+                            $stringValues += [string]$entry
+                        }
+                        $valueText = if ($stringValues.Count -gt 0) { $stringValues -join ', ' } else { '(empty)' }
+                    } elseif ($null -eq $rawValue) {
+                        $valueText = '(null)'
+                    } else {
+                        $valueText = [string]$rawValue
+                    }
+
+                    $evidenceLines.Add(("- {0} ({1}): {2}" -f $prop.Name, $policyPath, $valueText)) | Out-Null
                     switch -Regex ($prop.Name) {
                         'EnableScriptBlockLogging' { if ((ConvertTo-NullableInt $prop.Value) -eq 1) { $scriptBlockEnabled = $true } }
                         'EnableModuleLogging'     { if ((ConvertTo-NullableInt $prop.Value) -eq 1) { $moduleLoggingEnabled = $true } }
                         'EnableTranscripting'     { if ((ConvertTo-NullableInt $prop.Value) -eq 1) { $transcriptionEnabled = $true } }
                     }
                 }
+            }
+            if ($evidenceLines.Count -eq 0) {
+                $evidenceLines.Add('- No PowerShell logging policy data was returned in the artifact.') | Out-Null
             }
             if ($scriptBlockEnabled -and $moduleLoggingEnabled) {
                 Add-CategoryNormal -CategoryResult $CategoryResult -Title 'PowerShell logging policies enforced' -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
@@ -273,13 +328,13 @@ function Invoke-SecurityPolicyChecks {
                 if (-not $moduleLoggingEnabled) { $detailParts.Add('Module logging disabled') }
                 if (-not $transcriptionEnabled) { $detailParts.Add('Transcription not enabled') }
                 $detail = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Logging state unknown.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging' -Remediation $script:PowerShellLoggingRemediation
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Evidence 'PowerShell logging policy payload was missing or empty in the diagnostics artifact.' -Subcategory 'PowerShell Logging' -Remediation $script:PowerShellLoggingRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Evidence 'PowerShell logging collector artifact (powershell-logging.json) not found; registry policy state unknown.' -Subcategory 'PowerShell Logging' -Remediation $script:PowerShellLoggingRemediation
     }
 
     $restrictSendingLsa = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RestrictSendingNTLMTraffic')
