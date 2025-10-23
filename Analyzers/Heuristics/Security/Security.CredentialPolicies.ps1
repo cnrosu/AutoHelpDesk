@@ -1,3 +1,30 @@
+$script:SecurityPowerShellLoggingRemediation = @'
+[
+  {
+    "type": "text",
+    "title": "Security — PowerShell logging",
+    "content": "Enable PowerShell script block, module, and transcription logging so investigators can trace administrative commands."
+  },
+  {
+    "type": "code",
+    "title": "Configure logging policies",
+    "lang": "powershell",
+    "content": "New-Item -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\" -Force | Out-Null\nNew-Item -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\" -Force | Out-Null\nSet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\" -Name \"EnableScriptBlockLogging\" -Type DWord -Value 1\n\nNew-Item -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging\" -Force | Out-Null\nSet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging\" -Name \"EnableModuleLogging\" -Type DWord -Value 1\nNew-Item -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging\\ModuleNames\" -Force | Out-Null\nNew-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging\\ModuleNames\" -Name \"*\" -PropertyType String -Value \"*\" -Force | Out-Null\n\nNew-Item -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\" -Force | Out-Null\nSet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\" -Name \"EnableTranscripting\" -Type DWord -Value 1\nSet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\" -Name \"EnableInvocationHeader\" -Type DWord -Value 1\nSet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\" -Name \"OutputDirectory\" -Value \"C:\\\\Logs\\\\PowerShell\""
+  },
+  {
+    "type": "note",
+    "title": "Harden transcript storage",
+    "content": "Store transcripts on a secured share with limited write access so attackers cannot tamper with audit trails."
+  },
+  {
+    "type": "code",
+    "title": "Validate logging status",
+    "lang": "powershell",
+    "content": "Get-ItemPropertyValue -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\" -Name EnableScriptBlockLogging\nGet-ItemPropertyValue -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging\" -Name EnableModuleLogging\nGet-ItemProperty -Path \"HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\" | Select-Object EnableTranscripting,EnableInvocationHeader,OutputDirectory"
+  }
+]
+'@
+
 function Invoke-SecurityCredentialManagementChecks {
     param(
         [Parameter(Mandatory)]
@@ -254,7 +281,20 @@ function Invoke-SecurityPolicyChecks {
             $transcriptionEnabled = $false
             $evidenceLines = [System.Collections.Generic.List[string]]::new()
             foreach ($policy in (ConvertTo-List $payload.Policies)) {
-                if (-not $policy -or -not $policy.Values) { continue }
+                if (-not $policy) { continue }
+                if ($policy.PSObject.Properties['Error'] -and $policy.Error) {
+                    $pathLabel = if ($policy.Path) { $policy.Path } else { 'Unknown policy path' }
+                    $null = $evidenceLines.Add(("{0} error: {1}" -f $pathLabel, $policy.Error))
+                    continue
+                }
+                if (-not $policy.PSObject.Properties['Values'] -or -not $policy.Values) {
+                    if ($policy.Path) {
+                        $null = $evidenceLines.Add(("No registry values captured at {0}." -f $policy.Path))
+                    } else {
+                        $null = $evidenceLines.Add('No registry values captured for PowerShell logging policy path.')
+                    }
+                    continue
+                }
                 foreach ($prop in $policy.Values.PSObject.Properties) {
                     if ($prop.Name -match '^PS') { continue }
                     $evidenceLines.Add(("{0} ({1}): {2}" -f $prop.Name, $policy.Path, $prop.Value))
@@ -273,13 +313,35 @@ function Invoke-SecurityPolicyChecks {
                 if (-not $moduleLoggingEnabled) { $detailParts.Add('Module logging disabled') }
                 if (-not $transcriptionEnabled) { $detailParts.Add('Transcription not enabled') }
                 $detail = if ($detailParts.Count -gt 0) { $detailParts.ToArray() -join '; ' } else { 'Logging state unknown.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('PowerShell logging is incomplete ({0}), leaving script activity untraceable. Enable required logging for auditing.' -f $detail) -Evidence ($evidenceLines.ToArray() -join "`n") -Subcategory 'PowerShell Logging' -Remediation $script:SecurityPowerShellLoggingRemediation
             }
         } else {
-            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+            $missingLoggingEvidence = [System.Collections.Generic.List[string]]::new()
+            if ($payload) {
+                if ($payload.PSObject.Properties['Error'] -and $payload.Error) {
+                    $null = $missingLoggingEvidence.Add([string]$payload.Error)
+                }
+                if ($payload.PSObject.Properties['Policies']) {
+                    $policiesList = ConvertTo-List $payload.Policies
+                    if (-not $policiesList -or $policiesList.Count -eq 0) {
+                        $null = $missingLoggingEvidence.Add('Collector returned zero PowerShell logging policy entries.')
+                    }
+                } else {
+                    $null = $missingLoggingEvidence.Add('Collector payload did not include a Policies array.')
+                }
+            } else {
+                $null = $missingLoggingEvidence.Add('Collector payload missing from powershell-logging artifact.')
+            }
+
+            if ($missingLoggingEvidence.Count -eq 0) {
+                $null = $missingLoggingEvidence.Add('PowerShell logging policy data unavailable in collector output.')
+            }
+
+            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Evidence ($missingLoggingEvidence.ToArray() -join "`n") -Subcategory 'PowerShell Logging' -Remediation $script:SecurityPowerShellLoggingRemediation
         }
     } else {
-        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Subcategory 'PowerShell Logging'
+        $loggingArtifactEvidence = 'powershell-logging artifact missing from collected data.'
+        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'PowerShell logging is incomplete (Script block logging disabled; Module logging disabled; Transcription not enabled), leaving script activity untraceable. Enable required logging for auditing.' -Evidence $loggingArtifactEvidence -Subcategory 'PowerShell Logging' -Remediation $script:SecurityPowerShellLoggingRemediation
     }
 
     $restrictSendingLsa = ConvertTo-NullableInt (Get-RegistryValueFromEntries -Entries $lsaEntries -PathPattern 'Control\\\\Lsa$' -Name 'RestrictSendingNTLMTraffic')
