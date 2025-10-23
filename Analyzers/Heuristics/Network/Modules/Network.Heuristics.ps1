@@ -1669,8 +1669,109 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.1
         if ($payload -and $payload.Resolution) {
             $failures = $payload.Resolution | Where-Object { $_.Success -eq $false }
             if ($failures.Count -gt 0) {
-                $names = $failures.Name
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0} — DNS resolution is failing.' -f ($names -join ', ')) -Subcategory 'DNS Resolution' -Data (& $createConnectivityData $connectivityContext)
+                $namesList = New-Object System.Collections.Generic.List[string]
+                foreach ($failure in $failures) {
+                    if (-not $failure) { continue }
+                    if (-not ($failure.PSObject.Properties['Name'] -and $failure.Name)) { continue }
+                    $name = [string]$failure.Name
+                    if (-not $name) { continue }
+                    if (-not $namesList.Contains($name)) { $namesList.Add($name) | Out-Null }
+                }
+                if ($namesList.Count -eq 0) { $namesList.Add('DNS target') | Out-Null }
+                $names = $namesList.ToArray()
+
+                $failedLookupLines = New-Object System.Collections.Generic.List[string]
+                foreach ($failure in ($failures | Select-Object -First 3)) {
+                    if (-not $failure) { continue }
+                    $name = if ($failure.PSObject.Properties['Name'] -and $failure.Name) { [string]$failure.Name } else { 'Lookup' }
+                    $message = if ($failure.PSObject.Properties['Error'] -and $failure.Error) { [string]$failure.Error } else { 'No records returned.' }
+                    $failedLookupLines.Add('{0} → {1}' -f $name, $message) | Out-Null
+                }
+                if ($failures.Count -gt 3) {
+                    $failedLookupLines.Add('(+{0} additional failures)' -f ($failures.Count - 3)) | Out-Null
+                }
+
+                $serverSummaryLines = New-Object System.Collections.Generic.List[string]
+                $serverEntries = @()
+                if ($dnsContext -and $dnsContext.ClientServers) {
+                    $serverEntries = @($dnsContext.ClientServers | Where-Object { $_ })
+                }
+                if ($serverEntries.Count -eq 0) {
+                    $serverSummaryLines.Add('No DNS server inventory returned by Get-DnsClientServerAddress.') | Out-Null
+                } else {
+                    foreach ($entry in $serverEntries) {
+                        if (-not $entry) { continue }
+                        if ($entry.PSObject.Properties['Error'] -and $entry.Error) {
+                            $source = if ($entry.PSObject.Properties['Source'] -and $entry.Source) { [string]$entry.Source } else { 'Get-DnsClientServerAddress' }
+                            $serverSummaryLines.Add(('{0} error: {1}' -f $source, $entry.Error)) | Out-Null
+                            continue
+                        }
+
+                        $alias = if ($entry.PSObject.Properties['InterfaceAlias'] -and $entry.InterfaceAlias) { [string]$entry.InterfaceAlias } else { 'Interface' }
+                        $addresses = @()
+                        if ($entry.PSObject.Properties['ServerAddresses'] -and $entry.ServerAddresses) {
+                            $addresses = @(ConvertTo-NetworkArray $entry.ServerAddresses | Where-Object { $_ })
+                        }
+
+                        if ($addresses.Count -gt 0) {
+                            $serverSummaryLines.Add('{0}: {1}' -f $alias, ($addresses -join ', ')) | Out-Null
+                        } else {
+                            $serverSummaryLines.Add('{0}: (no DNS servers reported)' -f $alias) | Out-Null
+                        }
+                    }
+                }
+
+                $evidence = [ordered]@{
+                    'Failed lookups'         = ($failedLookupLines.ToArray() -join "`n")
+                    'Configured DNS servers' = ($serverSummaryLines.ToArray() -join "`n")
+                }
+
+                $dnsResolutionRemediationSteps = @(
+                    @{
+                        type    = 'text'
+                        title   = 'Verify resolver availability'
+                        content = 'Check each configured DNS server for reachability on UDP/TCP 53 so queries stop failing.'
+                    }
+                    @{
+                        type    = 'code'
+                        title   = 'Probe DNS servers'
+                        lang    = 'powershell'
+                        content = @"
+$servers = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses } | ForEach-Object { $_.ServerAddresses } | Select-Object -Unique
+foreach ($server in $servers) {
+    Test-NetConnection -ComputerName $server -Port 53
+}
+"@.Trim()
+                    }
+                    @{
+                        type    = 'text'
+                        title   = 'Point adapters to healthy resolvers'
+                        content = 'Replace offline or incorrect DNS entries with the corporate/DHCP servers that answer internal zones.'
+                    }
+                    @{
+                        type    = 'code'
+                        title   = 'Update DNS servers'
+                        lang    = 'powershell'
+                        content = 'Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 10.0.0.10,10.0.0.11'
+                    }
+                    @{
+                        type    = 'text'
+                        title   = 'Clear cached failures'
+                        content = 'After fixing resolver reachability, flush and re-register DNS records to refresh name resolution.'
+                    }
+                    @{ 
+                        type    = 'code'
+                        title   = 'Refresh DNS cache'
+                        lang    = 'cmd'
+                        content = @"
+ipconfig /flushdns
+ipconfig /registerdns
+"@.Trim()
+                    }
+                )
+                $dnsResolutionRemediation = $dnsResolutionRemediationSteps | ConvertTo-Json -Depth 5
+
+                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title ('DNS lookup failures: {0} — Users cannot reach services because DNS resolution is failing.' -f ($names -join ', ')) -Evidence $evidence -Subcategory 'DNS Resolution' -Remediation $dnsResolutionRemediation -Data (& $createConnectivityData $connectivityContext)
             } else {
                 Add-CategoryNormal -CategoryResult $result -Title 'DNS lookups succeeded' -Subcategory 'DNS Resolution'
             }
