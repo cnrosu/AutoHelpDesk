@@ -81,6 +81,16 @@ function New-AnalyzerContext {
             Data = $data
         }
 
+        if ($file.Name -ieq 'msinfo32.json' -or $file.Name -ieq 'msinfo.json') {
+            Write-HeuristicDebug -Source 'Context' -Message 'Tracking msinfo artifact' -Data ([ordered]@{
+                Path        = $entry.Path
+                CacheKey    = if ($cacheKey) { $cacheKey } else { '(none)' }
+                CacheHit    = $cacheHit
+                ShouldCache = $shouldCache
+                HasData     = [bool]$entry.Data
+            })
+        }
+
         $key = $file.Name.ToLowerInvariant()
         if ($artifactMap.ContainsKey($key)) {
             $artifactMap[$key] = @($artifactMap[$key]) + ,$entry
@@ -96,6 +106,16 @@ function New-AnalyzerContext {
         Write-HeuristicDebug -Source 'Context' -Message ("Discovered {0} artifact{1}." -f $artifactCount, $suffix)
     } else {
         Write-HeuristicDebug -Source 'Context' -Message 'Discovered artifacts (0): (none)'
+    }
+
+    $msinfoKeys = @($artifactMap.Keys | Where-Object { $_ -match 'msinfo' })
+    if ($msinfoKeys.Count -gt 0) {
+        Write-HeuristicDebug -Source 'Context' -Message 'Context msinfo artifact keys' -Data ([ordered]@{
+            Count = $msinfoKeys.Count
+            Keys  = ($msinfoKeys -join ', ')
+        })
+    } else {
+        Write-HeuristicDebug -Source 'Context' -Message 'Context msinfo artifact keys: (none)'
     }
 
     return [pscustomobject]@{
