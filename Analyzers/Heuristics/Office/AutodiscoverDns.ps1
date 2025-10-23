@@ -600,7 +600,7 @@ function Evaluate-AutodiscoverDomain {
 
         return [pscustomobject]@{
             Outcome   = 'Normal'
-            Title     = "Office/Autodiscover DNS: $Domain Autodiscover published correctly → Info"
+            Title     = "Office/Autodiscover DNS: $Domain Exchange Online Autodiscover records are healthy"
             Evidence  = $evidence
             Summary   = $summary
         }
