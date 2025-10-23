@@ -104,7 +104,7 @@ function New-AnalyzerContext {
     }
 }
 
-function Write-HeuristicDebug {
+function Format-HeuristicLogMessage {
     param(
         [Parameter(Mandatory)]
         [string]$Source,
@@ -112,12 +112,14 @@ function Write-HeuristicDebug {
         [Parameter(Mandatory)]
         [string]$Message,
 
-        [hashtable]$Data
+        [hashtable]$Data,
+
+        [bool]$IncludeData = $false
     )
 
     $formatted = "[{0}] {1}" -f $Source, $Message
 
-    if ($PSBoundParameters.ContainsKey('Data') -and $Data) {
+    if ($IncludeData -and $Data) {
         $detailEntries = $Data.GetEnumerator() | Sort-Object Name
         $details = [System.Collections.Generic.List[string]]::new()
         foreach ($entry in $detailEntries) {
@@ -133,7 +135,39 @@ function Write-HeuristicDebug {
         }
     }
 
+    return $formatted
+}
+
+function Write-HeuristicDebug {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Source,
+
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $includeData = $PSBoundParameters.ContainsKey('Data') -and $Data
+    $formatted = Format-HeuristicLogMessage -Source $Source -Message $Message -Data $Data -IncludeData:$includeData
     Write-Host $formatted
+}
+
+function Write-HeuristicError {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Source,
+
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [hashtable]$Data
+    )
+
+    $includeData = $PSBoundParameters.ContainsKey('Data') -and $Data
+    $formatted = Format-HeuristicLogMessage -Source $Source -Message $Message -Data $Data -IncludeData:$includeData
+    Write-Error -Message $formatted
 }
 
 function Get-HeuristicSourceMetadata {

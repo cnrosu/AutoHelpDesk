@@ -222,7 +222,7 @@ function Invoke-ServicesHeuristics {
             if ($payload.PSObject.Properties['Error']) {
                 $payloadError = [string]$payload.Error
                 if (-not [string]::IsNullOrWhiteSpace($payloadError)) {
-                    Write-HeuristicDebug -Source 'Services' -Message 'Payload reported non-blocking error' -Data ([ordered]@{
+                    Write-HeuristicError -Source 'Services' -Message 'Payload reported non-blocking error' -Data ([ordered]@{
                         Candidate = $candidateInfo.Key
                         Path      = $entryPath
                         Error     = $payloadError
@@ -249,7 +249,7 @@ function Invoke-ServicesHeuristics {
             if ($servicesNode -and $servicesNode.PSObject.Properties['Error']) {
                 $nodeError = [string]$servicesNode.Error
                 if (-not [string]::IsNullOrWhiteSpace($nodeError)) {
-                    Write-HeuristicDebug -Source 'Services' -Message 'Services candidate reported error; evaluating next option' -Data ([ordered]@{
+                    Write-HeuristicError -Source 'Services' -Message 'Services candidate reported error; evaluating next option' -Data ([ordered]@{
                         Candidate = $candidateInfo.Key
                         Path      = $entryPath
                         Error     = $nodeError
@@ -448,7 +448,7 @@ function Invoke-ServicesHeuristics {
     if ($payload.PSObject.Properties['CollectionErrors']) {
         $collectionErrors = @($payload.CollectionErrors | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
         if ($collectionErrors.Count -gt 0) {
-            Write-HeuristicDebug -Source 'Services' -Message ('CollectionErrors found (non-blocking). Messages: {0}' -f ($collectionErrors -join ' | '))
+            Write-HeuristicError -Source 'Services' -Message ('CollectionErrors found (non-blocking). Messages: {0}' -f ($collectionErrors -join ' | '))
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Service inventory reported collection errors, so outages in critical services may go unnoticed.' -Evidence ($collectionErrors -join "`n") -Subcategory 'Service Inventory'
         }
     }
