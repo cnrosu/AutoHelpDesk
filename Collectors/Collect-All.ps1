@@ -91,7 +91,6 @@ $collectorExecutionOrder = @(
     'Collect-Storage.ps1',
     'Collect-Drivers.ps1',
     'Collect-Events.ps1',
-    'Collect-Power.ps1',
     'Collect-PendingReboot.ps1',
     'Collect-Performance.ps1',
     'Collect-ServiceBaseline.ps1',
