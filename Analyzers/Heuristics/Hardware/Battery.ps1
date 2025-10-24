@@ -461,7 +461,11 @@ function Invoke-HardwareBatteryChecks {
 
             if ($severity) {
                 $title = "Battery {0} has degraded {1}%." -f $label, $wearPercent
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Subcategory 'Battery' -Explanation 'Battery wear has reduced usable capacity, so unplugged runtime shortens for end users.' -Remediation $script:HardwareBatteryRemediation
+                $evidenceLines = @(
+                    ("Full charge capacity: {0:N0} mWh" -f [math]::Round($full, 0)),
+                    ("Design capacity: {0:N0} mWh" -f [math]::Round($design, 0))
+                )
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence $evidenceLines -Subcategory 'Battery' -Explanation 'Battery wear has reduced usable capacity, so unplugged runtime shortens for end users.' -Remediation $script:HardwareBatteryRemediation
                 $issueCount++
             }
         }
