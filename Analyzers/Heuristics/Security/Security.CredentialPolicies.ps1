@@ -265,7 +265,7 @@ function Invoke-SecurityPolicyChecks {
                 if ($consentPrompt -ne $null -and $consentPrompt -lt 2) { $findings.Add("ConsentPrompt=$consentPrompt") }
                 if ($secureDesktop -ne $null -and $secureDesktop -eq 0) { $findings.Add('PromptOnSecureDesktop=0') }
                 $detail = if ($findings.Count -gt 0) { $findings.ToArray() -join '; ' } else { 'UAC configuration unclear.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title ('UAC configuration is insecure ({0}), reducing protection for administrative actions.' -f $detail) -Evidence $evidence -Subcategory 'User Account Control'
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'UAC configuration is insecure, reducing protection for administrative actions.' -Evidence $evidence -Subcategory 'User Account Control'
             }
         }
     }
