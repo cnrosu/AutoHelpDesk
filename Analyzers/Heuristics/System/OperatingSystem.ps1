@@ -270,7 +270,186 @@ function Invoke-SystemOperatingSystemChecks {
         Found = [bool]$msinfoIdentity
     })
     if (-not $msinfoIdentity) {
-        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System summary missing from msinfo32.json, so OS checks were skipped.' -Subcategory 'Collection'
+        $artifactCandidates = @(
+            [pscustomobject]@{ Name = 'msinfo32'; Label = 'msinfo32.json' },
+            [pscustomobject]@{ Name = 'msinfo'; Label = 'msinfo.json' }
+        )
+
+        $candidateLabels = ($artifactCandidates | ForEach-Object { $_.Label }) -join ', '
+        Write-HeuristicDebug -Source 'System/OS' -Message 'System identity unavailable; gathering msinfo artifact evidence' -Data ([ordered]@{
+            Candidates = $candidateLabels
+        })
+
+        $evidenceLines = [System.Collections.Generic.List[string]]::new()
+        if ($Context -and $Context.PSObject.Properties['InputFolder'] -and $Context.InputFolder) {
+            $evidenceLines.Add(("Input folder: {0}" -f $Context.InputFolder)) | Out-Null
+        }
+
+        $candidateEvidence = [System.Collections.Generic.List[string]]::new()
+
+        foreach ($candidate in $artifactCandidates) {
+            $name = $candidate.Name
+            $label = $candidate.Label
+
+            Write-HeuristicDebug -Source 'System/OS' -Message 'Evaluating msinfo artifact candidate' -Data ([ordered]@{
+                Candidate = $label
+            })
+
+            $artifactResult = $null
+            try {
+                $artifactResult = Get-AnalyzerArtifact -Context $Context -Name $name
+            } catch {
+                $errorMessage = $_.Exception.Message
+                Write-HeuristicDebug -Source 'System/OS' -Message 'Msinfo artifact lookup failed' -Data ([ordered]@{
+                    Candidate = $label
+                    Error     = $errorMessage
+                })
+                $candidateEvidence.Add(("{0}: lookup error: {1}" -f $label, $errorMessage)) | Out-Null
+                continue
+            }
+
+            $entries = @()
+            if ($artifactResult) {
+                if ($artifactResult -is [System.Collections.IEnumerable] -and -not ($artifactResult -is [string])) {
+                    foreach ($entry in $artifactResult) {
+                        if ($entry) { $entries += ,$entry }
+                    }
+                } else {
+                    $entries += ,$artifactResult
+                }
+            }
+
+            Write-HeuristicDebug -Source 'System/OS' -Message 'Resolved msinfo artifact candidate' -Data ([ordered]@{
+                Candidate  = $label
+                Found      = [bool]($entries.Count -gt 0)
+                EntryCount = $entries.Count
+            })
+
+            if ($entries.Count -eq 0) {
+                $candidateEvidence.Add(("{0}: not found" -f $label)) | Out-Null
+                continue
+            }
+
+            $plural = if ($entries.Count -eq 1) { '' } else { 's' }
+            $candidateEvidence.Add(("{0}: found {1} file{2}" -f $label, $entries.Count, $plural)) | Out-Null
+
+            $entryIndex = 0
+            foreach ($entry in $entries) {
+                $entryIndex++
+                if (-not $entry) { continue }
+
+                $path = $null
+                if ($entry.PSObject.Properties['Path'] -and $entry.Path) {
+                    $path = [string]$entry.Path
+                }
+
+                $data = if ($entry.PSObject.Properties['Data']) { $entry.Data } else { $null }
+                $parseError = $null
+                if ($data -and $data.PSObject.Properties['Error'] -and $data.Error) {
+                    $parseError = [string]$data.Error
+                }
+
+                $payload = $null
+                $payloadError = $null
+                if (-not $parseError) {
+                    try {
+                        $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $entry)
+                    } catch {
+                        $payloadError = $_.Exception.Message
+                    }
+                }
+
+                $sectionCount = $null
+                $summaryPresent = $null
+                $collectorErrors = @()
+                if ($payload) {
+                    if ($payload.PSObject.Properties['Diagnostics'] -and $payload.Diagnostics -and $payload.Diagnostics.PSObject.Properties['SectionCount']) {
+                        $sectionCount = $payload.Diagnostics.SectionCount
+                    } elseif ($payload.PSObject.Properties['Sections'] -and $payload.Sections) {
+                        try { $sectionCount = $payload.Sections.Count } catch { $sectionCount = $null }
+                    }
+
+                    try {
+                        $summaryTable = Get-MsinfoSectionTable -Payload $payload -Names @('System Summary', 'summary')
+                        $summaryPresent = [bool]$summaryTable
+                    } catch {
+                        $summaryPresent = $false
+                    }
+
+                    if ($payload.PSObject.Properties['Errors'] -and $payload.Errors) {
+                        $collectorErrors = @($payload.Errors | Where-Object { $_ })
+                    }
+                }
+
+                $debugData = [ordered]@{
+                    Candidate  = $label
+                    EntryIndex = $entryIndex
+                    Path       = if ($path) { $path } else { $null }
+                    Parsed     = [bool]$data
+                }
+                if ($parseError) { $debugData['ParseError'] = $parseError }
+                $debugData['HasPayload'] = [bool]$payload
+                if ($payloadError) { $debugData['PayloadError'] = $payloadError }
+                if ($null -ne $sectionCount) { $debugData['SectionCount'] = $sectionCount }
+                if ($summaryPresent -ne $null) { $debugData['SystemSummaryPresent'] = $summaryPresent }
+                if ($collectorErrors -and $collectorErrors.Count -gt 0) {
+                    $debugData['CollectorErrors'] = ($collectorErrors -join ' | ')
+                }
+
+                Write-HeuristicDebug -Source 'System/OS' -Message 'Inspecting msinfo artifact entry' -Data $debugData
+
+                $entryLabel = if ($entries.Count -gt 1) { "  - Entry $entryIndex" } else { '  - Entry' }
+                if ($path) {
+                    $candidateEvidence.Add(("{0} path: {1}" -f $entryLabel, $path)) | Out-Null
+                } else {
+                    $candidateEvidence.Add(("{0} path: (unknown)" -f $entryLabel)) | Out-Null
+                }
+
+                if ($parseError) {
+                    $candidateEvidence.Add(("    Parse error: {0}" -f $parseError)) | Out-Null
+                    continue
+                }
+
+                if (-not $payload) {
+                    if ($payloadError) {
+                        $candidateEvidence.Add(("    Payload error: {0}" -f $payloadError)) | Out-Null
+                    } else {
+                        $candidateEvidence.Add('    Payload: missing') | Out-Null
+                    }
+                    continue
+                }
+
+                if ($null -ne $sectionCount) {
+                    $candidateEvidence.Add(("    Sections: {0}" -f $sectionCount)) | Out-Null
+                } else {
+                    $candidateEvidence.Add('    Sections: (unknown)') | Out-Null
+                }
+
+                if ($summaryPresent) {
+                    $candidateEvidence.Add('    System summary section: present') | Out-Null
+                } else {
+                    $candidateEvidence.Add('    System summary section: missing') | Out-Null
+                }
+
+                if ($collectorErrors -and $collectorErrors.Count -gt 0) {
+                    foreach ($error in $collectorErrors) {
+                        $candidateEvidence.Add(("    Collector error: {0}" -f $error)) | Out-Null
+                    }
+                }
+            }
+        }
+
+        if ($candidateEvidence.Count -gt 0) {
+            if ($evidenceLines.Count -gt 0) { $evidenceLines.Add('') | Out-Null }
+            $evidenceLines.Add('Msinfo artifact investigation:') | Out-Null
+            foreach ($line in $candidateEvidence) { $evidenceLines.Add($line) | Out-Null }
+        } else {
+            $evidenceLines.Add('Msinfo artifact investigation: no artifact information available') | Out-Null
+        }
+
+        $evidence = $evidenceLines -join "`n"
+
+        Add-CategoryIssue -CategoryResult $Result -Severity 'warning' -Title 'System summary missing from msinfo32.json, so OS checks were skipped.' -Evidence $evidence -Subcategory 'Collection'
         return
     }
 
