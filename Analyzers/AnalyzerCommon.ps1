@@ -801,16 +801,41 @@ function Get-MsinfoSystemSummarySection {
     $ordered = New-Object System.Collections.Specialized.OrderedDictionary
     $lookup = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
     $rowLookup = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $sectionKeys = New-Object 'System.Collections.Generic.List[string]'
 
     foreach ($row in $section.Rows) {
         if (-not $row) { continue }
         $key = Get-MsinfoRowValue -Row $row -Names @('Item', 'Name')
         if (-not $key) { continue }
         $value = Get-MsinfoRowValue -Row $row -Names @('Value')
-        if (-not $ordered.Contains($key)) { $ordered.Add($key, $value) }
+        if (-not $ordered.Contains($key)) {
+            $ordered.Add($key, $value)
+            $sectionKeys.Add([string]$key) | Out-Null
+        }
         $lookup[$key] = $value
         $rowLookup[$key] = $row
     }
+
+    $keysArray = $sectionKeys.ToArray()
+    if ($keysArray.Count -gt 0) {
+        $keysMessage = "System summary keys ({0}): {1}" -f $keysArray.Count, ($keysArray -join ', ')
+        Write-HeuristicDebug -Source 'MsinfoSummary' -Message $keysMessage
+    } else {
+        Write-HeuristicDebug -Source 'MsinfoSummary' -Message 'System summary keys: (none)'
+    }
+
+    $rowCount = $null
+    if ($section.PSObject.Properties.Name -contains 'RowCount') {
+        $rowCount = $section.RowCount
+    }
+    if ($null -eq $rowCount -and $section.Rows) {
+        $rowCount = $section.Rows.Count
+    }
+    if ($null -eq $rowCount) {
+        $rowCount = 0
+    }
+
+    Write-HeuristicDebug -Source 'MsinfoSummary' -Message ("System summary row count: {0}" -f $rowCount) -Data @{ Section = $section.SectionName }
 
     $section | Add-Member -NotePropertyName 'Values' -NotePropertyValue $ordered -Force
     $section | Add-Member -NotePropertyName 'Lookup' -NotePropertyValue $lookup -Force
