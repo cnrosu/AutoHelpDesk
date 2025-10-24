@@ -206,8 +206,8 @@ function Invoke-NetworkFirewallProfileAnalysis {
 ]
 '@
 
-    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall.profile'
-    Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall.profile artifact' -Data ([ordered]@{
+    $artifact = Get-AnalyzerArtifact -Context $Context -Name 'firewall-profile'
+    Write-HeuristicDebug -Source 'Network' -Message 'Resolved firewall-profile artifact' -Data ([ordered]@{
         Found = [bool]$artifact
     })
 
@@ -230,7 +230,7 @@ function Invoke-NetworkFirewallProfileAnalysis {
     }
 
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $artifact)
-    Write-HeuristicDebug -Source 'Network' -Message 'Evaluating firewall.profile payload' -Data ([ordered]@{
+    Write-HeuristicDebug -Source 'Network' -Message 'Evaluating firewall-profile payload' -Data ([ordered]@{
         HasPayload = [bool]$payload
         UsingAggregateFallback = $usingFirewallAggregate
     })
