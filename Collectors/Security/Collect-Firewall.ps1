@@ -345,7 +345,7 @@ function Invoke-Main {
     $outputPath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'firewall.json' -Data $result -Depth 6
 
     $profileResult = New-CollectorMetadata -Payload $profiles
-    $profilePath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'firewall.profile.json' -Data $profileResult -Depth 6
+    $profilePath = Export-CollectorResult -OutputDirectory $OutputDirectory -FileName 'firewall-profile.json' -Data $profileResult -Depth 6
 
     Write-Output $outputPath
     Write-Output $profilePath
