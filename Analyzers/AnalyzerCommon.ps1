@@ -1193,7 +1193,12 @@ function Get-MsinfoStartupPayload {
     $msinfoPayload = Get-MsinfoArtifactPayload -Context $Context
     if (-not $msinfoPayload) { return $null }
 
-    $table = Get-MsinfoSectionTable -Payload $msinfoPayload -Names @('software environment\startup programs', 'startup programs')
+    $table = Get-MsinfoSectionTable -Payload $msinfoPayload -Names @(
+        'software environment\startup programs',
+        'software environment\start-up programs',
+        'startup programs',
+        'start-up programs'
+    )
     if (-not $table -or -not $table.Rows -or $table.RowCount -eq 0) { return $null }
 
     $startupItems = New-Object System.Collections.Generic.List[pscustomobject]
@@ -1201,10 +1206,10 @@ function Get-MsinfoStartupPayload {
     foreach ($row in $table.Rows) {
         if (-not $row) { continue }
 
-        $name = Get-MsinfoRowValue -Row $row -Names @('Item', 'Name')
-        $command = Get-MsinfoRowValue -Row $row -Names @('Command')
+        $name = Get-MsinfoRowValue -Row $row -Names @('Item', 'Name', 'Program')
+        $command = Get-MsinfoRowValue -Row $row -Names @('Command', 'Command Line')
         $location = Get-MsinfoRowValue -Row $row -Names @('Location', 'Path')
-        $user = Get-MsinfoRowValue -Row $row -Names @('User')
+        $user = Get-MsinfoRowValue -Row $row -Names @('User', 'User Name', 'Username')
         $description = Get-MsinfoRowValue -Row $row -Names @('Description')
         $disabled = Get-MsinfoRowValue -Row $row -Names @('Disabled')
 
