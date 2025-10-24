@@ -25,8 +25,11 @@ function Invoke-EventsDnsChecks {
 
     if (-not $events -or $events.Count -eq 0) { return }
 
+    $lookbackHours = 24
+    $timeoutThreshold = 5
+
     $nowUtc = (Get-Date).ToUniversalTime()
-    $cutoff = $nowUtc.AddHours(-24)
+    $cutoff = $nowUtc.AddHours(-1 * $lookbackHours)
     $WindowMinutes = [int][math]::Round(($nowUtc - $cutoff).TotalMinutes)
     $groups = @{}
 
@@ -110,7 +113,7 @@ function Invoke-EventsDnsChecks {
 
     if ($groups.Count -eq 0) { return }
 
-    $flagged = @($groups.Values | Where-Object { $_.Count -ge 5 })
+    $flagged = @($groups.Values | Where-Object { $_.Count -ge $timeoutThreshold })
     if ($flagged.Count -eq 0) { return }
 
     $occurrences = ($flagged | Measure-Object -Property Count -Sum).Sum
@@ -152,10 +155,12 @@ function Invoke-EventsDnsChecks {
     }
 
     Write-HeuristicDebug -Source 'Events/Dns' -Message 'DNS timeouts heuristic triggered' -Data ([ordered]@{
-        Groups      = $flagged.Count
-        Occurrences = $occurrences
-        LastUtc     = $lastUtcString
-        Tags        = $tags
+        Groups            = $flagged.Count
+        Occurrences       = $occurrences
+        LastUtc           = $lastUtcString
+        Threshold         = $timeoutThreshold
+        WindowHours       = $lookbackHours
+        Tags              = $tags
     })
 
     $bucketed = @()
@@ -170,6 +175,11 @@ function Invoke-EventsDnsChecks {
             }
         }
     }
+
+    $kind = 'DNS'
+    $title = 'DNS resolution timeouts observed'
+    $subcat = 'Networking / DNS'
+    $explanation = 'Frequent DNS resolver timeouts mean devices intermittently fail to reach network resources.'
 
     $evidence = [ordered]@{
         area           = 'Events'
@@ -186,9 +196,5 @@ function Invoke-EventsDnsChecks {
 
     $evidenceJson = $evidence | ConvertTo-Json -Depth 6
 
-    $title = 'DNS resolution timeouts observed'
-    $subcat = 'Networking / DNS'
-    $kind = 'DNS'
-
-    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidenceJson -Subcategory $subcat
+    Add-CategoryIssue -CategoryResult $Result -Severity 'medium' -Title $title -Evidence $evidenceJson -Subcategory $subcat -Explanation $explanation
 }
