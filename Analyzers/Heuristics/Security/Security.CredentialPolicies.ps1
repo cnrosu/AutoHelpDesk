@@ -4,10 +4,18 @@ $script:PowerShellLoggingRemediation = @'
     "type": "list",
     "title": "Enable PowerShell logging policies",
     "items": [
-      "Computer Configuration → Administrative Templates → Windows Components → Windows PowerShell.",
-      "Set \"Turn on PowerShell Script Block Logging\" to Enabled.",
-      "Set \"Turn on Module Logging\" to Enabled and include monitored modules (for broad coverage, add *).",
-      "Enable \"Turn on PowerShell Transcription\" and target a secured transcript output folder."
+      {
+        "content": "Open the Group Policy Editor and browse to Computer Configuration → Administrative Templates → Windows Components → Windows PowerShell."
+      },
+      {
+        "content": "Set \"Turn on PowerShell Script Block Logging\" to Enabled so every evaluated script block is recorded."
+      },
+      {
+        "content": "Set \"Turn on Module Logging\" to Enabled and include monitored modules (use * for broad coverage)."
+      },
+      {
+        "content": "Enable \"Turn on PowerShell Transcription\" and choose a secured transcript output folder."
+      }
     ]
   },
   {
