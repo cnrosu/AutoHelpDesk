@@ -19,8 +19,32 @@ $script:PowerShellLoggingRemediation = @'
     ]
   },
   {
-    "type": "code",
+    "type": "list",
     "title": "Configure locally via registry (run as admin)",
+    "items": [
+      {
+        "content": "Create or update HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell and the ScriptBlockLogging, ModuleLogging, and Transcription subkeys."
+      },
+      {
+        "content": "Under ScriptBlockLogging, set the EnableScriptBlockLogging DWORD value to 1."
+      },
+      {
+        "content": "Under ModuleLogging, set the EnableModuleLogging DWORD value to 1."
+      },
+      {
+        "content": "Populate ModuleLogging\\ModuleNames with the modules to monitor (use * to capture all modules if broad logging is acceptable)."
+      },
+      {
+        "content": "Under Transcription, set the EnableTranscripting DWORD value to 1."
+      },
+      {
+        "content": "Set Transcription\\OutputDirectory to a secured folder such as C:\\Logs\\PowerShellTranscripts."
+      }
+    ]
+  },
+  {
+    "type": "code",
+    "title": "Apply the registry settings with PowerShell",
     "lang": "powershell",
     "content": "New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Force | Out-Null\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name EnableModuleLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name ModuleNames -Value @('*') -Type MultiString\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name EnableTranscripting -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name OutputDirectory -Value 'C:\\Logs\\PowerShellTranscripts' -Type String"
   },
