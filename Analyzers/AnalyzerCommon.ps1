@@ -1076,7 +1076,10 @@ function Get-MsinfoSystemIdentity {
     )
 
     $summary = Get-MsinfoSystemSummarySection -Context $Context
-    if (-not $summary) { return $null }
+    if (-not $summary) {
+        Write-HeuristicDebug -Source 'SystemIdentity' -Message 'System summary not available; unable to resolve system identity.'
+        return $null
+    }
 
     $domainContext = Get-MsinfoDomainContext -Context $Context -Summary $summary
 
@@ -1099,7 +1102,7 @@ function Get-MsinfoSystemIdentity {
     $totalPhysicalBytes = ConvertTo-MsinfoByteCount -Value $totalPhysicalMemory
     $installedPhysicalBytes = ConvertTo-MsinfoByteCount -Value $installedPhysicalMemory
 
-    return [pscustomobject]@{
+    $identity = [pscustomobject]@{
         Source                    = 'msinfo32'
         Summary                   = $summary
         DeviceName                = $deviceName
@@ -1125,6 +1128,20 @@ function Get-MsinfoSystemIdentity {
         DomainRoleLabel           = if ($domainContext) { $domainContext.DomainRoleLabel } else { $null }
         PartOfDomain              = if ($domainContext) { $domainContext.PartOfDomain } else { $null }
     }
+
+    Write-HeuristicDebug -Source 'SystemIdentity' -Message 'Resolved msinfo32 system identity.' -Data ([ordered]@{
+        DeviceName      = $identity.DeviceName
+        Manufacturer    = $identity.Manufacturer
+        Model           = $identity.Model
+        OSName          = $identity.OSName
+        OSVersion       = if ($identity.OSVersion) { $identity.OSVersion } else { $identity.OSVersionRaw }
+        OSBuild         = $identity.OSBuild
+        Domain          = $identity.Domain
+        Workgroup       = $identity.Workgroup
+        PartOfDomain    = $identity.PartOfDomain
+    })
+
+    return $identity
 }
 
 function Get-MsinfoServicesPayload {
