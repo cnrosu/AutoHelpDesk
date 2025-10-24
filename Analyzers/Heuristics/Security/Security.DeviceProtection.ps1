@@ -447,7 +447,13 @@ function Invoke-SecurityAttackSurfaceChecks {
                     $null = $detailBuilder.Append('ASLR disabled')
                 }
                 $detailText = if ($detailBuilder.Length -gt 0) { $detailBuilder.ToString() } else { 'Mitigation status unknown.' }
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title ('Exploit protection mitigations not fully enabled ({0}), reducing exploit resistance.' -f $detailText) -Evidence $evidenceText -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
+                if ($detailBuilder.Length -gt 0) {
+                    $evidence.Add("Mitigation gaps: $detailText")
+                } else {
+                    $evidence.Add($detailText)
+                }
+                $evidenceText = $evidence.ToArray() -join "`n"
+                Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit protection mitigations not fully enabled, reducing exploit resistance.' -Evidence $evidenceText -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
             }
         } elseif ($payload -and $payload.Mitigations -and $payload.Mitigations.Error) {
             Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'medium' -Title 'Exploit Protection not captured, so exploit resistance is unknown.' -Evidence $payload.Mitigations.Error -Subcategory 'Exploit Protection' -Remediation $exploitProtectionRemediation
