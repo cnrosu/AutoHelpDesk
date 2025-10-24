@@ -4,17 +4,76 @@ $script:PowerShellLoggingRemediation = @'
     "type": "list",
     "title": "Enable PowerShell logging policies",
     "items": [
-      "Computer Configuration → Administrative Templates → Windows Components → Windows PowerShell.",
-      "Set \"Turn on PowerShell Script Block Logging\" to Enabled.",
-      "Set \"Turn on Module Logging\" to Enabled and include monitored modules (for broad coverage, add *).",
-      "Enable \"Turn on PowerShell Transcription\" and target a secured transcript output folder."
+      {
+        "content": "Open the Group Policy Editor and browse to Computer Configuration → Administrative Templates → Windows Components → Windows PowerShell."
+      },
+      {
+        "content": "Set \"Turn on PowerShell Script Block Logging\" to Enabled so every evaluated script block is recorded."
+      },
+      {
+        "content": "Set \"Turn on Module Logging\" to Enabled and include monitored modules (use * for broad coverage)."
+      },
+      {
+        "content": "Enable \"Turn on PowerShell Transcription\" and choose a secured transcript output folder."
+      }
     ]
   },
   {
-    "type": "code",
+    "type": "list",
     "title": "Configure locally via registry (run as admin)",
-    "lang": "powershell",
-    "content": "New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Force | Out-Null\nNew-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Force | Out-Null\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name EnableModuleLogging -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name ModuleNames -Value @('*') -Type MultiString\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name EnableTranscripting -Value 1 -Type DWord\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name OutputDirectory -Value 'C:\\Logs\\PowerShellTranscripts' -Type String"
+    "items": [
+      {
+        "content": "Create or update HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell and the ScriptBlockLogging, ModuleLogging, and Transcription subkeys."
+      },
+      {
+        "content": "Under ScriptBlockLogging, set the EnableScriptBlockLogging DWORD value to 1."
+      },
+      {
+        "content": "Under ModuleLogging, set the EnableModuleLogging DWORD value to 1."
+      },
+      {
+        "content": "Populate ModuleLogging\\ModuleNames with the modules to monitor (use * to capture all modules if broad logging is acceptable)."
+      },
+      {
+        "content": "Under Transcription, set the EnableTranscripting DWORD value to 1."
+      },
+      {
+        "content": "Set Transcription\\OutputDirectory to a secured folder such as C:\\Logs\\PowerShellTranscripts."
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "title": "Apply the registry settings with PowerShell",
+    "items": [
+      {
+        "content": "`New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell' -Force | Out-Null`"
+      },
+      {
+        "content": "`New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Force | Out-Null`"
+      },
+      {
+        "content": "`New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Force | Out-Null`"
+      },
+      {
+        "content": "`New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Force | Out-Null`"
+      },
+      {
+        "content": "`Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1 -Type DWord`"
+      },
+      {
+        "content": "`Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name EnableModuleLogging -Value 1 -Type DWord`"
+      },
+      {
+        "content": "`Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' -Name ModuleNames -Value @('*') -Type MultiString`"
+      },
+      {
+        "content": "`Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name EnableTranscripting -Value 1 -Type DWord`"
+      },
+      {
+        "content": "`Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription' -Name OutputDirectory -Value 'C:\\Logs\\PowerShellTranscripts' -Type String`"
+      }
+    ]
   },
   {
     "type": "note",
