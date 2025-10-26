@@ -6,7 +6,7 @@ $script:WdacPolicyEnforcementRemediation = @'
   {
     "type": "text",
     "title": "Fix (pick one)",
-    "content": "- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.\n- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period."
+    "content": "\n- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.\n- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period."
   },
   {
     "type": "text",
