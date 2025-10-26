@@ -452,6 +452,17 @@ function Invoke-ServiceCheckAutomaticInventory {
         ServiceCount = $Services.Count
     })
 
+    $ignoredAutomaticServiceNames = @(
+        # Microsoft Network Privacy Policy Service frequently shows as Automatic
+        # yet remains intentionally stopped; suppress it from the general auto-start
+        # outage card so technicians do not see a false positive.
+        'MNPPService'
+    )
+
+    $ignoredAutomaticServiceDisplayNames = @(
+        'Microsoft Network Privacy Policy Service'
+    )
+
     $stoppedAuto = $Services | Where-Object {
         $startNormalized = if ($_.PSObject.Properties['StartModeNormalized']) {
             $_.StartModeNormalized
@@ -470,6 +481,31 @@ function Invoke-ServiceCheckAutomaticInventory {
         }
 
         ($startNormalized -in @('automatic','automatic-delayed')) -and ($statusNormalized -ne 'running')
+    } | Where-Object {
+        $serviceName = if ($_.PSObject.Properties['Name']) { [string]$_.Name } else { $null }
+        $displayName = if ($_.PSObject.Properties['DisplayName']) { [string]$_.DisplayName } else { $null }
+
+        $ignored = $false
+
+        foreach ($candidate in $ignoredAutomaticServiceNames) {
+            if (-not $candidate) { continue }
+            if ($serviceName -and ($serviceName -ieq $candidate)) {
+                $ignored = $true
+                break
+            }
+        }
+
+        if (-not $ignored) {
+            foreach ($candidate in $ignoredAutomaticServiceDisplayNames) {
+                if (-not $candidate) { continue }
+                if ($displayName -and ($displayName -ieq $candidate)) {
+                    $ignored = $true
+                    break
+                }
+            }
+        }
+
+        -not $ignored
     }
 
     if ($stoppedAuto.Count -gt 0) {
