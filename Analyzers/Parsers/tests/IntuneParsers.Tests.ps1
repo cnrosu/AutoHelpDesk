@@ -12,10 +12,33 @@ function New-TestIntuneContext {
     param(
         [string[]]$TaskLines,
         [object[]]$ServiceEntries,
-        [object]$PushPayload
+        [object]$PushPayload,
+        [string]$DsregText,
+        [switch]$SkipDsreg
     )
 
     $artifacts = @{}
+
+    if (-not $SkipDsreg) {
+        if (-not $PSBoundParameters.ContainsKey('DsregText')) {
+            $DsregText = @'
+AzureAdJoined : YES
+PRT : YES
+MdmUrl : https://enrollment.manage.microsoft.com/EnrollmentServer/Discovery.svc
+MdmComplianceUrl : https://portal.manage.microsoft.com/?portalAction=Compliance
+'@
+        }
+
+        $identityArtifact = [pscustomobject]@{
+            Path = 'identity.json'
+            Data = [pscustomobject]@{
+                Payload = [pscustomobject]@{
+                    DsRegCmd = $DsregText
+                }
+            }
+        }
+        $artifacts['identity'] = $identityArtifact
+    }
 
     if ($TaskLines) {
         $taskArtifact = [pscustomobject]@{
@@ -254,6 +277,19 @@ if ($missingIssues.Count -ne 1) {
     if ($missingIssue.Explanation -notmatch 'Service is missing, so push wake requests from Intune will not arrive') {
         $null = $failures.Add('Missing service explanation did not describe the push wake impact.')
     }
+}
+
+$workgroupDsreg = @'
+AzureAdJoined : NO
+PRT : NO
+MdmUrl : (Not set)
+MdmEnrollmentUrl : (Not set)
+'
+
+$workgroupContext = New-TestIntuneContext -DsregText $workgroupDsreg
+$workgroupResult = Invoke-IntuneHeuristics -Context $workgroupContext
+if ($workgroupResult) {
+    $null = $failures.Add('Expected Intune heuristics to be skipped when Intune MDM enrollment is not detected.')
 }
 
 if ($failures.Count -gt 0) {
