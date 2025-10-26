@@ -1,5 +1,5 @@
 ## Summary
-AutoHelpDesk flags Windows Defender Firewall rules that leave multicast DNS (mDNS/Bonjour) open on the Domain profile because that allows enterprise endpoints to answer multicast discovery requests from any corporate VLAN. The checklist below captures the commands technicians need to validate exposure, interpret the results, and scope or disable UDP/5353 depending on business requirements. This content mirrors the updated issue card so the remediation story remains consistent across reports and tickets.
+AutoHelpDesk flags Windows Defender Firewall rules that leave multicast DNS (mDNS/Bonjour) open on the Domain profile because that allows enterprise endpoints to answer multicast discovery requests from beyond the local subnet (potentially other VLANs via routing). The checklist below captures the commands technicians need to validate exposure, interpret the results, and scope or disable UDP/5353 depending on business requirements. This content mirrors the updated issue card so the remediation story remains consistent across reports and tickets.
 
 ## Discovery Checklist
 The following PowerShell commands enumerate the firewall rules, listeners, and policies that determine whether mDNS is active. Run them from an elevated session on the affected endpoint.
