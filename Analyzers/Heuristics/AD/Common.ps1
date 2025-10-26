@@ -50,6 +50,8 @@ function Get-ArtifactPayloadValue {
         [string]$Property
     )
 
+    if (-not $Artifact) { return $null }
+
     $payload = Resolve-SinglePayload -Payload (Get-ArtifactPayload -Artifact $Artifact)
     if (-not $payload) { return $null }
     if ($Property) { return Get-FirstPayloadProperty -Payload $payload -Name $Property }
