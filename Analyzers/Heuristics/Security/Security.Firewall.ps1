@@ -806,9 +806,9 @@ function Get-FirewallSmbExposureAnalysis {
 
         if ($isBroad -and ($matches139 -or $matchesUdp137 -or $matchesUdp138)) {
             $keyParts = @(
-                if ($rule.PSObject.Properties['Name']) { [string]$rule.Name } else { '' },
-                if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { '' },
-                if ($rule.PSObject.Properties['PolicyStore']) { [string]$rule.PolicyStore } else { '' },
+                $(if ($rule.PSObject.Properties['Name']) { [string]$rule.Name } else { '' }),
+                $(if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { '' }),
+                $(if ($rule.PSObject.Properties['PolicyStore']) { [string]$rule.PolicyStore } else { '' }),
                 [string]$rule.ProfileText,
                 [string]$rule.LocalPortText,
                 [string]$rule.RemoteAddressText
