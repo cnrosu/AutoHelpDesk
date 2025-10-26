@@ -1,5 +1,5 @@
 ## Summary
-AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that allow unrestricted remote addresses because they enable cross-VLAN propagation. This scenario illustrates how a single permissive rule on TCP 135/139/445 can let ransomware traverse network segments. Use the steps below to gather evidence, validate exposure, and tighten access without breaking legitimate workflows.
+AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that allow unrestricted remote addresses because they enable reach beyond the local subnet (potentially other VLANs via routing). This scenario illustrates how a single permissive rule on TCP 135/139/445 can let ransomware traverse network segments. Use the steps below to gather evidence, validate exposure, and tighten access without breaking legitimate workflows.
 
 ### What might be outdated
 - Microsoft has adjusted Remote Assistance defaults in recent Windows 11 releases, so verify the rule is enabled and scoped broadly before assuming it mirrors older Windows 10 behavior.
@@ -35,7 +35,7 @@ AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that al
 
 1. **Environment layout.** A company separates workstations into VLAN A (general users) and VLAN B (finance). The finance department keeps its QuickBooks files on a Windows file server in VLAN B. A Windows 10 workstation in VLAN A is configured with the default "Remote Assistance (DCOM-In)" firewall rule that allows inbound TCP 135 from any network.
 2. **Initial compromise.** An employee in VLAN A opens a phishing email that drops ransomware. The malware immediately scans for SMB/NetBIOS services over TCP 135/139/445 to move laterally.
-3. **Cross-VLAN movement.** Because the firewall rule allows TCP 135 from any remote address, the ransomware can reach the finance file server even though it sits on a different VLAN. The server responds, and the malware authenticates using stolen domain credentials.
+3. **Movement beyond the local subnet.** Because the firewall rule allows TCP 135 from any remote address, the ransomware can reach the finance file server even though it sits on a different VLAN. The server responds, and the malware authenticates using stolen domain credentials.
 4. **Payload execution.** The ransomware copies itself to the finance file server via SMB, launches remotely, and begins encrypting the shared QuickBooks and Excel files that the finance team relies on daily.
 5. **Business impact.** Finance users in VLAN B suddenly lose access to their accounting data, payroll spreadsheets, and invoices. Operations halt until backups are restored, causing downtime and potential financial penalties.
 
@@ -47,11 +47,11 @@ AutoHelpDesk’s firewall policy matcher flags inbound SMB/NetBIOS rules that al
 
 ## Manual verification checklist
 
-Follow these steps on an affected workstation and file server to confirm whether the rule truly exposes SMB/NetBIOS across VLAN boundaries:
+Follow these steps on an affected workstation and file server to confirm whether the rule truly exposes SMB/NetBIOS beyond the local subnet (potentially other VLANs via routing):
 
 1. **Review the firewall rule scope.** Run `Get-NetFirewallRule -DisplayName "Remote Assistance (DCOM-In)" | Get-NetFirewallAddressFilter` in an elevated PowerShell window. If `RemoteAddress` returns `Any`, the rule is not restricted to trusted subnets.
 2. **Confirm the service is listening.** On the workstation, execute `Get-NetTCPConnection -LocalPort 135` (or `netstat -an | find "135"`) to verify that RPC Endpoint Mapper is listening for Remote Assistance traffic.
-3. **Test cross-VLAN reachability.** From a device in another VLAN, run `Test-NetConnection -ComputerName <workstation FQDN or IP> -Port 135`. A successful TCP test shows the firewall is allowing inbound RPC from outside the VLAN.
+3. **Test reachability beyond the local subnet.** From a device in another VLAN, run `Test-NetConnection -ComputerName <workstation FQDN or IP> -Port 135`. A successful TCP test shows the firewall is allowing inbound RPC from outside the VLAN.
 4. **Validate SMB authentication.** Use a low-privilege domain account and run `Test-NetConnection -ComputerName <file server> -Port 445` from the compromised VLAN. If it succeeds, attempt to map a test share (e.g., `New-PSDrive -Name T -PSProvider FileSystem -Root \\<server>\TestShare`). Disconnect immediately after (`Remove-PSDrive T`). Perform this in a lab or maintenance window to avoid production impact.
 5. **Check for existing restrictions.** Inspect upstream firewalls or VLAN ACLs to ensure they block TCP 135/139/445 between user segments. Document any gaps so you can present hard evidence to the security team.
 

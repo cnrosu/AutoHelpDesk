@@ -327,54 +327,15 @@ function Test-FirewallRemoteAddressTrusted {
 
     foreach ($address in $addressList) {
         if (-not $address) { return $false }
+
         $trimmed = $address.Trim()
         if (-not $trimmed) { return $false }
+
         $upper = $null
         try { $upper = $trimmed.ToUpperInvariant() } catch { $upper = $trimmed.ToUpper() }
+        $compact = ($upper -replace '\s', '')
 
-        switch ($upper) {
-            'ANY' { return $false }
-            'ANY IPV4' { return $false }
-            'ANY IPV6' { return $false }
-            'ANY REMOTE IP' { return $false }
-            'ANYREMOTEIP' { return $false }
-            'INTERNET' { return $false }
-            'INTERNETSUBNET' { return $false }
-            'WORLD' { return $false }
-            'PUBLIC' { return $false }
-            'NOTAPPLICABLE' { return $false }
-        }
-
-        if ($upper -eq 'LOCALSUBNET' -or $upper -eq 'LOCALSUBNET6' -or $upper -eq 'LOOPBACK' -or $upper -eq 'INTRANET' -or $upper -eq 'INTRANETSUBNET') {
-            continue
-        }
-
-        if ($trimmed -match '^\\d+\\.\\d+\\.\\d+\\.\\d+(?:/\\d+)?$') {
-            $ipv4 = $trimmed.Split('/')[0]
-            if (Test-IsPrivateIPv4 $ipv4 -or Test-IsApipaIPv4 $ipv4) { continue }
-            return $false
-        }
-
-        if ($trimmed -match '^\\d+\\.\\d+\\.\\d+\\.\\d+\\s*-\\s*\\d+\\.\\d+\\.\\d+\\.\\d+$') {
-            $start = ($trimmed -split '\\s*-\\s*')[0]
-            if (Test-IsPrivateIPv4 $start -or Test-IsApipaIPv4 $start) { continue }
-            return $false
-        }
-
-        if ($trimmed -match '^[0-9A-Fa-f:]+(?:/\\d+)?$') {
-            $addressOnly = $trimmed.Split('/')[0]
-            $upperAddress = $null
-            try { $upperAddress = $addressOnly.ToUpperInvariant() } catch { $upperAddress = $addressOnly.ToUpper() }
-            if ($upperAddress.StartsWith('FE80') -or $upperAddress.StartsWith('FD') -or $upperAddress.StartsWith('FC')) { continue }
-            return $false
-        }
-
-        if ($trimmed -match '\\*') {
-            if ($trimmed -match '^10\\.' -or $trimmed -match '^192\\.168\\.' -or $trimmed -match '^172\\.(1[6-9]|2[0-9]|3[0-1])\\.') { continue }
-            return $false
-        }
-
-        return $false
+        if ($compact -ne 'LOCALSUBNET' -and $compact -ne 'LOCALSUBNET6') { return $false }
     }
 
     return $true
@@ -466,7 +427,7 @@ function New-FirewallRuleEvidenceItem {
     if (-not $ruleName) { $ruleName = $RuleInfo.Name }
     if (-not $ruleName) { $ruleName = '(Unnamed rule)' }
 
-    $remoteScope = if ($RuleInfo.RemoteAddressesTrusted) { 'Restricted/private' } else { 'Unrestricted or unknown' }
+    $remoteScope = if ($RuleInfo.RemoteAddressesTrusted) { 'Local subnet only' } else { 'Beyond local subnet (potentially other VLANs via routing)' }
     $protocolText = if ($RuleInfo.Protocols -and $RuleInfo.Protocols.Count -gt 0) { ($RuleInfo.Protocols -join ', ') } else { 'Any' }
 
     return [ordered]@{
@@ -586,9 +547,9 @@ function Test-SmbRemoteScopeIsCrossVlan {
         $text = [string]$address
         if ([string]::IsNullOrWhiteSpace($text)) { return $true }
 
-        $trimmed = $text.Trim()
+        $normalized = $text.Trim()
         $upper = $null
-        try { $upper = $trimmed.ToUpperInvariant() } catch { $upper = $trimmed.ToUpper() }
+        try { $upper = $normalized.ToUpperInvariant() } catch { $upper = $normalized.ToUpper() }
         $compact = ($upper -replace '\s', '')
 
         if ($compact -eq 'LOCALSUBNET' -or $compact -eq 'LOCALSUBNET6') { continue }
@@ -780,11 +741,14 @@ function Get-FirewallSmbExposureAnalysis {
         }
     }
 
-    $tcpPorts = @(139,445)
-    $udpPorts = @(137,138)
+    $tcp445Rules = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcp445Applying = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcp445Broad = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcp445Scoped = [System.Collections.Generic.List[pscustomobject]]::new()
+    $tcp445OffProfile = [System.Collections.Generic.List[pscustomobject]]::new()
 
-    $tcpRules = [System.Collections.Generic.List[pscustomobject]]::new()
-    $udpRules = [System.Collections.Generic.List[pscustomobject]]::new()
+    $netBiosBroad = [System.Collections.Generic.List[pscustomobject]]::new()
+    $netBiosBroadKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($rule in (ConvertTo-List $Rules)) {
         if (-not $rule) { continue }
@@ -792,43 +756,68 @@ function Get-FirewallSmbExposureAnalysis {
         if ($rule.DirectionNormalized -ne 'INBOUND') { continue }
         if ($rule.ActionNormalized -ne 'ALLOW') { continue }
 
-        if (Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('TCP')) {
-            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports $tcpPorts -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
-                $tcpRules.Add($rule) | Out-Null
-                continue
+        $matchesTcp = Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('TCP')
+        $matchesUdp = Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('UDP')
+
+        $matches445 = $false
+        $matches139 = $false
+        $matchesUdp137 = $false
+        $matchesUdp138 = $false
+
+        if ($matchesTcp) {
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports @(445) -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $matches445 = $true
+            }
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports @(139) -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $matches139 = $true
             }
         }
 
-        if (Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('UDP')) {
-            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports $udpPorts -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
-                $udpRules.Add($rule) | Out-Null
+        if ($matchesUdp) {
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports @(137) -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $matchesUdp137 = $true
+            }
+            if (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports @(138) -Ranges @() -Tokens @() -TreatAnyAsMatch $false) {
+                $matchesUdp138 = $true
             }
         }
-    }
 
-    $tcpApplies = [System.Collections.Generic.List[pscustomobject]]::new()
-    $tcpCross = [System.Collections.Generic.List[pscustomobject]]::new()
-    $tcpLocal = [System.Collections.Generic.List[pscustomobject]]::new()
-    $tcpOffProfile = [System.Collections.Generic.List[pscustomobject]]::new()
+        if (-not ($matches445 -or $matches139 -or $matchesUdp137 -or $matchesUdp138)) { continue }
 
-    foreach ($rule in $tcpRules) {
         $applies = Test-SmbRuleAppliesToActiveProfile -Rule $rule -ActiveTokens ($activeProfileTokens.ToArray())
+        $isBroad = $false
         if ($applies) {
-            $tcpApplies.Add($rule) | Out-Null
-            if (Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList) {
-                $tcpCross.Add($rule) | Out-Null
-            } else {
-                $tcpLocal.Add($rule) | Out-Null
-            }
-        } else {
-            $tcpOffProfile.Add($rule) | Out-Null
+            $isBroad = Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList
         }
-    }
 
-    $udpCross = [System.Collections.Generic.List[pscustomobject]]::new()
-    foreach ($rule in $udpRules) {
-        if (Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList) {
-            $udpCross.Add($rule) | Out-Null
+        if ($matches445) {
+            $tcp445Rules.Add($rule) | Out-Null
+            if ($applies) {
+                $tcp445Applying.Add($rule) | Out-Null
+                if ($isBroad) {
+                    $tcp445Broad.Add($rule) | Out-Null
+                } else {
+                    $tcp445Scoped.Add($rule) | Out-Null
+                }
+            } else {
+                $tcp445OffProfile.Add($rule) | Out-Null
+            }
+        }
+
+        if ($isBroad -and ($matches139 -or $matchesUdp137 -or $matchesUdp138)) {
+            $keyParts = @(
+                if ($rule.PSObject.Properties['Name']) { [string]$rule.Name } else { '' },
+                if ($rule.PSObject.Properties['DisplayName']) { [string]$rule.DisplayName } else { '' },
+                if ($rule.PSObject.Properties['PolicyStore']) { [string]$rule.PolicyStore } else { '' },
+                [string]$rule.ProfileText,
+                [string]$rule.LocalPortText,
+                [string]$rule.RemoteAddressText
+            )
+            $key = [string]::Join('|', $keyParts)
+            if (-not $netBiosBroadKeys.Contains($key)) {
+                $netBiosBroadKeys.Add($key) | Out-Null
+                $netBiosBroad.Add($rule) | Out-Null
+            }
         }
     }
 
@@ -841,13 +830,12 @@ function Get-FirewallSmbExposureAnalysis {
         ActiveProfileNames  = $activeProfileNames.ToArray()
         ActiveProfileTokens = $activeProfileTokens.ToArray()
         IsListening         = $isListening
-        TcpRules            = $tcpRules.ToArray()
-        TcpRulesApplying    = $tcpApplies.ToArray()
-        TcpCrossVlanRules   = $tcpCross.ToArray()
-        TcpLocalRules       = $tcpLocal.ToArray()
-        TcpOffProfileRules  = $tcpOffProfile.ToArray()
-        UdpRules            = $udpRules.ToArray()
-        UdpCrossVlanRules   = $udpCross.ToArray()
+        Tcp445Rules         = $tcp445Rules.ToArray()
+        Tcp445RulesApplying = $tcp445Applying.ToArray()
+        Tcp445BroadRules    = $tcp445Broad.ToArray()
+        Tcp445ScopedRules   = $tcp445Scoped.ToArray()
+        Tcp445OffProfileRules = $tcp445OffProfile.ToArray()
+        NetBiosBroadRules   = $netBiosBroad.ToArray()
         Errors              = $errors.ToArray()
     }
 }
@@ -858,13 +846,13 @@ function New-SmbExposureHighEvidence {
     if (-not $Analysis) { return $null }
 
     $ruleEvidence = [System.Collections.Generic.List[object]]::new()
-    foreach ($rule in (ConvertTo-List $Analysis.TcpCrossVlanRules)) {
+    foreach ($rule in (ConvertTo-List $Analysis.Tcp445BroadRules)) {
         $item = New-FirewallRuleEvidenceItem $rule
         if ($item) { $ruleEvidence.Add($item) | Out-Null }
     }
 
     $evidence = [ordered]@{
-        Explanation          = 'The device is listening on SMB and at least one inbound firewall rule for TCP 445/139 allows traffic from beyond the local subnet on the active profile, exposing file shares across VLANs.'
+        Explanation          = 'The device is listening on SMB and at least one inbound firewall rule for TCP 445 allows traffic from beyond the local subnet (potentially other VLANs via routing), so attackers on other segments can reach file shares.'
         ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
         Service              = Get-SmbServiceSummary $Analysis.Service
         NetworkProfiles      = Get-SmbNetworkProfileSummaries $Analysis.NetworkProfiles
@@ -875,10 +863,11 @@ function New-SmbExposureHighEvidence {
         Remediation          = [ordered]@{
             Workstations = @(
                 'Disable File and Printer Sharing inbound rules, or restrict them to LocalSubnet only.',
+                'Disable NetBIOS inbound (UDP 137/138, TCP 139) unless a legacy dependency requires it.',
                 'If SMB serving is not needed on this device, stop and disable the Server (LanmanServer) service.'
             )
             Servers = @(
-                'Restrict SMB (TCP 445) inbound to trusted subnets only (avoid “Any”).',
+                'Restrict SMB (TCP 445) inbound to trusted administrative or backup subnets; avoid Any or blank scopes.',
                 'Require SMB signing; enable per-share encryption for sensitive data.'
             )
             Commands = @(
@@ -893,8 +882,8 @@ function New-SmbExposureHighEvidence {
                 'Set-SmbServerConfiguration -RequireSecuritySignature $true -Force',
                 '# Per-share encryption (example)',
                 'Set-SmbShare -Name <ShareName> -EncryptData $true',
-                '# Disable NB discovery rules if unneeded',
-                'Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)"',
+                '# Disable NB discovery/session rules if unneeded',
+                'Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)","File and Printer Sharing (NB-Session-In)"',
                 '# Ensure SMB1 is disabled',
                 'Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart',
                 'Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force'
@@ -902,14 +891,14 @@ function New-SmbExposureHighEvidence {
         }
     }
 
-    if ($Analysis.UdpRules -and $Analysis.UdpRules.Count -gt 0) {
-        $udpEvidence = [System.Collections.Generic.List[object]]::new()
-        foreach ($udpRule in (ConvertTo-List $Analysis.UdpRules)) {
-            $item = New-FirewallRuleEvidenceItem $udpRule
-            if ($item) { $udpEvidence.Add($item) | Out-Null }
+    if ($Analysis.NetBiosBroadRules -and $Analysis.NetBiosBroadRules.Count -gt 0) {
+        $netbiosEvidence = [System.Collections.Generic.List[object]]::new()
+        foreach ($rule in (ConvertTo-List $Analysis.NetBiosBroadRules)) {
+            $item = New-FirewallRuleEvidenceItem $rule
+            if ($item) { $netbiosEvidence.Add($item) | Out-Null }
         }
-        if ($udpEvidence.Count -gt 0) {
-            $evidence['NetBiosDiscoveryRules'] = $udpEvidence.ToArray()
+        if ($netbiosEvidence.Count -gt 0) {
+            $evidence['NetBiosRules'] = $netbiosEvidence.ToArray()
         }
     }
 
@@ -926,26 +915,26 @@ function New-SmbExposureRestrictedEvidence {
     if (-not $Analysis) { return $null }
 
     $reasonParts = [System.Collections.Generic.List[string]]::new()
-    if ($Analysis.TcpLocalRules -and $Analysis.TcpLocalRules.Count -gt 0) {
-        $reasonParts.Add('All inbound SMB firewall rules that match the active profile are scoped to LocalSubnet or trusted ranges.') | Out-Null
+    if ($Analysis.Tcp445ScopedRules -and $Analysis.Tcp445ScopedRules.Count -gt 0) {
+        $reasonParts.Add('All inbound SMB firewall rules on the active profile are limited to LocalSubnet or LocalSubnet6.') | Out-Null
     }
-    if ($Analysis.TcpOffProfileRules -and $Analysis.TcpOffProfileRules.Count -gt 0) {
+    if ($Analysis.Tcp445OffProfileRules -and $Analysis.Tcp445OffProfileRules.Count -gt 0) {
         $reasonParts.Add('Some SMB firewall rules target profiles that are not currently active.') | Out-Null
     }
     if (($Analysis.ActiveProfileTokens -and $Analysis.ActiveProfileTokens.Count -eq 0) -or (-not $Analysis.ActiveProfileTokens)) {
-        $reasonParts.Add('Active network profile could not be determined, so cross-VLAN exposure cannot be confirmed.') | Out-Null
+        $reasonParts.Add('Active network profile could not be determined, so exposure beyond the local subnet cannot be confirmed.') | Out-Null
     }
 
-    $summary = if ($reasonParts.Count -gt 0) { $reasonParts -join ' ' } else { 'SMB firewall rules do not expose TCP 445/139 on the active profile.' }
+    $summary = if ($reasonParts.Count -gt 0) { $reasonParts -join ' ' } else { 'SMB is listening. Inbound rules apply on the active profile but are scoped to the local subnet. No broad exposure detected.' }
 
     $localEvidence = [System.Collections.Generic.List[object]]::new()
-    foreach ($rule in (ConvertTo-List $Analysis.TcpLocalRules)) {
+    foreach ($rule in (ConvertTo-List $Analysis.Tcp445ScopedRules)) {
         $item = New-FirewallRuleEvidenceItem $rule
         if ($item) { $localEvidence.Add($item) | Out-Null }
     }
 
     $offProfileEvidence = [System.Collections.Generic.List[object]]::new()
-    foreach ($rule in (ConvertTo-List $Analysis.TcpOffProfileRules)) {
+    foreach ($rule in (ConvertTo-List $Analysis.Tcp445OffProfileRules)) {
         $item = New-FirewallRuleEvidenceItem $rule
         if ($item) { $offProfileEvidence.Add($item) | Out-Null }
     }
@@ -962,14 +951,40 @@ function New-SmbExposureRestrictedEvidence {
         SmbConfiguration     = Get-SmbConfigurationSummary $Analysis.Configuration
     }
 
-    if ($Analysis.UdpRules -and $Analysis.UdpRules.Count -gt 0) {
-        $udpEvidence = [System.Collections.Generic.List[object]]::new()
-        foreach ($udpRule in (ConvertTo-List $Analysis.UdpRules)) {
-            $item = New-FirewallRuleEvidenceItem $udpRule
-            if ($item) { $udpEvidence.Add($item) | Out-Null }
-        }
-        if ($udpEvidence.Count -gt 0) {
-            $evidence['NetBiosDiscoveryRules'] = $udpEvidence.ToArray()
+    if ($Analysis.Errors -and $Analysis.Errors.Count -gt 0) {
+        $evidence['DataWarnings'] = $Analysis.Errors
+    }
+
+    return $evidence
+}
+
+function New-NetBiosExposureEvidence {
+    param($Analysis)
+
+    if (-not $Analysis) { return $null }
+
+    $netbiosEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Analysis.NetBiosBroadRules)) {
+        $item = New-FirewallRuleEvidenceItem $rule
+        if ($item) { $netbiosEvidence.Add($item) | Out-Null }
+    }
+
+    if ($netbiosEvidence.Count -eq 0) { return $null }
+
+    $evidence = [ordered]@{
+        Explanation          = 'Legacy NetBIOS discovery/session ports are allowed from beyond the local subnet (potentially other VLANs via routing), so unauthenticated name service traffic can traverse between network segments.'
+        ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
+        Rules                = $netbiosEvidence.ToArray()
+        Remediation          = [ordered]@{
+            Workstations = @(
+                'Disable NetBIOS discovery/session inbound rules unless a legacy application requires them.'
+            )
+            Servers = @(
+                'Limit NetBIOS exposure to designated legacy subnets and migrate to SMB over TCP 445 when possible.'
+            )
+            Commands = @(
+                'Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)","File and Printer Sharing (NB-Session-In)"'
+            )
         }
     }
 
@@ -980,28 +995,47 @@ function New-SmbExposureRestrictedEvidence {
     return $evidence
 }
 
-function New-SmbUdpHygieneEvidence {
-    param($Analysis)
+function New-MdnsExposureEvidence {
+    param(
+        [pscustomobject[]]$Rules,
+        [string[]]$ActiveProfiles,
+        [bool]$IncludesDomainProfile
+    )
 
-    if (-not $Analysis) { return $null }
-
-    $udpEvidence = [System.Collections.Generic.List[object]]::new()
-    foreach ($rule in (ConvertTo-List $Analysis.UdpRules)) {
+    $ruleEvidence = [System.Collections.Generic.List[object]]::new()
+    foreach ($rule in (ConvertTo-List $Rules)) {
         $item = New-FirewallRuleEvidenceItem $rule
-        if ($item) { $udpEvidence.Add($item) | Out-Null }
+        if ($item) { $ruleEvidence.Add($item) | Out-Null }
     }
 
-    if ($udpEvidence.Count -eq 0) { return $null }
+    if ($ruleEvidence.Count -eq 0) { return $null }
+
+    $explanation = if ($IncludesDomainProfile) {
+        'At least one inbound firewall rule allows mDNS (UDP/5353) from beyond the local subnet (potentially other VLANs via routing) on the Domain profile, so Bonjour service discovery traffic can reach this host if multicast is reflected across segments.'
+    } else {
+        'At least one inbound firewall rule allows mDNS (UDP/5353) from beyond the local subnet (potentially other VLANs via routing), so Bonjour service discovery traffic can reach this host if multicast is reflected across segments.'
+    }
 
     $evidence = [ordered]@{
-        Explanation          = 'Only NetBIOS discovery rules (UDP 137/138) are enabled. Review and tighten these scopes for hygiene.'
-        ActiveNetworkProfile = if ($Analysis.ActiveProfileNames -and $Analysis.ActiveProfileNames.Count -gt 0) { $Analysis.ActiveProfileNames -join ', ' } else { 'Unknown' }
-        Rules                = $udpEvidence.ToArray()
-        Remediation          = @('Disable-NetFirewallRule -DisplayName "Network Discovery (NB-Name-In)","Network Discovery (NB-Datagram-In)"')
-    }
-
-    if ($Analysis.Errors -and $Analysis.Errors.Count -gt 0) {
-        $evidence['DataWarnings'] = $Analysis.Errors
+        Explanation          = $explanation
+        ActiveNetworkProfile = if ($ActiveProfiles -and $ActiveProfiles.Count -gt 0) { $ActiveProfiles -join ', ' } else { 'Unknown' }
+        Rules                = $ruleEvidence.ToArray()
+        Notes                = 'mDNS is link-local multicast by default; exposure requires an mDNS/Bonjour reflector or routing helper.'
+        Remediation          = [ordered]@{
+            Workstations = @(
+                'Disable inbound mDNS rules on corporate/Domain networks unless Bonjour is explicitly required.',
+                'Scope UDP 5353 to LocalSubnet when AirPrint/AirPlay is needed only within the local segment.'
+            )
+            Servers = @(
+                'Disable Bonjour/mDNS services on servers unless a workload depends on them.'
+            )
+            Commands = @(
+                '# Disable inbound UDP/5353 rules on the Domain profile',
+                '(Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow | Where-Object { $_.Profile -band 1 } | Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } | ForEach-Object { Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID }).Name | ForEach-Object { Disable-NetFirewallRule -Name $_ }',
+                '# Scope inbound UDP/5353 to LocalSubnet',
+                'Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow | Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } | ForEach-Object { $rule = Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID; Set-NetFirewallRule -Name $rule.Name -RemoteAddress LocalSubnet }'
+            )
+        }
     }
 
     return $evidence
@@ -1123,131 +1157,6 @@ function Get-FirewallPortPolicies {
             TreatAnyAsMatch = $false
             FlagWhenRemoteUntrusted = $true
             Guidance = 'Block UDP 1900 (UPnP/SSDP) to prevent discovery abuse.'
-        },
-        [pscustomobject]@{
-            Key = 'FirewallMdns'
-            Title = 'Security/Windows Firewall – mDNS (UDP/5353) inbound exposure on Domain profile'
-            Severity = 'medium'
-            CheckId = 'Security/Firewall/mDns'
-            Direction = 'INBOUND'
-            Protocols = @('UDP')
-            Ports = @(5353)
-            Ranges = @()
-            PortTokens = @()
-            TreatAnyAsMatch = $false
-            FlagWhenRemoteUntrusted = $true
-            Explanation = 'mDNS service discovery is enabled on this endpoint for the Domain profile and will answer or receive multicast queries on the local subnet. Tighten or disable unless policy explicitly allows Bonjour/AirPrint on corporate networks.'
-            Guidance = @'
-mDNS (UDP/5353) – Audit & Remediation Checklist
-
-Goal
-
-Detect whether multicast DNS (mDNS / Bonjour) is active/allowed on the endpoint, decide if that’s acceptable for your environment, and (if not) disable or scope it appropriately.
-
-1) Discovery – Commands to check if mDNS is enabled
-
-# A. Show any ENABLED inbound firewall rules that allow UDP/5353 (mDNS)
-Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
-  Get-NetFirewallPortFilter |
-  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
-  ForEach-Object {
-    $r    = Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID
-    $addr = Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $r.InstanceID
-    [pscustomobject]@{
-      Name          = $r.DisplayName
-      Group         = $r.DisplayGroup
-      Profile       = $r.Profile     # Domain/Private/Public (bitmask)
-      Enabled       = $r.Enabled
-      Program       = (Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $r.InstanceID -ErrorAction SilentlyContinue).Program
-      RemoteAddress = ($addr.RemoteAddress -join ',')
-      PolicyStore   = $r.PolicyStoreSource
-    }
-  } | Sort-Object Name,Profile
-
-# B. See if any process is LISTENING on UDP/5353
-Get-NetUDPEndpoint | Where-Object { $_.LocalPort -eq 5353 } |
-  Select-Object LocalAddress,LocalPort,OwningProcess |
-  ForEach-Object { $_, (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue | Select-Object -Expand Name) }
-
-# C. Check if Bonjour/mDNS services/processes exist
-Get-Service *bonjour*, *mdns* -ErrorAction SilentlyContinue
-Get-Process mDNSResponder -ErrorAction SilentlyContinue
-
-# D. Check if Group Policy forces mDNS on/off (rare but important)
-Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' -ErrorAction SilentlyContinue |
-  Select-Object EnableMulticast
-
-2) Interpretation – How to read the results
-Evidence you see    Meaning    Risk call
-Inbound rule(s) present and Enabled, LocalPort=5353/UDP, RemoteAddress=Any (or blank), Profile includes Domain    Host will accept mDNS from anywhere in the Domain profile    Tighten/disable unless explicitly needed
-Same as above but RemoteAddress=LocalSubnet only    Limited to local subnet (link-local multicast scope)    Usually acceptable if you need casting/AirPrint
-No inbound rules for 5353 or all are Disabled    mDNS inbound blocked by firewall    Low risk
-A process (e.g., msedge, chrome, mDNSResponder) is listening on 5353    An app will send/receive mDNS; effectiveness depends on firewall rules    If inbound rules are open → consider scoping/disable
-EnableMulticast policy present and 0    mDNS disabled by policy (DNSClient)    Good for lock-down
-EnableMulticast missing    Default behavior (not explicitly forced)    Check firewall & listeners
-
-3) Title (for your ticket/card)
-
-Security/Windows Firewall – mDNS (UDP/5353) inbound exposure on Domain profile
-
-4) Evidence → Result (sample mapping)
-
-Evidence (example):
-
-Rule: Microsoft Edge (mDNS-In) / mDNS (UDP-In) → Action=Allow, Direction=Inbound, Profile=Domain, LocalPort=5353, RemoteAddress=Any
-
-Listener: msedge bound to 0.0.0.0:5353 and :: :5353
-
-Result: mDNS service discovery is enabled on this endpoint for the Domain profile and will answer/receive on the local subnet. Tighten or disable unless required by policy.
-
-5) Remediation Guidance
-
-Recommended stance (enterprise endpoints): Disable or restrict mDNS on Domain networks if you don’t explicitly require Bonjour/AirPlay/AirPrint or local discovery.
-
-This aligns with Microsoft hardening guidance for enterprise environments to block mDNS on corporate/Domain networks (retain where needed for home/mobile), and with common security baselines that advise disabling mDNS where not required.
-
-Choose one of these options:
-
-Option A — Disable all inbound mDNS (safest if not needed)
-# Disable every enabled inbound rule that allows UDP/5353
-Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
-  Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
-  ForEach-Object { (Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID).Name } |
-  ForEach-Object { Disable-NetFirewallRule -Name $_ }
-
-Option B — Keep mDNS but scope it (reduce exposure)
-# Restrict inbound UDP/5353 to LocalSubnet only
-Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
-  Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
-  ForEach-Object {
-    $rule = Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID
-    Set-NetFirewallRule -Name $rule.Name -RemoteAddress LocalSubnet
-  }
-
-Option C — Disable only on Domain profile (keep for Private/Public)
-# 1 = Domain, 2 = Private, 4 = Public (bit flags). Filter where Domain bit is set.
-(Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
-  Where-Object { $_.Profile -band 1 } |
-  Get-NetFirewallPortFilter |
-  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
-  ForEach-Object { Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID }).Name |
-  ForEach-Object { Disable-NetFirewallRule -Name $_ }
-
-Optional – Remove/disable Bonjour service (if installed and not needed)
-Stop-Service BonjourService -ErrorAction SilentlyContinue
-Set-Service  BonjourService -StartupType Disabled -ErrorAction SilentlyContinue
-
-One-liner summary (if you just want the quick fix for corp devices)
-
-Disable on Domain profile only (recommended default for enterprises):
-
-(Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
-  Where-Object { $_.Profile -band 1 } |
-  Get-NetFirewallPortFilter |
-  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
-  ForEach-Object { Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID }).Name |
-  ForEach-Object { Disable-NetFirewallRule -Name $_ }
-'@
         },
         [pscustomobject]@{
             Key = 'FirewallSnmp'
@@ -1560,29 +1469,70 @@ function Invoke-SecurityFirewallChecks {
         if ($normalizedRules.Count -gt 0) {
             $smbAnalysis = Get-FirewallSmbExposureAnalysis -Context $Context -Rules ($normalizedRules.ToArray())
             if ($smbAnalysis) {
-                $crossVlanRules = ConvertTo-List $smbAnalysis.TcpCrossVlanRules
-                $allTcpRules = ConvertTo-List $smbAnalysis.TcpRules
-                $udpRules = ConvertTo-List $smbAnalysis.UdpRules
+                $tcp445Broad = ConvertTo-List $smbAnalysis.Tcp445BroadRules
+                $tcp445Scoped = ConvertTo-List $smbAnalysis.Tcp445ScopedRules
+                $tcp445Applying = ConvertTo-List $smbAnalysis.Tcp445RulesApplying
+                $tcp445All = ConvertTo-List $smbAnalysis.Tcp445Rules
+                $netBiosBroad = ConvertTo-List $smbAnalysis.NetBiosBroadRules
 
-                if ($smbAnalysis.IsListening -and $crossVlanRules.Count -gt 0) {
+                if ($smbAnalysis.IsListening -and $tcp445Broad.Count -gt 0) {
                     $smbEvidence = New-SmbExposureHighEvidence $smbAnalysis
                     if ($smbEvidence) {
-                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'high' -Title 'SMB/NetBIOS exposed across VLANs (inbound rule allows 445/139 from unrestricted scope)' -Evidence $smbEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbInbound'
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'warning' -Title 'SMB reachable beyond the local subnet (TCP 445 listener with broad inbound scope).' -Evidence $smbEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbInbound'
                     }
-                } else {
-                    if ($smbAnalysis.IsListening -and $allTcpRules.Count -gt 0 -and $crossVlanRules.Count -eq 0) {
-                        $restrictedEvidence = New-SmbExposureRestrictedEvidence $smbAnalysis
-                        if ($restrictedEvidence) {
-                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'SMB firewall rules restricted to local scopes or inactive profiles.' -Evidence $restrictedEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbInbound'
+                } elseif ($smbAnalysis.IsListening -and $tcp445All.Count -gt 0 -and $tcp445Broad.Count -eq 0 -and $tcp445Scoped.Count -gt 0) {
+                    $restrictedEvidence = New-SmbExposureRestrictedEvidence $smbAnalysis
+                    if ($restrictedEvidence) {
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'SMB is listening but inbound rules are scoped to the local subnet.' -Evidence $restrictedEvidence -Subcategory 'Windows Firewall' -CheckId 'Security/Firewall/SmbInbound'
+                    }
+                }
+
+                if ($tcp445Broad.Count -eq 0 -and $netBiosBroad.Count -gt 0) {
+                    $netbiosEvidence = New-NetBiosExposureEvidence $smbAnalysis
+                    if ($netbiosEvidence) {
+                        Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'Legacy NetBIOS ports allowed beyond the local subnet.' -Evidence $netbiosEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbUdpDiscovery'
+                    }
+                }
+            }
+
+            $mdnsBroadRules = [System.Collections.Generic.List[pscustomobject]]::new()
+            $mdnsBroadDomainRules = [System.Collections.Generic.List[pscustomobject]]::new()
+            foreach ($rule in (ConvertTo-List $normalizedRules)) {
+                if (-not $rule) { continue }
+                if ($rule.DirectionNormalized -ne 'INBOUND') { continue }
+                if ($rule.ActionNormalized -ne 'ALLOW') { continue }
+                if (-not (Test-FirewallProtocolMatch -RuleProtocols $rule.ProtocolsNormalized -TargetProtocols @('UDP'))) { continue }
+                if (-not (Test-FirewallPortMatch -PortEntries $rule.LocalPortEntries -Ports @(5353) -Ranges @() -Tokens @() -TreatAnyAsMatch $false)) { continue }
+
+                if (Test-SmbRemoteScopeIsCrossVlan $rule.RemoteAddressList) {
+                    $mdnsBroadRules.Add($rule) | Out-Null
+
+                    $hasDomain = $false
+                    foreach ($profileToken in (ConvertTo-List $rule.ProfilesNormalized)) {
+                        if (-not $profileToken) { continue }
+                        switch ($profileToken) {
+                            'DOMAIN' { $hasDomain = $true; break }
+                            'DOMAINAUTHENTICATED' { $hasDomain = $true; break }
+                            'ANY' { $hasDomain = $true; break }
+                            'ALL' { $hasDomain = $true; break }
+                            'NOTAPPLICABLE' { $hasDomain = $true; break }
+                            default { continue }
                         }
                     }
 
-                    if ($crossVlanRules.Count -eq 0 -and $allTcpRules.Count -eq 0 -and $udpRules.Count -gt 0) {
-                        $udpEvidence = New-SmbUdpHygieneEvidence $smbAnalysis
-                        if ($udpEvidence) {
-                            Add-CategoryIssue -CategoryResult $CategoryResult -Severity 'low' -Title 'NetBIOS discovery rules allow inbound UDP 137/138 (hygiene).' -Evidence $udpEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/SmbUdpDiscovery'
-                        }
+                    if ($hasDomain) {
+                        $mdnsBroadDomainRules.Add($rule) | Out-Null
                     }
+                }
+            }
+
+            if ($mdnsBroadRules.Count -gt 0) {
+                $includesDomain = ($mdnsBroadDomainRules.Count -gt 0)
+                $mdnsEvidence = New-MdnsExposureEvidence -Rules ($mdnsBroadRules.ToArray()) -ActiveProfiles ($smbAnalysis.ActiveProfileNames) -IncludesDomainProfile $includesDomain
+                if ($mdnsEvidence) {
+                    $severity = if ($includesDomain) { 'warning' } else { 'low' }
+                    $title = if ($includesDomain) { 'mDNS inbound scope exceeds the local subnet on the Domain profile.' } else { 'mDNS inbound scope exceeds the local subnet.' }
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $severity -Title $title -Evidence $mdnsEvidence -Subcategory 'Windows Firewall' -Remediation $script:SecurityFirewallBaselineRemediation -CheckId 'Security/Firewall/mDns'
                 }
             }
 
