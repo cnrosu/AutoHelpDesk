@@ -1126,7 +1126,7 @@ function Get-FirewallPortPolicies {
         },
         [pscustomobject]@{
             Key = 'FirewallMdns'
-            Title = 'Firewall leaves mDNS open across VLANs, so multicast discovery leaks between segments.'
+            Title = 'Security/Windows Firewall – mDNS (UDP/5353) inbound exposure on Domain profile'
             Severity = 'medium'
             CheckId = 'Security/Firewall/mDns'
             Direction = 'INBOUND'
@@ -1136,7 +1136,118 @@ function Get-FirewallPortPolicies {
             PortTokens = @()
             TreatAnyAsMatch = $false
             FlagWhenRemoteUntrusted = $true
-            Guidance = 'Block UDP 5353 (mDNS/Bonjour) across VLANs.'
+            Explanation = 'mDNS service discovery is enabled on this endpoint for the Domain profile and will answer or receive multicast queries on the local subnet. Tighten or disable unless policy explicitly allows Bonjour/AirPrint on corporate networks.'
+            Guidance = @'
+mDNS (UDP/5353) – Audit & Remediation Checklist
+
+Goal
+
+Detect whether multicast DNS (mDNS / Bonjour) is active/allowed on the endpoint, decide if that’s acceptable for your environment, and (if not) disable or scope it appropriately.
+
+1) Discovery – Commands to check if mDNS is enabled
+
+# A. Show any ENABLED inbound firewall rules that allow UDP/5353 (mDNS)
+Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
+  Get-NetFirewallPortFilter |
+  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
+  ForEach-Object {
+    $r    = Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID
+    $addr = Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $r.InstanceID
+    [pscustomobject]@{
+      Name          = $r.DisplayName
+      Group         = $r.DisplayGroup
+      Profile       = $r.Profile     # Domain/Private/Public (bitmask)
+      Enabled       = $r.Enabled
+      Program       = (Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $r.InstanceID -ErrorAction SilentlyContinue).Program
+      RemoteAddress = ($addr.RemoteAddress -join ',')
+      PolicyStore   = $r.PolicyStoreSource
+    }
+  } | Sort-Object Name,Profile
+
+# B. See if any process is LISTENING on UDP/5353
+Get-NetUDPEndpoint | Where-Object { $_.LocalPort -eq 5353 } |
+  Select-Object LocalAddress,LocalPort,OwningProcess |
+  ForEach-Object { $_, (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue | Select-Object -Expand Name) }
+
+# C. Check if Bonjour/mDNS services/processes exist
+Get-Service *bonjour*, *mdns* -ErrorAction SilentlyContinue
+Get-Process mDNSResponder -ErrorAction SilentlyContinue
+
+# D. Check if Group Policy forces mDNS on/off (rare but important)
+Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' -ErrorAction SilentlyContinue |
+  Select-Object EnableMulticast
+
+2) Interpretation – How to read the results
+Evidence you see    Meaning    Risk call
+Inbound rule(s) present and Enabled, LocalPort=5353/UDP, RemoteAddress=Any (or blank), Profile includes Domain    Host will accept mDNS from anywhere in the Domain profile    Tighten/disable unless explicitly needed
+Same as above but RemoteAddress=LocalSubnet only    Limited to local subnet (link-local multicast scope)    Usually acceptable if you need casting/AirPrint
+No inbound rules for 5353 or all are Disabled    mDNS inbound blocked by firewall    Low risk
+A process (e.g., msedge, chrome, mDNSResponder) is listening on 5353    An app will send/receive mDNS; effectiveness depends on firewall rules    If inbound rules are open → consider scoping/disable
+EnableMulticast policy present and 0    mDNS disabled by policy (DNSClient)    Good for lock-down
+EnableMulticast missing    Default behavior (not explicitly forced)    Check firewall & listeners
+
+3) Title (for your ticket/card)
+
+Security/Windows Firewall – mDNS (UDP/5353) inbound exposure on Domain profile
+
+4) Evidence → Result (sample mapping)
+
+Evidence (example):
+
+Rule: Microsoft Edge (mDNS-In) / mDNS (UDP-In) → Action=Allow, Direction=Inbound, Profile=Domain, LocalPort=5353, RemoteAddress=Any
+
+Listener: msedge bound to 0.0.0.0:5353 and :: :5353
+
+Result: mDNS service discovery is enabled on this endpoint for the Domain profile and will answer/receive on the local subnet. Tighten or disable unless required by policy.
+
+5) Remediation Guidance
+
+Recommended stance (enterprise endpoints): Disable or restrict mDNS on Domain networks if you don’t explicitly require Bonjour/AirPlay/AirPrint or local discovery.
+
+This aligns with Microsoft hardening guidance for enterprise environments to block mDNS on corporate/Domain networks (retain where needed for home/mobile), and with common security baselines that advise disabling mDNS where not required.
+
+Choose one of these options:
+
+Option A — Disable all inbound mDNS (safest if not needed)
+# Disable every enabled inbound rule that allows UDP/5353
+Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
+  Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
+  ForEach-Object { (Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID).Name } |
+  ForEach-Object { Disable-NetFirewallRule -Name $_ }
+
+Option B — Keep mDNS but scope it (reduce exposure)
+# Restrict inbound UDP/5353 to LocalSubnet only
+Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
+  Get-NetFirewallPortFilter | Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
+  ForEach-Object {
+    $rule = Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID
+    Set-NetFirewallRule -Name $rule.Name -RemoteAddress LocalSubnet
+  }
+
+Option C — Disable only on Domain profile (keep for Private/Public)
+# 1 = Domain, 2 = Private, 4 = Public (bit flags). Filter where Domain bit is set.
+(Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
+  Where-Object { $_.Profile -band 1 } |
+  Get-NetFirewallPortFilter |
+  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
+  ForEach-Object { Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID }).Name |
+  ForEach-Object { Disable-NetFirewallRule -Name $_ }
+
+Optional – Remove/disable Bonjour service (if installed and not needed)
+Stop-Service BonjourService -ErrorAction SilentlyContinue
+Set-Service  BonjourService -StartupType Disabled -ErrorAction SilentlyContinue
+
+One-liner summary (if you just want the quick fix for corp devices)
+
+Disable on Domain profile only (recommended default for enterprises):
+
+(Get-NetFirewallRule -Enabled True -Direction Inbound -Action Allow |
+  Where-Object { $_.Profile -band 1 } |
+  Get-NetFirewallPortFilter |
+  Where-Object { $_.Protocol -eq 17 -and $_.LocalPort -eq 5353 } |
+  ForEach-Object { Get-NetFirewallRule -AssociatedNetFirewallRule $_.InstanceID }).Name |
+  ForEach-Object { Disable-NetFirewallRule -Name $_ }
+'@
         },
         [pscustomobject]@{
             Key = 'FirewallSnmp'
@@ -1492,7 +1603,11 @@ function Invoke-SecurityFirewallChecks {
                     Rules    = $evidenceRules.ToArray()
                 }
 
-                Add-CategoryIssue -CategoryResult $CategoryResult -Severity $policy.Severity -Title $policy.Title -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId $policy.CheckId
+                if ($policy.PSObject.Properties['Explanation'] -and $policy.Explanation) {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $policy.Severity -Title $policy.Title -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId $policy.CheckId -Explanation $policy.Explanation
+                } else {
+                    Add-CategoryIssue -CategoryResult $CategoryResult -Severity $policy.Severity -Title $policy.Title -Evidence $evidence -Subcategory 'Windows Firewall' -CheckId $policy.CheckId
+                }
             }
         }
 
