@@ -445,12 +445,7 @@ function Invoke-ServicesHeuristics {
         Invoke-ServiceCheckOfficeClickToRun -Result $res -Lookup $lookupParam -IsWorkstation $workstation
     } -Arguments @($result,$lookup,$isWorkstation)
 
-    Invoke-ServicesCheckWithLog -Result $result -Tracker $checkTracker -Name 'Auto-Start Sanity' -Action {
-        param($res,$servicesParam)
-        Invoke-ServiceCheckAutomaticInventory -Result $res -Services $servicesParam
-    } -Arguments @($result,$services)
-
-    $checkOrder = @('Search','DNS','NLA','Workstation/SMB','Spooler','RPC','WinHTTP','BITS','Office C2R','Auto-Start Sanity')
+    $checkOrder = @('Search','DNS','NLA','Workstation/SMB','Spooler','RPC','WinHTTP','BITS','Office C2R')
     $checkSummary = New-Object System.Collections.Generic.List[string]
     foreach ($check in $checkOrder) {
         if ($checkTracker.ContainsKey($check)) {
