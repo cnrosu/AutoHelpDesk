@@ -43,3 +43,9 @@ When implementing or updating a remediation for an AutoHelpDesk heuristic:
 These references show the difference between structured and legacy payloads so you can pattern-match quickly.
 - The Exploit Protection mitigation emits a structured remediation array with two PowerShell `code` steps and a narrative staging step, producing headings and copyable blocks in the report.【F:Analyzers/Heuristics/Security/Security.DeviceProtection.ps1†L347-L365】
 - The hardware battery heuristic still ships a legacy Markdown blob, so the renderer escapes the fences instead of creating PowerShell cards—use this as a before-state when planning a cleanup.【F:Analyzers/Heuristics/Hardware/Battery.ps1†L1-L27】
+
+## Known misformatted remediation steps
+Some heuristics still squeeze list-style bullets into a single `text` step, which forces the renderer to emit a paragraph with `<br>` separators instead of rich list markup. The entries below call out each payload so maintainers can prioritize follow-up fixes within their respective components.
+- `Analyzers/Heuristics/Hardware/Battery.ps1` — The “Symptoms” step uses newline-delimited sentences to mimic bullets, so each symptom collapses into one paragraph instead of a structured checklist.【F:Analyzers/Heuristics/Hardware/Battery.ps1†L1-L12】
+- `Analyzers/Heuristics/Storage/Storage.Helpers.ps1` — The “Fix” step includes hyphen-prefixed guidance within the same string, preventing the remediation from rendering as a proper list of storage actions.【F:Analyzers/Heuristics/Storage/Storage.Helpers.ps1†L9-L22】
+- `Analyzers/Heuristics/Security/Security.DeviceProtection.ps1` — The “Fix (pick one)” step starts with newline-separated dash bullets, so Smart App Control and WDAC options appear as a single block of text instead of discrete list items.【F:Analyzers/Heuristics/Security/Security.DeviceProtection.ps1†L1-L19】

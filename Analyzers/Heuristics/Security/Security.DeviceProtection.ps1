@@ -1,12 +1,15 @@
 # Structured remediation mapping:
-# - Fix options become a text step with newline bullets.
+# - Fix options become a list step with explicit choices.
 # - Validation prompt becomes a text step leading into the code sample.
 $script:WdacPolicyEnforcementRemediation = @'
 [
   {
-    "type": "text",
+    "type": "list",
     "title": "Fix (pick one)",
-    "content": "\n- Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.\n- Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period."
+    "items": [
+      "Windows 11 SAC: Enable in Windows Security > App & browser control (Eval → On), or enforce WDAC via Intune for managed devices.",
+      "Pilot WDAC with an allow-list policy in audit mode, then enforce after the burn-in period."
+    ]
   },
   {
     "type": "text",
