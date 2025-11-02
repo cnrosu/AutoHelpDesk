@@ -1,7 +1,7 @@
 # Structured remediation steps derived from the legacy block:
 # - The heading becomes a text step that summarizes when to use the playbook.
 # - The "Checks" section turns into a code step listing the discovery commands.
-# - The bullet list under "Fix" is captured as a text step with newline-separated guidance.
+# - The bullet list under "Fix" is captured as a list step with individual remediation actions.
 # - The cleanup script stays a code step with comments preserved.
 $script:StorageHealthAndSpaceRemediation = @'
 [
@@ -16,9 +16,13 @@ $script:StorageHealthAndSpaceRemediation = @'
     "content": "Get-PhysicalDisk | Select FriendlyName, MediaType, HealthStatus, OperationalStatus, Usage\nGet-Volume | Sort SizeRemaining | Format-Table DriveLetter, FileSystemLabel, SizeRemaining, Size, AllocationUnitSize -Auto"
   },
   {
-    "type": "text",
+    "type": "list",
     "title": "Fix",
-    "content": "- Degraded disks: replace the disk; if using a USB/NVMe enclosure, update the bridge firmware.\n- SMART unavailable: re-run as admin and ensure NVMe/RAID vendor drivers are installed.\n- Low space (automatable): run the cleanup script."
+    "items": [
+      "Degraded disks: replace the disk; if using a USB/NVMe enclosure, update the bridge firmware.",
+      "SMART unavailable: re-run as admin and ensure NVMe/RAID vendor drivers are installed.",
+      "Low space (automatable): run the cleanup script."
+    ]
   },
   {
     "type": "code",

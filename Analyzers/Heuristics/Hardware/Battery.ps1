@@ -6,9 +6,14 @@ if (-not $script:HardwareBatteryRemediation) {
     $script:HardwareBatteryRemediation = @'
 [
   {
-    "type": "text",
+    "type": "list",
     "title": "Symptoms",
-    "content": "Shorter unplugged runtime; frequent charging.\nBattery % drops faster than expected or jumps.\nBattery saver kicks in earlier; performance throttles on battery.\nUnexpected sleep/shutdown on battery under load (often at 10–20%)."
+    "items": [
+      "Shorter unplugged runtime; frequent charging.",
+      "Battery % drops faster than expected or jumps.",
+      "Battery saver kicks in earlier; performance throttles on battery.",
+      "Unexpected sleep/shutdown on battery under load (often at 10–20%)."
+    ]
   },
   {
     "type": "text",
