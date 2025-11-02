@@ -2297,6 +2297,9 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Unable to enumerate network adapters, so link status is unknown.' -Evidence $adapters[0].Error -Subcategory 'Network Adapters'
         } elseif ($adapters.Count -gt 0) {
             $activeAdapterNames = New-Object System.Collections.Generic.List[string]
+            $adapterStatusSummaries = New-Object System.Collections.Generic.List[string]
+            $adapterStatusData = New-Object System.Collections.Generic.List[object]
+            $inventoryDetails = New-Object System.Collections.Generic.List[object]
             $addActiveAdapter = {
                 param([string]$Alias)
 
@@ -2308,9 +2311,18 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
                 if (-not $adapter) { continue }
 
                 $name = if ($adapter.PSObject.Properties['Name']) { [string]$adapter.Name } else { $null }
+                $aliasFromPayload = if ($adapter.PSObject.Properties['InterfaceAlias']) { [string]$adapter.InterfaceAlias } else { $null }
                 $statusText = if ($adapter.PSObject.Properties['Status']) { [string]$adapter.Status } else { $null }
                 $normalizedStatus = if ($statusText) { $statusText.Trim().ToLowerInvariant() } else { '' }
                 $isReportedUp = ($normalizedStatus -eq 'up' -or $normalizedStatus -eq 'connected' -or $normalizedStatus -like 'up*')
+
+                $displayName = if ($name) { $name } elseif ($aliasFromPayload) { $aliasFromPayload } else { 'Unnamed adapter' }
+                $statusSummary = if ($statusText) { $statusText } else { 'status unavailable' }
+                $null = $adapterStatusSummaries.Add(('{0} ({1})' -f $displayName, $statusSummary))
+                $null = $adapterStatusData.Add([pscustomobject][ordered]@{
+                        Name   = $displayName
+                        Status = $statusText
+                    })
 
                 if ($isReportedUp -and $name) { & $addActiveAdapter $name }
             }
@@ -2335,6 +2347,17 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
                         $ipv6GatewayCount = (@($info.IPv6Gateways | Where-Object { $_ })).Count
                     }
 
+                    $inventoryRecord = [pscustomobject][ordered]@{
+                        Alias              = $alias
+                        HasValidAddress    = $hasValidAddress
+                        HasGateway         = $hasGateway
+                        IsPseudo           = $isPseudo
+                        IsEligible         = $isEligible
+                        IsFallbackEligible = $isFallbackEligible
+                        IPv6GatewayCount   = $ipv6GatewayCount
+                    }
+                    $null = $inventoryDetails.Add($inventoryRecord)
+
                     if ($isEligible -or $isFallbackEligible -or ($hasValidAddress -and -not $isPseudo -and ($hasGateway -or $ipv6GatewayCount -gt 0))) {
                         & $addActiveAdapter $alias
                     }
@@ -2344,7 +2367,51 @@ $names | ForEach-Object { Resolve-DnsName $_ -ErrorAction SilentlyContinue }
             if ($activeAdapterNames.Count -gt 0) {
                 Add-CategoryNormal -CategoryResult $result -Title ('Active adapters: {0}' -f ($activeAdapterNames -join ', ')) -Subcategory 'Network Adapters'
             } else {
-                Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Subcategory 'Network Adapters' -Remediation 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.'
+                $evidenceLines = New-Object System.Collections.Generic.List[string]
+                if ($adapterStatusSummaries.Count -gt 0) {
+                    $null = $evidenceLines.Add('Adapter payload statuses: ' + ($adapterStatusSummaries -join '; ') + '.')
+                } else {
+                    $null = $evidenceLines.Add('Adapter payload did not report any adapters.')
+                }
+
+                if ($inventoryDetails.Count -gt 0) {
+                    $eligibilityCount = (@($inventoryDetails | Where-Object {
+                                $_.IsEligible -or
+                                $_.IsFallbackEligible -or
+                                ($_.HasValidAddress -and -not $_.IsPseudo -and ($_.HasGateway -or $_.IPv6GatewayCount -gt 0))
+                            })).Count
+
+                    $null = $evidenceLines.Add(("{0} adapter inventory entries evaluated; {1} met connectivity criteria." -f $inventoryDetails.Count, $eligibilityCount))
+
+                    $inventorySummaries = @($inventoryDetails | ForEach-Object {
+                            $aliasSummary = if ($_.Alias) { $_.Alias } else { 'Unnamed adapter' }
+                            '{0} (eligible={1}, fallbackEligible={2}, validAddress={3}, gateway={4}, pseudo={5}, ipv6Gateways={6})' -f $aliasSummary, $_.IsEligible, $_.IsFallbackEligible, $_.HasValidAddress, $_.HasGateway, $_.IsPseudo, $_.IPv6GatewayCount
+                        })
+
+                    if ($inventorySummaries.Count -gt 0) {
+                        $null = $evidenceLines.Add('Inventory details: ' + ($inventorySummaries -join '; ') + '.')
+                    }
+                } else {
+                    $null = $evidenceLines.Add('Adapter inventory payload was empty.')
+                }
+
+                $evidence = if ($evidenceLines.Count -gt 0) { $evidenceLines.ToArray() } else { $null }
+                $data = $null
+                if ($adapterStatusData.Count -gt 0 -or $inventoryDetails.Count -gt 0) {
+                    $data = @{}
+                    if ($adapterStatusData.Count -gt 0) {
+                        $data['AdapterStatuses'] = $adapterStatusData.ToArray()
+                    }
+                    if ($inventoryDetails.Count -gt 0) {
+                        $data['AdapterInventory'] = $inventoryDetails.ToArray()
+                    }
+                }
+
+                if ($data) {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Evidence $evidence -Subcategory 'Network Adapters' -Remediation 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.' -Data $data
+                } else {
+                    Add-CategoryIssue -CategoryResult $result -Severity 'high' -Title 'No active network adapters reported, so the device has no path for network connectivity.' -Evidence $evidence -Subcategory 'Network Adapters' -Remediation 'Confirm the NIC is enabled and cabled, then reload or reinstall the network drivers to restore link; replace the adapter if it stays offline.'
+                }
             }
         } else {
             Add-CategoryIssue -CategoryResult $result -Severity 'warning' -Title 'Network adapter inventory incomplete, so link status is unknown.' -Subcategory 'Network Adapters'
