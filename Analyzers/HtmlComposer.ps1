@@ -18,6 +18,22 @@ function Format-HtmlLogMessage {
         [bool]$IncludeData = $false
     )
 
+    if (-not (Get-Variable -Name HtmlDebugSuppressedStages -Scope Script -ErrorAction SilentlyContinue)) {
+        $script:HtmlDebugSuppressedStages = @(
+            'Composer.IssueCard',
+            'Composer.GoodCard',
+            'Composer.Categories'
+        )
+    }
+
+    $suppressPatterns = $script:HtmlDebugSuppressedStages
+    if ($suppressPatterns) {
+        foreach ($pattern in $suppressPatterns) {
+            if ([string]::IsNullOrWhiteSpace($pattern)) { continue }
+            if ($Stage -like $pattern) { return }
+        }
+    }
+
     $formatted = "HTML [{0}] {1}" -f $Stage, $Message
 
     if ($IncludeData -and $Data) {
