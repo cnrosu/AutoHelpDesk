@@ -491,17 +491,171 @@ function Get-ArtifactPayload {
 
     if (-not $Artifact) { return $null }
 
+    $getSectionKey = {
+        param($entry)
+
+        if (-not $entry) { return $null }
+
+        $candidates = @()
+
+        if ($entry.PSObject.Properties['SectionKey'] -and $entry.SectionKey) {
+            $candidates += [string]$entry.SectionKey
+        }
+
+        if ($entry.PSObject.Properties['Data'] -and $entry.Data) {
+            $data = $entry.Data
+
+            if ($data.PSObject.Properties['SectionKey'] -and $data.SectionKey) {
+                $candidates += [string]$data.SectionKey
+            }
+
+            if ($data.PSObject.Properties['Payload'] -and $data.Payload -and $data.Payload.PSObject.Properties['SectionKey'] -and $data.Payload.SectionKey) {
+                $candidates += [string]$data.Payload.SectionKey
+            }
+        }
+
+        foreach ($candidate in $candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($candidate)) { return $candidate }
+        }
+
+        return $null
+    }
+
+    $getEntryPath = {
+        param($entry)
+
+        if (-not $entry) { return $null }
+
+        $candidates = @()
+
+        if ($entry.PSObject.Properties['Path'] -and $entry.Path) {
+            $candidates += [string]$entry.Path
+        }
+
+        if ($entry.PSObject.Properties['Data'] -and $entry.Data) {
+            $data = $entry.Data
+
+            if ($data.PSObject.Properties['Path'] -and $data.Path) {
+                $candidates += [string]$data.Path
+            }
+
+            if ($data.PSObject.Properties['Source'] -and $data.Source) {
+                $candidates += [string]$data.Source
+            }
+        }
+
+        foreach ($candidate in $candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($candidate)) { return $candidate }
+        }
+
+        return $null
+    }
+
     if ($Artifact -is [System.Collections.IEnumerable] -and -not ($Artifact -is [string])) {
         $payloads = [System.Collections.Generic.List[object]]::new()
+        $sectionKeys = [System.Collections.Generic.List[string]]::new()
+        $missingSectionKeyCount = 0
+        $index = 0
+
         foreach ($item in $Artifact) {
-            $null = $payloads.Add($item.Data.Payload)
+            $index++
+
+            $path = & $getEntryPath $item
+            $sectionKey = & $getSectionKey $item
+
+            if ($sectionKey) {
+                $exists = $false
+                foreach ($existingKey in $sectionKeys) {
+                    if ($existingKey.Equals($sectionKey, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $exists = $true
+                        break
+                    }
+                }
+
+                if (-not $exists) { $sectionKeys.Add($sectionKey) | Out-Null }
+            } else {
+                $missingSectionKeyCount++
+            }
+
+            $payload = $null
+            $hasPayload = $false
+
+            try {
+                if ($item -and $item.PSObject.Properties['Data']) {
+                    $data = $item.Data
+                    if ($data -and $data.PSObject.Properties['Payload']) {
+                        $payload = $data.Payload
+                        $hasPayload = $true
+                    }
+                }
+
+                $null = $payloads.Add($payload)
+
+                $entryData = [ordered]@{
+                    Index      = $index
+                    HasPayload = $hasPayload
+                    SectionKey = if ($sectionKey) { $sectionKey } else { '(none)' }
+                }
+
+                if ($path) { $entryData['Path'] = $path }
+
+                Write-HeuristicDebug -Source 'Artifacts' -Message 'Resolved artifact payload entry' -Data $entryData
+            } catch {
+                $entryData = [ordered]@{
+                    Index      = $index
+                    Error      = $_.Exception.Message
+                    SectionKey = if ($sectionKey) { $sectionKey } else { '(none)' }
+                }
+
+                if ($path) { $entryData['Path'] = $path }
+
+                Write-HeuristicDebug -Source 'Artifacts' -Message 'Failed to resolve artifact payload entry' -Data $entryData
+                throw
+            }
         }
+
+        $summaryData = [ordered]@{
+            EntryCount  = $payloads.Count
+            SectionKeys = if ($sectionKeys.Count -gt 0) { $sectionKeys -join ', ' } else { '(none)' }
+        }
+
+        if ($missingSectionKeyCount -gt 0) {
+            $summaryData['MissingSectionKeys'] = $missingSectionKeyCount
+        }
+
+        Write-HeuristicDebug -Source 'Artifacts' -Message 'Resolved artifact payload collection' -Data $summaryData
 
         return $payloads
     }
 
+    $singlePath = & $getEntryPath $Artifact
+    $singleSectionKey = & $getSectionKey $Artifact
+
     if ($Artifact.Data -and $Artifact.Data.PSObject.Properties['Payload']) {
-        return $Artifact.Data.Payload
+        try {
+            $payload = $Artifact.Data.Payload
+
+            $entryData = [ordered]@{
+                HasPayload = [bool]$payload
+                SectionKey = if ($singleSectionKey) { $singleSectionKey } else { '(none)' }
+            }
+
+            if ($singlePath) { $entryData['Path'] = $singlePath }
+
+            Write-HeuristicDebug -Source 'Artifacts' -Message 'Resolved artifact payload entry' -Data $entryData
+
+            return $payload
+        } catch {
+            $entryData = [ordered]@{
+                Error      = $_.Exception.Message
+                SectionKey = if ($singleSectionKey) { $singleSectionKey } else { '(none)' }
+            }
+
+            if ($singlePath) { $entryData['Path'] = $singlePath }
+
+            Write-HeuristicDebug -Source 'Artifacts' -Message 'Failed to resolve artifact payload entry' -Data $entryData
+            throw
+        }
     }
 
     return $null
