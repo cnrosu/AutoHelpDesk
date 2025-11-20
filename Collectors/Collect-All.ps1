@@ -87,6 +87,7 @@ $collectorExecutionOrder = @(
     'Collect-Printing.ps1',
     'Collect-Uptime.ps1',
     'Collect-SystemRestore.ps1',
+    'Collect-StartupPrograms.ps1',
     'Collect-Software.ps1',
     'Collect-Storage.ps1',
     'Collect-Drivers.ps1',
